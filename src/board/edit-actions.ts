@@ -81,7 +81,7 @@ async function newLead(ctx: ActionContext): Promise<ActionResult> {
 /** POST /contacts/<id>/deals/new: add_lead with that contact. Then the new deal's page. */
 async function newDeal(ctx: ActionContext, id: string): Promise<ActionResult> {
   const contact = isContactId(id) ? await getContact(ctx.db, id) : null;
-  if (contact === null) return notFound(ctx);
+  if (contact === null || contact.archived === 1) return notFound(ctx);
   const collected = collectNew(newDealSpecs(await defsOf(ctx)), ctx.form);
   const refused = async (extra: string[] = []) =>
     page(422, (await newDealPage(pageContext(ctx, newDealPath(id)), id, stateOf(collected, extra))) ?? "");
@@ -189,11 +189,14 @@ const logOn = (kind: Subject["kind"]) =>
   };
 
 /** A task's own page to come back to: its deal, else its contact, else Today. */
-async function taskHome(ctx: ActionContext, taskId: string): Promise<{ back: string; found: boolean; title: string; untrusted: string }> {
+async function taskHome(
+  ctx: ActionContext,
+  taskId: string,
+): Promise<{ back: string; home: string; found: boolean; title: string; untrusted: string }> {
   const task = isTaskId(taskId) ? await getTask(ctx.db, taskId) : null;
-  if (task === null) return { back: "/", found: false, title: "", untrusted: "[]" };
+  if (task === null) return { back: "/", home: "/", found: false, title: "", untrusted: "[]" };
   const home = task.deal_id !== null ? dealHref(task.deal_id) : task.contact_id !== null ? contactHref(task.contact_id) : "/";
-  return { back: backTo(ctx, home), found: true, title: task.title, untrusted: task.untrusted_fields };
+  return { back: backTo(ctx, home), home, found: true, title: task.title, untrusted: task.untrusted_fields };
 }
 
 /** POST /tasks/<id>/complete: complete_task, one tap. */
@@ -204,7 +207,7 @@ async function complete(ctx: ActionContext, id: string): Promise<ActionResult> {
     const result = await completeTask(asOwner(ctx, "complete_task"), id);
     return redirect(withChange(home.back, result.changeId));
   } catch (error) {
-    return page(422, refusedPage(ctx, "The task wasn't marked done", refusal(error, "task"), home.back, ""));
+    return page(422, refusedPage(ctx, "The task wasn't marked done", refusal(error, "task"), home.back, "", home.home));
   }
 }
 
@@ -225,6 +228,7 @@ async function snooze(ctx: ActionContext, id: string): Promise<ActionResult> {
         "The task wasn't snoozed",
         html`${errorSummary([onField ? { id: `${fieldId("snooze", id)}-date`, message } : { message }])}<div class="card refused-form">${snoozeForms(task, { csrf: ctx.csrf, here: home.back }, onField ? { until: posted, error: message } : { until: posted })}</div>`,
         home.back,
+        home.home,
       ),
     );
   let until: string;

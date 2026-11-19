@@ -16,10 +16,11 @@ export const isDealId = (id: string): boolean => /^dl_[a-z0-9]{1,32}$/.test(id);
 /** The same check for a contact id ("ct_" ...), used by the board's /contacts/<id>. */
 export const isContactId = (id: string): boolean => /^ct_[a-z0-9]{1,32}$/.test(id);
 
-/** The same check for a change id ("chg_" ...), used by the board's ?change= banner and /changes/<id>/undo. */
+/** The same check for a task id ("tk_" ...), used by the board's /tasks/<id>/complete and /snooze. */
 export const isTaskId = (id: string): boolean => /^tk_[a-z0-9]{1,32}$/.test(id);
 
-export const isChangeId =(id: string): boolean => /^chg_[a-z0-9]{1,32}$/.test(id);
+/** The same check for a change id ("chg_" ...), used by the board's ?change= banner and /changes/<id>/undo. */
+export const isChangeId = (id: string): boolean => /^chg_[a-z0-9]{1,32}$/.test(id);
 
 export function newId(prefix: IdPrefix): string {
   const bytes = crypto.getRandomValues(new Uint8Array(12));

@@ -82,7 +82,7 @@ test("a refused New lead is a 422 with an error summary linking each field, the 
   assert.equal(await auditCount(db), before);
   assert.equal(h1Count(body), 1);
   assert.match(body, /<title>Error: New lead · Pipeline<\/title>/);
-  assert.match(body, /<div class="error-summary" role="alert" aria-labelledby="error-summary-heading">\n<h2 id="error-summary-heading">3 things to fix<\/h2>/);
+  assert.match(body, /<div class="error-summary" role="alert" aria-labelledby="error-summary-heading" tabindex="-1" autofocus>\n<h2 id="error-summary-heading">3 things to fix<\/h2>/);
   assert.match(body, /<li><a href="#lead-name">Give the person&#39;s name\.<\/a><\/li>/);
   assert.match(body, /<li><a href="#lead-value">Give a number of 0 or more\.<\/a><\/li>/);
   assert.match(body, /<li><a href="#lead-next_at-date">Give a date for this time, or clear the time\.<\/a><\/li>/);
@@ -327,6 +327,7 @@ test("a refused snooze (no date, a time in the past) is a 422 page with the snoo
   const none = await post(env, "/tasks/tk_seed02/snooze", { "until.date": "", "until.time": "", return_to: "/" });
   assert.equal(none.res.status, 422);
   assert.match(none.body, /<h1>The task wasn&#39;t snoozed<\/h1>/);
+  assert.match(none.body, /<a href="\/pipeline" aria-current="true">/, "the nav marks the task's deal's section");
   assert.match(none.body, /<a href="#snooze-tk_seed02-date">Give a date to snooze it until\.<\/a>/);
   const yesterday = localDate(new Date(Date.now() - 86_400_000), DEFAULT_TZ);
   const past = await post(env, "/tasks/tk_seed02/snooze", { "until.date": yesterday, "until.time": "10:00", return_to: "/" });

@@ -2,7 +2,7 @@
 // labels every field, marks outside values, and keeps outside text out of titles, labels and link text.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { devEnv, h1Count, load, seededDb } from "../../tests/helpers/board.ts";
+import { devEnv, h1Count, load, post, seededDb } from "../../tests/helpers/board.ts";
 import { createTestDb } from "../db/sqlite-d1.ts";
 import { addField } from "../services/fields.ts";
 
@@ -83,8 +83,8 @@ test("Edit contact: the stored values, outside ones labelled beside their label,
   for (const text of [...labels(body), ...linkTexts(body)]) assert.doesNotMatch(text, OUTSIDE_NAMES, text);
   const form = formOf(body, "/contacts/ct_seed02/edit");
   assertLabelled(form, "edit contact");
-  assert.match(form, /<label for="contact-name">Name <span class="field-required">\(required\)<\/span><\/label> <span class="outside">From outside<\/span>/);
-  assert.match(form, /<label for="contact-email">Email<\/label> <span class="outside">From outside<\/span>/);
+  assert.match(form, /<label for="contact-name">Name <span class="field-required">\(required\)<\/span><\/label> <span class="outside" id="contact-name-outside">From outside<\/span>/);
+  assert.match(form, /<label for="contact-email">Email<\/label> <span class="outside" id="contact-email-outside">From outside<\/span>/);
   assert.match(form, /<label for="contact-phone">Phone<\/label>\n/, "the phone was not from outside");
   assert.match(form, /name="name" type="text" value="Robin Sample"/);
   assert.match(form, /<input type="hidden" name="was\.name" value="[A-Za-z0-9_-]{22}">/);
@@ -113,7 +113,7 @@ test("Edit deal: title, value, next step and the next date in the owner's time; 
 
   const outside = await load(env, "/deals/dl_seed02/edit");
   assert.match(outside.body, /<h1>Edit deal dl_seed02<\/h1>/);
-  assert.match(outside.body, /<label for="deal-title">Deal title <span class="field-required">\(required\)<\/span><\/label> <span class="outside">From outside<\/span>/);
+  assert.match(outside.body, /<label for="deal-title">Deal title <span class="field-required">\(required\)<\/span><\/label> <span class="outside" id="deal-title-outside">From outside<\/span>/);
   assert.doesNotMatch(titleOf(outside.body), OUTSIDE_NAMES);
 });
 
@@ -135,6 +135,15 @@ test("a form page for a record that doesn't exist, or an id of the wrong shape, 
   for (const path of ["/contacts/ct_nothing0000/edit", "/deals/dl_nothing0000/edit", "/contacts/ct_nothing0000/deals/new", "/contacts/bad/edit", "/deals/%3Cx%3E/edit"]) {
     assert.equal((await load(env, path)).res.status, 404, path);
   }
+});
+
+test("an archived contact gets no new deal: no Add a deal link, and the page and its post are 404", async () => {
+  const db = await seededDb();
+  db.exec("UPDATE contacts SET archived = 1 WHERE id = 'ct_seed07'");
+  const env = devEnv(db);
+  assert.doesNotMatch((await load(env, "/contacts/ct_seed07")).body, /deals\/new/);
+  assert.equal((await load(env, "/contacts/ct_seed07/deals/new")).res.status, 404);
+  assert.equal((await post(env, "/contacts/ct_seed07/deals/new", { title: "More" })).res.status, 404);
 });
 
 test("the deal page offers Edit deal, Add a task and Log, and each task card has Done and Snooze", async () => {

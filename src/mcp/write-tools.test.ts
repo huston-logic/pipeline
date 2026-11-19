@@ -45,7 +45,7 @@ test("add_lead with a contact adds a deal for that contact, with no name or emai
   const data = answer.data as { contactId: string; matchedExisting: boolean };
   assert.equal(data.contactId, "ct_seed07");
   assert.equal(data.matchedExisting, true);
-  assert.match(await fails(c, "add_lead", {}), /^A lead needs a name\. Give the person's name\.$/);
+  assert.match(await fails(c, "add_lead", {}), /^A lead needs a name\. Give the person's name, or an existing contact\.$/);
 });
 
 test("writes are recorded as the ai actor under the tool's name", async () => {

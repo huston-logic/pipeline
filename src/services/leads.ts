@@ -14,7 +14,7 @@ import {
   updatedRow,
 } from "./change.ts";
 import { checkFieldValues } from "./fields.ts";
-import { columnLabel, fieldsLabel, joinAnd, nextPart } from "./describe.ts";
+import { capitalize, columnLabel, fieldsLabel, joinAnd, nextPart } from "./describe.ts";
 import { UserError } from "./errors.ts";
 import { checkEmail, checkValue, clean, whenOrNull, withoutNulls } from "./input.ts";
 import { contactName, dealTitle, isTrusted } from "./labels.ts";
@@ -73,7 +73,10 @@ export async function addLead(ctx: Ctx, input: LeadInput): Promise<AddLeadResult
   const tz = await ownerTimezone(db);
   const chosen = input.contact === undefined ? null : await findContact(db, input.contact);
   const name = clean(input.name);
-  if (name === null && chosen === null) throw new UserError("A lead needs a name. Give the person's name.");
+  if (chosen !== null && chosen.archived === 1) {
+    throw new UserError(`${capitalize(contactName(chosen))} is archived, so no new deal can be added for them.`);
+  }
+  if (name === null && chosen === null) throw new UserError("A lead needs a name. Give the person's name, or an existing contact.");
   const email = clean(input.email);
   if (email !== null && chosen === null) checkEmail(email);
   const value = input.value === undefined ? null : checkValue(input.value);
@@ -153,7 +156,10 @@ export async function addLead(ctx: Ctx, input: LeadInput): Promise<AddLeadResult
     changes.push({ table: "activities", id: note.id, before: null, after: note });
   }
 
+  // With a chosen contact, a name other than theirs is left as it was too.
+  const otherName = chosen !== null && name !== null && name.toLowerCase() !== chosen.name.toLowerCase();
   const detailsGiven =
+    otherName ||
     [input.phone, input.business, input.source, chosen === null ? undefined : input.email].some((v) => clean(v) !== null) ||
     Object.keys(contactFields).length > 0;
   const ignored = existing !== null && detailsGiven;

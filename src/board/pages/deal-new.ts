@@ -14,7 +14,8 @@ export const newDealSpecs = (defs: FieldDefRow[]): Spec[] => dealSpecs(defs, { t
 
 export async function newDealPage(ctx: PageContext, contactId: string, state?: FormState): Promise<string | null> {
   const contact = await getContact(ctx.db, contactId);
-  if (contact === null) return null;
+  // An archived contact gets no new deal (add_lead refuses it too).
+  if (contact === null || contact.archived === 1) return null;
   const specs = newDealSpecs(await listFieldDefs(ctx.db));
   const name = contactName(contact);
   const back = contactHref(contact.id);

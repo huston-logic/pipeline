@@ -139,9 +139,27 @@ test("addLead with a contact whose name came from outside names the deal after i
   assert.match(result.summary, /^Added deal dl_[a-z0-9]+ for existing contact ct_form in New inquiry/);
 });
 
+test("addLead with a contact says when a name it was given was left as it was", async () => {
+  const db = await openTestDb();
+  const first = await addLead(ctxFor(db), { name: "Alex Sample" });
+  const same = await addLead(ctxFor(db), { contact: first.contactId, name: "alex sample", dealTitle: "Same name" });
+  assert.doesNotMatch(same.summary, /left as they were/, "the same name changes nothing, so there is nothing to say");
+  const other = await addLead(ctxFor(db), { contact: first.contactId, name: "Alexandra Sample", dealTitle: "Other name" });
+  assert.match(other.summary, /; contact details left as they were \(use update_contact to change them\)/);
+  assert.equal((await contacts(db))[0]?.name, "Alex Sample");
+});
+
+test("addLead refuses a new deal for an archived contact", async () => {
+  const db = await openTestDb();
+  const first = await addLead(ctxFor(db), { name: "Alex Sample" });
+  await db.prepare("UPDATE contacts SET archived = 1 WHERE id = ?").bind(first.contactId).run();
+  await assert.rejects(addLead(ctxFor(db), { contact: first.contactId, dealTitle: "More" }), /^UserError: Alex Sample is archived, so no new deal can be added for them\.$/);
+  assert.equal((await deals(db)).length, 1);
+});
+
 test("addLead needs a name or a contact, and refuses a contact that doesn't exist", async () => {
   const db = await openTestDb();
-  await assert.rejects(addLead(ctxFor(db), {}), /A lead needs a name/);
+  await assert.rejects(addLead(ctxFor(db), {}), /^UserError: A lead needs a name\. Give the person's name, or an existing contact\.$/);
   await assert.rejects(addLead(ctxFor(db), { contact: "ct_nothing" }), /No contact matches "ct_nothing"/);
   assert.equal((await deals(db)).length, 0);
 });

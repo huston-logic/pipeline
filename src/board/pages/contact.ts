@@ -70,7 +70,7 @@ function dealsSection(detail: ContactDetail): Html {
         ? empty("No deals yet.")
         : html`<ul class="cards cards-single">${detail.deals.map(dealCard)}</ul>`
     }
-<p class="section-action"><a href="${newDealPath(detail.contact.id)}">Add a deal</a></p>`,
+${detail.contact.archived ? "" : html`<p class="section-action"><a href="${newDealPath(detail.contact.id)}">Add a deal</a></p>`}`,
   );
 }
 

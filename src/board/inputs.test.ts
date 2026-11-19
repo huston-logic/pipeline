@@ -27,7 +27,8 @@ test("values are escaped, and an outside value carries the From outside label be
   const out = field({ id: "f-name", name: "name", label: "Name", kind: "text", value: SCRIPT, outside: true }).value;
   assert.doesNotMatch(out, /<script>/);
   assert.match(out, /value="&lt;script&gt;alert\(1\)&lt;\/script&gt;"/);
-  assert.match(out, /<label for="f-name">Name<\/label> <span class="outside">From outside<\/span>/);
+  assert.match(out, /<label for="f-name">Name<\/label> <span class="outside" id="f-name-outside">From outside<\/span>/);
+  assert.match(out, /<input id="f-name"[^>]* aria-describedby="f-name-outside">/, "the label is read with the control");
   const notes = field({ id: "f-notes", name: "notes", label: "Notes", kind: "textarea", value: SCRIPT, outside: true }).value;
   assert.match(notes, /<textarea id="f-notes" name="notes" rows="4"[^>]*>&lt;script&gt;/);
 });
@@ -77,7 +78,8 @@ test("the error summary links each message to its field and is announced", () =>
     { id: "f-name", message: "Give the person's name." },
     { message: "Another contact already uses that email." },
   ]).toString();
-  assert.match(out, /<div class="error-summary" role="alert" aria-labelledby="error-summary-heading">/);
+  // tabindex and autofocus put focus on it when the refused page loads, with no script.
+  assert.match(out, /<div class="error-summary" role="alert" aria-labelledby="error-summary-heading" tabindex="-1" autofocus>/);
   assert.match(out, /<h2 id="error-summary-heading">2 things to fix<\/h2>/);
   assert.match(out, /<li><a href="#f-name">Give the person&#39;s name\.<\/a><\/li>/);
   assert.match(out, /<li>Another contact already uses that email\.<\/li>/);

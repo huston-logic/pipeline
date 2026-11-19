@@ -3,7 +3,7 @@
 // label beside the label when the value shown came from outside. Values are escaped by `html` like everything else.
 import { type Html, html } from "./html.ts";
 import { hidden } from "./forms.ts";
-import { count, outsideLabel } from "./parts.ts";
+import { count, OUTSIDE_LABEL } from "./parts.ts";
 
 export type FieldKindName = "text" | "email" | "tel" | "number" | "textarea" | "date" | "choice" | "when";
 
@@ -35,9 +35,13 @@ export const WAS_PREFIX = "was.";
 const describedBy = (ids: string[]): Html | "" =>
   ids.length === 0 ? "" : html` aria-describedby="${ids.join(" ")}"`;
 
+/** The From outside label, with an id so the control's aria-describedby reads it with the control. */
+const outsideOf = (props: FieldProps): Html | "" =>
+  props.outside ? html` <span class="outside" id="${props.id}-outside">${OUTSIDE_LABEL}</span>` : "";
+
 function labelFor(props: FieldProps): Html {
   const required = props.required ? html` <span class="field-required">(required)</span>` : "";
-  return html`<label for="${props.id}">${props.label}${required}</label>${props.outside ? html` ${outsideLabel()}` : ""}`;
+  return html`<label for="${props.id}">${props.label}${required}</label>${outsideOf(props)}`;
 }
 
 const hintOf = (props: FieldProps) =>
@@ -49,7 +53,11 @@ const errorOf = (props: FieldProps) =>
     : html`<p class="field-error" id="${props.id}-error"><span class="visually-hidden">Error: </span>${props.error}</p>`;
 
 function described(props: FieldProps): string[] {
-  return [props.hint === undefined ? null : `${props.id}-hint`, props.error === undefined ? null : `${props.id}-error`].filter(
+  return [
+    props.outside ? `${props.id}-outside` : null,
+    props.hint === undefined ? null : `${props.id}-hint`,
+    props.error === undefined ? null : `${props.id}-error`,
+  ].filter(
     (id): id is string => id !== null,
   );
 }
@@ -91,7 +99,7 @@ function whenField(props: FieldProps): Html {
   const aria = html`${describedBy(described(props))}${props.error === undefined ? "" : html` aria-invalid="true"`}`;
   const required = props.required ? html` required` : "";
   return html`<fieldset class="field field-when${props.error === undefined ? "" : " field-invalid"}">
-<legend>${props.label}${props.required ? html` <span class="field-required">(required)</span>` : ""}</legend>
+<legend>${props.label}${props.required ? html` <span class="field-required">(required)</span>` : ""}${outsideOf(props)}</legend>
 ${hintOf(props)}${errorOf(props)}<div class="when-row">
 <div class="when-part">
 <label for="${props.id}-date">Date</label>
@@ -116,7 +124,7 @@ ${wasField(props)}</div>`;
 /** At the top of a refused form: every problem, each linked to its field when it has one. */
 export function errorSummary(errors: FieldError[]): Html | "" {
   if (errors.length === 0) return "";
-  return html`<div class="error-summary" role="alert" aria-labelledby="error-summary-heading">
+  return html`<div class="error-summary" role="alert" aria-labelledby="error-summary-heading" tabindex="-1" autofocus>
 <h2 id="error-summary-heading">${count(errors.length, "thing to fix", "things to fix")}</h2>
 <ul>${errors.map((error) => html`<li>${error.id === undefined ? error.message : html`<a href="#${error.id}">${error.message}</a>`}</li>`)}</ul>
 </div>`;
