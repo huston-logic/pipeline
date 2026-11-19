@@ -40,11 +40,14 @@ this file before changing the repo, and update it when a rule changes.
 - **Styles:** one stylesheet, `public/board.css`. Colors are the `:root` tokens there (`--silver`, `--ink`, `--ink-2`,
   `--green`, `--rust`, `--tint`, `--line`, ...); never hard-code a color elsewhere. System fonts only; no web fonts and
   no third-party script, style or font.
-- **MCP** (decision 0004): `src/mcp/handler.ts` serves an MCP SDK v2 server (`@modelcontextprotocol/server`) built
+- **MCP** (decision 0004): `src/index.ts` loads `src/mcp/handler.ts` with a dynamic `import()` (so the board and its
+  unit tests never load the SDK); the handler serves an MCP SDK v2 server (`@modelcontextprotocol/server`) built
   fresh per request by `createMcpServer` (`server.ts`); stateless, no Durable Object. Tools live in `tools-read.ts`
   and `tools-write.ts` and are registered through `tool.ts`, which parses arguments with the tool's zod schema and
   answers through `format.ts` (`toolResult`: a one-line headline, a blank line, pretty JSON; `toolError`). Tools call
-  the services only. Headlines never contain outside text. Every write tool acts as the `ai` actor. `instructions.ts`
+  the services only. Headlines, change summaries and error messages never contain outside text: services name records
+  through `src/services/labels.ts` (outside values become ids such as "contact ct_…"), and read items list their
+  outside keys in `untrusted_fields`. Deals and tasks have `untrusted_fields` too (migration 0002). Every write tool acts as the `ai` actor. `instructions.ts`
   holds the server instructions. Adding a tool means adding its name to the tool-list tests (`src/mcp/server.test.ts`,
   `tests/e2e/mcp.test.ts`).
 - **Sign-in:** `src/auth/dev.ts` until task 10. `AUTH_MODE=dev` works only with `ENVIRONMENT=development` on a

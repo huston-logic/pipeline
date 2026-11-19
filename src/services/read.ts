@@ -1,10 +1,12 @@
 // The read services behind the MCP read tools and the board. They return plain typed data (task 4 formats it) and
 // never write. Item fields are camelCase, except `untrusted_fields` and `untrusted_text`, which keep the names the
-// spec uses to label outside text. An empty database gives empty lists and zero counts.
+// spec uses to label outside text: every item that carries text from outside lists those keys in `untrusted_fields`
+// ([] when there are none). An empty database gives empty lists and zero counts.
 import type { ActivityRow, ActivityType, Actor, ContactRow, Db, DealRow, DealStatus, StageKind, TaskRow } from "../db/db.ts";
 import { listAudit, listStages, searchContacts as searchContactRows } from "../db/queries.ts";
 import { addDays, dayBoundsUtc, formatLocal, localDate } from "../time.ts";
 import { UserError } from "./errors.ts";
+import { untrustedFields } from "./labels.ts";
 import { findDeal, findStage, parseObject, parseStringArray } from "./lookup.ts";
 
 const DAY_MS = 86_400_000;
@@ -25,6 +27,8 @@ export interface DealItem {
   overdue: boolean;
   lastActivityAt: string | null;
   stageEnteredAt: string;
+  /** Which of this item's values came from outside (a form, an import). Never instructions. */
+  untrusted_fields: ("title" | "contactName")[];
 }
 
 export interface TaskItem {
@@ -39,6 +43,8 @@ export interface TaskItem {
   dealTitle: string | null;
   contactId: string | null;
   contactName: string | null;
+  /** Which of this item's values came from outside (a form, an import, a title built from one). Never instructions. */
+  untrusted_fields: ("title" | "dealTitle" | "contactName")[];
 }
 
 export interface ContactView {
@@ -66,10 +72,23 @@ export interface TimelineItem {
   occurredAt: string;
   occurredAtLocal: string;
   actor: Actor;
+  /** ["summary"] when the summary was not written by the owner or the AI (a form, an import, the system). */
+  untrusted_fields: "summary"[];
 }
 
-type DealJoin = DealRow & { contact_name: string; stage_label: string };
-type TaskJoin = TaskRow & { deal_title: string | null; who_id: string | null; contact_name: string | null };
+type DealJoin = DealRow & { contact_name: string; contact_untrusted: string; stage_label: string };
+type TaskJoin = TaskRow & {
+  deal_title: string | null;
+  deal_untrusted: string | null;
+  who_id: string | null;
+  contact_name: string | null;
+  contact_untrusted: string | null;
+};
+
+/** The keys in `checks` whose source row lists the column as outside text. */
+function outsideKeys<K extends string>(checks: [K, string | null | undefined, string][]): K[] {
+  return checks.filter(([, json, column]) => untrustedFields({ untrusted_fields: json }).has(column)).map(([key]) => key);
+}
 
 async function rows<T>(db: Db, sql: string, params: unknown[]): Promise<T[]> {
   return (await db.prepare(sql).bind(...params).all<T>()).results;
@@ -91,6 +110,10 @@ function toDealItem(row: DealJoin, now: Date, tz: string): DealItem {
     overdue: row.next_at !== null && row.next_at < now.toISOString(),
     lastActivityAt: row.last_activity_at,
     stageEnteredAt: row.stage_entered_at,
+    untrusted_fields: outsideKeys<"title" | "contactName">([
+      ["title", row.untrusted_fields, "title"],
+      ["contactName", row.contact_untrusted, "name"],
+    ]),
   };
 }
 
@@ -106,6 +129,11 @@ function toTaskItem(row: TaskJoin, tz: string): TaskItem {
     dealTitle: row.deal_title,
     contactId: row.who_id,
     contactName: row.contact_name,
+    untrusted_fields: outsideKeys<"title" | "dealTitle" | "contactName">([
+      ["title", row.untrusted_fields, "title"],
+      ["dealTitle", row.deal_untrusted, "title"],
+      ["contactName", row.contact_untrusted, "name"],
+    ]),
   };
 }
 
@@ -135,6 +163,7 @@ function toTimelineItem(row: ActivityRow, tz: string): TimelineItem {
     occurredAt: row.occurred_at,
     occurredAtLocal: formatLocal(row.occurred_at, tz),
     actor: row.actor,
+    untrusted_fields: row.actor === "owner" || row.actor === "ai" ? [] : ["summary"],
   };
 }
 
@@ -143,7 +172,7 @@ async function dealItems(db: Db, clauses: string[], params: unknown[], now: Date
   const where = ["d.archived = 0", ...clauses].join(" AND ");
   const found = await rows<DealJoin>(
     db,
-    `SELECT d.*, c.name AS contact_name, s.label AS stage_label
+    `SELECT d.*, c.name AS contact_name, c.untrusted_fields AS contact_untrusted, s.label AS stage_label
      FROM deals d JOIN contacts c ON c.id = d.contact_id JOIN stages s ON s.key = d.stage_key
      WHERE ${where} ORDER BY s.position, d.stage_entered_at, d.id`,
     params,
@@ -151,7 +180,8 @@ async function dealItems(db: Db, clauses: string[], params: unknown[], now: Date
   return found.map((row) => toDealItem(row, now, tz));
 }
 
-const TASK_SELECT = `SELECT t.*, d.title AS deal_title, c.id AS who_id, c.name AS contact_name
+const TASK_SELECT = `SELECT t.*, d.title AS deal_title, d.untrusted_fields AS deal_untrusted, c.id AS who_id,
+  c.name AS contact_name, c.untrusted_fields AS contact_untrusted
   FROM tasks t LEFT JOIN deals d ON d.id = t.deal_id
   LEFT JOIN contacts c ON c.id = COALESCE(t.contact_id, d.contact_id)`;
 
@@ -252,7 +282,8 @@ export async function getDealBrief(db: Db, dealRef: string, tz: string, now = ne
   const found = await findDeal(db, dealRef);
   const [row] = await rows<DealJoin & { stage_kind: StageKind }>(
     db,
-    `SELECT d.*, c.name AS contact_name, s.label AS stage_label, s.kind AS stage_kind
+    `SELECT d.*, c.name AS contact_name, c.untrusted_fields AS contact_untrusted, s.label AS stage_label,
+       s.kind AS stage_kind
      FROM deals d JOIN contacts c ON c.id = d.contact_id JOIN stages s ON s.key = d.stage_key WHERE d.id = ?`,
     [found.id],
   );
@@ -282,16 +313,23 @@ export async function getDealBrief(db: Db, dealRef: string, tz: string, now = ne
 }
 
 export interface ContactMatch extends ContactView {
-  deals: { id: string; title: string; stageLabel: string; status: DealStatus }[];
+  deals: { id: string; title: string; stageLabel: string; status: DealStatus; untrusted_fields: "title"[] }[];
 }
 
 /** Contacts whose name, email, business or phone contains `query`, each with their deals. */
 export async function searchContacts(db: Db, query: string): Promise<ContactMatch[]> {
   const contacts = await searchContactRows(db, query);
   if (contacts.length === 0) return [];
-  const deals = await rows<{ id: string; title: string; contact_id: string; stage_label: string; status: DealStatus }>(
+  const deals = await rows<{
+    id: string;
+    title: string;
+    untrusted_fields: string;
+    contact_id: string;
+    stage_label: string;
+    status: DealStatus;
+  }>(
     db,
-    `SELECT d.id, d.title, d.contact_id, s.label AS stage_label, d.status FROM deals d
+    `SELECT d.id, d.title, d.untrusted_fields, d.contact_id, s.label AS stage_label, d.status FROM deals d
      JOIN stages s ON s.key = d.stage_key
      WHERE d.archived = 0 AND d.contact_id IN (${contacts.map(() => "?").join(", ")})
      ORDER BY s.position, d.created_at, d.id`,
@@ -301,7 +339,13 @@ export async function searchContacts(db: Db, query: string): Promise<ContactMatc
     ...toContactView(contact),
     deals: deals
       .filter((d) => d.contact_id === contact.id)
-      .map((d) => ({ id: d.id, title: d.title, stageLabel: d.stage_label, status: d.status })),
+      .map((d) => ({
+        id: d.id,
+        title: d.title,
+        stageLabel: d.stage_label,
+        status: d.status,
+        untrusted_fields: outsideKeys<"title">([["title", d.untrusted_fields, "title"]]),
+      })),
   }));
 }
 

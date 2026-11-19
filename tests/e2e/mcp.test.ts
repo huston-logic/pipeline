@@ -71,3 +71,17 @@ test("bad input gets a plain-English answer naming the field", async () => {
 test("the scheduled handler runs through wrangler's test route", async () => {
   await server.runCron();
 });
+
+test("/mcp answers with the Worker's security headers, and GET is refused (stateless, POST only)", async () => {
+  const res = await fetch(`${server.url}/mcp`, { headers: { accept: "text/event-stream" } });
+  await res.body?.cancel();
+  assert.equal(res.status, 405);
+  assert.match(res.headers.get("Content-Security-Policy") ?? "", /default-src 'self'/);
+  assert.equal(res.headers.get("X-Content-Type-Options"), "nosniff");
+});
+
+test("outside names stay out of write lines over HTTP too", async () => {
+  const answer = await ok(client, "update_deal", { deal: "dl_seed02", nextStep: "Send the menu template" });
+  assert.match(answer.headline, /^Updated deal dl_seed02 \(contact ct_seed02\): next: Send the menu template/);
+  assert.doesNotMatch(answer.text, /Robin|Sample Bakery/);
+});

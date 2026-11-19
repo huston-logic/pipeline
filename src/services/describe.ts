@@ -2,6 +2,7 @@
 import { formatLocal } from "../time.ts";
 import type { ChangeTable, Row } from "./change.ts";
 import { oneLine } from "./change.ts";
+import { activityText, isTrusted } from "./labels.ts";
 
 /** One line, at most `max` characters, with "…" when cut. */
 export function short(text: string, max = 80): string {
@@ -21,17 +22,26 @@ export const capitalize = (text: string) => text.charAt(0).toUpperCase() + text.
 
 const text = (value: unknown) => short(String(value ?? ""), 60);
 
-/** How a summary names a row: contact Pat Example, deal "Website refresh", the call "Intro call.", ... */
+/** A deal's title for a summary: "\"Website refresh\"", or "deal dl_…" when the title came from outside. */
+export const dealTitleOf = (row: Row) => (isTrusted(row, "title") ? `"${text(row.title)}"` : `deal ${String(row.id)}`);
+
+/**
+ * How a summary names a row: contact Pat Example, deal "Website refresh", the call "Intro call.", ... Values from
+ * outside become id labels (contact ct_…, deal dl_…, task tk_…, activity ac_…; see labels.ts).
+ */
 export function rowLabel(table: ChangeTable, row: Row): string {
+  const id = String(row.id);
   switch (table) {
     case "contacts":
-      return `contact ${text(row.name)}`;
+      return `contact ${isTrusted(row, "name") ? text(row.name) : id}`;
     case "deals":
-      return `deal "${text(row.title)}"`;
+      return isTrusted(row, "title") ? `deal "${text(row.title)}"` : `deal ${id}`;
     case "tasks":
-      return `task "${text(row.title)}"`;
-    case "activities":
-      return `the ${String(row.type).replace("_", " ")} "${text(row.summary)}"`;
+      return isTrusted(row, "title") ? `task "${text(row.title)}"` : `task ${id}`;
+    case "activities": {
+      const summary = activityText({ id, summary: String(row.summary), actor: String(row.actor) });
+      return summary === `activity ${id}` ? summary : `the ${String(row.type).replace("_", " ")} "${text(summary)}"`;
+    }
     case "stages":
       return `stage ${text(row.label)}`;
     case "field_defs":

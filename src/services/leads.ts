@@ -6,6 +6,7 @@ import { type ChangeResult, changedColumns, commitChange, type Ctx, type Row, ty
 import { columnLabel, fieldsLabel, joinAnd, nextPart } from "./describe.ts";
 import { UserError } from "./errors.ts";
 import { checkEmail, checkValue, clean, whenOrNull, withoutNulls } from "./input.ts";
+import { contactName, isTrusted } from "./labels.ts";
 import {
   checkFieldKeys,
   type FieldValues,
@@ -95,6 +96,7 @@ export async function addLead(ctx: Ctx, input: LeadInput): Promise<AddLeadResult
     fields: JSON.stringify(dealFields),
     stage_entered_at: now,
     last_activity_at: notes === null ? null : now,
+    untrusted_fields: "[]",
     archived: 0,
     version: 1,
     created_at: now,
@@ -124,7 +126,7 @@ export async function addLead(ctx: Ctx, input: LeadInput): Promise<AddLeadResult
   const ignored = existing !== null && detailsGiven;
   const summary =
     (existing
-      ? `Added deal "${deal.title}" for existing contact ${existing.name} in ${stage.label}`
+      ? `Added deal "${deal.title}" for existing contact ${contactName(existing)} in ${stage.label}`
       : `Added lead ${name} with deal "${deal.title}" in ${stage.label}`) +
     nextPart(nextStep, nextAt, tz) +
     (ignored ? "; contact details left as they were (use update_contact to change them)" : "");
@@ -166,7 +168,8 @@ export async function updateContact(ctx: Ctx, contactRef: string, patch: Contact
       const other = await findContactByEmail(db, value);
       if (other && other.id !== before.id) {
         throw new UserError(
-          `${other.name} (${other.id}) already uses ${other.email}. Use a different email, or update that contact instead.`,
+          `${isTrusted(other, "name") ? `${other.name} (${other.id})` : `contact ${other.id}`} already uses ` +
+            `${isTrusted(other, "email") ? other.email : value}. Use a different email, or update that contact instead.`,
         );
       }
     }
@@ -184,7 +187,7 @@ export async function updateContact(ctx: Ctx, contactRef: string, patch: Contact
   const after = updatedRow(before, set as Partial<ContactRow>, ctx.now);
   const changed = changedColumns(before, after).filter((c) => c !== "version" && c !== "updated_at");
   if (changed.length === 0) {
-    throw new UserError(`Nothing to change for ${before.name}: every value you gave is already set.`);
+    throw new UserError(`Nothing to change for ${contactName(before)}: every value you gave is already set.`);
   }
   const labels = changed
     .filter((c) => c !== "untrusted_fields")
@@ -192,8 +195,8 @@ export async function updateContact(ctx: Ctx, contactRef: string, patch: Contact
   const confirmedOnly = untrusted.filter((field) => confirmed.includes(field));
   const summary =
     labels.length > 0
-      ? `Updated ${after.name}: ${joinAnd(labels)}`
-      : `Confirmed ${joinAnd(confirmedOnly.map(columnLabel))} for ${after.name}`;
+      ? `Updated ${contactName(after)}: ${joinAnd(labels)}`
+      : `Confirmed ${joinAnd(confirmedOnly.map(columnLabel))} for ${contactName(after)}`;
   return commitChange(ctx, {
     target: { table: "contacts", id: before.id },
     summary,

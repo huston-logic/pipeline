@@ -128,7 +128,13 @@ test("searchContacts matches name, email or business and lists each contact's de
   const found = await searchContacts(db, "bakery");
   assert.deepEqual(ids(found), ["ct_seed02"]);
   assert.deepEqual(found[0]?.deals, [
-    { id: "dl_seed02", title: "New website for Sample Bakery", stageLabel: "New inquiry", status: "open" },
+    {
+      id: "dl_seed02",
+      title: "New website for Sample Bakery",
+      stageLabel: "New inquiry",
+      status: "open",
+      untrusted_fields: ["title"],
+    },
   ]);
   assert.deepEqual(ids(await searchContacts(db, "SAMPLE")), ["ct_seed07", "ct_seed02"]);
   assert.deepEqual(ids(await searchContacts(db, "jordan@example")), ["ct_seed04"]);

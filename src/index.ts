@@ -2,7 +2,7 @@ import { devAuth } from "./auth/dev.ts";
 import { homePage } from "./board/pages/home.ts";
 import { notFoundPage } from "./board/pages/not-found.ts";
 import type { Env } from "./env.ts";
-import { handleMcp, MCP_ROUTE } from "./mcp/handler.ts";
+import { MCP_ROUTE } from "./mcp/route.ts";
 import { withSecurityHeaders } from "./security.ts";
 
 const pages = new Map<string, () => string>([["/", homePage]]);
@@ -45,6 +45,8 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
   const { pathname } = new URL(request.url);
   if (pathname === MCP_ROUTE) {
     if (!auth.ok) return textResponse(auth.message, auth.status);
+    // Loaded only for a signed-in /mcp request, so the board (and the Node unit tests) never load the MCP SDK.
+    const { handleMcp } = await import("./mcp/handler.ts");
     return withSecurityHeaders(await handleMcp(request, env, ctx, auth.email));
   }
 

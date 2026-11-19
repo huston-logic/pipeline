@@ -17,7 +17,7 @@ import {
   rowKey,
   StaleWriteError,
 } from "./change.ts";
-import { capitalize, columnLabel, joinAnd, rowLabel } from "./describe.ts";
+import { capitalize, columnLabel, dealTitleOf, joinAnd, rowLabel } from "./describe.ts";
 import { UserError } from "./errors.ts";
 import { stageLabels } from "./lookup.ts";
 
@@ -115,7 +115,7 @@ function describeUndo(entries: Entry[], labels: Map<string, string>): string {
       let columns = changedColumns(before, after).filter((c) => !BOOKKEEPING.has(c));
       if (table === "deals" && columns.includes("stage_key")) {
         const stage = String(before.stage_key);
-        parts.push(`moved "${String(before.title)}" back to ${labels.get(stage) ?? stage}`);
+        parts.push(`moved ${dealTitleOf(before)} back to ${labels.get(stage) ?? stage}`);
         columns = columns.filter((c) => c !== "stage_key");
       }
       if (columns.length > 0) {

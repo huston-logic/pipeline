@@ -3,9 +3,8 @@
 // getMcpAuthContext(). Decision 0004.
 import { createMcpHandler } from "agents/mcp/server";
 import type { Env } from "../env.ts";
+import { MCP_ROUTE } from "./route.ts";
 import { createMcpServer } from "./server.ts";
-
-export const MCP_ROUTE = "/mcp";
 
 /** MCP_ALLOWED_HOSTNAMES ("pipeline.example.com, other.example.com") as a list, or undefined when unset. */
 export function allowedHostnames(value: string | undefined): string[] | undefined {

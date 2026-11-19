@@ -125,3 +125,39 @@ test("read tools refuse unknown arguments by name", async () => {
   const message = await fails(await emptyClient(), "pipeline_summary", { verbose: true });
   assert.match(message, /^Fix the pipeline_summary request: Unknown field "verbose"\. This tool takes no arguments\.$/);
 });
+
+test("every deal, task, timeline and contact-deal item lists its outside values in untrusted_fields", async () => {
+  const db = await createTestDb();
+  db.exec(buildDevSeed(NOW, DEFAULT_TZ));
+  db.exec(`INSERT INTO tasks (id, deal_id, title, due_at, untrusted_fields)
+    VALUES ('tk_outside', 'dl_seed02', 'Follow up with Robin Sample', '2026-11-19T19:00:00.000Z', '["title"]')`);
+  const c = await connectInMemory(createMcpServer({ db, now: () => NOW }));
+
+  const { stages } = (await ok(c, "pipeline_summary")).data as { stages: { deals: (Deal & { untrusted_fields: string[] })[] }[] };
+  const deals = new Map(stages.flatMap((s) => s.deals).map((d) => [d.id, d.untrusted_fields]));
+  assert.deepEqual(deals.get("dl_seed02"), ["title", "contactName"]);
+  assert.deepEqual(deals.get("dl_seed01"), []);
+  assert.equal(deals.size, 6);
+  assert.ok([...deals.values()].every(Array.isArray));
+
+  const due = (await ok(c, "whats_due")).data as { todayTasks: { id: string; untrusted_fields: string[] }[] };
+  const labels = new Map(due.todayTasks.map((t) => [t.id, t.untrusted_fields]));
+  assert.deepEqual(labels.get("tk_outside"), ["title", "dealTitle", "contactName"]);
+  assert.deepEqual(labels.get("tk_seed01"), []);
+
+  const brief = (await ok(c, "get_deal", { deal: "dl_seed02" })).data as {
+    deal: { untrusted_fields: string[] };
+    timeline: { actor: string; untrusted_fields: string[] }[];
+    openTasks: { untrusted_fields: string[] }[];
+  };
+  assert.deepEqual(brief.deal.untrusted_fields, ["title", "contactName"]);
+  assert.deepEqual(brief.timeline[0]?.untrusted_fields, ["summary"], "the form activity was written by the system");
+  assert.deepEqual(brief.openTasks[0]?.untrusted_fields, ["title", "dealTitle", "contactName"]);
+  const pat = (await ok(c, "get_deal", { deal: "dl_seed01" })).data as { timeline: { untrusted_fields: string[] }[] };
+  assert.ok(pat.timeline.every((item) => item.untrusted_fields.length === 0));
+
+  const { contacts } = (await ok(c, "search_contacts", { query: "Robin" })).data as {
+    contacts: { deals: { untrusted_fields: string[] }[] }[];
+  };
+  assert.deepEqual(contacts[0]?.deals[0]?.untrusted_fields, ["title"]);
+});

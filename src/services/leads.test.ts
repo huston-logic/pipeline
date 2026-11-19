@@ -170,7 +170,11 @@ test("updateContact changes the given fields, finds the contact by name and clea
     business: "Sample Bakery",
     fields: { referrer: "A friend" },
   });
-  assert.equal(result.summary, `Updated Robin Sample: business and custom fields (referrer) (change ${result.changeId})`);
+  // The name is still outside text, so the summary names the contact by id.
+  assert.equal(
+    result.summary,
+    `Updated contact ${lead.contactId}: business and custom fields (referrer) (change ${result.changeId})`,
+  );
   const [contact] = await contacts(db);
   assert.ok(contact);
   assert.equal(contact.business, "Sample Bakery");

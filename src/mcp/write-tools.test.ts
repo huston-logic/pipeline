@@ -56,11 +56,11 @@ test("update_deal moves a deal with a local next time, and refuses a date it can
   assert.match(await fails(c, "update_deal", { deal: "dl_seed03", nextAt: null, value: "lots" }), /"value" must be a number or null/);
 });
 
-test("update_contact confirms outside fields and clears a value with null", async () => {
+test("update_contact confirms outside fields and clears a value with null; the outside name stays out of the line", async () => {
   const { c } = await setup();
   const answer = await ok(c, "update_contact", { contact: "ct_seed02", business: "Sample Bakery & Cafe", phone: null });
-  assert.match(answer.headline, /^Updated Robin Sample: phone and business/);
-  assert.match(answer.headline, CHANGE_LINE);
+  assert.match(answer.headline, /^Updated contact ct_seed02: phone and business \(change chg_[a-z0-9]{12}\)$/);
+  assert.doesNotMatch(answer.text, /Robin/, "the untrusted name is not in the headline or the JSON below it");
   const { contacts } = (await ok(c, "search_contacts", { query: "Robin" })).data as {
     contacts: { phone: string | null; untrusted_fields: string[] }[];
   };
@@ -113,4 +113,43 @@ test("bad write input names the field and the shape it needs", async () => {
   assert.match(message, /"value" must be at least 0/);
   assert.match(message, /Unknown field "extra"\. Use only: name, email/);
   assert.match(await fails(c, "add_lead", { name: "Lee", email: "not-an-email" }), /^"not-an-email" doesn't look like an email address/);
+});
+
+test("write lines, undo lines and the change log name outside records by id only", async () => {
+  const { c } = await setup();
+  const moved = await ok(c, "update_deal", { deal: "dl_seed02", stage: "replied" });
+  assert.match(moved.headline, /^Moved deal dl_seed02 \(contact ct_seed02\) to Replied \(change chg_[a-z0-9]{12}\)$/);
+  const undone = await ok(c, "undo_change", { changeId: changeIdOf(moved.data) });
+  assert.match(undone.headline, /^Undid chg_[a-z0-9]{12}: Moved deal dl_seed02 back to New inquiry \(change/);
+
+  const logged = await ok(c, "log_activity", { deal: "dl_seed02", type: "email", summary: "Replied with prices." });
+  assert.match(logged.headline, /^Logged an email on deal dl_seed02 \(contact ct_seed02\): Replied with prices\./);
+  const task = await ok(c, "add_task", { contact: "ct_seed02", title: "Send the menu template" });
+  assert.match(task.headline, /^Added task "Send the menu template" for contact ct_seed02 \(change/);
+  const again = await ok(c, "update_deal", { deal: "dl_seed02", stage: "replied" });
+  await ok(c, "update_deal", { deal: "dl_seed02", nextStep: "Wait for the menu" });
+  assert.match(
+    await fails(c, "undo_change", { changeId: changeIdOf(again.data) }),
+    /^Can't undo chg_[a-z0-9]{12}: deal dl_seed02 changed since \(see recent_changes\)/,
+  );
+
+  const { changes } = (await ok(c, "recent_changes")).data as { changes: { summary: string }[] };
+  assert.equal(changes.length, 6);
+  assert.ok(changes.every((change) => !/Robin/.test(change.summary)));
+  for (const change of changes) assert.doesNotMatch(change.summary, /Robin|Sample Bakery/, change.summary);
+});
+
+test("setting an outside deal title makes it trusted", async () => {
+  const { c } = await setup();
+  const renamed = await ok(c, "update_deal", { deal: "dl_seed02", title: "Bakery website" });
+  assert.match(renamed.headline, /^Updated "Bakery website" \(contact ct_seed02\): changed title/);
+  const brief = (await ok(c, "get_deal", { deal: "dl_seed02" })).data as { deal: { untrusted_fields: string[] } };
+  assert.deepEqual(brief.deal.untrusted_fields, ["contactName"]);
+});
+
+test("errors name outside records by id only", async () => {
+  const { db, c } = await setup();
+  db.exec(`INSERT INTO contacts (id, name, untrusted_fields) VALUES ('ct_twin', 'Robin Sample', '["name"]')`);
+  const message = await fails(c, "update_contact", { contact: "Robin Sample", phone: "555-0100" });
+  assert.equal(message, '"Robin Sample" matches more than one contact: contact ct_seed02; contact ct_twin. Use the contact id instead.');
 });

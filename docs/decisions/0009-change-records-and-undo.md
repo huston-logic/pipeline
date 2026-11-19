@@ -48,3 +48,16 @@ instead of a constraint error, which is what Review Focus 3 asks for.
   The owner undoes the later changes first, newest first.
 - The guard error is matched by its SQLite text ("CHECK constraint failed: ok = 1"); the end-to-end tests against
   `wrangler dev` (task 4) must confirm D1 reports it the same way.
+
+## Addendum (task 4): safe labels and provenance
+
+- Migration `0002_untrusted_provenance.sql` adds `untrusted_fields` (a JSON array of column names, default `'[]'`,
+  checked with `json_valid` like 0001's JSON columns) to `deals` and `tasks`, as contacts already had. An owner or AI
+  edit removes the field it sets (`update_deal` with a title removes `title`).
+- Summaries, undo summaries and error messages never contain outside text. They name records through
+  `src/services/labels.ts`: a value listed in the row's `untrusted_fields` becomes an id label ("contact ct_…",
+  "deal dl_…", "task tk_…"), a deal label uses its contact's safe label, and an activity's summary is shown only when
+  its actor is `owner` or `ai` (otherwise "activity ac_…"). `describe.ts` `rowLabel` (undo summaries and "changed
+  since" refusals) and the ambiguity lists in `lookup.ts` use the same rules. A snapshot from before 0002 has no
+  `untrusted_fields` and counts as trusted (no outside text existed before intake).
+- So `audit_log.summary` is safe to show anywhere, and a write tool's headline can stay the service's summary.

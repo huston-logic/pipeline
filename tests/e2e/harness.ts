@@ -26,6 +26,7 @@ export interface DevServer {
 const HOST = "127.0.0.1";
 const START_TIMEOUT_MS = 90_000;
 const STOP_TIMEOUT_MS = 10_000;
+const SIGNALS: NodeJS.Signals[] = ["SIGINT", "SIGTERM", "SIGHUP"];
 
 export function freePort(): Promise<number> {
   return new Promise((resolvePort, reject) => {
@@ -119,16 +120,32 @@ export async function startDevServer(): Promise<DevServer> {
   };
   child.stdout?.on("data", keep);
   child.stderr?.on("data", keep);
-  // If the test process ends without stop(), the server must not outlive it.
+  // If the test process ends without stop(), or is interrupted, the server must not outlive it.
   const onExit = () => {
     if (child.pid !== undefined) killGroup(child.pid, "SIGKILL");
+    try {
+      rmSync(stateDir, { recursive: true, force: true });
+    } catch {
+      // Best effort while the process is ending.
+    }
+  };
+  const onSignal = (signal: NodeJS.Signals) => {
+    onExit();
+    removeHandlers();
+    // Re-raised with our handlers gone, so the default action (or the next listener) ends the process as before.
+    process.kill(process.pid, signal);
+  };
+  const removeHandlers = () => {
+    process.off("exit", onExit);
+    for (const signal of SIGNALS) process.off(signal, onSignal);
   };
   process.on("exit", onExit);
+  for (const signal of SIGNALS) process.once(signal, onSignal);
 
   let stopped: Promise<void> | undefined;
   const stop = () =>
     (stopped ??= (async () => {
-      process.off("exit", onExit);
+      removeHandlers();
       await stopGroup(child);
       rmSync(stateDir, { recursive: true, force: true });
     })());

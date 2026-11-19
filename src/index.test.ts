@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
-import { createTestDb, SqliteD1 } from "./db/sqlite-d1.ts";
+import { SqliteD1 } from "./db/sqlite-d1.ts";
 import type { Env } from "./env.ts";
 import worker from "./index.ts";
 
@@ -116,6 +115,7 @@ function mcpPost(env: Env, host = "localhost:4821") {
   );
 }
 
+// /mcp itself (the MCP SDK behind the dynamic import) is tested in tests/e2e/mcp.test.ts; these tests stop before it.
 test("/mcp without a sign-in mode answers 401 with a plain message", async () => {
   for (const ENVIRONMENT of ["production", "development"]) {
     const res = await mcpPost({ ...fakeEnv(), ENVIRONMENT });
@@ -136,30 +136,7 @@ test("AUTH_MODE=dev in production fails closed with 500 on every route", async (
   }
 });
 
-test("/mcp in local dev mode serves the MCP tools to an SDK client", async () => {
-  const env: Env = { ...fakeEnv(), DB: await createTestDb(), AUTH_MODE: "dev" };
-  const transport = new StreamableHTTPClientTransport(new URL("http://localhost:4821/mcp"), {
-    fetch: (input: string | URL | Request, init?: RequestInit) => {
-      const request = new Request(input, init);
-      request.headers.set("host", new URL(request.url).host);
-      return worker.fetch(request, env, ctx);
-    },
-  });
-  const client = new Client({ name: "index-test", version: "1.0.0" });
-  await client.connect(transport);
-  const { tools } = await client.listTools();
-  assert.ok(tools.some((tool) => tool.name === "pipeline_summary"));
-  const result = await client.callTool({ name: "pipeline_summary", arguments: {} });
-  assert.match(JSON.stringify(result.content), /Your pipeline is empty/);
-  await client.close();
-});
-
 test("/mcp in dev mode on a host that is not loopback fails closed", async () => {
   const res = await mcpPost({ ...fakeEnv(), AUTH_MODE: "dev" }, "pipeline.example.com");
   assert.equal(res.status, 500);
-});
-
-test("GET /mcp is refused: the endpoint is stateless and takes POST", async () => {
-  const res = await get("/mcp", { ...fakeEnv(), AUTH_MODE: "dev" }, { headers: { host: "localhost:4821", accept: "text/event-stream" } });
-  assert.equal(res.status, 405);
 });

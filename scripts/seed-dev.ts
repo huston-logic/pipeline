@@ -118,7 +118,10 @@ export function buildDevSeed(now: Date, tz: string): string {
       next_at: day(2, "14:00"),
       created_at: day(-9, "09:00"),
     }),
-    deal("02", "New website for Sample Bakery", "new_inquiry", day(-1, "08:40"), day(-1, "08:40")),
+    // From the website form, so its title is outside text.
+    deal("02", "New website for Sample Bakery", "new_inquiry", day(-1, "08:40"), day(-1, "08:40"), {
+      untrusted_fields: '["title"]',
+    }),
     deal("03", "Landscaping site with a quote form", "replied", day(-4, "15:00"), day(-4, "15:00"), {
       created_at: day(-6, "13:00"),
     }),

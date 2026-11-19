@@ -99,6 +99,8 @@ export type DealRow = {
   fields: string;
   stage_entered_at: string;
   last_activity_at: string | null;
+  /** JSON array of the columns whose values came from outside (intake, import), for example ["title"]. */
+  untrusted_fields: string;
   archived: Flag;
   version: number;
   created_at: string;
@@ -131,6 +133,8 @@ export type TaskRow = {
   snoozed_until: string | null;
   /** "owner", or the id of the rule that created it. */
   source: string;
+  /** JSON array of the columns whose values came from outside, for example ["title"] for a title built from one. */
+  untrusted_fields: string;
   version: number;
   created_at: string;
   updated_at: string;
