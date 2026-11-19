@@ -627,3 +627,20 @@ test("board pages answer GET and HEAD only: any other method is 405 (writes have
   }
   assert.equal((await get(db, "/", { method: "HEAD" })).res.status, 200);
 });
+
+test("a deal in an archived stage: the Move to select starts at Choose a stage and never preselects another stage", async () => {
+  const db = await seededDb();
+  db.exec("UPDATE stages SET archived = 1 WHERE key = 'replied'");
+  const [form] = moveForms(mainOf((await get(db, "/deals/dl_seed03")).body));
+  assert.equal(form?.id, "dl_seed03");
+  assert.match(form?.inner ?? "", /<select id="move-dl_seed03" name="stage">\n<option value="" selected>Choose a stage<\/option>/);
+  assert.equal(form?.inner.match(/ selected>/g)?.length, 1);
+});
+
+test("an archived deal's page has no Move to form and says the deal is archived", async () => {
+  const db = await seededDb();
+  db.exec("UPDATE deals SET archived = 1 WHERE id = 'dl_seed01'");
+  const main = mainOf((await get(db, "/deals/dl_seed01")).body);
+  assert.deepEqual(moveForms(main), []);
+  assert.match(main, /<p class="note">This deal is archived\.<\/p>/);
+});

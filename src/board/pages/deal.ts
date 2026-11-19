@@ -55,7 +55,7 @@ ${pairs([
   ...customRows(deal.fields, labels, new Set()),
 ])}
 ${deal.archived ? html`<p class="note">This deal is archived.</p>` : ""}
-<div class="card-move">${moveForm({ id: deal.id, name, stageKey: stage.key }, stages, form)}</div>
+${deal.archived ? "" : html`<div class="card-move">${moveForm({ id: deal.id, name, stageKey: stage.key }, stages, form)}</div>`}
 </div>`,
   );
 }

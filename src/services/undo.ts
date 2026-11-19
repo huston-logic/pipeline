@@ -236,6 +236,27 @@ function describeUndo(entries: Entry[], labels: Map<string, string>): string {
   return capitalize(parts.join("; ") || "put back the earlier values");
 }
 
+/** Records of these tables that a change added and its undo would remove, in this order. */
+const REMOVABLE = ["contacts", "deals", "tasks", "activities"] as const;
+
+export type Removal = { table: (typeof REMOVABLE)[number]; count: number };
+
+/**
+ * What undoing the change would remove: the contacts, deals, tasks and activities it added, counted by table. A move's
+ * own stage-change entry is left out (undoing the move only puts the stage back). Empty for a change that only
+ * changed values, or that is unknown (undoChange then says why). The board asks first when this is not empty.
+ */
+export async function undoRemovals(db: Ctx["db"], changeId: string): Promise<Removal[]> {
+  const audit = await db.prepare("SELECT * FROM audit_log WHERE id = ?").bind(changeId.trim()).first<AuditRow>();
+  if (!audit) return [];
+  const added = entriesOf(audit).filter(
+    (entry) => entry.before === null && entry.after !== null && !(entry.table === "activities" && entry.after.type === "stage_change"),
+  );
+  return REMOVABLE.map((table) => ({ table, count: added.filter((entry) => entry.table === table).length })).filter(
+    (removal) => removal.count > 0,
+  );
+}
+
 export async function undoChange(ctx: Ctx, changeId: string): Promise<ChangeResult> {
   const { db } = ctx;
   const id = changeId.trim();

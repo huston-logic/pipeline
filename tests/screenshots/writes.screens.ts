@@ -21,6 +21,7 @@ async function check(page: Page, name: string) {
   const viewport = page.viewportSize() ?? { width: 0, height: 0 };
   const height = await page.evaluate(() => document.documentElement.scrollHeight);
   await page.setViewportSize({ width: viewport.width, height: Math.max(height, viewport.height) });
+  await page.evaluate(() => new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done()))));
   await page.screenshot({ path: `${OUT}/${name}-${viewport.width}.png`, fullPage: true });
   await page.setViewportSize(viewport);
 }
@@ -93,4 +94,15 @@ test("drag a card to the next column: it moves, the banner shows, and Undo puts 
   // Dropping on Won goes through the same confirm step as the form.
   await drag(page, page.locator(`[data-deal="${dealId}"]`), page.locator('.closed [data-drop-stage="won"]'));
   await expect(page.getByRole("heading", { level: 1 })).toContainText("as Won?");
+});
+
+test("an Undo that would remove records asks first; Cancel goes back", async ({ page }) => {
+  // The seeded change that added a task: undoing it would remove the task.
+  await page.goto("/changes");
+  await page.getByRole("button", { name: "Undo change chg_seed00000012" }).click();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Undo this change?");
+  await expect(page.locator(".lede")).toContainText("It removes 1 task.");
+  await check(page, "write-undo-confirm");
+  await page.getByRole("link", { name: "Cancel" }).click();
+  await expect(page).toHaveURL(/\/changes$/);
 });

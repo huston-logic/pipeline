@@ -1,7 +1,7 @@
 // The board's page frame (docs/STYLE-GUIDE.md §7): an app bar and a fixed tab bar on phones, a side bar on wide
 // screens. Both are one <nav>; CSS lays it out for the width. The page body supplies the single <h1>.
 import type { SettingsRow } from "../db/db.ts";
-import { type Html, html } from "./html.ts";
+import { type Html, html, raw } from "./html.ts";
 import { icon } from "./icons.ts";
 import { moreItems, type NavItem, navItems } from "./routes.ts";
 
@@ -71,9 +71,20 @@ ${items}
 /** The first letter of the business name, for the monogram tile. */
 const initial = (name: string) => ([...name.trim()][0] ?? "P").toUpperCase();
 
+/**
+ * The page body with the change banner right after its h1, so a screen reader meets it straight after the heading.
+ * Both are markup this repo wrote (data inside the h1 is escaped, so its closing tag can only be the page's own).
+ */
+function withBanner(body: Html, banner: Html | "" | undefined): Html {
+  if (!banner) return body;
+  const end = body.value.indexOf("</h1>");
+  if (end < 0) return html`${banner}\n${body}`;
+  const split = end + "</h1>".length;
+  return html`${raw(body.value.slice(0, split))}\n${banner}${raw(body.value.slice(split))}`;
+}
+
 export function renderPage({ title, description, body, current, frame, script = false }: PageOptions): string {
   const name = frame?.look.name ?? DEFAULT_NAME;
-  const banner = frame?.banner ? html`${frame.banner}\n` : "";
   return html`<!doctype html>
 <html lang="en">
 <head>
@@ -93,7 +104,7 @@ ${nav(current)}
 </header>
 <div class="app-body">
 <main id="main">
-${banner}${body}
+${withBanner(body, frame?.banner)}
 </main>
 <footer class="app-footer">
 <p>Move deals and undo changes here, or change anything by talking to your AI app.</p>

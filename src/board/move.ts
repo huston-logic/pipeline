@@ -31,6 +31,8 @@ export function moveForm(deal: MoveDeal, stages: StageRow[], form: FormContext, 
   const id = `move-${deal.id}`;
   const open = stages.filter((stage) => stage.kind === "open");
   const closed = stages.filter((stage) => stage.kind !== "open");
+  // A deal in an archived stage (or a refused choice that is no stage) must never show another stage as chosen.
+  const choose = stages.some((stage) => stage.key === selected) ? "" : html`<option value="" selected>Choose a stage</option>\n`;
   const body = postForm(
     "move",
     moveAction(deal.id),
@@ -38,7 +40,7 @@ export function moveForm(deal: MoveDeal, stages: StageRow[], form: FormContext, 
     html`<label class="move-label${collapsed ? " visually-hidden" : ""}" for="${id}">Move to<span class="visually-hidden"> (${deal.name})</span></label>
 <div class="move-row">
 <select id="${id}" name="stage">
-${open.map((stage) => option(stage, deal, selected))}
+${choose}${open.map((stage) => option(stage, deal, selected))}
 ${closed.length === 0 ? "" : html`<optgroup label="Close the deal">${closed.map((stage) => option(stage, deal, selected))}</optgroup>`}
 </select>
 <button class="button button-small" type="submit">Move<span class="visually-hidden"> ${deal.name}</span></button>

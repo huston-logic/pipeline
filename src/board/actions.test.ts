@@ -10,6 +10,7 @@ import type { Env } from "../env.ts";
 import worker from "../index.ts";
 import type { Ctx } from "../services/change.ts";
 import { updateDeal } from "../services/deals.ts";
+import { addLead } from "../services/leads.ts";
 import { DEFAULT_TZ } from "../time.ts";
 
 const ctx = { waitUntil() {}, passThroughOnException() {}, props: {} } as unknown as ExecutionContext;
@@ -193,7 +194,7 @@ test("a refused move shows the plain-English reason on one page, keeps the choic
   assert.equal(same.res.status, 422);
   assert.equal(same.body.match(/<h1[\s>]/g)?.length, 1);
   assert.match(same.body, /<h1>The deal wasn&#39;t moved<\/h1>/);
-  assert.match(same.body, /Nothing to change on &quot;Website refresh for Example Plumbing&quot;/);
+  assert.match(same.body, /&quot;Website refresh for Example Plumbing&quot; is already in Call booked\./);
   assert.match(same.body, /<option value="call_booked" selected>/, "the choice is kept");
   assert.match(same.body, /<a href="\/pipeline">Back to the page<\/a>/);
 
@@ -384,4 +385,46 @@ test("the changes page says who made each change and offers Undo on the ones tha
   assert.doesNotMatch(entry(byAi.changeId), /\/undo"/, "already undone");
   assert.doesNotMatch(entry(undoId), /\/undo"/, "an undo entry");
   assert.match(body, /<p class="lede">The last 30 days, newest first\. Undo a change here, or ask your AI app and give it the change id\.<\/p>/);
+});
+
+test("a move to the stage the deal is already in says so, even for a closed stage, without asking first", async () => {
+  const db = await seededDb();
+  const env = devEnv(db);
+  const before = await auditCount(db);
+  const won = await post(env, "/deals/dl_seed07/move", { stage: "won", return_to: "/pipeline" });
+  assert.equal(won.res.status, 422);
+  assert.match(won.body, /&quot;Salon booking site&quot; is already in Won\./);
+  assert.doesNotMatch(won.body, /name="confirm"/, "no confirm page");
+  assert.equal(await auditCount(db), before);
+});
+
+test("an undo that would remove records asks first and writes nothing; confirmed, it removes them", async () => {
+  const db = await seededDb();
+  const env = devEnv(db);
+  const lead = await addLead({ db, now: new Date(), actor: "ai", tool: "add_lead" }, { name: "Lee Example", dealTitle: "Garage plans" });
+  const before = await auditCount(db);
+  const ask = await post(env, `/changes/${lead.changeId}/undo`, { return_to: "/changes" });
+  assert.equal(ask.res.status, 200);
+  assert.equal(await auditCount(db), before, "nothing written yet");
+  assert.equal(ask.body.match(/<h1[\s>]/g)?.length, 1);
+  assert.match(ask.body, /<h1>Undo this change\?<\/h1>/);
+  assert.match(ask.body, /It removes 1 contact and 1 deal\. They can't be brought back\./);
+  assert.match(ask.body, new RegExp(`<form class="confirm" method="post" action="/changes/${lead.changeId}/undo">`));
+  for (const [name, value] of [["confirm", "yes"], ["return_to", "/changes"], ["csrf", ask.token]]) {
+    assert.match(ask.body, new RegExp(`<input type="hidden" name="${name}" value="${value}">`), name);
+  }
+  assert.match(ask.body, /<a class="confirm-cancel" href="\/changes">Cancel<\/a>/);
+  assert.ok(await db.prepare("SELECT id FROM contacts WHERE id = ?").bind(lead.contactId).first());
+
+  const done = await post(env, `/changes/${lead.changeId}/undo`, { confirm: "yes", return_to: "/changes" });
+  assert.equal(done.res.status, 303);
+  assert.equal(await db.prepare("SELECT id FROM contacts WHERE id = ?").bind(lead.contactId).first(), null);
+});
+
+test("an undo that only puts values back is still one click", async () => {
+  const db = await seededDb();
+  const env = devEnv(db);
+  const edited = await updateDeal({ db, now: new Date(), actor: "ai", tool: "update_deal" }, "dl_seed03", { value: 900 });
+  const undone = await post(env, `/changes/${edited.changeId}/undo`, { return_to: "/changes" });
+  assert.equal(undone.res.status, 303);
 });

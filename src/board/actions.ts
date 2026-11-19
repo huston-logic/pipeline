@@ -7,15 +7,18 @@ import { isChangeId, isDealId } from "../ids.ts";
 import type { Ctx } from "../services/change.ts";
 import { updateDeal } from "../services/deals.ts";
 import { UserError } from "../services/errors.ts";
-import { dealLabel, isTrusted } from "../services/labels.ts";
+import { dealLabel, dealTitle, isTrusted } from "../services/labels.ts";
 import { findStage } from "../services/lookup.ts";
-import { undoChange } from "../services/undo.ts";
+import { getChange } from "../services/read.ts";
+import { type Removal, undoChange, undoRemovals } from "../services/undo.ts";
+import { joinAnd } from "../services/describe.ts";
+import { canUndo, undoAction } from "./banner.ts";
 import { type FormContext, hidden, postForm, RETURN_FIELD } from "./forms.ts";
 import { html, type Html } from "./html.ts";
 import { type Look, renderPage } from "./layout.ts";
 import { moveAction, moveForm, safeDealName } from "./move.ts";
 import { notFoundPage } from "./pages/not-found.ts";
-import { dealHref } from "./parts.ts";
+import { count, dealHref } from "./parts.ts";
 import { boardReturnPath, withChange } from "./return-to.ts";
 
 /** What a handler gets once every check has passed. `csrf` is the request's (checked) token, for the forms it draws. */
@@ -92,6 +95,8 @@ async function moveDeal(ctx: ActionContext, id: string): Promise<ActionResult> {
   try {
     if (asked === "") throw new UserError("Choose a stage to move the deal to.");
     const stage = await findStage(ctx.db, asked);
+    // Checked before the confirm step, so a deal that is already Won is never asked "Mark as Won?".
+    if (stage.key === deal.stage_key) throw new UserError(`${dealTitle(deal)} is already in ${stage.label}.`);
     if (stage.kind !== "open" && ctx.form.get("confirm") !== "yes") {
       const contact = await getContact(ctx.db, deal.contact_id);
       if (!contact) throw new Error(`Deal ${deal.id} points at a missing contact.`);
@@ -108,11 +113,50 @@ async function moveDeal(ctx: ActionContext, id: string): Promise<ActionResult> {
   }
 }
 
-/** POST /changes/<id>/undo: undo_change, as the owner. */
+const REMOVED_NOUNS: Record<Removal["table"], [string, string]> = {
+  contacts: ["contact", "contacts"],
+  deals: ["deal", "deals"],
+  tasks: ["task", "tasks"],
+  activities: ["activity", "activities"],
+};
+
+/** "1 contact, 1 deal and 1 activity": counts only, so no record's text (outside or not) is shown. */
+const removedText = (removals: Removal[]) =>
+  joinAnd(removals.map(({ table, count: n }) => count(n, ...REMOVED_NOUNS[table])));
+
+function undoConfirmPage(ctx: ActionContext, changeId: string, removals: Removal[], back: string): string {
+  return renderPage({
+    title: "Confirm: undo a change",
+    description: "Undoing this change removes records, so it asks first. Confirm the undo, or cancel to go back.",
+    frame: { look: ctx.look },
+    body: html`<h1>Undo this change?</h1>
+<p class="lede">It removes ${removedText(removals)}. They can't be brought back.</p>
+${postForm(
+  "confirm",
+  undoAction(changeId),
+  { csrf: ctx.csrf, here: back },
+  html`${hidden("confirm", "yes")}
+<div class="confirm-actions">
+<button class="button" type="submit">Undo the change</button>
+<a class="confirm-cancel" href="${back}">Cancel</a>
+</div>`,
+)}`,
+  });
+}
+
+/**
+ * POST /changes/<id>/undo: undo_change, as the owner. An undo that would remove contacts, deals, tasks or activities
+ * (the change added them) needs confirm=yes, or asks first; one that only puts values back is one click.
+ */
 async function undo(ctx: ActionContext, id: string): Promise<ActionResult> {
   if (!isChangeId(id)) return notFound(ctx);
   const back = backTo(ctx, "/changes");
   try {
+    if (ctx.form.get("confirm") !== "yes") {
+      const change = await getChange(ctx.db, id);
+      const removals = change !== null && canUndo(change) ? await undoRemovals(ctx.db, id) : [];
+      if (removals.length > 0) return page(200, undoConfirmPage(ctx, id, removals, back));
+    }
     const result = await undoChange(asOwner(ctx, "undo_change"), id);
     return redirect(withChange(back, result.changeId));
   } catch (error) {

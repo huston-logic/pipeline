@@ -82,14 +82,12 @@ test("lookOf uses the business name, or Pipeline when none is set", () => {
   assert.deepEqual(lookOf({ business_name: null }), { name: "Pipeline" });
 });
 
-test("a change banner from the frame comes first in main, before the page's own heading", () => {
-  const out = renderPage({
-    title: "Pipeline",
-    description: "x",
-    body: html`<h1>Pipeline</h1>`,
-    frame: { look: { name: "Pipeline" }, banner: html`<div class="banner" role="status">Moved</div>` },
-  });
-  assert.match(out, /<main id="main">\n<div class="banner" role="status">Moved<\/div>\n<h1>Pipeline<\/h1>/);
+test("a change banner from the frame sits right after the page's h1, so it is the first thing read after the heading", () => {
+  const frame = { look: { name: "Pipeline" }, banner: html`<div class="banner" role="status">Moved</div>` };
+  const out = renderPage({ title: "Pipeline", description: "x", body: html`<h1>Pipeline</h1>\n<p>Rest</p>`, frame });
+  assert.match(out, /<main id="main">\n<h1>Pipeline<\/h1>\n<div class="banner" role="status">Moved<\/div>\n<p>Rest<\/p>/);
+  const backFirst = renderPage({ title: "Deal", description: "x", body: html`<p class="back">Back</p>\n<h1>Deal</h1>\n<p>Rest</p>`, frame });
+  assert.match(backFirst, /<h1>Deal<\/h1>\n<div class="banner" role="status">Moved<\/div>\n<p>Rest<\/p>/);
 });
 
 test("script: true loads /board.js with defer in the head; pages without it load no script", () => {
