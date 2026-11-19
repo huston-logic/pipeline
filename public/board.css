@@ -1,22 +1,46 @@
-/* Board styles. The palette is copied from the website template's design tokens (decision 0001). System fonts only. */
+/* The board's design system (docs/STYLE-GUIDE.md, decision 0015): Huston Logic v3 adapted to an app. Every color is
+   a token below; /theme.css, served by the Worker after this file, sets --accent from the owner's settings.
+   System fonts only. Phone first: the side bar takes over from the app bar and tab bar at 60rem. */
 :root {
   --silver: #f3f5f4;
-  --silver-2: #e7e5e4;
+  --silver-2: #e8eeea;
   --white: #ffffff;
-  --ink: #1c1917;
-  --ink-2: #44403c;
-  --green: #1e4fa3;
-  --green-deep: #173b7a;
-  --green-edge: #5b85c9;
-  --tint: #e8eefa;
-  --glow: #c3d4f0;
-  --mint: #d5e1f5;
-  --rust: #9a3412;
-  --line: #d6d3d1;
+  --ink: #29332d;
+  --ink-2: #4a5750;
+  --green: #2b6455;
+  --green-deep: #1e4a3d;
+  --green-edge: #4e9a7c;
+  --tint: #e6f1eb;
+  --glow: #b4dec8;
+  --mint: #cde6d8;
+  --rust: #994d34;
+  --line: #d3dad6;
 
-  --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --radius: 12px;
-  --wrap: 72rem;
+  /* The owner's accent (default: green). Text in it sits on white or silver only, never on --accent-tint. */
+  --accent: var(--green);
+  --accent-tint: color-mix(in srgb, var(--accent) 12%, var(--white));
+  --on-accent: var(--white);
+
+  --edge: rgba(41, 51, 45, 0.1);
+  --divider: rgba(41, 51, 45, 0.12);
+  --underline: rgba(41, 51, 45, 0.35);
+  --glow-soft: rgba(180, 222, 200, 0.5);
+  --glow-fade: rgba(205, 230, 216, 0.22);
+  --glow-none: rgba(243, 245, 244, 0);
+  --shadow-card: 0 1px 2px rgba(31, 61, 49, 0.06), 0 12px 24px -20px rgba(31, 61, 49, 0.45);
+  --shadow-bar: 0 -1px 0 rgba(41, 51, 45, 0.08), 0 -10px 24px -18px rgba(31, 61, 49, 0.4);
+
+  --r-field: 10px;
+  --r-btn: 12px;
+  --r-card: 14px;
+  --r-pill: 999px;
+
+  --font-text: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-display: ui-rounded, "SF Pro Rounded", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+
+  --tabbar: 4.25rem;
+  --content: 72rem;
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
 }
 
 *,
@@ -27,28 +51,41 @@
 
 html {
   -webkit-text-size-adjust: 100%;
+  /* The fixed tab bar never covers the element that has focus (WCAG 2.4.11). */
+  scroll-padding-bottom: calc(var(--tabbar) + env(safe-area-inset-bottom) + 1rem);
 }
 
 body {
   margin: 0;
   background: var(--silver);
   color: var(--ink);
-  font-family: var(--font);
+  font-family: var(--font-text);
   font-size: 1.0625rem;
-  line-height: 1.6;
+  line-height: 1.55;
 }
 
 h1,
 h2,
 h3 {
-  line-height: 1.15;
-  letter-spacing: -0.015em;
+  font-family: var(--font-display);
+  color: var(--ink);
   text-wrap: balance;
 }
 
 h1 {
-  font-size: clamp(2rem, 4vw, 2.75rem);
-  margin: 0 0 1rem;
+  font-size: clamp(1.875rem, 1.45rem + 1.4vw, 2.375rem);
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.025em;
+  margin: 0 0 0.5rem;
+}
+
+h2 {
+  font-size: 1.3125rem;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.015em;
+  margin: 2.25rem 0 0.875rem;
 }
 
 p,
@@ -56,13 +93,21 @@ li {
   text-wrap: pretty;
 }
 
+p {
+  margin: 0 0 0.75rem;
+}
+
 a {
-  color: var(--green);
-  text-underline-offset: 0.15em;
+  color: var(--accent);
+  text-decoration-line: underline;
+  text-decoration-thickness: 1px;
+  text-decoration-color: var(--underline);
+  text-underline-offset: 0.25em;
 }
 
 a:hover {
-  color: var(--green-deep);
+  text-decoration-color: var(--rust);
+  text-decoration-thickness: 1.5px;
 }
 
 :focus-visible {
@@ -76,240 +121,557 @@ a:hover {
   color: var(--ink);
 }
 
-.wrap {
-  max-width: var(--wrap);
-  margin: 0 auto;
-  padding-inline: 1rem;
+.icon {
+  flex: none;
+  display: block;
+  width: 1.5rem;
+  height: 1.5rem;
+}
+
+/* The slow underline (style guide §7.10): drawn left to right on hover and focus, on links that have no other line. */
+.card-title a,
+.stage-row-label,
+.download-label,
+.card-link .card-title {
+  text-decoration: none;
+  background: linear-gradient(var(--rust), var(--rust)) no-repeat right bottom / 0 1.5px;
+  padding-bottom: 2px;
+  transition: background-size 0.5s var(--ease);
+}
+
+.card-title a:hover,
+.card-title a:focus-visible,
+.stage-row:hover .stage-row-label,
+.stage-row:focus-visible .stage-row-label,
+.download-row:hover .download-label,
+.download-row:focus-visible .download-label,
+.card-link:hover .card-title,
+.card-link:focus-visible .card-title {
+  background-size: 100% 1.5px;
+  background-position: left bottom;
 }
 
 .skip-link {
   position: absolute;
   left: 1rem;
   top: -10rem;
-  z-index: 10;
+  z-index: 30;
   padding: 0.75rem 1rem;
+  border-radius: var(--r-btn);
   background: var(--white);
   color: var(--ink);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
+  font-weight: 600;
+  box-shadow: var(--shadow-card);
 }
 
 .skip-link:focus {
-  top: 1rem;
+  top: 0.75rem;
 }
 
-.site-header {
-  background: var(--white);
-  border-bottom: 1px solid var(--line);
-}
+/* ---------- Frame: app bar and tab bar on phones ---------- */
 
-.site-header .wrap {
+.app-header {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem 1.5rem;
   min-height: 4rem;
+  padding: env(safe-area-inset-top) max(1rem, env(safe-area-inset-right)) 0 max(1rem, env(safe-area-inset-left));
+  background: var(--white);
+  box-shadow: 0 1px 0 var(--divider);
 }
 
 .brand {
-  margin: 0;
-  font-weight: 700;
-  font-size: 1.125rem;
-}
-
-.site-header nav ul {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.25rem;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.site-header nav a {
   display: inline-flex;
   align-items: center;
+  gap: 0.75rem;
   min-height: 44px;
-  padding: 0 0.75rem;
-  border-radius: var(--radius);
-  color: var(--ink-2);
+  min-width: 0;
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-size: 1.125rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
   text-decoration: none;
 }
 
-.site-header nav a:hover {
-  background: var(--tint);
+.brand:hover {
   color: var(--ink);
 }
 
-.site-header nav a[aria-current="page"] {
-  background: var(--tint);
-  color: var(--green-deep);
-  font-weight: 600;
-}
-
-main {
-  padding-top: 2.5rem;
-  padding-bottom: 3rem;
-  min-height: 60vh;
-}
-
-main p {
-  max-width: 40rem;
-  color: var(--ink-2);
-}
-
-main a {
-  display: inline-flex;
-  align-items: center;
-  min-height: 44px;
-}
-
-/* Page content. Long values (a 10,000-character note, a pasted URL) wrap instead of widening the page. */
-main {
-  overflow-wrap: anywhere;
-}
-
-h2 {
-  font-size: 1.375rem;
-  margin: 2.5rem 0 0.75rem;
-}
-
-h3 {
+.brand-mark {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: var(--r-field);
+  background: var(--accent);
+  color: var(--on-accent);
   font-size: 1.0625rem;
-  margin: 1.25rem 0 0.25rem;
+  line-height: 1;
 }
 
-main .lede {
-  max-width: 44rem;
-  font-size: 1.125rem;
-  margin: 0 0 1.5rem;
+.brand-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-main .back {
-  margin: -1.25rem 0 0.25rem;
+.app-nav {
+  position: fixed;
+  inset-inline: 0;
+  bottom: 0;
+  z-index: 20;
+  padding: 0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  background: var(--white);
+  box-shadow: var(--shadow-bar);
 }
 
-main .note {
-  max-width: 44rem;
-  padding: 0.75rem 1rem;
-  background: var(--tint);
-  border-radius: var(--radius);
-  color: var(--ink);
-}
-
-main .empty,
-main .section-note {
-  color: var(--ink-2);
-  margin: 0.5rem 0;
-}
-
-/* Lists of deals, tasks, rules and changes: one row per item, a rule between rows. */
-.items {
+.app-nav ul {
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
-.items > li {
-  padding: 0.75rem 0;
-  border-bottom: 1px solid var(--line);
+.nav-main {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  max-width: 40rem;
+  margin: 0 auto;
+  padding: 0.25rem;
 }
 
-.items.compact > li {
-  padding: 0.5rem 0;
-}
-
-main .item-title {
-  max-width: none;
-  margin: 0;
-  color: var(--ink);
+.nav-main a {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.125rem;
+  min-height: 3.75rem;
+  border-radius: var(--r-btn);
+  color: var(--ink-2);
+  font-size: 0.8125rem;
   font-weight: 600;
+  line-height: 1.2;
+  text-decoration: none;
 }
 
-main .meta {
+.nav-main a .icon {
+  box-sizing: content-box;
+  padding: 0.1875rem 1rem;
+  border-radius: var(--r-pill);
+}
+
+.nav-main a[aria-current] {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.nav-main a[aria-current] .icon {
+  background: var(--accent-tint);
+}
+
+.nav-sub {
+  display: none;
+}
+
+.app-body {
+  padding-bottom: calc(var(--tabbar) + env(safe-area-inset-bottom));
+  background: radial-gradient(closest-side, var(--glow-soft), var(--glow-fade) 55%, var(--glow-none)) no-repeat right -9rem top -10rem / 30rem 24rem;
+}
+
+main {
+  max-width: var(--content);
+  margin: 0 auto;
+  padding: 1.5rem max(1rem, env(safe-area-inset-right)) 2.5rem max(1rem, env(safe-area-inset-left));
+  overflow-wrap: anywhere;
+}
+
+.app-footer {
+  max-width: var(--content);
+  margin: 0 auto;
+  padding: 0 1rem 1.5rem;
+  color: var(--ink-2);
+  font-size: 0.9375rem;
+}
+
+.app-footer p {
+  margin: 0;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--divider);
+}
+
+/* ---------- Page parts ---------- */
+
+.page-head {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: 0 1.25rem;
-  max-width: none;
-  margin: 0.125rem 0 0;
+  gap: 0 1rem;
+}
+
+.page-date {
+  margin: 0 0 0.5rem;
+  color: var(--ink-2);
+  font-weight: 500;
+}
+
+.lede {
+  max-width: 40rem;
+  margin: 0 0 1.5rem;
+  color: var(--ink-2);
+  font-size: 1.125rem;
+  line-height: 1.5;
+}
+
+.section-note {
+  max-width: 40rem;
+  margin: 0 0 0.75rem;
+  color: var(--ink-2);
   font-size: 0.9375rem;
 }
 
-.fact-name {
+.note {
+  max-width: 44rem;
+  margin: 0 0 1.25rem;
+  padding: 0.75rem 1rem;
+  border-radius: var(--r-card);
+  background: var(--tint);
+  color: var(--ink);
+}
+
+.back {
+  margin: -0.5rem 0 0.25rem;
+}
+
+.back a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
   font-weight: 600;
 }
 
-/* A link inside a meta line wraps with its text; the padding keeps the tap area about 44px tall. */
-main .meta a {
-  display: inline;
-  padding-block: 0.625rem;
+/* Cards: one per record (a deal, a task, a contact, a rule). */
+.cards {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
-.flag {
-  color: var(--rust);
-  font-weight: 600;
-}
-
-/* Text from a form or an import: a text label, never color alone. */
-.outside {
-  display: inline-block;
-  padding: 0 0.5rem;
-  border: 1px solid var(--rust);
-  border-radius: var(--radius);
+.card {
+  position: relative;
+  padding: 1rem;
+  border: 1px solid var(--edge);
+  border-radius: var(--r-card);
   background: var(--white);
-  color: var(--rust);
-  font-size: 0.8125rem;
+  box-shadow: var(--shadow-card);
+}
+
+.card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem 0.75rem;
+}
+
+.card-title {
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-size: 1.125rem;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: -0.005em;
+}
+
+/* A card whose title is a link: the whole card is the tap target, and the focus ring goes round the card. */
+.card-title a {
+  color: var(--accent);
+}
+
+.card-title a::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: var(--r-card);
+}
+
+.card-title a:focus-visible {
+  outline: none;
+}
+
+.card-title a:focus-visible::after {
+  outline: 2px solid var(--rust);
+  outline-offset: 3px;
+}
+
+.card .tag {
+  margin-top: 0.125rem;
+}
+
+.card > p {
+  max-width: 40rem;
+}
+
+.card-actions {
+  margin: 1rem 0 0;
+}
+
+.card-links {
+  margin: 0.5rem 0 0;
+  padding: 0.25rem 0 0;
+  border-top: 1px solid var(--divider);
+  list-style: none;
+}
+
+.card-links a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  font-weight: 600;
+}
+
+/* Facts: one grid for the whole list, so every value starts at the widest label. */
+.pairs {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 0.5rem 1rem;
+  align-items: baseline;
+  margin: 0.75rem 0 0;
+}
+
+.pairs > div {
+  display: contents;
+}
+
+.card > .pairs:first-child {
+  margin-top: 0;
+}
+
+.pairs dt {
+  color: var(--ink-2);
+  font-size: 0.9375rem;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+.pairs dd {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.45;
+}
+
+/* A link inside a fact wraps with its text; the padding keeps the tap area about 44px tall. */
+.pairs dd a {
+  padding-block: 0.625rem;
+  font-weight: 600;
+}
+
+/* Tags: neutral on the tint, warnings as a rust outline. The words carry the meaning. */
+.tag,
+.outside {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  padding: 0.125rem 0.625rem;
+  border-radius: var(--r-pill);
+  font-family: var(--font-text);
+  font-size: 0.875rem;
   font-weight: 600;
   letter-spacing: 0;
-  line-height: 1.5;
-  vertical-align: 0.15em;
+  line-height: 1.35;
   white-space: nowrap;
 }
 
-.outside-block {
-  margin-top: 0.5rem;
-  padding: 0.75rem 1rem;
-  border: 1px solid var(--line);
-  border-left: 4px solid var(--rust);
-  border-radius: var(--radius);
-  background: var(--white);
+.tag {
+  background: var(--tint);
+  color: var(--ink);
 }
 
-main .outside-head {
+.tag-warn,
+.outside {
+  background: var(--white);
+  color: var(--rust);
+  box-shadow: inset 0 0 0 1px var(--rust);
+}
+
+.outside {
+  margin-right: 0.125rem;
+  vertical-align: 0.1em;
+}
+
+h1 .outside {
+  font-size: 1rem;
+  vertical-align: 0.35em;
+}
+
+/* Text from a form or an import, as received: a quiet panel with its label in words. */
+.outside-block {
+  margin-top: 0.75rem;
+  padding: 0.75rem 0.875rem;
+  border-radius: var(--r-card);
+  background: var(--silver-2);
+}
+
+.outside-head {
   margin: 0;
   font-size: 0.9375rem;
+  font-weight: 600;
 }
 
-main .outside-text {
-  margin: 0.375rem 0 0;
-  color: var(--ink);
+.outside-text {
+  margin: 0.5rem 0 0;
   white-space: pre-wrap;
 }
 
-/* Home: what is due sits on its own panel at the top; stages and the brief share the row below on wide screens. */
-.due {
-  padding: 0.25rem 1.25rem 0.75rem;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
+/* Panels: lines of a document (brief, changes, timeline, downloads) as rows on one white sheet. */
+.panel {
+  margin: 0;
+  padding: 0.25rem 1rem;
+  list-style: none;
+  border: 1px solid var(--edge);
+  border-radius: var(--r-card);
+  background: var(--white);
+  box-shadow: var(--shadow-card);
+}
+
+div.panel {
+  padding-block: 1rem;
+}
+
+.rows {
+  margin: 0;
+  list-style: none;
+}
+
+.rows:not(.panel) {
+  padding-inline: 0;
+}
+
+ul.panel,
+ol.panel {
+  padding-block: 0;
+}
+
+.rows > li {
+  padding: 0.875rem 0;
+  border-top: 1px solid var(--divider);
+}
+
+.rows > li:first-child {
+  border-top: 0;
+}
+
+.panel-note {
+  margin: 0 0 0.25rem;
+  color: var(--ink-2);
+  font-size: 0.9375rem;
+}
+
+.panel-foot {
+  margin: 0.25rem 0 0;
+}
+
+.panel-foot a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  font-weight: 600;
+}
+
+.row-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.75rem;
+  margin: 0;
+  color: var(--ink-2);
+  font-size: 0.9375rem;
+}
+
+.row-text {
+  margin: 0.375rem 0 0;
+}
+
+.changes .row-text {
+  margin: 0;
+  font-weight: 600;
+}
+
+.changes .pairs {
+  margin-top: 0.5rem;
+  gap: 0.25rem;
+}
+
+/* Empty states: what is missing, then how things get here. */
+.empty {
+  padding: 1.125rem 1.25rem;
+  border: 1px solid var(--edge);
+  border-radius: var(--r-card);
   background: var(--white);
 }
 
-.due h2 {
-  margin-top: 1rem;
+.empty p {
+  max-width: 40rem;
+  margin: 0;
+  color: var(--ink-2);
 }
 
-.due .items:last-child > li:last-child {
-  border-bottom: 0;
+.empty .empty-title {
+  margin-bottom: 0.25rem;
+  color: var(--ink);
+  font-weight: 600;
 }
 
+.empty .empty-title:last-child {
+  margin-bottom: 0;
+}
+
+/* Today: the stages at a glance. */
+.stage-rows {
+  padding-block: 0.25rem;
+}
+
+.stage-rows > li {
+  border-top: 1px solid var(--divider);
+}
+
+.stage-rows > li:first-child {
+  border-top: 0;
+}
+
+.stage-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-height: 3.25rem;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.stage-row:hover {
+  color: var(--ink);
+}
+
+.stage-row-label {
+  font-weight: 600;
+}
+
+.stage-row-count,
+.stage-count {
+  color: var(--ink-2);
+  font-size: 0.9375rem;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* Pipeline: one section per stage. */
 .stage {
-  margin-top: 1.75rem;
-}
-
-.stage:first-of-type {
-  margin-top: 0.5rem;
+  margin-top: 2rem;
+  scroll-margin-top: 1rem;
 }
 
 .stage-head {
@@ -318,85 +680,145 @@ main .outside-text {
   align-items: baseline;
   justify-content: space-between;
   gap: 0 1rem;
-  border-bottom: 2px solid var(--green-edge);
+  margin-bottom: 0.75rem;
 }
 
-.stage-head h3 {
+.stage-head h2 {
   margin: 0;
 }
 
-main .stage-count {
-  margin: 0;
-  font-size: 0.9375rem;
-}
-
-/* Deal page: who and what on one side, what happens next and the history on the other. */
-.facts {
+.stage-count {
   margin: 0;
 }
 
-.facts > div {
-  padding: 0.5rem 0;
-  border-bottom: 1px solid var(--line);
-}
-
-.facts dt {
+.stage-empty {
+  margin: 0;
+  padding: 0.875rem 1rem;
+  border-radius: var(--r-card);
+  background: var(--silver-2);
   color: var(--ink-2);
   font-size: 0.9375rem;
 }
 
-.facts dd {
-  margin: 0;
+/* Deal page. */
+.deal-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
 }
 
-.downloads {
-  max-width: 40rem;
-  margin: 0;
+.deal-columns > div > section:first-child h2 {
+  margin-top: 1.5rem;
+}
+
+.timeline .tag {
+  font-size: 0.8125rem;
+}
+
+/* More: one card per destination; the whole card is the link. */
+.card-link {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  min-height: 5.5rem;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.card-link:hover {
+  color: var(--ink);
+}
+
+.card-link:focus-visible {
+  border-radius: var(--r-card);
+}
+
+.tile {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: var(--r-btn);
+  background: var(--accent-tint);
+  color: var(--accent);
+}
+
+.card-link-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.card-link .card-title {
+  align-self: flex-start;
+}
+
+.card-desc {
+  color: var(--ink-2);
+  font-size: 0.9375rem;
+  line-height: 1.45;
+}
+
+/* Export. */
+.button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.625rem;
+  min-height: 3rem;
+  padding: 0 1.25rem 0 1rem;
+  border-radius: var(--r-btn);
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: 1.0625rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.button:hover {
+  color: var(--on-accent);
+  text-decoration-line: underline;
+  text-decoration-color: var(--on-accent);
+  text-underline-offset: 0.3em;
+}
+
+.button .icon {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.downloads > li {
   padding: 0;
-  list-style: none;
 }
 
-.downloads li {
-  border-bottom: 1px solid var(--line);
+.download-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 3.25rem;
+  color: var(--ink);
+  text-decoration: none;
 }
 
-@media (min-width: 30rem) {
-  .facts > div {
-    display: grid;
-    grid-template-columns: 9.5rem minmax(0, 1fr);
-    gap: 1rem;
-  }
+.download-row:hover {
+  color: var(--ink);
 }
 
-@media (min-width: 60rem) {
-  .home-columns {
-    display: grid;
-    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
-    gap: 3rem;
-    align-items: start;
-  }
-
-  .deal-columns {
-    display: grid;
-    grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
-    gap: 3rem;
-    align-items: start;
-  }
-
-  .deal-columns > div > section:first-child h2 {
-    margin-top: 0.5rem;
-  }
+.download-row .icon {
+  width: 1.25rem;
+  height: 1.25rem;
+  color: var(--accent);
 }
 
-.site-footer {
-  border-top: 1px solid var(--line);
+.download-label {
+  font-weight: 600;
+}
+
+.download-file {
+  margin-left: auto;
   color: var(--ink-2);
   font-size: 0.9375rem;
-}
-
-.site-footer p {
-  margin: 0;
-  padding: 1.25rem 0;
 }
 
 /* The /authorize consent page (decision 0006): two plain buttons, Allow first. */
@@ -408,20 +830,181 @@ main .stage-count {
 }
 
 .consent-actions button {
-  min-height: 44px;
+  min-height: 48px;
   padding: 0.5rem 1.5rem;
-  border: 1px solid var(--green);
-  border-radius: var(--radius);
+  border: 1px solid var(--accent);
+  border-radius: var(--r-btn);
   background: var(--white);
-  color: var(--green);
+  color: var(--accent);
   font: inherit;
   font-weight: 600;
   cursor: pointer;
 }
 
 .consent-actions button[value="approve"] {
-  background: var(--green);
-  color: var(--white);
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+/* ---------- Wider screens ---------- */
+
+@media (min-width: 40rem) {
+  main {
+    padding-top: 2rem;
+  }
+
+  h2 {
+    font-size: 1.4375rem;
+  }
+
+  .cards {
+    grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
+    gap: 1rem;
+  }
+
+  .cards-wide {
+    grid-template-columns: repeat(auto-fill, minmax(22rem, 1fr));
+  }
+
+  .cards-single {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .card {
+    padding: 1.125rem 1.25rem;
+  }
+
+  .panel {
+    padding-inline: 1.25rem;
+  }
+}
+
+/* The side bar replaces the app bar and the tab bar. */
+@media (min-width: 60rem) {
+  html {
+    scroll-padding-bottom: 0;
+  }
+
+  .app {
+    display: grid;
+    grid-template-columns: 16rem minmax(0, 1fr);
+    min-height: 100vh;
+  }
+
+  .app-header {
+    position: sticky;
+    top: 0;
+    flex-direction: column;
+    align-items: stretch;
+    height: 100vh;
+    padding: 1.5rem 1rem;
+    overflow-y: auto;
+    box-shadow: 1px 0 0 var(--divider);
+  }
+
+  .brand {
+    margin: 0 0 1.75rem;
+    padding: 0 0.5rem;
+  }
+
+  .app-nav {
+    position: static;
+    padding: 0;
+    background: none;
+    box-shadow: none;
+  }
+
+  .nav-main {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+    max-width: none;
+    padding: 0;
+  }
+
+  .nav-main a {
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 0.75rem;
+    min-height: 2.75rem;
+    padding: 0 0.75rem;
+    color: var(--ink-2);
+    font-size: 1rem;
+  }
+
+  .nav-main a .icon {
+    box-sizing: border-box;
+    width: 1.375rem;
+    height: 1.375rem;
+    padding: 0;
+    border-radius: 0;
+  }
+
+  .nav-main a:hover {
+    background: var(--silver);
+    color: var(--ink);
+  }
+
+  .nav-main a[aria-current] {
+    background: var(--accent-tint);
+    color: var(--ink);
+  }
+
+  .nav-main a[aria-current] .icon {
+    background: none;
+    color: var(--accent);
+  }
+
+  .nav-sub {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+    margin-top: 0.125rem;
+  }
+
+  .nav-sub a {
+    padding-left: 2.875rem;
+    font-weight: 500;
+  }
+
+  .nav-sub a .icon {
+    display: none;
+  }
+
+  .app-body {
+    padding-bottom: 0;
+    background-position: right -8rem top -12rem;
+    background-size: 44rem 30rem;
+  }
+
+  main {
+    padding: 2.5rem 2.5rem 3rem;
+  }
+
+  .app-footer {
+    padding: 0 2.5rem 2rem;
+  }
+}
+
+@media (min-width: 72rem) {
+  /* Today: what is due on the left, the pipeline and the brief beside it. */
+  .today-columns {
+    display: grid;
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+    gap: 0 2rem;
+    align-items: start;
+  }
+
+  .today-due .cards {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .deal-columns {
+    display: grid;
+    grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+    gap: 0 2rem;
+    align-items: start;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

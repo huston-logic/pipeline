@@ -91,7 +91,7 @@ const log = (event: string, extra: Record<string, string | number> = {}) => cons
 function page(status: number, title: string, body: Html, headers: Headers = new Headers(), formAction: string[] = []): Response {
   headers.set("Content-Type", "text/html; charset=utf-8");
   headers.set("Cache-Control", "no-store");
-  const document = renderPage({ title: `${title} · Pipeline`, description: "Connecting an AI app to this pipeline.", body });
+  const document = renderPage({ title, description: "Connecting an AI app to this pipeline.", body });
   return withSecurityHeaders(new Response(document, { status, headers }), { formAction });
 }
 

@@ -4,7 +4,7 @@ import { getSettings } from "../../db/queries.ts";
 import { type BriefView, latestBrief } from "../../services/read.ts";
 import { formatLocal } from "../../time.ts";
 import { type Html, html } from "../html.ts";
-import { renderPage } from "../layout.ts";
+import { type Look, renderPage } from "../layout.ts";
 import { empty, labelled, when } from "../parts.ts";
 
 export const briefDate = (localDate: string) => headerDate(localDate);
@@ -26,9 +26,9 @@ export function sendStatusText(brief: Pick<BriefView, "sendStatus" | "sentAt">):
 function section(name: BriefSection, items: BriefItem[]): Html | "" {
   const mine = items.filter((item) => item.section === name);
   if (mine.length === 0) return "";
-  return html`<section aria-labelledby="brief-${name}">
+  return html`<section class="brief-section" aria-labelledby="brief-${name}">
 <h2 id="brief-${name}">${SECTION_TITLES[name]}</h2>
-<ul class="items">${mine.map((item) => html`<li>${labelled(briefLine(item), item.untrusted)}</li>`)}</ul>
+<ul class="panel rows">${mine.map((item) => html`<li>${labelled(briefLine(item), item.untrusted)}</li>`)}</ul>
 </section>`;
 }
 
@@ -36,24 +36,26 @@ function briefBody(brief: BriefView, tz: string): Html {
   const sections = (Object.keys(SECTION_TITLES) as BriefSection[]).map((name) => section(name, brief.items));
   const outside = brief.items.some((item) => item.untrusted);
   return html`<p class="lede">For ${briefDate(brief.localDate)}. Composed ${when(brief.composedAt, formatLocal(brief.composedAt, tz))}.</p>
-<p>${sendStatusText(brief)}</p>
+<p class="section-note">${sendStatusText(brief)}</p>
 ${outside ? html`<p class="note">Lines marked From outside include text from a website form or an import, shown as received.</p>` : ""}
 ${brief.items.length === 0 ? empty("Nothing was due that day.") : sections}`;
 }
 
-export async function briefPage(db: Db): Promise<string> {
+export async function briefPage(db: Db, look: Look): Promise<string> {
   const settings = await getSettings(db);
   const brief = await latestBrief(db);
   const body =
     brief === null
       ? empty(
-          `No brief yet. The first one is composed at ${settings.brief_hour}:00 (${settings.timezone} time) and shows up here.`,
+          "No brief yet.",
+          `The first one is composed at ${settings.brief_hour}:00 (${settings.timezone} time) and shows up here.`,
         )
       : briefBody(brief, settings.timezone);
   return renderPage({
-    title: "Daily brief · Pipeline",
+    title: "Daily brief",
     description: "The latest daily brief: overdue and due-today tasks, quiet deals and new leads, and whether it was emailed.",
     current: "/brief",
+    look,
     body: html`<h1>Daily brief</h1>
 ${body}`,
   });

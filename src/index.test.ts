@@ -74,7 +74,7 @@ test("GET / returns the board as HTML with one <h1>, lang and a meta description
   assert.equal(body.match(/<h1[\s>]/g)?.length, 1);
   assert.match(body, /<html lang="en">/);
   assert.match(body, /<meta name="description" content="[^"]+">/);
-  assert.match(body, /<title>Pipeline<\/title>/);
+  assert.match(body, /<title>Today · Pipeline<\/title>/);
   assert.doesNotMatch(body, /<script/i);
   assertSecurityHeaders(res);
 });
@@ -197,7 +197,7 @@ test("AUTH_MODE=dev in production fails closed with 500 on every route", async (
   }
 });
 
-const BOARD_PATHS = ["/", "/rules", "/deals/dl_seed01", "/export", "/theme.css"];
+const BOARD_PATHS = ["/", "/pipeline", "/contacts", "/more", "/rules", "/deals/dl_seed01", "/export", "/theme.css"];
 const API_PATHS = ["/api/pipeline", "/api/export.json", "/api/export/contacts.csv"];
 
 test("in production without Access settings the board and /api fail closed with 500; static files and the 404 page still work", async () => {
