@@ -62,11 +62,7 @@ Files in `docs/decisions/`. Rulings made while running the plan:
   cannot use up the free plan's KV writes.
 - A CSV import is one audited, undoable change; it only fills empty fields on existing contacts and marks imported text
   as outside text. Very large CSVs are refused with "split the CSV" (D1 statement size limit).
-- Client copies are updated by one command, `npm run copies:update`, run by the repo owner with their own wrangler
-  login after each client invites them into their Cloudflare account; no client token or id is stored in the repo or
-  CI (decision 0007). Provisioning, the CSV import (dry run first, then one undoable change) and the export script are
-  in the same decision. `/register` and `/authorize` are rate limited (20 per minute per IP) so a flood can't use up
-  the free plan's KV writes (decision 0006).
+- An update never deploys a copy whose migrations did not apply (for example if the confirm prompt is answered no).
 
 ## Dependencies added
 
