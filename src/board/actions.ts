@@ -1,10 +1,9 @@
 // Board write routes (decisions 0014, 0017): every POST the board accepts is listed here, and each handler calls the
 // same service function as the matching MCP tool, as the owner. src/board/post.ts runs the sign-in, origin, body and
-// CSRF checks before any handler sees the form.
+// CSRF checks before any handler sees the form. The editing routes (decision 0018) are in edit-actions.ts.
 import type { DealRow, StageRow } from "../db/db.ts";
 import { getContact, getDeal, listStages } from "../db/queries.ts";
 import { isChangeId, isDealId } from "../ids.ts";
-import type { Ctx } from "../services/change.ts";
 import { updateDeal } from "../services/deals.ts";
 import { UserError } from "../services/errors.ts";
 import { dealLabel, dealTitle, isTrusted } from "../services/labels.ts";
@@ -13,56 +12,15 @@ import { getChange } from "../services/read.ts";
 import { type Removal, undoChange, undoRemovals } from "../services/undo.ts";
 import { joinAnd } from "../services/describe.ts";
 import { canUndo, undoAction } from "./banner.ts";
-import { type FormContext, hidden, postForm, RETURN_FIELD } from "./forms.ts";
-import { html, type Html } from "./html.ts";
-import { type Look, renderPage } from "./layout.ts";
+import { MAX_BODY_BYTES, RECORD_FORM_MAX_BYTES } from "../http/limits.ts";
+import { type ActionContext, type ActionResult, asOwner, backTo, type MatchedAction, notFound, page, redirect, refusedPage, type Route } from "./action-kit.ts";
+import { EDIT_ROUTES } from "./edit-actions.ts";
+import { type FormContext, hidden, postForm } from "./forms.ts";
+import { html } from "./html.ts";
+import { renderPage } from "./layout.ts";
 import { moveAction, moveForm, safeDealName } from "./move.ts";
-import { notFoundPage } from "./pages/not-found.ts";
 import { count, dealHref } from "./parts.ts";
-import { boardReturnPath, withChange } from "./return-to.ts";
-
-/** What a handler gets once every check has passed. `csrf` is the request's (checked) token, for the forms it draws. */
-export interface ActionContext {
-  db: Ctx["db"];
-  now: Date;
-  csrf: string;
-  form: URLSearchParams;
-  look: Look;
-}
-
-export type ActionResult = { kind: "redirect"; location: string } | { kind: "page"; status: 200 | 404 | 422; body: string };
-
-export type BoardAction = (ctx: ActionContext) => Promise<ActionResult>;
-
-type Route = { path: RegExp; handle: (ctx: ActionContext, id: string) => Promise<ActionResult> };
-
-const asOwner = (ctx: ActionContext, tool: string): Ctx => ({ db: ctx.db, now: ctx.now, actor: "owner", tool });
-
-const redirect = (location: string): ActionResult => ({ kind: "redirect", location });
-
-const page = (status: 200 | 404 | 422, body: string): ActionResult => ({ kind: "page", status, body });
-
-const notFound = (ctx: ActionContext): ActionResult => page(404, notFoundPage({ look: ctx.look }));
-
-/** Where to come back to: the form's return_to when it is a board page, else the record's own page. */
-const backTo = (ctx: ActionContext, fallback: string): string => boardReturnPath(ctx.form.get(RETURN_FIELD)) ?? fallback;
-
-/**
- * A refused write: the plain-English reason, the form again when there is one, and the way back. `current` is the
- * record's page, so the nav marks its section (a deal is in Pipeline).
- */
-function refusedPage(ctx: ActionContext, title: string, message: string, back: string, form: Html | "", current?: string): string {
-  return renderPage({
-    title,
-    description: "The change was refused, so nothing was changed. The reason is on the page.",
-    current,
-    frame: { look: ctx.look },
-    body: html`<h1>${title}</h1>
-<p class="lede refusal">${message}</p>
-${form === "" ? "" : html`<div class="card refused-form">${form}</div>`}
-<p class="back-link"><a href="${back}">Back to the page</a></p>`,
-  });
-}
+import { withChange } from "./return-to.ts";
 
 function confirmPage(ctx: ActionContext, deal: DealRow, label: string, stage: StageRow, back: string): string {
   const form: FormContext = { csrf: ctx.csrf, here: back };
@@ -130,7 +88,7 @@ function undoConfirmPage(ctx: ActionContext, changeId: string, removals: Removal
     description: "Undoing this change removes records, so it asks first. Confirm the undo, or cancel to go back.",
     frame: { look: ctx.look },
     body: html`<h1>Undo this change?</h1>
-<p class="lede">It removes ${removedText(removals)}. They can't be brought back.</p>
+<p class="lede">It removes ${removedText(removals)}. This can't be reversed.</p>
 ${postForm(
   "confirm",
   undoAction(changeId),
@@ -158,23 +116,33 @@ async function undo(ctx: ActionContext, id: string): Promise<ActionResult> {
       if (removals.length > 0) return page(200, undoConfirmPage(ctx, id, removals, back));
     }
     const result = await undoChange(asOwner(ctx, "undo_change"), id);
-    return redirect(withChange(back, result.changeId));
+    return redirect(withChange(await stillThere(ctx, back), result.changeId));
   } catch (error) {
     if (!(error instanceof UserError)) throw error;
     return page(422, refusedPage(ctx, "That change wasn't undone", error.message, back, ""));
   }
 }
 
+/** An undo can remove the record the page was about (a new lead's deal): then go to its list instead of a 404. */
+async function stillThere(ctx: ActionContext, back: string): Promise<string> {
+  const record = /^\/(deals|contacts)\/([^/?]+)/.exec(back);
+  if (record === null) return back;
+  const [, kind, id = ""] = record;
+  const found = kind === "deals" ? await getDeal(ctx.db, id) : await getContact(ctx.db, id);
+  return found !== null ? back : kind === "deals" ? "/pipeline" : "/contacts";
+}
+
 const ROUTES: Route[] = [
   { path: /^\/deals\/([^/]+)\/move$/, handle: moveDeal },
   { path: /^\/changes\/([^/]+)\/undo$/, handle: undo },
+  ...EDIT_ROUTES,
 ];
 
-/** The handler for a board write path, or null: every other POST keeps the 405 answer. */
-export function matchBoardAction(pathname: string): BoardAction | null {
+/** The handler for a board write path and its body cap, or null: every other POST keeps the 405 answer. */
+export function matchBoardAction(pathname: string): MatchedAction | null {
   for (const route of ROUTES) {
     const id = route.path.exec(pathname)?.[1];
-    if (id !== undefined) return (ctx) => route.handle(ctx, id);
+    if (id !== undefined) return { run: (ctx) => route.handle(ctx, id), maxBytes: route.big ? RECORD_FORM_MAX_BYTES : MAX_BODY_BYTES };
   }
   return null;
 }

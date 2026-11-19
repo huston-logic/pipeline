@@ -3,6 +3,7 @@
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import type { Client } from "@modelcontextprotocol/client";
+import { formFields } from "../helpers/form-fields.ts";
 import { connectHttp, ok } from "../helpers/mcp-client.ts";
 import { boardRoutes } from "../../src/board/routes.ts";
 import { parseCsv } from "../../src/http/csv.ts";
@@ -66,6 +67,62 @@ test("the JSON export holds every table, and an empty table's CSV still has its 
 
   const contacts = parseCsv(await (await fetch(`${server.url}/api/export/contacts.csv`)).text());
   assert.equal(contacts.length, (body.tables.contacts?.length ?? 0) + 1, "a header and every contact");
+});
+
+test("board edits (a contact's phone, a new task) show in /changes and recent_changes as the owner's, and Undo reverses them", async () => {
+  const contactId = "ct_seed01";
+  const editPath = `/contacts/${contactId}/edit`;
+  const page = await fetch(`${server.url}${editPath}`);
+  assert.equal(page.status, 200);
+  const cookie = (page.headers.getSetCookie()[0] ?? "").split(";")[0] ?? "";
+  const fields = formFields(await page.text(), editPath);
+  const token = fields.get("csrf") ?? "";
+  assert.equal(`pipeline-csrf=${token}`, cookie);
+  const send = (path: string, body: URLSearchParams) =>
+    fetch(`${server.url}${path}`, {
+      method: "POST",
+      headers: { Origin: server.url, Cookie: cookie, "Content-Type": "application/x-www-form-urlencoded" },
+      body: body.toString(),
+      redirect: "manual",
+    });
+  const changeOf = (res: Response) => /change=(chg_[a-z0-9]+)/.exec(res.headers.get("Location") ?? "")?.[1] ?? "";
+
+  fields.set("phone", "555-0177");
+  const edited = await send(editPath, fields);
+  assert.equal(edited.status, 303);
+  assert.match(edited.headers.get("Location") ?? "", new RegExp(`^/contacts/${contactId}\\?change=chg_[a-z0-9]{12}$`));
+  const editId = changeOf(edited);
+
+  const tasked = await send(`/contacts/${contactId}/tasks`, new URLSearchParams({ csrf: token, return_to: `/contacts/${contactId}`, title: "Call about the drawings", "due.date": "", "due.time": "" }));
+  assert.equal(tasked.status, 303);
+  const taskId = changeOf(tasked);
+
+  const changes = await (await fetch(`${server.url}/changes`, { headers: { Cookie: cookie } })).text();
+  for (const id of [editId, taskId]) {
+    assert.match(changes, new RegExp(`<dt>By</dt><dd>You, on the board</dd></div><div><dt>Change id</dt><dd>${id}</dd>`), id);
+  }
+
+  const client: Client = await connectHttp(`${server.url}/mcp`);
+  try {
+    const recent = (await ok(client, "recent_changes")).data as { changes: { changeId: string; actor: string; tool: string }[] };
+    const mine = (id: string) => recent.changes.filter((change) => change.changeId === id).map((change) => [change.actor, change.tool]);
+    assert.deepEqual(mine(editId), [["owner", "update_contact"]]);
+    assert.deepEqual(mine(taskId), [["owner", "add_task"]]);
+
+    // Undo the task (it removes a record, so it is confirmed), then the edit (one click).
+    const undoTask = await send(`/changes/${taskId}/undo`, new URLSearchParams({ csrf: token, return_to: "/changes", confirm: "yes" }));
+    assert.equal(undoTask.status, 303);
+    const undoEdit = await send(`/changes/${editId}/undo`, new URLSearchParams({ csrf: token, return_to: `/contacts/${contactId}` }));
+    assert.equal(undoEdit.status, 303);
+    const after = await (await fetch(`${server.url}${undoEdit.headers.get("Location") ?? ""}`, { headers: { Cookie: cookie } })).text();
+    assert.match(after, new RegExp(`<p class="banner-text">Undid ${editId}: `));
+    const contact = (await ok(client, "search_contacts", { query: "" })).data as { contacts: { id: string; phone: string | null }[] };
+    assert.notEqual(contact.contacts.find((row) => row.id === contactId)?.phone, "555-0177", "the phone is back");
+    const tasks = (await ok(client, "whats_due")).data as Record<string, unknown>;
+    assert.doesNotMatch(JSON.stringify(tasks), /Call about the drawings/, "the task is gone");
+  } finally {
+    await client.close();
+  }
 });
 
 test("a move from the board: cookie and token from the page, 303 with the change, in /changes and recent_changes, then Undo", async () => {

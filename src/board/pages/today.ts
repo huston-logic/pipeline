@@ -15,7 +15,9 @@ import { localDate } from "../../time.ts";
 import { type Html, html } from "../html.ts";
 import type { PageContext } from "../context.ts";
 import { renderPage } from "../layout.ts";
-import { count, dealLink, empty, labelled, pairs, section, tag, when } from "../parts.ts";
+import type { FormContext } from "../forms.ts";
+import { count, dealLink, empty, labelled, newLeadButton, pairs, section, tag, when } from "../parts.ts";
+import { taskActions } from "../task-forms.ts";
 import { briefDate, briefLine, sendStatusText } from "./brief.ts";
 import { stageCountText, summaryLine } from "./pipeline.ts";
 
@@ -23,7 +25,7 @@ const EXCERPT_ITEMS = 4;
 
 const has = (fields: readonly string[], key: string) => fields.includes(key);
 
-function taskCard(task: TaskItem, overdue: boolean): Html {
+function taskCard(task: TaskItem, overdue: boolean, form: FormContext): Html {
   const outside = task.untrusted_fields;
   return html`<li class="card">
 <div class="card-head">
@@ -37,6 +39,7 @@ ${pairs([
   task.dealId === null &&
     task.contactName !== null && { name: "Contact", value: labelled(task.contactName, has(outside, "contactName")) },
 ])}
+${taskActions(task, form)}
 </li>`;
 }
 
@@ -54,25 +57,25 @@ ${pairs([
 </li>`;
 }
 
-function cards(tasks: TaskItem[], deals: DealItem[], overdue: boolean): Html {
-  return html`<ul class="cards">${tasks.map((t) => taskCard(t, overdue))}${deals.map((d) => nextStepCard(d, overdue))}</ul>`;
+function cards(tasks: TaskItem[], deals: DealItem[], overdue: boolean, form: FormContext): Html {
+  return html`<ul class="cards">${tasks.map((t) => taskCard(t, overdue, form))}${deals.map((d) => nextStepCard(d, overdue))}</ul>`;
 }
 
-function dueSections(due: WhatsDue): Html {
+function dueSections(due: WhatsDue, form: FormContext): Html {
   const overdue = due.overdueTasks.length + due.overdueDeals.length;
   const today = due.todayTasks.length + due.todayDeals.length;
   if (overdue + today === 0) {
     return section(
       "due-heading",
       "Due today",
-      empty("Nothing due today.", "Follow-ups you add by talking to your AI app, and the ones your rules add, show up here."),
+      empty("Nothing due today.", "Add a task on a deal or contact page, or add a new lead."),
     );
   }
-  return html`${overdue > 0 ? section("overdue-heading", "Overdue", cards(due.overdueTasks, due.overdueDeals, true)) : ""}
+  return html`${overdue > 0 ? section("overdue-heading", "Overdue", cards(due.overdueTasks, due.overdueDeals, true, form)) : ""}
 ${section(
   "due-heading",
   "Due today",
-  today > 0 ? cards(due.todayTasks, due.todayDeals, false) : html`<p class="section-note">Nothing else is due today.</p>`,
+  today > 0 ? cards(due.todayTasks, due.todayDeals, false, form) : html`<p class="section-note">Nothing else is due today.</p>`,
 )}`;
 }
 
@@ -128,9 +131,10 @@ export async function todayPage(ctx: PageContext): Promise<string> {
 <p class="page-date"><time datetime="${date}">${headerDate(date)}</time></p>
 </div>
 <p class="lede">${summaryLine(summary)}</p>
+${newLeadButton("today")}
 <div class="today-columns">
 <div class="today-due">
-${dueSections(due)}
+${dueSections(due, ctx)}
 </div>
 <div class="today-glance">
 ${pipelineGlance(summary)}

@@ -101,6 +101,10 @@ export async function getDeal(db: Db, id: string): Promise<DealRow | null> {
   return db.prepare("SELECT * FROM deals WHERE id = ?").bind(id).first<DealRow>();
 }
 
+export async function getTask(db: Db, id: string): Promise<TaskRow | null> {
+  return db.prepare("SELECT * FROM tasks WHERE id = ?").bind(id).first<TaskRow>();
+}
+
 export type DealFilter = {
   stage?: string;
   status?: DealStatus;

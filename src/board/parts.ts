@@ -27,7 +27,11 @@ export function contactLink(id: string, name: string, outside: boolean): Html {
   return html`<a href="${contactHref(id)}">Contact ${id}</a> ${outsideLabel()} <span class="outside-value">${name}</span>`;
 }
 
-export const when = (iso: string, local: string): Html => html`<time datetime="${iso}">${local}</time>`;
+/** The primary New lead button on Today, Pipeline and Contacts; `from` is where its Cancel goes back to. */
+export const newLeadButton = (from: "today" | "pipeline" | "contacts"): Html =>
+  html`<p class="page-action"><a class="button" href="/leads/new?from=${from}">New lead</a></p>`;
+
+export const when =(iso: string, local: string): Html => html`<time datetime="${iso}">${local}</time>`;
 
 /** "1 deal", "3 deals". */
 export const count = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;

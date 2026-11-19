@@ -47,9 +47,13 @@ export function registerWriteTools(server: McpServer, deps: ToolDeps): void {
       kind: "write",
       description:
         "Adds a lead: a contact (or the existing contact with the same email) and a new deal in the first open stage. " +
+        "To add a deal for a contact already on file, give contact instead of the person's details. " +
         "Notes are logged as a note on the deal.",
       input: z.strictObject({
-        name: shortText("The person's name."),
+        name: shortText("The person's name. Needed unless contact is given.").optional(),
+        contact: contactRef(
+          "An existing contact to add the deal to: their id (ct_...) or exact name. Their details are left as they are.",
+        ).optional(),
         email: shortText("Their email address. A contact already using it gets the new deal.").optional(),
         phone: shortText("Their phone number.").optional(),
         business: shortText("Their business name.").optional(),

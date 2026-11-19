@@ -5,7 +5,7 @@ import { CONTACT_LIST_LIMIT, type ContactListItem, type ContactSort, listContact
 import { type Html, html } from "../html.ts";
 import type { PageContext } from "../context.ts";
 import { renderPage } from "../layout.ts";
-import { contactLink, count, dealLink, empty, formatNumber, labelled, pairs, when } from "../parts.ts";
+import { contactLink, count, dealLink, empty, formatNumber, labelled, newLeadButton, pairs, when } from "../parts.ts";
 
 type Dir = "asc" | "desc";
 
@@ -106,7 +106,7 @@ export async function contactsPage(ctx: PageContext): Promise<string> {
   const clear = query === "" ? "" : html`<p class="search-clear"><a href="${clearHref}">Clear search</a></p>`;
   let results: Html;
   if (total === 0 && query === "") {
-    results = empty("No contacts yet.", "People from your website form, and the ones you add by talking to your AI app, show up here.");
+    results = empty("No contacts yet.", "Add one with New lead, or by talking to your AI app. People from your website form show up here too.");
   } else if (total === 0) {
     results = html`${empty(`No contacts match "${query}".`, "Try part of a name, an email address, a phone number or a company.")}
 ${clear}`;
@@ -122,6 +122,7 @@ ${clear}`;
     frame: ctx,
     body: html`<h1>Contacts</h1>
 ${viewSwitch("/contacts")}
+${newLeadButton("contacts")}
 ${total === 0 && query === "" ? "" : searchForm(query, sortValue)}
 ${results}`,
   });

@@ -10,7 +10,7 @@ import type { FormContext } from "../forms.ts";
 import { type Html, html } from "../html.ts";
 import { renderPage } from "../layout.ts";
 import { moveForm, safeDealName } from "../move.ts";
-import { count, dealLink, empty, formatNumber, labelled, pairs, tag, when } from "../parts.ts";
+import { count, dealLink, empty, formatNumber, labelled, newLeadButton, pairs, tag, when } from "../parts.ts";
 
 type View = "board" | "list";
 
@@ -41,7 +41,7 @@ export function stageCountText(stage: Pick<StageSummary, "count" | "value">): st
 
 export function summaryLine(summary: PipelineSummary): string {
   if (summary.total === 0) {
-    return "No deals yet. Leads from your website form, and the ones you add by talking to your AI app, show up here.";
+    return "No deals yet. Add one with New lead, or by talking to your AI app. Leads from your website form show up here too.";
   }
   const { open, closed } = summary;
   const value = open.value > 0 ? `, total value ${formatNumber(open.value)}` : "";
@@ -201,6 +201,7 @@ export async function pipelinePage(ctx: PageContext): Promise<string> {
     body: html`<h1>Pipeline</h1>
 ${viewSwitch(view)}
 <p class="lede">${openLine(summary)}</p>
+${newLeadButton("pipeline")}
 ${body}`,
   });
 }

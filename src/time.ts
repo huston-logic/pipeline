@@ -87,6 +87,16 @@ export function localDate(at: Date, tz: string): string {
   return `${pad(w.year, 4)}-${pad(w.month)}-${pad(w.day)}`;
 }
 
+/**
+ * This instant as a board form shows it: "YYYY-MM-DD" when it is midnight in the timezone, otherwise
+ * "YYYY-MM-DDTHH:mm". parseWhen reads either back as the same instant, to the minute.
+ */
+export function localWhen(at: Date | string, tz: string): string {
+  const w = wallTime(typeof at === "string" ? new Date(at) : at, tz);
+  const date = `${pad(w.year, 4)}-${pad(w.month)}-${pad(w.day)}`;
+  return w.hour === 0 && w.minute === 0 ? date : `${date}T${pad(w.hour)}:${pad(w.minute)}`;
+}
+
 /** Hour 0-23 of this instant in the timezone. */
 export function localHour(at: Date, tz: string): number {
   return wallTime(at, tz).hour;

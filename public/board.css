@@ -1353,6 +1353,254 @@ button.button {
   border-top: 0;
 }
 
+/* ---------- Editing (decision 0018) ---------- */
+
+/* The New lead button under a page's lede. */
+.page-action {
+  margin: -0.5rem 0 1.5rem;
+}
+
+.section-action {
+  margin: 0.5rem 0 0;
+}
+
+.section-action a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  font-weight: 600;
+}
+
+/* Record forms: fields in a white card, the submit button beside Cancel. */
+.record-form {
+  max-width: 40rem;
+}
+
+.form-card {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.form-section h2 {
+  margin-top: 1.75rem;
+}
+
+.form-section:first-child h2 {
+  margin-top: 0;
+}
+
+.form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1.5rem;
+  margin: 1.5rem 0 0;
+}
+
+.form-cancel {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  font-weight: 600;
+}
+
+/* The From outside label under a field's label, at its own width. */
+.field > .outside {
+  align-self: flex-start;
+}
+
+.field-required {
+  color: var(--ink-2);
+  font-weight: 500;
+}
+
+.field textarea {
+  width: 100%;
+  min-height: 3rem;
+  padding: 0 0.875rem;
+  border: 1px solid var(--ink-2);
+  border-radius: var(--r-field);
+  background-color: var(--white);
+  color: var(--ink);
+  font: inherit;
+}
+
+.field textarea {
+  min-height: 7rem;
+  padding: 0.625rem 0.875rem;
+  resize: vertical;
+}
+
+/* An invalid field: the message in words, above the control, and a heavier rust edge (never colour alone). */
+.field-error {
+  margin: 0 0 0.25rem;
+  color: var(--rust);
+  font-weight: 600;
+}
+
+.field-invalid input,
+.field-invalid select,
+.field-invalid textarea {
+  border: 2px solid var(--rust);
+}
+
+/* A date and an optional time, side by side. */
+.field-when {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.field-when legend {
+  margin-bottom: 0.25rem;
+  padding: 0;
+  font-weight: 600;
+}
+
+.when-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.when-part {
+  display: flex;
+  flex: 1 1 9rem;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.when-part label {
+  color: var(--ink-2);
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+/* The error summary at the top of a refused form. */
+.error-summary {
+  max-width: 40rem;
+  margin: 0 0 1.5rem;
+  padding: 1rem 1.25rem;
+  border: 2px solid var(--rust);
+  border-radius: var(--r-card);
+  background: var(--white);
+}
+
+.error-summary h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1.125rem;
+}
+
+.error-summary ul {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
+.error-summary li + li {
+  margin-top: 0.25rem;
+}
+
+.error-summary a {
+  color: var(--rust);
+  font-weight: 600;
+}
+
+/* Add a task and Log: a disclosure under a section, its form in a card when open. */
+.add-details {
+  margin: 0.75rem 0 0;
+}
+
+.add-details summary {
+  display: list-item;
+  min-height: 44px;
+  padding: 0.625rem 0;
+  color: var(--accent);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.add-details summary:hover {
+  text-decoration: underline;
+  text-decoration-color: var(--rust);
+  text-underline-offset: 0.25em;
+}
+
+.inline-form {
+  display: grid;
+  gap: 1rem;
+  justify-items: start;
+}
+
+.inline-form > .field,
+.inline-form > .field-when {
+  width: 100%;
+}
+
+.add-details .inline-form {
+  margin: 0 0 1rem;
+  padding: 1rem;
+  border: 1px solid var(--edge);
+  border-radius: var(--r-card);
+  background: var(--white);
+}
+
+/* Done and Snooze at the foot of a task card. */
+.task-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.5rem 1rem;
+  margin: 0.875rem 0 0;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--divider);
+}
+
+.task-done {
+  margin: 0;
+}
+
+.task-snooze {
+  flex: 1 1 12rem;
+}
+
+.task-snooze summary {
+  display: list-item;
+  min-height: 44px;
+  padding: 0.625rem 0 0;
+  color: var(--ink-2);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.task-snooze summary:hover {
+  text-decoration: underline;
+  text-decoration-color: var(--rust);
+  text-underline-offset: 0.25em;
+}
+
+.snooze-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0.5rem 0 0.25rem;
+}
+
+.snooze-until {
+  display: grid;
+  gap: 0.75rem;
+  justify-items: start;
+}
+
+.snooze-until > .field-when {
+  width: 100%;
+}
+
+.refused-form .snooze-presets {
+  margin-top: 0;
+}
+
 /* ---------- Wider screens ---------- */
 
 @media (min-width: 40rem) {

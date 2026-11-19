@@ -1,12 +1,13 @@
 // A board form post (decisions 0014, 0017), checked in this order before any handler reads the form: the sign-in
-// (index.ts has already refused a misconfigured dev mode), the same origin, a form body of at most 16 KB, then the
+// (index.ts has already refused a misconfigured dev mode), the same origin, a form body of at most 16 KB (128 KB for
+// record forms and Log, decision 0018), then the
 // CSRF token. Each refusal writes nothing.
 import type { AccessResult } from "../auth/access.ts";
 import { getSettings } from "../db/queries.ts";
 import type { Env } from "../env.ts";
-import { MAX_BODY_BYTES, readCappedBody } from "../http/limits.ts";
+import { readCappedBody } from "../http/limits.ts";
 import { htmlResponse, seeOther, textResponse } from "../http/respond.ts";
-import type { BoardAction } from "./actions.ts";
+import type { MatchedAction } from "./action-kit.ts";
 import { CSRF_FIELD, type CsrfMode, csrfFromCookies, csrfMatches } from "./csrf.ts";
 import { html } from "./html.ts";
 import { type Look, lookOf, renderPage } from "./layout.ts";
@@ -44,7 +45,7 @@ export async function handleBoardPost(
   env: Env,
   mode: CsrfMode,
   signIn: () => Promise<AccessResult>,
-  action: BoardAction,
+  action: MatchedAction,
 ): Promise<Response> {
   const auth = await signIn();
   if (!auth.ok) return textResponse(auth.message, auth.status);
@@ -52,8 +53,8 @@ export async function handleBoardPost(
   if (!isFormType(request.headers.get("Content-Type"))) {
     return textResponse(`Send the form as ${FORM_TYPE}.`, 415);
   }
-  const body = await readCappedBody(request, MAX_BODY_BYTES);
-  if (body === null) return textResponse("That form is too large. Send at most 16 KB.", 413);
+  const body = await readCappedBody(request, action.maxBytes);
+  if (body === null) return textResponse(`That form is too large. Send at most ${action.maxBytes / 1024} KB.`, 413);
   const form = new URLSearchParams(body);
 
   const look = lookOf(await getSettings(env.DB));
@@ -62,6 +63,6 @@ export async function handleBoardPost(
     return htmlResponse(outOfDatePage(look, boardReturnPath(form.get(RETURN_FIELD)) ?? "/"), 403);
   }
 
-  const result = await action({ db: env.DB, now: new Date(), csrf: cookie, form, look });
+  const result = await action.run({ db: env.DB, now: new Date(), csrf: cookie, form, look });
   return result.kind === "redirect" ? seeOther(result.location) : htmlResponse(result.body, result.status);
 }

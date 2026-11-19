@@ -14,6 +14,8 @@ export type Look = { name: string; themeColor?: string };
 
 export const DEFAULT_NAME = "Pipeline";
 
+export const FOOTER = "Add leads, edit contacts and deals, and move, log and undo here, or change anything by talking to your AI app.";
+
 /** The --green token in public/board.css, the accent's default (a test keeps the two in step). */
 export const DEFAULT_THEME_COLOR = "#2b6455";
 
@@ -57,10 +59,10 @@ export type PageOptions = {
   script?: boolean;
 };
 
-/** The nav item a page belongs to without being it: a deal is in Pipeline; a contact and Companies are in Contacts;
- * Rules, Changes and Export are in More. */
+/** The nav item a page belongs to without being it: a deal and a new lead are in Pipeline; a contact and Companies
+ * are in Contacts; Rules, Changes and Export are in More. */
 function sectionOf(path: string): string | null {
-  if (path.startsWith("/deals/")) return "/pipeline";
+  if (path.startsWith("/deals/") || path.startsWith("/leads/")) return "/pipeline";
   if (path.startsWith("/contacts/") || path === "/companies") return "/contacts";
   if (moreItems.some((item) => item.href === path)) return "/more";
   return null;
@@ -133,7 +135,7 @@ ${nav(current)}
 ${withBanner(body, frame?.banner)}
 </main>
 <footer class="app-footer">
-<p>Move deals and undo changes here, or change anything by talking to your AI app.</p>
+<p>${FOOTER}</p>
 </footer>
 </div>
 </div>

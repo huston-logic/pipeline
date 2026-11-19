@@ -8,7 +8,12 @@ import { type Html, html } from "../html.ts";
 import type { PageContext } from "../context.ts";
 import { renderPage } from "../layout.ts";
 import { dealLink, empty, formatNumber, labelled, type Pair, pairs, section, tag, when } from "../parts.ts";
+import type { FormContext } from "../forms.ts";
+import { logForm } from "../log-form.ts";
 import { customRows, outsideNote, STATUS, taskCard, timelineItem } from "../records.ts";
+import { addTaskForm, type Subject } from "../task-forms.ts";
+import { contactEditPath } from "./contact-edit.ts";
+import { newDealPath } from "./deal-new.ts";
 
 function detailsSection(detail: ContactDetail, labels: Map<string, string>, tz: string): Html {
   const { contact } = detail;
@@ -29,6 +34,7 @@ ${pairs([
   { name: "Added", value: when(contact.createdAt, formatLocal(contact.createdAt, tz)) },
 ])}
 ${contact.archived ? html`<p class="note">This contact is archived.</p>` : ""}
+<p class="card-actions"><a href="${contactEditPath(contact.id)}">Edit details</a></p>
 </div>`,
   );
 }
@@ -59,28 +65,36 @@ function dealsSection(detail: ContactDetail): Html {
   return section(
     "deals-heading",
     "Deals",
-    detail.deals.length === 0
-      ? empty("No deals yet.", "Ask your AI app to add one for this contact.")
-      : html`<ul class="cards cards-single">${detail.deals.map(dealCard)}</ul>`,
+    html`${
+      detail.deals.length === 0
+        ? empty("No deals yet.")
+        : html`<ul class="cards cards-single">${detail.deals.map(dealCard)}</ul>`
+    }
+${detail.contact.archived ? "" : html`<p class="section-action"><a href="${newDealPath(detail.contact.id)}">Add a deal</a></p>`}`,
   );
 }
 
-function tasksSection(detail: ContactDetail, now: Date, tz: string): Html {
+function tasksSection(detail: ContactDetail, now: Date, tz: string, form: FormContext, subject: Subject): Html {
   return section(
     "tasks-heading",
     "Open tasks",
-    detail.openTasks.length === 0
-      ? empty("No open tasks.")
-      : html`<ul class="cards cards-single">${detail.openTasks.map((task) => taskCard(task, now, tz, true))}</ul>`,
+    html`${
+      detail.openTasks.length === 0
+        ? empty("No open tasks.")
+        : html`<ul class="cards cards-single">${detail.openTasks.map((task) => taskCard(task, now, tz, true, form))}</ul>`
+    }
+${addTaskForm(subject, form)}`,
   );
 }
 
-function timelineSection(detail: ContactDetail): Html {
+function timelineSection(detail: ContactDetail, form: FormContext, subject: Subject): Html {
   return section(
     "timeline-heading",
     "Timeline",
+    html`${logForm(subject, form)}
+${
     detail.timeline.length === 0
-      ? empty("Nothing logged yet.", "Calls, emails and notes you log through your AI app show up here.")
+      ? empty("Nothing logged yet.", "Calls, emails and notes you log here or through your AI app show up here.")
       : html`<p class="section-note">${detail.timelineMore ? `Newest first. Showing the latest ${detail.timeline.length}.` : "Newest first."}</p>
 <ol class="panel rows timeline">${detail.timeline.map((item) =>
           timelineItem(
@@ -89,7 +103,8 @@ function timelineSection(detail: ContactDetail): Html {
               ? undefined
               : { id: item.deal.id, title: item.deal.title, outside: item.deal.untrusted_fields.includes("title"), archived: item.deal.archived },
           ),
-        )}</ol>`,
+        )}</ol>`
+}`,
   );
 }
 
@@ -112,6 +127,7 @@ export async function contactPage(ctx: PageContext, id: string): Promise<string 
   const labels = new Map(defs.filter((def) => def.entity === "contact").map((def) => [def.key, def.label]));
   const { contact } = detail;
   const outside = new Set(contact.untrusted_fields);
+  const subject: Subject = { kind: "contact", id: contact.id };
   // The <title> and meta description can't show the label, so outside text never goes there.
   const name = outside.has("name") ? `Contact ${contact.id}` : contact.name;
   const company =
@@ -133,8 +149,8 @@ ${detailsSection(detail, labels, tz)}
 ${dealsSection(detail)}
 </div>
 <div>
-${tasksSection(detail, now, tz)}
-${timelineSection(detail)}
+${tasksSection(detail, now, tz, ctx, subject)}
+${timelineSection(detail, ctx, subject)}
 </div>
 </div>`,
   });

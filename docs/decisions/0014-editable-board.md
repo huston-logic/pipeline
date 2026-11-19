@@ -22,7 +22,7 @@ are refused, what JavaScript may do, and how a closing move (Won, Lost, Not now)
   `303 See Other` to the page the form came from (a same-origin path, checked), with `?change=<chg_…>`, and that page
   shows the change's one-line summary and an Undo button (Post/Redirect/Get, so a reload never repeats a write). A
   refused write (a `UserError`) shows the form again with the plain-English message. Bodies are
-  `application/x-www-form-urlencoded` only, at most 16 KB.
+  `application/x-www-form-urlencoded` only, at most 16 KB; 128 KB for record forms and Log (R4, decision 0018).
 - **Cross-site protection, two checks, both required:**
   1. Same origin: the `Origin` header must equal the request's own origin; when a browser sends no `Origin`,
      `Sec-Fetch-Site` must be `same-origin`. Otherwise 403.

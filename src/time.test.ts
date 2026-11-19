@@ -8,12 +8,21 @@ import {
   formatLocal,
   localDate,
   localHour,
+  localWhen,
   parseWhen,
   zonedToUtc,
 } from "./time.ts";
 
 const LA = "America/Los_Angeles";
 const HOUR = 3_600_000;
+
+test("localWhen is the owner's wall time as a form shows it: the date alone at midnight, else date and time", () => {
+  assert.equal(localWhen("2026-11-20T22:00:00.000Z", LA), "2026-11-20T14:00");
+  assert.equal(localWhen(zonedToUtc("2026-11-20T00:00", LA), LA), "2026-11-20");
+  assert.equal(localWhen("2026-11-21T07:30:59.000Z", LA), "2026-11-20T23:30", "seconds are dropped, and the date is the owner's");
+  // Round trip: what the form shows reads back as the same instant (to the minute).
+  assert.equal(parseWhen(localWhen("2026-03-08T10:30:00.000Z", LA), LA).toISOString(), "2026-03-08T10:30:00.000Z");
+});
 
 test("the default timezone is Los Angeles", () => {
   assert.equal(DEFAULT_TZ, LA);
