@@ -20,7 +20,13 @@ Access, what the icon shows, and whether to add a service worker for offline use
   under an icon; `id`, `start_url` and `scope` are `/`; `display` is `standalone`; `background_color` is the page
   silver; `theme_color` is the accent, checked again as `/theme.css` checks it, or the default green.
 - **Credentials.** Browsers fetch a manifest without cookies unless its link says otherwise, so behind Access the fetch
-  would get the Access sign-in page instead. The layout links it with `crossorigin="use-credentials"`.
+  would get the Access sign-in page instead. The layout links it with `crossorigin="use-credentials"`. A manifest
+  fetch that Access redirects to its sign-in fails silently (a cross-origin redirect, blocked by CORS), so after the
+  Access session expires the phone keeps its earlier manifest until the next signed-in visit.
+- **Icons bypass Access.** iOS and Android fetch home-screen icons without the page's cookies, so behind Access they
+  would get the sign-in page instead of a PNG. `docs/ACCESS-SETUP.md` step 3 adds `icons` (which covers
+  `/icons/favicon-32.png` too) to the Access Bypass paths. The icons are generic, so nothing private is exposed. This
+  can only be checked on a real phone, at the first install (ACCESS-SETUP step 7); it is not testable locally.
 - **Head tags.** Signed-in board pages (those drawn with the owner's look) link the manifest and add
   `<meta name="theme-color">` (the accent or the default green), `<link rel="apple-touch-icon">` and
   `<meta name="apple-mobile-web-app-title">` (the short name). Every page, the static 404 and index pages too, links
@@ -60,4 +66,6 @@ Access, what the icon shows, and whether to add a service worker for offline use
   manifest (Android does this now and then; iOS keeps what it saw when the icon was added).
 - Changing the icon means editing `scripts/make-icons.mjs`, running `node scripts/make-icons.mjs` and committing the
   PNGs; the test fails until both agree.
+- Each copy's Access setup needs the `icons` Bypass path; an existing copy needs it added by hand, then a check on a
+  phone.
 - No offline use. A later decision can add a service worker that caches only the static files, never pages or data.
