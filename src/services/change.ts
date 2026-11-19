@@ -180,6 +180,10 @@ export const isForeignKeyFailure = (error: unknown) => /FOREIGN KEY constraint f
 export const isDuplicateEmailFailure = (error: unknown) =>
   /UNIQUE constraint failed: (?:index 'contacts_email'|contacts\.)/.test(errorText(error));
 
+/** A rule firing whose fire_key another run inserted first (two rule runs racing). */
+export const isFireKeyFailure = (error: unknown) =>
+  /UNIQUE constraint failed: rule_firings\.fire_key/.test(errorText(error));
+
 export async function commitChange(ctx: Ctx, input: ChangeInput): Promise<ChangeResult> {
   const { db } = ctx;
   if (!isChangeTable(input.target.table)) {

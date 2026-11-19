@@ -36,6 +36,8 @@
       }
     ]
   },
+  // The hourly rules run (src/cron.ts). Cron Triggers are on the free plan (docs/PAID-PLAN.md).
+  "triggers": { "crons": ["0 * * * *"] },
   // Invocation logs would store request metadata; the Worker's own log lines hold no personal data.
   "observability": { "enabled": true, "logs": { "invocation_logs": false } }
 }

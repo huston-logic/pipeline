@@ -4,12 +4,11 @@
 // ([] when there are none). An empty database gives empty lists and zero counts.
 import type { ActivityRow, ActivityType, Actor, ContactRow, Db, DealRow, DealStatus, StageKind, TaskRow } from "../db/db.ts";
 import { listAudit, listStages, searchContacts as searchContactRows } from "../db/queries.ts";
+import { isQuiet } from "../rules/engine.ts";
 import { addDays, dayBoundsUtc, formatLocal, localDate } from "../time.ts";
 import { UserError } from "./errors.ts";
 import { untrustedFields } from "./labels.ts";
 import { findDeal, findStage, parseObject, parseStringArray } from "./lookup.ts";
-
-const DAY_MS = 86_400_000;
 
 export interface DealItem {
   id: string;
@@ -167,8 +166,15 @@ function toTimelineItem(row: ActivityRow, tz: string): TimelineItem {
   };
 }
 
-/** Deals with their contact's name and stage label, in board order. */
-async function dealItems(db: Db, clauses: string[], params: unknown[], now: Date, tz: string): Promise<DealItem[]> {
+/** Deals with their contact's name and stage label, in board order; `keep` filters the rows in code. */
+async function dealItems(
+  db: Db,
+  clauses: string[],
+  params: unknown[],
+  now: Date,
+  tz: string,
+  keep: (row: DealRow) => boolean = () => true,
+): Promise<DealItem[]> {
   const where = ["d.archived = 0", ...clauses].join(" AND ");
   const found = await rows<DealJoin>(
     db,
@@ -177,7 +183,7 @@ async function dealItems(db: Db, clauses: string[], params: unknown[], now: Date
      WHERE ${where} ORDER BY s.position, d.stage_entered_at, d.id`,
     params,
   );
-  return found.map((row) => toDealItem(row, now, tz));
+  return found.filter(keep).map((row) => toDealItem(row, now, tz));
 }
 
 const TASK_SELECT = `SELECT t.*, d.title AS deal_title, d.untrusted_fields AS deal_untrusted, c.id AS who_id,
@@ -385,14 +391,16 @@ export async function listDealsFiltered(db: Db, filter: DealListFilter, now: Dat
       params.push(start, end);
     }
   }
-  if (filter.quiet !== undefined) {
-    if (!Number.isInteger(filter.quiet) || filter.quiet < 1) {
-      throw new UserError(`"quiet" must be a whole number of days, 1 or more (got ${filter.quiet}).`);
-    }
-    clauses.push("COALESCE(d.last_activity_at, d.created_at) < ?");
-    params.push(new Date(now.getTime() - filter.quiet * DAY_MS).toISOString());
+  const quiet = filter.quiet;
+  if (quiet !== undefined && (!Number.isInteger(quiet) || quiet < 1)) {
+    throw new UserError(`"quiet" must be a whole number of days, 1 or more (got ${quiet}).`);
   }
-  return dealItems(db, clauses, params, now, tz);
+  // The same test the gone_quiet rules use (src/rules/engine.ts), so the two never disagree.
+  const keep =
+    quiet === undefined
+      ? undefined
+      : (row: DealRow) => isQuiet({ lastActivityAt: row.last_activity_at, createdAt: row.created_at }, now, quiet);
+  return dealItems(db, clauses, params, now, tz, keep);
 }
 
 export interface ChangeItem {

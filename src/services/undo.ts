@@ -81,7 +81,22 @@ const alreadyUndone = (changeId: string, audit: AuditRow) =>
 const changedMessage = (changeId: string, what: string) =>
   `Can't undo ${changeId}: ${what} changed since (see recent_changes). Undo the later changes first, or leave it.`;
 
-async function dependents(ctx: Ctx, deleting: Entry[]): Promise<string | null> {
+/**
+ * A rule firing keeps firing idempotent, so the deal or rule it names can never be removed again (decision 0010).
+ * The refusal says what to do instead of "change those first", which the owner can't do for a firing.
+ */
+function ruleHistoryMessage(changeId: string, entry: Entry): string {
+  const row = entry.after ?? {};
+  if (entry.table === "rules") {
+    return `Can't undo ${changeId}: rule ${entry.id} has already fired, so it can't be removed. Pause it with pause_rule instead.`;
+  }
+  return (
+    `Can't undo ${changeId}: this lead has rule history (a rule already fired on ${rowLabel("deals", row)}), so it can't ` +
+    "be removed. Close the deal instead: update_deal with status lost or not_now."
+  );
+}
+
+async function dependents(ctx: Ctx, changeId: string, deleting: Entry[]): Promise<string | null> {
   const removed = new Set(deleting.map((entry) => rowKey(entry.table, entry.id)));
   const counts = new Map<string, { n: number; one: string; many: string }>();
   for (const entry of deleting) {
@@ -91,6 +106,9 @@ async function dependents(ctx: Ctx, deleting: Entry[]): Promise<string | null> {
         .prepare(`SELECT id FROM ${dep.table} WHERE ${dep.column} = ?`)
         .bind(pkValue)
         .all<{ id: string }>();
+      if (dep.table === "rule_firings" && rows.results.length > 0) {
+        throw new UserError(ruleHistoryMessage(changeId, entry));
+      }
       for (const row of rows.results) {
         const key = rowKey(dep.table, row.id);
         if (removed.has(key)) continue;
@@ -151,7 +169,7 @@ export async function undoChange(ctx: Ctx, changeId: string): Promise<ChangeResu
   }
 
   const deleting = entries.filter((entry) => entry.before === null);
-  const blockers = await dependents(ctx, deleting);
+  const blockers = await dependents(ctx, id, deleting);
   if (blockers !== null) throw new UserError(dependsMessage(id, blockers));
   const moved = entries.find((entry) => !sameRow(current.get(entry) ?? null, entry.after));
   if (moved) {

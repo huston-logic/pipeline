@@ -9,9 +9,10 @@ import { ownerTimezone } from "../services/lookup.ts";
 import { getSettings } from "../services/settings.ts";
 import { stageOverview } from "../services/stages.ts";
 import { getDealBrief, listDealsFiltered, pipelineSummary, recentChanges, searchContacts, whatsDue } from "../services/read.ts";
+import { listRules, previewRuleFor } from "../services/rules.ts";
 import { formatLocal, parseWhen } from "../time.ts";
 import { toolResult } from "./format.ts";
-import { DEAL_STATUSES, dealRef, FIELD_ENTITIES, shortText, when } from "./schemas.ts";
+import { DEAL_STATUSES, dealRef, FIELD_ENTITIES, RULE_TYPES, ruleRef, ruleSettings, shortText, when } from "./schemas.ts";
 import { registerTool, type ToolDeps } from "./tool.ts";
 
 const DAY_MS = 86_400_000;
@@ -260,6 +261,58 @@ export function registerReadTools(server: McpServer, deps: ToolDeps): void {
             : `${count(of("deal"), "deal field")} and ${count(of("contact"), "contact field")}.`,
           { fields },
         );
+      },
+    },
+    deps,
+  );
+
+  registerTool(
+    server,
+    {
+      name: "list_rules",
+      title: "List rules",
+      kind: "read",
+      description:
+        "The owner's rules, oldest first: each one's id, type, plain-English description, whether it is active or " +
+        "paused, its parameters, the stage it watches and how many times it has fired. Rules are paused, never deleted.",
+      input: z.strictObject({}),
+      async run(_args, { db }) {
+        const rules = await listRules(db);
+        const active = rules.filter((rule) => rule.active).length;
+        return toolResult(
+          rules.length === 0
+            ? "There are no rules yet. Preview one with preview_rule, then add it with add_rule."
+            : `${count(rules.length, "rule")}: ${active} active, ${rules.length - active} paused.`,
+          { rules },
+        );
+      },
+    },
+    deps,
+  );
+
+  registerTool(
+    server,
+    {
+      name: "preview_rule",
+      title: "Preview a rule",
+      kind: "read",
+      description:
+        "Says which deals a rule would have caught in the last 30 days, and when, without changing anything. Give a " +
+        "saved rule's id, or a new rule's type and settings (the same as add_rule). Preview a new rule before adding it.",
+      input: z.strictObject({
+        rule: ruleRef().optional(),
+        type: z.enum(RULE_TYPES).optional().describe("A new rule's type (leave out when previewing a saved rule)."),
+        ...ruleSettings,
+      }),
+      async run(args, { db, now }) {
+        const preview = await previewRuleFor(db, now(), args);
+        const times = preview.hits.length;
+        const headline =
+          times === 0
+            ? "This rule would not have caught any deal in the last 30 days. Nothing was changed."
+            : `This rule would have caught ${count(preview.dealCount, "deal")} in the last 30 days ` +
+              `(${count(times, "time")}). Nothing was changed.`;
+        return toolResult(headline, preview);
       },
     },
     deps,

@@ -1,6 +1,7 @@
 import { devAuth } from "./auth/dev.ts";
 import { homePage } from "./board/pages/home.ts";
 import { notFoundPage } from "./board/pages/not-found.ts";
+import { runScheduled } from "./cron.ts";
 import type { Env } from "./env.ts";
 import { MCP_ROUTE } from "./mcp/route.ts";
 import { withSecurityHeaders } from "./security.ts";
@@ -67,6 +68,8 @@ export default {
     return handleFetch(request, env, ctx);
   },
 
-  // The hourly rules run and the daily brief are added here in later tasks; no cron is configured yet.
-  async scheduled(_controller: ScheduledController, _env: Env, _ctx: ExecutionContext): Promise<void> {},
+  // The hourly Cron Trigger. Awaited (not waitUntil): the invocation lasts exactly as long as the run.
+  async scheduled(controller: ScheduledController, env: Env, _ctx: ExecutionContext): Promise<void> {
+    await runScheduled(env, new Date(controller.scheduledTime));
+  },
 };
