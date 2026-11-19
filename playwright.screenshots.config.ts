@@ -15,6 +15,8 @@ export default defineConfig({
   testDir: "tests/screenshots",
   testMatch: "*.screens.ts",
   retries: 0,
+  // With more Chromes at once, a tall full-page capture sometimes repeats the top of the page lower down.
+  workers: 2,
   reporter: [["list"]],
   outputDir: "test-results/screenshots",
   globalTimeout: 5 * 60 * 1000,
