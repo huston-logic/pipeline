@@ -1,6 +1,6 @@
 // Small pieces every board page uses. Outside text (a form, an import) is always escaped by `html`, carries the
 // visible "From outside" label (text, never color alone) and is never the text or target of a link.
-import { Html, html } from "./html.ts";
+import { type Html, html } from "./html.ts";
 
 export const OUTSIDE_LABEL = "From outside";
 
@@ -29,13 +29,29 @@ const numbers = new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 });
 /** Deal values have no currency in v1, so they are plain numbers: "1,500". */
 export const formatNumber = (n: number) => numbers.format(n);
 
-export const empty = (text: string): Html => html`<p class="empty">${text}</p>`;
+/**
+ * An empty state: what is missing, then one line on how things get here. The board can't edit yet (task R3), so the
+ * help line never promises a button.
+ */
+export const empty = (text: string, help?: string): Html =>
+  html`<div class="empty"><p class="empty-title">${text}</p>${help === undefined ? "" : html`<p>${help}</p>`}</div>`;
 
-/** One labelled fact in an item's meta line, for example "Contact: Pat Example". */
-export const fact = (name: string, value: Html | string): Html =>
-  html`<span class="fact"><span class="fact-name">${name}:</span> ${value}</span>`;
+/** A neutral tag ("Active", a stage) or a warning one ("Overdue", "Paused"); the words carry the meaning. */
+export const tag = (text: string, warn = false): Html => html`<span class="tag${warn ? " tag-warn" : ""}">${text}</span>`;
 
-export function meta(parts: (Html | null | false | undefined)[]): Html | "" {
-  const shown = parts.filter((part): part is Html => part instanceof Html);
-  return shown.length === 0 ? "" : html`<p class="meta">${shown}</p>`;
+export type Pair = { name: string; value: Html | string };
+
+/** Facts as label/value pairs. Rows that are null, false or undefined are left out. */
+export function pairs(rows: (Pair | null | false | undefined)[]): Html | "" {
+  const shown = rows.filter((row): row is Pair => typeof row === "object" && row !== null);
+  if (shown.length === 0) return "";
+  return html`<dl class="pairs">${shown.map((row) => html`<div><dt>${row.name}</dt><dd>${row.value}</dd></div>`)}</dl>`;
+}
+
+/** A section with an h2 and the id its aria-labelledby needs. */
+export function section(id: string, heading: Html | string, body: Html | "", className = ""): Html {
+  return html`<section${className === "" ? "" : html` class="${className}"`} aria-labelledby="${id}">
+<h2 id="${id}">${heading}</h2>
+${body}
+</section>`;
 }

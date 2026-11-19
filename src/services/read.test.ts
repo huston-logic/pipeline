@@ -8,7 +8,7 @@ import type { Ctx } from "./change.ts";
 import { updateDeal } from "./deals.ts";
 import { UserError } from "./errors.ts";
 import { addLead } from "./leads.ts";
-import { getDealBrief, listDealsFiltered, pipelineSummary, recentChanges, searchContacts, whatsDue } from "./read.ts";
+import { getDealBrief, listContacts, listDealsFiltered, pipelineSummary, recentChanges, searchContacts, whatsDue } from "./read.ts";
 import { undoChange } from "./undo.ts";
 
 const NOW = new Date("2026-11-19T18:00:00.000Z");
@@ -138,6 +138,33 @@ test("searchContacts matches name, email or business and lists each contact's de
   ]);
   assert.deepEqual(ids(await searchContacts(db, "SAMPLE")), ["ct_seed07", "ct_seed02"]);
   assert.deepEqual(ids(await searchContacts(db, "jordan@example")), ["ct_seed04"]);
+});
+
+test("listContacts: every contact not archived, by name, with open deals, last activity and outside fields", async () => {
+  const db = await seededDb();
+  await db.prepare("UPDATE contacts SET archived = 1 WHERE id = 'ct_seed08'").run();
+  // A note on the contact itself (no deal) counts as activity too.
+  await db
+    .prepare("INSERT INTO activities (id, contact_id, type, summary, occurred_at, actor) VALUES ('ac_x', 'ct_seed06', 'note', 'Left a voicemail', ?, 'owner')")
+    .bind("2026-11-19T17:00:00.000Z")
+    .run();
+  const contacts = await listContacts(db, TZ);
+  assert.deepEqual(ids(contacts), ["ct_seed07", "ct_seed03", "ct_seed04", "ct_seed06", "ct_seed01", "ct_seed02", "ct_seed05"]);
+
+  const pat = contacts.find((c) => c.id === "ct_seed01");
+  assert.deepEqual(pat?.openDeals, [{ id: "dl_seed01", title: "Website refresh for Example Plumbing", untrusted_fields: [] }]);
+  assert.equal(pat?.business, "Example Plumbing");
+  assert.equal(pat?.lastActivityAt, "2026-11-17T18:15:00.000Z", "the stage change two days before");
+  assert.equal(pat?.lastActivityAtLocal, "Tue Nov 17, 10:15 AM");
+
+  const alex = contacts.find((c) => c.id === "ct_seed07");
+  assert.deepEqual(alex?.openDeals, [], "a won deal is not open");
+  assert.equal(contacts.find((c) => c.id === "ct_seed06")?.lastActivityAt, "2026-11-19T17:00:00.000Z");
+
+  const robin = contacts.find((c) => c.id === "ct_seed02");
+  assert.deepEqual(robin?.untrusted_fields, ["name", "business"]);
+  assert.deepEqual(robin?.openDeals[0]?.untrusted_fields, ["title"]);
+  assert.deepEqual(await listContacts(await openTestDb(), TZ), []);
 });
 
 test("listDealsFiltered filters by stage, status, due window and quiet days", async () => {

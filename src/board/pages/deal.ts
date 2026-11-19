@@ -4,8 +4,8 @@ import { ownerTimezone } from "../../services/lookup.ts";
 import { type DealBrief, getDealBrief, type TaskItem, type TimelineItem } from "../../services/read.ts";
 import { formatLocal } from "../../time.ts";
 import { type Html, html } from "../html.ts";
-import { renderPage } from "../layout.ts";
-import { empty, fact, formatNumber, labelled, meta, OUTSIDE_LABEL, outsideLabel, when } from "../parts.ts";
+import { type Look, renderPage } from "../layout.ts";
+import { empty, formatNumber, labelled, OUTSIDE_LABEL, outsideLabel, type Pair, pairs, section, tag, when } from "../parts.ts";
 
 const STATUS: Record<DealStatus, string> = { open: "Open", won: "Won", lost: "Lost", not_now: "Not now" };
 
@@ -21,18 +21,12 @@ const ACTIVITY: Record<ActivityType, string> = {
 
 const ACTOR: Record<Actor, string> = { owner: "you", ai: "your AI app", system: "the system" };
 
-type Row = { name: string; value: Html | string };
-
-function facts(rows: Row[]): Html {
-  return html`<dl class="facts">${rows.map((row) => html`<div><dt>${row.name}</dt><dd>${row.value}</dd></div>`)}</dl>`;
-}
-
 function fieldValue(value: unknown): string {
   return typeof value === "string" ? value : JSON.stringify(value);
 }
 
 /** Custom field values with their labels; a value is outside text when its key is listed in `outside`. */
-function customRows(fields: Record<string, unknown>, labels: Map<string, string>, outside: Set<string>): Row[] {
+function customRows(fields: Record<string, unknown>, labels: Map<string, string>, outside: Set<string>): Pair[] {
   return Object.entries(fields).map(([key, value]) => ({
     name: labels.get(key) ?? key,
     value: labelled(fieldValue(value), outside.has(key) || outside.has(`fields.${key}`)),
@@ -42,89 +36,96 @@ function customRows(fields: Record<string, unknown>, labels: Map<string, string>
 function contactSection(brief: DealBrief, labels: Map<string, string>): Html {
   const { contact } = brief;
   const outside = new Set(contact.untrusted_fields);
-  const text = (name: string, key: string, value: string | null): Row[] =>
-    value === null || value === "" ? [] : [{ name, value: labelled(value, outside.has(key)) }];
-  const rows = [
-    ...text("Name", "name", contact.name),
-    ...text("Email", "email", contact.email),
-    ...text("Phone", "phone", contact.phone),
-    ...text("Business", "business", contact.business),
-    ...text("Source", "source", contact.source),
-    ...text("Notes", "notes", contact.notes),
-    ...customRows(contact.fields, labels, outside),
-  ];
-  return html`<section aria-labelledby="contact-heading">
-<h2 id="contact-heading">Contact</h2>
-${facts(rows)}
+  const text = (name: string, key: string, value: string | null): Pair | null =>
+    value === null || value === "" ? null : { name, value: labelled(value, outside.has(key)) };
+  return section(
+    "contact-heading",
+    "Contact",
+    html`<div class="card">
+${pairs([
+  text("Name", "name", contact.name),
+  text("Email", "email", contact.email),
+  text("Phone", "phone", contact.phone),
+  text("Business", "business", contact.business),
+  text("Source", "source", contact.source),
+  text("Notes", "notes", contact.notes),
+  ...customRows(contact.fields, labels, outside),
+])}
 ${contact.archived ? html`<p class="note">This contact is archived.</p>` : ""}
-</section>`;
+</div>`,
+  );
 }
 
 function dealSection(brief: DealBrief, labels: Map<string, string>, tz: string): Html {
   const { deal, stage } = brief;
-  const rows: Row[] = [
-    { name: "Stage", value: stage.label },
-    { name: "Status", value: STATUS[deal.status] },
-    { name: "Value", value: deal.value === null ? "Not set" : formatNumber(deal.value) },
-    { name: "In this stage since", value: when(deal.stageEnteredAt, formatLocal(deal.stageEnteredAt, tz)) },
-    {
-      name: "Last contact",
-      value: deal.lastActivityAt === null ? "None logged yet" : when(deal.lastActivityAt, formatLocal(deal.lastActivityAt, tz)),
-    },
-    { name: "Added", value: when(deal.createdAt, formatLocal(deal.createdAt, tz)) },
-    ...customRows(deal.fields, labels, new Set()),
-  ];
-  return html`<section aria-labelledby="deal-heading">
-<h2 id="deal-heading">Deal</h2>
-${facts(rows)}
+  return section(
+    "deal-heading",
+    "Deal",
+    html`<div class="card">
+${pairs([
+  { name: "Stage", value: stage.label },
+  { name: "Status", value: STATUS[deal.status] },
+  { name: "Value", value: deal.value === null ? "Not set" : formatNumber(deal.value) },
+  { name: "In this stage since", value: when(deal.stageEnteredAt, formatLocal(deal.stageEnteredAt, tz)) },
+  {
+    name: "Last contact",
+    value: deal.lastActivityAt === null ? "None logged yet" : when(deal.lastActivityAt, formatLocal(deal.lastActivityAt, tz)),
+  },
+  { name: "Added", value: when(deal.createdAt, formatLocal(deal.createdAt, tz)) },
+  ...customRows(deal.fields, labels, new Set()),
+])}
 ${deal.archived ? html`<p class="note">This deal is archived.</p>` : ""}
-</section>`;
+</div>`,
+  );
 }
 
 function nextSection(brief: DealBrief): Html {
   const { next, deal } = brief;
   const body =
     next.step === null && next.at === null
-      ? empty("No next step set.")
-      : html`<p class="item-title">${next.step ?? "No step written down"}</p>
-${meta([
+      ? empty("No next step set.", "Ask your AI app to set one, with a date if you have one.")
+      : html`<div class="card">
+<p class="card-title">${next.step ?? "No step written down"}</p>
+${pairs([
   next.at !== null &&
-    next.atLocal !== null &&
-    fact("Due", html`${when(next.at, next.atLocal)}${deal.overdue ? html` <span class="flag">Overdue</span>` : ""}`),
-])}`;
-  return html`<section aria-labelledby="next-heading">
-<h2 id="next-heading">Next step</h2>
-${body}
-</section>`;
+    next.atLocal !== null && {
+      name: "Due",
+      value: html`${when(next.at, next.atLocal)}${deal.overdue ? html` ${tag("Overdue", true)}` : ""}`,
+    },
+])}
+</div>`;
+  return section("next-heading", "Next step", body);
 }
 
-function taskItem(task: TaskItem, now: Date, tz: string): Html {
+function taskCard(task: TaskItem, now: Date, tz: string): Html {
   const snoozed = task.snoozedUntil !== null && task.snoozedUntil > now.toISOString() ? task.snoozedUntil : null;
-  return html`<li>
-<p class="item-title">${labelled(task.title, task.untrusted_fields.includes("title"))}</p>
-${meta([
-  fact("Due", task.dueAt !== null && task.dueAtLocal !== null ? when(task.dueAt, task.dueAtLocal) : "No due date"),
-  snoozed !== null && fact("Snoozed until", when(snoozed, formatLocal(snoozed, tz))),
-  task.source !== "owner" && fact("Added by", `rule ${task.source}`),
+  return html`<li class="card">
+<div class="card-head">
+<h3 class="card-title">${labelled(task.title, task.untrusted_fields.includes("title"))}</h3>
+${snoozed !== null ? tag("Snoozed") : ""}
+</div>
+${pairs([
+  { name: "Due", value: task.dueAt !== null && task.dueAtLocal !== null ? when(task.dueAt, task.dueAtLocal) : "No due date" },
+  snoozed !== null && { name: "Snoozed until", value: when(snoozed, formatLocal(snoozed, tz)) },
+  task.source !== "owner" && { name: "Added by", value: `rule ${task.source}` },
 ])}
 </li>`;
 }
 
 function tasksSection(brief: DealBrief, now: Date, tz: string): Html {
-  return html`<section aria-labelledby="tasks-heading">
-<h2 id="tasks-heading">Open tasks</h2>
-${
-  brief.openTasks.length === 0
-    ? empty("No open tasks.")
-    : html`<ul class="items">${brief.openTasks.map((task) => taskItem(task, now, tz))}</ul>`
-}
-</section>`;
+  return section(
+    "tasks-heading",
+    "Open tasks",
+    brief.openTasks.length === 0
+      ? empty("No open tasks.")
+      : html`<ul class="cards cards-single">${brief.openTasks.map((task) => taskCard(task, now, tz))}</ul>`,
+  );
 }
 
 function timelineItem(item: TimelineItem): Html {
   return html`<li>
-${meta([fact("When", when(item.occurredAt, item.occurredAtLocal)), fact("Type", ACTIVITY[item.type]), fact("Logged by", ACTOR[item.actor])])}
-<p class="item-title">${labelled(item.summary, item.untrusted_fields.includes("summary"))}</p>
+<p class="row-head">${tag(ACTIVITY[item.type])} ${when(item.occurredAt, item.occurredAtLocal)} <span class="row-by">Logged by ${ACTOR[item.actor]}</span></p>
+<p class="row-text">${labelled(item.summary, item.untrusted_fields.includes("summary"))}</p>
 ${
   item.untrusted_text === null
     ? ""
@@ -134,14 +135,14 @@ ${
 }
 
 function timelineSection(brief: DealBrief): Html {
-  return html`<section aria-labelledby="timeline-heading">
-<h2 id="timeline-heading">Timeline</h2>
-${
-  brief.timeline.length === 0
-    ? empty("Nothing logged yet.")
-    : html`<p class="section-note">Newest first.</p><ol class="items timeline">${brief.timeline.map(timelineItem)}</ol>`
-}
-</section>`;
+  return section(
+    "timeline-heading",
+    "Timeline",
+    brief.timeline.length === 0
+      ? empty("Nothing logged yet.", "Calls, emails and notes you log through your AI app show up here.")
+      : html`<p class="section-note">Newest first.</p>
+<ol class="panel rows timeline">${brief.timeline.map(timelineItem)}</ol>`,
+  );
 }
 
 function hasOutsideText(brief: DealBrief): boolean {
@@ -154,7 +155,7 @@ function hasOutsideText(brief: DealBrief): boolean {
 }
 
 /** The pre-call view, or null when there is no deal with this id (the caller answers with the 404 page). */
-export async function dealPage(db: Db, id: string, now: Date): Promise<string | null> {
+export async function dealPage(db: Db, id: string, now: Date, look: Look): Promise<string | null> {
   if ((await getDeal(db, id)) === null) return null;
   const tz = await ownerTimezone(db);
   const brief = await getDealBrief(db, id, tz, now);
@@ -169,11 +170,13 @@ export async function dealPage(db: Db, id: string, now: Date): Promise<string | 
     ? html`<p class="note">Text marked ${OUTSIDE_LABEL} came from a website form or an import, not from you or your AI app. It is shown exactly as received.</p>`
     : "";
   return renderPage({
-    title: `${name} · Pipeline`,
+    title: name,
     description: `Before the call: contact, next step, open tasks and timeline for ${name}.`,
-    body: html`<p class="back"><a href="/">Back to the board</a></p>
+    current: `/deals/${brief.deal.id}`,
+    look,
+    body: html`<p class="back"><a href="/pipeline">Back to the pipeline</a></p>
 <h1>${labelled(brief.deal.title, titleOutside)}</h1>
-<p class="lede">${brief.stage.label}, ${STATUS[brief.deal.status].toLowerCase()}.</p>
+<p class="lede deal-status">${tag(brief.stage.label)} <span>${STATUS[brief.deal.status]}</span></p>
 ${note}
 <div class="deal-columns">
 <div>

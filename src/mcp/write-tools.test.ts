@@ -250,6 +250,8 @@ test("settings tools: get shows the owner emails, update changes the rest and re
     briefEmail: null,
     briefEnabled: false,
     ownerEmails: ["owner@example.com"],
+    businessName: null,
+    accentColor: null,
     lastBriefAt: "2026-11-18T17:30:00.000Z",
     lastBriefSentAt: null,
   });
@@ -260,12 +262,28 @@ test("settings tools: get shows the owner emails, update changes the rest and re
   assert.match(await fails(c, "update_settings", { timezone: "Mars/Base" }), /isn't a timezone I know/);
   assert.match(await fails(c, "update_settings", { briefHour: 25 }), /"briefHour" must be at most 23/);
   const refused = await fails(c, "update_settings", { ownerEmails: ["intruder@example.com"] });
-  assert.match(refused, /Unknown field "ownerEmails"\. Use only: timezone, briefHour, briefEmail, briefEnabled/);
+  assert.match(refused, /Unknown field "ownerEmails"\. Use only: timezone, briefHour, briefEmail, briefEnabled, businessName, accentColor/);
   assert.deepEqual(dataOf<{ ownerEmails: string[] }>(await ok(c, "get_settings")).ownerEmails, ["owner@example.com"]);
   const cleared = await ok(c, "update_settings", { briefEmail: null });
   assert.match(cleared.headline, /brief email cleared/);
   const undone = await ok(c, "undo_change", { changeId: dataOf<{ changeId: string }>(cleared).changeId });
   assert.match(undone.headline, /^Undid chg_[a-z0-9]{12}: Put back the earlier brief email on the settings/);
+});
+
+test("update_settings sets the business name and accent colour, get_settings shows them, and undo puts them back", async () => {
+  const { c } = await setup();
+  const changed = await ok(c, "update_settings", { businessName: "Fernwood Engineering", accentColor: "#1E4A3D" });
+  assert.match(changed.headline, /^Updated settings: business name to "Fernwood Engineering" and accent colour to #1e4a3d \(change chg_[a-z0-9]{12}\)$/);
+  const shown = dataOf<{ businessName: string | null; accentColor: string | null }>(await ok(c, "get_settings"));
+  assert.deepEqual([shown.businessName, shown.accentColor], ["Fernwood Engineering", "#1e4a3d"]);
+
+  assert.match(await fails(c, "update_settings", { accentColor: "#d0e8dc" }), /too light to use on the board.*Pick a darker colour\./);
+  assert.match(await fails(c, "update_settings", { accentColor: "blue" }), /^That isn't a colour I can use: give it as #rrggbb, for example #2b6455\.$/);
+  assert.match(await fails(c, "update_settings", { businessName: "x".repeat(61) }), /at most 60 characters/);
+
+  await ok(c, "undo_change", { changeId: dataOf<{ changeId: string }>(changed).changeId });
+  const after = dataOf<{ businessName: string | null; accentColor: string | null }>(await ok(c, "get_settings"));
+  assert.deepEqual([after.businessName, after.accentColor], [null, null]);
 });
 
 test("update_settings accepts a brief email from the OWNER_EMAILS var too", async () => {

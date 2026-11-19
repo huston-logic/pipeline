@@ -3,6 +3,7 @@
 // that talks the AI into a new address can redirect the brief (decision 0005, addendum).
 import type { Db, SettingsRow } from "../db/db.ts";
 import { getSettings as getSettingsRow } from "../db/queries.ts";
+import { checkAccent } from "./accent.ts";
 import { type ChangeResult, commitChange, type Ctx, updatedRow } from "./change.ts";
 import { joinAnd } from "./describe.ts";
 import { UserError } from "./errors.ts";
@@ -15,6 +16,10 @@ export interface SettingsView {
   briefEmail: string | null;
   briefEnabled: boolean;
   ownerEmails: string[];
+  /** The board's app bar and page titles show it; null shows "Pipeline". */
+  businessName: string | null;
+  /** The board's accent colour, "#rrggbb"; null uses the default green. */
+  accentColor: string | null;
   /** When the latest brief was composed (the briefs log), or null before the first one. */
   lastBriefAt: string | null;
   /** When a brief last went out by email, or null when none has. */
@@ -29,6 +34,10 @@ export interface SettingsPatch {
   /** null clears it. */
   briefEmail?: string | null;
   briefEnabled?: boolean;
+  /** 1 to 60 characters on one line; null (or blank) clears it. */
+  businessName?: string | null;
+  /** "#rrggbb", dark enough for white text and for text on the page (src/services/accent.ts); null clears it. */
+  accentColor?: string | null;
 }
 
 export interface SettingsOptions {
@@ -46,6 +55,8 @@ export async function getSettings(db: Db): Promise<SettingsView> {
     briefEmail: row.brief_email,
     briefEnabled: row.brief_enabled === 1,
     ownerEmails: parseStringArray(row.owner_emails),
+    businessName: row.business_name,
+    accentColor: row.accent_color,
     lastBriefAt: latest?.composed_at ?? null,
     lastBriefSentAt: sent?.at ?? null,
   };
@@ -64,6 +75,27 @@ function checkTimezone(input: string): string {
 }
 
 const lower = (email: string) => email.trim().toLowerCase();
+
+const MAX_BUSINESS_NAME = 60;
+
+/** The trimmed name, null to clear it, or a UserError. */
+function checkBusinessName(input: string | null): string | null {
+  const name = clean(input);
+  if (name === null) return null;
+  // Controls (C0 and C1), format characters (bidi overrides, zero-width joiners) and line or paragraph separators.
+  if (/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u.test(name)) {
+    throw new UserError(
+      "A business name must be one line of plain text, without line breaks, tabs or invisible formatting characters.",
+    );
+  }
+  const length = [...name].length;
+  if (length > MAX_BUSINESS_NAME) {
+    throw new UserError(
+      `A business name can be at most ${MAX_BUSINESS_NAME} characters (this one has ${length}). Give a shorter name.`,
+    );
+  }
+  return name;
+}
 
 function checkOwnerEmail(email: string, owners: string[]): void {
   if (owners.includes(lower(email))) return;
@@ -109,6 +141,20 @@ export async function updateSettings(ctx: Ctx, patch: SettingsPatch, options: Se
   if (patch.briefEnabled !== undefined && (patch.briefEnabled ? 1 : 0) !== before.brief_enabled) {
     set.brief_enabled = patch.briefEnabled ? 1 : 0;
     parts.push(`the daily brief ${patch.briefEnabled ? "on" : "off"}`);
+  }
+  if (patch.businessName !== undefined) {
+    const name = checkBusinessName(patch.businessName);
+    if (name !== before.business_name) {
+      set.business_name = name;
+      parts.push(name === null ? "business name cleared" : `business name to "${name}"`);
+    }
+  }
+  if (patch.accentColor !== undefined) {
+    const accent = patch.accentColor === null ? null : checkAccent(patch.accentColor);
+    if (accent !== before.accent_color) {
+      set.accent_color = accent;
+      parts.push(accent === null ? "accent colour cleared" : `accent colour to ${accent}`);
+    }
   }
 
   if (parts.length === 0) {

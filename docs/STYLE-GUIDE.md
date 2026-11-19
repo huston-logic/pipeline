@@ -1,46 +1,298 @@
-# [[CLIENT_NAME]]: Design System (style guide)
+# Pipeline board: Design System (style guide)
 
-> Template skeleton. Fill every `[[placeholder]]` per client. The `human-touch-design` skill, the `scan-src` hook and
-> the code comments read this file by section number, so keep the headings and numbers. Version: [[VERSION]].
+> The design system for the board every client copy shows. The `human-touch-design` skill, the `scan-src` hook and
+> the code comments read this file by section number, so keep the headings and numbers. Version: 1 (run 2, task R1,
+> 2026-11-18; decision 0015).
 
 ## 1. Direction
-[[DIRECTION: what this design replaces, the feeling, what it is not]]
+
+The board is the owner's daily screen and the demo of the product: a small-business owner opens it on a phone between
+jobs, often outside, and must see in a few seconds what is due, who is waiting and what changed. It should look like
+a finished, calm tool, not a developer page: clear type, generous spacing, records on cards, friendly empty states.
+
+It adapts **Huston Logic v3** (`huston-tech-site/docs/STYLE-GUIDE.md`, the website's guide) to an app. Kept from v3:
+the palette and its contrast table (§2), the radius scale and the green-tinted shadows (§4), the rust focus ring and
+the slow underline (§7), sentence-case labels, and the banned list (§13). Departures, stated plainly:
+
+- **System fonts only.** AGENTS.md wins over v3's Outfit, Inter and Newsreader: no web fonts. Headings ask for a
+  rounded system face first (`ui-rounded`, then `system-ui`), so Safari and Apple devices get a softer heading; other
+  browsers get the plain system face. There is no second voice (no italic serif line).
+- **No hero, doors, arc, ring, card stack or tilt.** They are website-only signature elements (v3 §5, §6, §7.7, §7.8).
+  The board never uses the Huston Logic mark: each copy belongs to its owner.
+- **Cards are allowed for records.** A deal, a contact, a task and a rule are "objects you could hold" in v3's terms
+  (v3 §4), so each gets a card. Lists of lines (the brief, the change log, a timeline) stay unboxed rows on one panel,
+  separated by dividers.
+- **One subtle glow at the top of the page** (v3's `glow-green`, small and faint), behind the app bar. No other glows.
+- **The accent comes from the settings.** v3's green is the default `--accent`; the owner can set another (§2).
+
+It is not a marketing page, a dashboard of big numbers, or a dark "pro tool".
 
 ## 2. Color
-[[PALETTE: every token name, hex value and use; AA contrast pairs checked]]
+
+All colors are the `:root` tokens in `public/board.css`; nothing else in the repo names a color. Values are v3's.
+
+| Token | Hex | Use |
+|---|---|---|
+| `--silver` | `#F3F5F4` | Page background |
+| `--silver-2` | `#E8EEEA` | Quiet panels: the outside-text block, the footer |
+| `--white` | `#FFFFFF` | Cards, panels, the app bar, the tab bar, the side bar |
+| `--ink` | `#29332D` | All body and heading text |
+| `--ink-2` | `#4A5750` | Secondary text: fact labels, dates, captions, inactive tabs |
+| `--green` | `#2B6455` | The default accent |
+| `--green-deep` | `#1E4A3D` | Not used by the board yet (kept for the token map) |
+| `--green-edge` | `#4E9A7C` | Decorative only, never text |
+| `--tint` | `#E6F1EB` | Tag fills (a stage name, "Active"); the note panel |
+| `--glow` | `#B4DEC8` | The one glow at the top of the page, inside a radial gradient only |
+| `--mint` | `#CDE6D8` | Text selection |
+| `--rust` | `#994D34` | Focus ring, slow underline, "Overdue", "Paused", "Undone", the "From outside" label |
+| `--line` | `#D3DAD6` | Decorative borders only (never the only edge of a control) |
+
+**The accent.** `--accent` is what makes a copy feel like the owner's: the current tab, primary buttons, card-title
+links and standalone links. It defaults to `--green`. The owner sets another with `update_settings` (`accentColor`,
+`#rrggbb`); the Worker serves it as `/theme.css` (`:root{--accent:#…}`), linked after `board.css` (decision 0015).
+A colour is refused unless **white text on it, it as text on white, on `--silver` and on the darkest point of the glow
+(`--glow-soft` over silver, `#d3e9de`) all reach 4.5:1** (`src/services/accent.ts`); the message says to pick a
+darker colour. Derived tokens: `--accent-tint` (12% accent on
+white: the current-tab pill and the side bar's current row) and `--on-accent` (white, text on accent). Accent text is
+only ever placed on white or silver, never on `--accent-tint`, so the 4.5:1 rule holds for every accent; text on the
+tint is `--ink`.
+
+Translucent edges and shadows are tokens too: `--edge` (card border, ink at 10%), `--divider` (ink at 12%),
+`--underline` (the permanent link underline, ink at 35%), `--glow-soft`, `--glow-fade` and `--glow-none` (the stops
+of the one glow: v3's `glow-green` at lower strength, 30 × 24rem on phones, 44 × 30rem wide, top right), and the
+shadows in §4.
+
+**Contrast (WCAG 2.2, computed, from v3):**
+
+| Pair | Ratio | Passes for |
+|---|---|---|
+| `ink` on `silver` / `white` / `silver-2` / `tint` | 11.9 / 13.1 / 11.1 / 11.3 | All text |
+| `ink-2` on `white` / `silver` / `silver-2` | 7.6 / 6.9 / 6.4 | All text |
+| `green` (default accent) on `white` / `silver` / `tint` | 6.9 / 6.3 / 5.9 | All text |
+| white on `green` | 6.9 | All text (primary button) |
+| `green` on the glow's centre (`#d3e9de`) | 5.4 | All text |
+| any accent the settings accept, on `white` / `silver` / the glow's centre, and white on it | 4.5 or more | All text (checked on input and again in `/theme.css`) |
+| `rust` on `white` / `silver` / `tint` / `silver-2` | 6.1 / 5.5 / 5.2 / 5.2 | All text |
+| `rust` focus ring on `silver` / `white` | 5.5 / 6.1 | Non-text 3:1 |
+| `line` on `silver` | 1.3 | Decorative only |
 
 ## 3. Typography
-[[TYPE: fonts (loaded through next/font only), scale, weights, line heights]]
+
+System fonts only, no font files (AGENTS.md).
+
+- `--font-text`: `system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif` for everything
+  except headings.
+- `--font-display`: `ui-rounded, "SF Pro Rounded", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif` for
+  headings, the business name and card titles.
+
+| Element | Size (phone → wide) | Weight | Line height | Tracking |
+|---|---|---|---|---|
+| H1 (page title) | 30 → 38px (`clamp`) | 700 | 1.1 | −0.025em |
+| H2 (section) | 21 → 23px | 700 | 1.2 | −0.015em |
+| Card title | 18px | 600 | 1.3 | −0.005em |
+| Business name (app bar, side bar) | 18px | 700 | 1.2 | −0.01em |
+| Body, fact values | 17px | 400 | 1.55 | 0 |
+| Lede under the H1 | 18px, `ink-2` | 400 | 1.5 | 0 |
+| Fact labels, dates, captions | 15px, `ink-2` | 500 | 1.45 | 0 |
+| Tab label (phone) | 13px | 600 | 1.2 | 0 |
+| Tag, the "From outside" label | 14px | 600 | 1.3 | 0 |
+
+Body text is never under 17px, and secondary text never under 15px except the tab labels, which sit under an icon.
+Measure: prose at most 40rem (about 70 characters). Sentence case everywhere: no `text-transform`, no letter-spaced
+caps, no monospace. Numbers in counts and values use tabular figures.
 
 ## 4. Space, shape, depth, grid
-[[SPACING_SHAPE_DEPTH_GRID: container width, gutters, radii, shadows]]
+
+**Spacing scale (px):** 4 · 8 · 12 · 16 · 20 · 24 · 32 · 40 · 48 · 64. Phone gutters 16px; wide 32 to 40px.
+
+**Grid:** phone, one column; wide (60rem and up), a 16rem side bar and the content column (at most 72rem). Card
+lists become an auto-filling grid (`minmax(17rem, 1fr)`) from 40rem up.
+
+**Radius** (v3's scale):
+
+| Token | Value | Use |
+|---|---|---|
+| `--r-field` | 10px | Small boxes: the monogram tile, the download rows' icon |
+| `--r-btn` | 12px | Buttons, nav rows, the tab pill |
+| `--r-card` | 14px | Cards and panels |
+| `--r-pill` | 999px | Tags, the "From outside" label, counts |
+
+**Shadows** are green-tinted (`rgba(31,61,49,…)`), never grey:
+
+| Token | Use |
+|---|---|
+| `--shadow-card` | Cards and panels: a 1px contact shadow plus a soft drop (lighter than v3's hero card, because a board shows many cards at once) |
+| `--shadow-bar` | The phone tab bar, lifting it off the content |
+
+**Cards vs. no cards.** A card is a record: a deal, a task, a contact, a rule, a "More" destination. Lines of a
+document (the brief, the change log, a timeline, the download list) sit as rows on one white panel with dividers.
+Facts are label/value pairs (`dl`): one grid per list, labels in `ink-2` in a column as wide as the longest label,
+values beside them.
 
 ## 5. Layout: the Home first screen
-[[FIRST_SCREEN: measured layout at 1440 × 900 and 390 × 844]]
+
+The home page is **Today** (`/`). Measured at 375 × 812 and 1280 × 800 (`npm run screenshots`).
+
+```
+Phone (375)                          Wide (1280)
+┌ app bar ───────────────────────┐   ┌ side bar ───┬ content ─────────────────────────────────┐
+│ [F] Fernwood Engineering       │   │ [F] Fernwood│ Today  Wednesday Nov 18                  │
+├────────────────────────────────┤   │             │ summary sentence                         │
+│ Today  Wednesday Nov 18        │   │  Today      │ Overdue                  Pipeline        │
+│ summary sentence               │   │  Pipeline   │ ┌ task card ─────────┐   ┌ stage rows ─┐ │
+│ Overdue                        │   │  Contacts   │ └────────────────────┘   └─────────────┘ │
+│ ┌ task card ────────────────┐  │   │  Brief      │ Due today                Latest brief    │
+│ └───────────────────────────┘  │   │  More       │ ┌ task card ─────────┐   ┌ 4 lines ────┐ │
+│ Due today                      │   │    Rules    │ └────────────────────┘   └─────────────┘ │
+│ ┌ task card ────────────────┐  │   │    Changes  │                                          │
+│ Pipeline (stage rows)          │   │    Export   │ footer                                   │
+│ Latest brief                   │   └─────────────┴──────────────────────────────────────────┘
+├────────────────────────────────┤
+│ Today Pipeline Contacts Brief More │  fixed tab bar, safe-area inset below
+└────────────────────────────────┘
+```
+
+Order on Today: the H1 with the owner's date beside it, one summary sentence, Overdue, Due today (or the empty
+state), then Pipeline (one row per open stage with its count, each a link to that stage on `/pipeline`) and Latest
+brief. From 72rem the due cards take the left column (3fr) and Pipeline and Latest brief the right (2fr).
 
 ## 6. Signature elements
-[[SIGNATURE_ELEMENTS: logo mark use, recurring motifs]]
+
+- **The monogram:** the first letter of the business name on an accent tile (white letter), beside the name in the
+  app bar and side bar. It is the only "logo" a copy has; there is no image logo.
+- **The accent** (§2) on the current tab, primary buttons and links: one colour carries the owner's brand.
+- **The "From outside" label:** a rust outline pill with the words, in front of every value that came from a form
+  or an import (decision 0013). Never color alone, never a link's text.
 
 ## 7. Components
-[[COMPONENTS: one subsection per component, with states]]
+
+### 7.1 App bar (phones, under 60rem)
+White, 64px tall, `--shadow-card`'s contact line under it; the monogram (32px, `--r-field`) and the business name
+(default "Pipeline"), linking to Today. It scrolls with the page (not sticky), so the phone keeps its height for
+content.
+
+### 7.2 Tab bar (phones)
+Fixed to the bottom, white, `--shadow-bar`, padded by `env(safe-area-inset-bottom)` (the viewport sets
+`viewport-fit=cover`). Five equal tabs: Today, Pipeline, Contacts, Brief, More. Each tab is a link at least 56px tall:
+a 24px line icon over a 13px label. Current tab: `aria-current="page"` (or `"true"` for a page inside More, or a deal
+inside Pipeline), the icon on a 56 × 30px `--accent-tint` pill and the label in `--accent` at 700. Others: `ink-2`.
+The More tab's link reads "More pages" to assistive technology (a visually hidden word), because "More" alone is not
+descriptive link text. The page reserves the bar's height plus the inset at its bottom, and `scroll-padding-bottom` keeps a focused element
+above the bar (WCAG 2.4.11).
+
+### 7.3 Side bar (60rem and up)
+The same `nav`, laid out as a 16rem white column, sticky, full height: business name at the top, then the five items
+as 44px rows with icon and label, and Rules, Changes and Export indented under More (text only: their icons show on
+the More page). Current row: `--accent-tint` background, `ink` label at 700, icon in `--accent`.
+
+### 7.4 Page head
+H1, then a lede in `ink-2`. A deal page puts a "Back to the pipeline" link above the H1.
+
+### 7.5 Record card (`.card`)
+White, `--r-card`, 1px `--edge` border, `--shadow-card`, padding 16 (20 from 40rem). Title in the display face at
+18px; when it is a link it is in `--accent` with the slow underline on hover and focus. Facts below as a `dl` of
+label/value pairs. A status sits beside the title as a tag. No hover lift, no hover shadow.
+
+### 7.6 Panel (`.panel`)
+A card without a title row, holding rows (brief lines, changes, timeline entries, downloads) split by 1px `--divider`
+lines.
+
+### 7.7 Tags (`.tag`)
+Pill, 14px 600: `ink` on `--tint` for neutral states (a stage, "Active"), rust outline on white for warnings
+("Overdue", "Paused", "Undone"). Words always carry the meaning.
+
+### 7.8 Empty state (`.empty`)
+A quiet white panel (`--white`, `--r-card`, `--edge`, no shadow): one line saying what is missing ("Nothing due today."),
+one line in `ink-2` saying how things get here (by talking to the AI app, by the website form, by a rule). No
+illustration, no button (the board gets edit buttons in later tasks).
+
+### 7.9 Outside text (`.outside`, `.outside-block`)
+The label: a rust outline pill "From outside". The block (a form message): a `--silver-2` panel, `--r-card`, the
+label and "Message as received" on top, then the text as received (`pre-wrap`). No left border.
+
+### 7.10 Buttons and links
+- **Primary button** (`.button`): `--accent` fill, white label, 17px 600, at least 48px tall, padding 0 20px,
+  `--r-btn`, an inline icon before the label when one helps (download). Hover and focus: the slow underline draws on
+  the label. No color change, no scale.
+- **Standalone link:** `--accent`, with the slow underline.
+- **Link in a sentence:** inherits the text color with a permanent 1px `--underline` underline (`.25em` offset); the
+  rust underline draws over it.
+- **The slow underline:** a 1.5px `--rust` background under the text, `background-size` 0 → 100% over 0.5s
+  `cubic-bezier(.2,.7,.2,1)`, drawing left to right; instant under reduced motion.
+- **Focus ring:** 2px solid `--rust`, offset 3px, radius 4px (follows the element's radius on cards and rows).
+  Never removed.
+
+### 7.11 More page rows
+Each destination (Rules, Changes, Export) is one link styled as a card: icon tile, label in the display face, a
+one-line description in `ink-2`. The whole card is the link.
+
+### 7.12 Footer
+`ink-2`, 15px, one line: "Changes are made by talking to your AI app." (true until the board can edit, task R3).
 
 ## 8. Line art and icons
-[[ICONS]]
+
+Inline SVG in `src/board/icons.ts`, 24 × 24 viewBox, `stroke: currentColor`, stroke 1.75, round caps and joins, no
+fill, `aria-hidden="true"` (the text label always sits beside them). The set: today (a calendar with a dot),
+pipeline (three columns of falling height), contacts (two people), brief (a page with lines), more (three dots),
+rules (two sliders), changes (a clock with a turning arrow), export (an arrow into a tray). Nothing else: no stock
+icon packs, emoji or decorative icons.
 
 ## 9. Motion
-[[MOTION: one focal animation per page, timing tokens, reduced-motion behavior]]
+
+Almost none. The only motion is the slow underline on links and buttons (0.5s) answering a hover or focus. No page
+load animation, no hover lift on cards, nothing loops, nothing is tied to scrolling. Under
+`prefers-reduced-motion: reduce` every transition is off and the end state shows at once. Only `background-size`
+transitions.
 
 ## 10. Responsive
-[[RESPONSIVE: breakpoints and what changes]]
+
+| Width | Behavior |
+|---|---|
+| under 40rem (640px) | One column; app bar on top, tab bar at the bottom; facts stacked |
+| 40rem to 60rem | Card lists in a grid of two |
+| 60rem (960px) and up | Side bar on the left instead of the app bar and tab bar |
+| 72rem (1152px) and up | Today in two columns (due cards; pipeline and brief); the deal page in two columns (contact and deal; next step, tasks and timeline) |
+
+Checked at 375 and 1280px wide with no horizontal scroll (`npm run screenshots`). Long values wrap anywhere
+(`overflow-wrap: anywhere` on `main`).
 
 ## 11. Accessibility (WCAG 2.2 AA; the `a11y` check)
-[[ACCESSIBILITY]]
+
+- Contrast: §2; the accent rule makes every accepted accent pass for text.
+- One `<h1>` per page from the page body, logical heading order, landmarks (`header`, one `nav` with a label,
+  `main#main`, `footer`), a skip link first, `lang="en"`, a meta description on every page.
+- Every tap target at least 44 × 44 (tabs 56 tall). The rust focus ring on everything focusable.
+- Icons are `aria-hidden`; every link has its text. The current page is `aria-current="page"`.
+- The fixed tab bar never hides a focused element (`scroll-padding-bottom`).
+- Outside text is labelled with words, never color alone.
+- `npm run screenshots` runs axe with the a11y check's tags on every route at both widths.
 
 ## 12. Performance budget (the `lighthouse` check: 90 or higher on mobile, all four categories)
-[[PERFORMANCE]]
+
+- No font files, no images, no JavaScript. Two small stylesheets (`/board.css` static, `/theme.css` from the Worker).
+- The glow is one CSS radial gradient; no `filter`, no `backdrop-filter`.
+- Icons are inline SVG.
 
 ## 13. Banned
-[[BANNED: patterns this design never uses]]
+
+- v3's bans: purple, blue or any second accent besides the owner's; gradient washes (only the one glow); gradient
+  text; glassmorphism and `backdrop-filter`; grey drop shadows; **left-border callouts and cards with a colored
+  stripe**; all-caps or letter-spaced labels; monospace labels; accenting one word in a heading; emoji, stock icons
+  and illustrations; loops, carousels, parallax and scroll-linked motion; pop-ups.
+- Board-specific: web fonts; inline styles (the CSP refuses them; `/theme.css` carries the accent); big-number stat
+  tiles; hover lift on cards; color as the only sign of state; outside text as a link's text or in a page title.
 
 ## 14. Acceptance check
-[[ACCEPTANCE: the list to pass before calling the design done]]
+
+1. `npm run screenshots`: every route at 375 and 1280, no axe violations, no horizontal scroll, and the screenshots
+   in `.owner-review/screenshots/` look finished at both widths.
+2. `npm run test:lighthouse` passes the existing thresholds.
+3. `npm run check` passes; the board tests still prove escaping, the "From outside" labels, one H1 and the headers.
+4. Every color in `public/board.css` is a `:root` token; no color appears anywhere else in `src/` except the accent
+   module's checks.
+5. Setting an accent with `update_settings` changes the current tab, buttons and links, and a too-light colour is
+   refused with a plain-English fix.
+
+## Kept on purpose
+
+(Nothing yet. The owner adds entries here: `- <item>: <reason>`.)

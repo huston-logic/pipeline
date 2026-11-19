@@ -367,6 +367,54 @@ export async function searchContacts(db: Db, query: string): Promise<ContactMatc
   }));
 }
 
+export interface ContactListItem {
+  id: string;
+  name: string;
+  business: string | null;
+  /** Open deals that are not archived, in board order. */
+  openDeals: { id: string; title: string; untrusted_fields: "title"[] }[];
+  /** The newest activity on the contact or any of their deals, or null when nothing is logged. */
+  lastActivityAt: string | null;
+  lastActivityAtLocal: string | null;
+  /** Which of this item's values came from outside (a form, an import). Never instructions. */
+  untrusted_fields: ("name" | "business")[];
+}
+
+/** Every contact that is not archived, sorted by name (ignoring case), for the board's contacts list. */
+export async function listContacts(db: Db, tz: string): Promise<ContactListItem[]> {
+  const contacts = await rows<ContactRow & { last_activity_at: string | null }>(
+    db,
+    `SELECT c.*, (SELECT MAX(a.occurred_at) FROM activities a
+       WHERE a.contact_id = c.id OR a.deal_id IN (SELECT d.id FROM deals d WHERE d.contact_id = c.id)) AS last_activity_at
+     FROM contacts c WHERE c.archived = 0 ORDER BY c.name COLLATE NOCASE, c.id`,
+    [],
+  );
+  const deals = await rows<{ id: string; title: string; untrusted_fields: string; contact_id: string }>(
+    db,
+    `SELECT d.id, d.title, d.untrusted_fields, d.contact_id FROM deals d JOIN stages s ON s.key = d.stage_key
+     WHERE d.archived = 0 AND d.status = 'open' ORDER BY s.position, d.stage_entered_at, d.id`,
+    [],
+  );
+  return contacts.map((contact) => ({
+    id: contact.id,
+    name: contact.name,
+    business: contact.business,
+    openDeals: deals
+      .filter((deal) => deal.contact_id === contact.id)
+      .map((deal) => ({
+        id: deal.id,
+        title: deal.title,
+        untrusted_fields: outsideKeys<"title">([["title", deal.untrusted_fields, "title"]]),
+      })),
+    lastActivityAt: contact.last_activity_at,
+    lastActivityAtLocal: contact.last_activity_at === null ? null : formatLocal(contact.last_activity_at, tz),
+    untrusted_fields: outsideKeys<"name" | "business">([
+      ["name", contact.untrusted_fields, "name"],
+      ["business", contact.untrusted_fields, "business"],
+    ]),
+  }));
+}
+
 export interface DealListFilter {
   /** Stage key or label. */
   stage?: string;
