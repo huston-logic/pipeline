@@ -136,6 +136,8 @@ are still open and unmerged, update it only in the first PR and one closing PR s
 - `npm run copies:provision`, `copies:update`, `copies:export` and `import:contacts` reach real client
   accounts: only I run them for real. You may run them only with `--dry-run`, with `--local`, or with
   `PIPELINE_WRANGLER` pointing at `tests/helpers/wrangler-stub.mjs`.
+- You may run `import:contacts` only with `--local` or the stub: even its default dry run reads the copy's
+  remote database.
 
 ## Command style (keeps permission prompts down)
 - One plain command per Bash call. No shell variables, `$(...)`, `for` loops, functions or

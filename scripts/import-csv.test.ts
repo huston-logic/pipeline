@@ -119,6 +119,9 @@ test("nothing to import writes nothing, and bad arguments say how to fix them", 
   assert.ok(h.lines.some((line) => line === "Nothing to import: no new contacts and no details to fill in."));
 
   assert.throws(() => parseImportArgs(["--copy", "acme"]), /--file/);
+  for (const bad of ["../x", "acme/../../etc", "Acme", ".copies"]) {
+    assert.throws(() => parseImportArgs(["--file", "x.csv", "--copy", bad]), /can't be a copy name/, bad);
+  }
   assert.throws(() => parseImportArgs(["--file", "x.csv"]), /--copy <name> or into the local dev database with --local/);
   assert.throws(() => parseImportArgs(["--file", "x.csv", "--local", "--copy", "acme"]), /--copy <name> or into the local dev database with --local/);
   assert.throws(() => parseImportArgs(["--file", "x.csv", "--local", "--remote"]), /Unknown option/);

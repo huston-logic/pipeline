@@ -9,7 +9,7 @@ import { pathToFileURL } from "node:url";
 import type { ContactRow } from "../src/db/db.ts";
 import { importChange, renderImport } from "../src/import/change.ts";
 import { type ImportPlan, planImport } from "../src/import/plan.ts";
-import { copyPaths, databaseTarget, makeRunner, query } from "./copies.mjs";
+import { copyNameProblem, copyPaths, databaseTarget, isCopyName, makeRunner, query } from "./copies.mjs";
 import { ROOT, run as defaultRun, type RunOptions, type RunResult } from "./wrangler-run.mjs";
 
 export interface ImportOptions {
@@ -47,6 +47,7 @@ export function parseImportArgs(argv: string[]): ImportOptions {
     } else throw new UsageError(`Unknown option "${arg}". Use --file, --copy or --local, and --apply to write.`);
   }
   if (options.file === undefined) throw new UsageError("Name the CSV file: --file <path>.");
+  if (options.copy !== undefined && !isCopyName(options.copy)) throw new UsageError(copyNameProblem(options.copy));
   if ((options.copy === undefined) === !options.local) {
     throw new UsageError("Import into one copy with --copy <name> or into the local dev database with --local.");
   }

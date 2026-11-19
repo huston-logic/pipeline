@@ -13,7 +13,8 @@ const fakeUuid = (n) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`
 const fakeKvId = (n) => `f${String(n).padStart(31, "0")}`;
 
 /**
- * @param {{ accounts?: { id: string, name: string }[], fail?: string[], tables?: Record<string, object[]> }} [options]
+ * @param {{ accounts?: { id: string, name: string }[], fail?: string[], tables?: Record<string, object[]>,
+ *   declineMigrations?: boolean }} [options]
  *   `fail`: a command whose text contains one of these fails. `tables`: rows `d1 execute` returns per table.
  */
 export function createFakeCloudflare(options = {}) {
@@ -26,6 +27,10 @@ export function createFakeCloudflare(options = {}) {
     secrets: [],
     deployed: [],
     counter: 0,
+    // Databases (config + --preview) whose migrations were applied. `declineMigrations`: the owner answers "no" to
+    // wrangler's confirmation, so the apply exits 0 but applies nothing (what real wrangler does).
+    migrated: [],
+    declineMigrations: options.declineMigrations ?? false,
   };
   return { state, handle: (args) => handle(state, args) };
 }
@@ -42,6 +47,16 @@ function handle(state, args) {
     return json({ loggedIn: true, authType: "OAuth Token", email: "owner@example.com", accounts: state.accounts });
   }
   if (a === "d1" && b === "list") return json(state.d1);
+  if (a === "d1" && b === "migrations") {
+    const database = `${flag(args, "-c")}${args.includes("--preview") ? " --preview" : ""}`;
+    if (c === "apply") {
+      if (!state.declineMigrations && !state.migrated.includes(database)) state.migrated.push(database);
+      return ok(state.declineMigrations ? "? About to apply 1 migration(s). Ok to proceed? › (stub: no)\n" : "✅ Applied (stub)\n");
+    }
+    if (c === "list") {
+      return ok(state.migrated.includes(database) ? "✅ No migrations to apply!\n" : "Migrations to be applied:\n│ 0001_init.sql │\n");
+    }
+  }
   if (a === "d1" && b === "create") {
     state.d1.push({ uuid: fakeUuid(++state.counter), name: c, created_at: "2026-11-18T00:00:00.000Z" });
     return ok(`✅ Successfully created DB '${c}' (stub)\n`);

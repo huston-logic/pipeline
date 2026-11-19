@@ -56,7 +56,8 @@ Then it creates, in the client's account: the production database `pipeline-<nam
 `pipeline-<name>-preview`, and two KV namespaces for sign-in (`pipeline-<name>-oauth` and `-oauth-preview`). It
 writes the copy's config to `.copies/<name>/wrangler.jsonc` (with `copy.json` beside it: what was done, for
 `--resume`), sets up both databases (migrations, default stages and the starter rulebook) and stores the owner emails
-in the production database.
+in both (so you can also sign in to a preview deployment). Wrangler shows the migrations and asks you to confirm
+them: answer yes. If you answer no, provisioning stops there and `--resume` asks again.
 
 Last, it offers to set each secret. For each one, press Enter and wrangler asks for the value; paste it (nobody else
 sees it). Type `s` to skip one; the end of the run lists the commands for the skipped ones. The secrets:

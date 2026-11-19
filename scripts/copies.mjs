@@ -20,6 +20,11 @@ export const SEED_FILE = "seed/defaults.sql";
 export const LOCAL_STATE = ".wrangler/state";
 
 const COPY_NAME = /^[a-z][a-z0-9-]{0,28}[a-z0-9]$/;
+
+/** A copy name is also a folder name under /.copies/, so nothing like "../x" gets through. */
+export const isCopyName = (name) => typeof name === "string" && COPY_NAME.test(name);
+export const copyNameProblem = (name) =>
+  `"${name}" can't be a copy name. Use 2 to 30 lowercase letters, digits and dashes, starting with a letter.`;
 const ACCOUNT_ID = /^[0-9a-f]{32}$/;
 // An apostrophe is fine before the @ (o'brien@example.com); the owners' SQL is escaped (ownerEmailsSql).
 const EMAIL = /^[^\s@,;"]+@[^\s@,;"']+\.[^\s@,;"']+$/;
@@ -39,8 +44,12 @@ export const PROVISION_STEPS = [
   "seed:prod",
   "seed:preview",
   "owners",
+  "owners:preview",
   "secrets",
 ];
+
+/** What `copies:update` needs done before it will touch a copy: everything but the (skippable) secrets. */
+const REQUIRED_FOR_UPDATE = PROVISION_STEPS.filter((step) => step !== "secrets");
 
 class UsageError extends Error {}
 
@@ -79,11 +88,7 @@ export function parseArgs(argv) {
       else options[VALUE_FLAGS[name]] = value;
     } else throw new UsageError(`Unknown option "${arg}". See the top of scripts/copies.mjs for the options.`);
   }
-  if (options.copy !== undefined && !COPY_NAME.test(options.copy)) {
-    throw new UsageError(
-      `"${options.copy}" can't be a copy name. Use 2 to 30 lowercase letters, digits and dashes, starting with a letter.`,
-    );
-  }
+  if (options.copy !== undefined && !isCopyName(options.copy)) throw new UsageError(copyNameProblem(options.copy));
   if (command === "provision" && options.copy === undefined) throw new UsageError("Name the copy: --copy <name>.");
   if (command === "export" && (options.copy === undefined) === !options.local) {
     throw new UsageError("Export one copy with --copy <name>, or the local dev database with --local.");
@@ -309,6 +314,18 @@ function remote(cfg, { preview = false } = {}) {
   return ["--remote", "-c", cfg, ...(preview ? ["--preview"] : [])];
 }
 
+const applyMigrations = (cfg, preview = false) => ["wrangler", "d1", "migrations", "apply", "DB", ...remote(cfg, { preview })];
+const listMigrations = (cfg, preview = false) => ["wrangler", "d1", "migrations", "list", "DB", ...remote(cfg, { preview })];
+
+/**
+ * Whether `wrangler d1 migrations list` says every migration is applied. The apply asks the owner to confirm, and a
+ * "no" still exits 0, so the apply's exit code alone can't tell; anything but wrangler's "No migrations to apply" counts
+ * as pending.
+ */
+export const migrationsAllApplied = (output) => /No migrations to apply/.test(output);
+
+const NOT_APPLIED = "migrations not applied; not deployed";
+
 // ---------------------------------------------------------------------------------------------------------- provision
 
 async function askUntil(deps, question, check) {
@@ -524,15 +541,38 @@ export async function provision(options, deps) {
       writeFileSync(paths.config, text);
     }
   });
-  await step("migrate:prod", () => exec(["wrangler", "d1", "migrations", "apply", "DB", ...remote(cfg)]));
-  await step("migrate:preview", () => exec(["wrangler", "d1", "migrations", "apply", "DB", ...remote(cfg, { preview: true })]));
+  const migrate = (preview) => {
+    exec(applyMigrations(cfg, preview));
+    if (dryRun) return runner.show(listMigrations(cfg, preview));
+    const listed = runner.must(listMigrations(cfg, preview), { capture: true });
+    if (!migrationsAllApplied(`${listed.stdout}\n${listed.stderr}`)) {
+      throw new Error(
+        `The ${preview ? "preview" : "production"} database still has migrations to apply (the apply was declined or ` +
+          "stopped). Run the same command with --resume and confirm them.",
+      );
+    }
+  };
+  await step("migrate:prod", () => migrate(false));
+  await step("migrate:preview", () => migrate(true));
   await step("seed:prod", () => exec(["wrangler", "d1", "execute", "DB", ...remote(cfg), "--file", seed, "--yes"]));
   await step("seed:preview", () =>
     exec(["wrangler", "d1", "execute", "DB", ...remote(cfg, { preview: true }), "--file", seed, "--yes"]),
   );
-  await step("owners", () =>
-    exec(["wrangler", "d1", "execute", "DB", ...remote(cfg), "--command", ownerEmailsSql(state.ownerEmails, now()), "--yes"]),
-  );
+  // The preview database gets the same owners, so a preview deployment can be signed in to.
+  for (const preview of [false, true]) {
+    await step(preview ? "owners:preview" : "owners", () =>
+      exec([
+        "wrangler",
+        "d1",
+        "execute",
+        "DB",
+        ...remote(cfg, { preview }),
+        "--command",
+        ownerEmailsSql(state.ownerEmails, now()),
+        "--yes",
+      ]),
+    );
+  }
   await step("secrets", async () => {
     for (const secret of secretNames(state)) {
       if (state.secrets.set.includes(secret)) continue;
@@ -574,23 +614,25 @@ export async function update(options, deps) {
   const copies = names.map((name) => {
     const state = readCopyState(copiesDir, name);
     if (!state) throw new UsageError(`There's no copy "${name}". The copies are: ${listCopies(copiesDir).join(", ") || "none"}.`);
-    return { name, state, cfg: relative(root, copyPaths(copiesDir, name).config) };
+    const config = copyPaths(copiesDir, name).config;
+    // wrangler deploys to the config's account_id, so that is the account the membership check must use.
+    const configAccount = existsSync(config) ? parseJsonc(readFileSync(config, "utf8")).account_id : undefined;
+    return { name, state, cfg: relative(root, config), accountId: configAccount ?? state.accountId, configAccount };
   });
   const dryRun = Boolean(options.dryRun);
   const show = (cmd) => deps.log(`  $ ${formatCommand(cmd)}`);
   const build = ["npm", "run", "build"];
-  const steps = (copy) => [
-    { what: "migrations", cmd: ["wrangler", "d1", "migrations", "apply", "DB", ...remote(copy.cfg)] },
-    { what: "deploy", cmd: ["wrangler", "deploy", "-c", copy.cfg] },
-  ];
+  const deploy = (copy) => ["wrangler", "deploy", "-c", copy.cfg];
 
   if (dryRun) {
     deps.log("Dry run: nothing runs. An update would run:");
     show(["wrangler", "whoami", "--json"]);
     show(build);
     for (const copy of copies) {
-      deps.log(`- ${copy.name} (account ${copy.state.accountId}; stops here if the login isn't a member)`);
-      for (const { cmd } of steps(copy)) show(cmd);
+      deps.log(`- ${copy.name} (account ${copy.accountId}; stops here if the login isn't a member)`);
+      show(applyMigrations(copy.cfg));
+      deps.log("  $ " + formatCommand(listMigrations(copy.cfg)) + "   (stops here if any migration is still pending)");
+      show(deploy(copy));
     }
     return 0;
   }
@@ -601,18 +643,25 @@ export async function update(options, deps) {
 
   const results = [];
   for (const copy of copies) {
+    const env = { CLOUDFLARE_ACCOUNT_ID: copy.accountId };
     let failure = null;
-    if (!copy.state.done?.includes("config") || !existsSync(join(root, copy.cfg))) {
+    if (!REQUIRED_FOR_UPDATE.every((step) => copy.state.done?.includes(step)) || copy.configAccount === undefined) {
       failure = `not fully provisioned; run npm run copies:provision -- --copy ${copy.name} --resume`;
-    } else if (!accounts.has(copy.state.accountId)) {
-      failure = notMember(copy.state.accountId);
+    } else if (copy.configAccount !== copy.state.accountId) {
+      failure =
+        `its wrangler.jsonc names account ${copy.configAccount} but copy.json names ${copy.state.accountId}; ` +
+        "make them match, then update again";
+    } else if (!accounts.has(copy.accountId)) {
+      failure = notMember(copy.accountId);
     } else {
-      for (const { what, cmd } of steps(copy)) {
-        const result = deps.run(cmd, { env: { CLOUDFLARE_ACCOUNT_ID: copy.state.accountId }, capture: false });
-        if (result.status !== 0) {
-          failure = `${what} failed (exit ${result.status})${what === "migrations" ? "; not deployed" : ""}`;
-          break;
-        }
+      const applied = deps.run(applyMigrations(copy.cfg), { env, capture: false });
+      const listed = applied.status === 0 ? deps.run(listMigrations(copy.cfg), { env, capture: true }) : null;
+      if (applied.status !== 0) failure = `migrations failed (exit ${applied.status}); not deployed`;
+      else if (listed?.status !== 0) failure = `checking the migrations failed (exit ${listed?.status}); not deployed`;
+      else if (!migrationsAllApplied(`${listed.stdout}\n${listed.stderr}`)) failure = NOT_APPLIED;
+      else {
+        const deployed = deps.run(deploy(copy), { env, capture: false });
+        if (deployed.status !== 0) failure = `deploy failed (exit ${deployed.status})`;
       }
     }
     results.push({ name: copy.name, failure });

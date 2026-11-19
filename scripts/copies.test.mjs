@@ -2,7 +2,7 @@
 // command sequences, what lands in the git-ignored copy folder, and nothing ever run for real.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative, resolve } from "node:path";
 import { createFakeCloudflare, STUB_ACCOUNT_ID } from "../tests/helpers/wrangler-stub.mjs";
@@ -99,10 +99,13 @@ test("provision runs the exact commands, in order, all in the client's account",
     ["wrangler", "kv", "namespace", "create", "pipeline-acme-oauth-preview", "--update-config=false"],
     ["wrangler", "kv", "namespace", "list"],
     ["wrangler", "d1", "migrations", "apply", "DB", ...remote],
+    ["wrangler", "d1", "migrations", "list", "DB", ...remote],
     ["wrangler", "d1", "migrations", "apply", "DB", ...remote, "--preview"],
+    ["wrangler", "d1", "migrations", "list", "DB", ...remote, "--preview"],
     ["wrangler", "d1", "execute", "DB", ...remote, "--file", "seed/defaults.sql", "--yes"],
     ["wrangler", "d1", "execute", "DB", ...remote, "--preview", "--file", "seed/defaults.sql", "--yes"],
     ["wrangler", "d1", "execute", "DB", ...remote, "--command", owners, "--yes"],
+    ["wrangler", "d1", "execute", "DB", ...remote, "--preview", "--command", owners, "--yes"],
     ["wrangler", "secret", "put", "ACCESS_CLIENT_ID", "-c", cfg],
     ["wrangler", "secret", "put", "ACCESS_CLIENT_SECRET", "-c", cfg],
     ["wrangler", "secret", "put", "ACCESS_TOKEN_URL", "-c", cfg],
@@ -283,6 +286,7 @@ test("update: whoami, one build, then migrations and deploy per copy; a copy the
   assert.equal(await update(parseArgs(["update"]), h.deps), 1);
   const steps = (name) => [
     ["wrangler", "d1", "migrations", "apply", "DB", "--remote", "-c", h.cfg(name)],
+    ["wrangler", "d1", "migrations", "list", "DB", "--remote", "-c", h.cfg(name)],
     ["wrangler", "deploy", "-c", h.cfg(name)],
   ];
   assert.deepEqual(commands(h.calls), [["wrangler", "whoami", "--json"], ["npm", "run", "build"], ...steps("acme"), ...steps("gamma")]);
@@ -342,6 +346,7 @@ test("an update dry run prints every command and runs nothing", async (t) => {
     "  $ npm run build",
     `- acme (account ${STUB_ACCOUNT_ID}; stops here if the login isn't a member)`,
     `  $ wrangler d1 migrations apply DB --remote -c ${h.cfg("acme")}`,
+    `  $ wrangler d1 migrations list DB --remote -c ${h.cfg("acme")}   (stops here if any migration is still pending)`,
     `  $ wrangler deploy -c ${h.cfg("acme")}`,
   ]);
   const empty = harness(t);
@@ -431,3 +436,59 @@ test("the runner: PIPELINE_WRANGLER points at a stub, output JSON is found after
   assert.equal(formatCommand(["wrangler", "d1", "execute", "--command", "SELECT 'x'"]), `wrangler d1 execute --command 'SELECT '\\''x'\\'''`);
 });
 
+
+test("update: declining wrangler's migration prompt (exit 0, nothing applied) stops that copy before the deploy", async (t) => {
+  const h = harness(t);
+  await provisioned(h, "acme");
+  // A new release: the database has a migration it hasn't applied, and the owner answers "no" to the prompt.
+  h.fake.state.migrated = [];
+  h.fake.state.declineMigrations = true;
+  h.calls.length = 0;
+  h.lines.length = 0;
+  assert.equal(await update(parseArgs(["update"]), h.deps), 1);
+  assert.deepEqual(h.fake.state.deployed, []);
+  assert.ok(!commands(h.calls).some((cmd) => cmd[1] === "deploy"));
+  assert.equal(h.lines[0], "acme: FAILED: migrations not applied; not deployed");
+
+  h.fake.state.declineMigrations = false;
+  assert.equal(await update(parseArgs(["update"]), h.deps), 0);
+  assert.deepEqual(h.fake.state.deployed, [h.cfg("acme")]);
+});
+
+test("provision: a declined migration prompt isn't marked done, so --resume asks again", async (t) => {
+  const h = harness(t, { declineMigrations: true });
+  await assert.rejects(
+    provision(parseArgs(["provision", "--copy", "acme", ...ANSWERS, "--skip-secrets"]), h.deps),
+    /production database still has migrations to apply.*--resume/s,
+  );
+  assert.ok(!readCopyState(h.copiesDir, "acme").done.includes("migrate:prod"));
+  h.fake.state.declineMigrations = false;
+  assert.equal(await provision(parseArgs(["provision", "--copy", "acme", "--resume", "--skip-secrets"]), h.deps), 0);
+  assert.deepEqual(readCopyState(h.copiesDir, "acme").done, PROVISION_STEPS);
+});
+
+test("update checks the account the config deploys to, and refuses a copy whose config and copy.json disagree", async (t) => {
+  const h = harness(t);
+  await provisioned(h, "acme");
+  const { config } = copyPaths(h.copiesDir, "acme");
+  writeFileSync(config, readFileSync(config, "utf8").replace(STUB_ACCOUNT_ID, OTHER_ACCOUNT));
+  h.calls.length = 0;
+  h.lines.length = 0;
+  assert.equal(await update(parseArgs(["update"]), h.deps), 1);
+  assert.match(h.lines[0], new RegExp(`^acme: FAILED: its wrangler.jsonc names account ${OTHER_ACCOUNT} but copy.json names ${STUB_ACCOUNT_ID}`));
+  assert.deepEqual(commands(h.calls), [["wrangler", "whoami", "--json"], ["npm", "run", "build"]]);
+});
+
+test("update refuses a copy with any provisioning step but the secrets still to do", async (t) => {
+  const h = harness(t);
+  await provisioned(h, "acme");
+  const state = readCopyState(h.copiesDir, "acme");
+  writeFileSync(copyPaths(h.copiesDir, "acme").state, JSON.stringify({ ...state, done: state.done.filter((s) => s !== "seed:prod") }));
+  h.lines.length = 0;
+  assert.equal(await update(parseArgs(["update"]), h.deps), 1);
+  assert.match(h.lines[0], /^acme: FAILED: not fully provisioned; run npm run copies:provision -- --copy acme --resume$/);
+
+  writeFileSync(copyPaths(h.copiesDir, "acme").state, JSON.stringify({ ...state, done: state.done.filter((s) => s !== "secrets") }));
+  h.lines.length = 0;
+  assert.equal(await update(parseArgs(["update"]), h.deps), 0, "skipped or unfinished secrets don't block an update");
+});

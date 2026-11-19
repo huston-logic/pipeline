@@ -18,8 +18,10 @@ What it does, in order:
 1. Asks wrangler which accounts your login can use (`wrangler whoami --json`). A copy whose account isn't in that list
    is not touched and is reported as failed ("isn't a member of account ..."): ask that client to invite you again.
 2. Builds once (`npm run build`). If the build fails, nothing is updated.
-3. For each copy: applies any new database migrations to its production database, then deploys the Worker with the
-   copy's own config (`.copies/<name>/wrangler.jsonc`). If the migrations fail, that copy is not deployed.
+3. For each copy: applies any new database migrations to its production database (wrangler lists them and asks you
+   to confirm), checks that none is left pending, then deploys the Worker with the copy's own config
+   (`.copies/<name>/wrangler.jsonc`). If the migrations fail, or you answer no, that copy is not deployed
+   ("migrations not applied; not deployed").
 4. Prints one line per copy, `<name>: updated` or `<name>: FAILED: <why>`, carries on with the next copy, and ends
    with a count. The command exits with an error if any copy failed, so you notice.
 

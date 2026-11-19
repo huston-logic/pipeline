@@ -17,8 +17,8 @@ Updated after every merge, so a fresh chat can pick up where the last one stoppe
 | 7 | M7 daily brief | [#8](https://github.com/huston-logic/pipeline/pull/8) | merged |
 | 8 | M8 `/intake` | [#9](https://github.com/huston-logic/pipeline/pull/9) | merged |
 | 9 | M9 board | [#10](https://github.com/huston-logic/pipeline/pull/10) | merged |
-| 10 | M10 production auth | [#11](https://github.com/huston-logic/pipeline/pull/11) | open, auto-merge queued |
-| 11 | M11 many copies | | built on `feat/many-copies`, PR not opened yet |
+| 10 | M10 production auth | [#11](https://github.com/huston-logic/pipeline/pull/11) | merged |
+| 11 | M11 many copies | [#12](https://github.com/huston-logic/pipeline/pull/12) | open, auto-merge queued |
 | 12 | M12 acceptance | | not started |
 
 ## Decisions
@@ -56,6 +56,12 @@ Files in `docs/decisions/`. Rulings made while running the plan:
   domain must set `MCP_ALLOWED_HOSTNAMES`, or `/mcp` answers 403.
 - The intake rate limit is 30 per minute, because it counts the website server's requests, not visitors'.
 - End-to-end test files run one at a time after a single build (they raced when run in parallel).
+- Copies are updated by one command the owner runs (`npm run copies:update`) with a Cloudflare login that is a member
+  of each client account; no client ids or tokens live in the repo or in GitHub (decision 0007). This repo is not
+  connected to Workers Builds. `/register` and `/authorize` are rate-limited (20 per minute) so anonymous traffic
+  cannot use up the free plan's KV writes.
+- A CSV import is one audited, undoable change; it only fills empty fields on existing contacts and marks imported text
+  as outside text. Very large CSVs are refused with "split the CSV" (D1 statement size limit).
 - Client copies are updated by one command, `npm run copies:update`, run by the repo owner with their own wrangler
   login after each client invites them into their Cloudflare account; no client token or id is stored in the repo or
   CI (decision 0007). Provisioning, the CSV import (dry run first, then one undoable change) and the export script are
@@ -94,7 +100,14 @@ Files in `docs/decisions/`. Rulings made while running the plan:
    `/callback`, `/token`, `/register` and `/.well-known/`; put the team domain and AUD tag into the copy's generated
    config. Steps marked "check in the dashboard" there could not be confirmed from the docs alone. Also: Zero Trust
    Free covers up to 50 users, so no paid plan is needed.
-6. **One leftover temp folder** from a manual test (harmless, nothing secret; the hook stops me deleting outside the
+6. **First real copy (yours, when ready).** Everything is tested only with a stub; nothing has touched a real account.
+   For the first copy: ask the client to invite your Cloudflare user to their account (Manage Account > Members >
+   Invite, role Administrator), run `npx wrangler login` yourself, then follow `docs/INSTALL.md`
+   (`npm run copies:provision -- --copy <name>`, then `npm run copies:update -- --copy <name> --dry-run`, then without
+   `--dry-run`). Confirm on that first run: (a) `d1 create` / `kv namespace create` accept `--update-config=false`;
+   (b) whether a remote `d1 execute --file` import is all-or-nothing (decision 0007); (c) the Access items marked
+   "check in the dashboard" in ACCESS-SETUP.md and the id-token issuer (decision 0006).
+7. **One leftover temp folder** from a manual test (harmless, nothing secret; the hook stops me deleting outside the
    repo): `rm -r /var/folders/xf/zt8g4lzn0211myfvc6kzmt0r0000gn/T/pipeline-e2e-p134is`
 
 ## How to resume

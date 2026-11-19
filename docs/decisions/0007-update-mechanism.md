@@ -17,11 +17,16 @@ outside the Worker, and the shape of the export files.
   anywhere. For each copy in `/.copies/*/copy.json` (or the one named) the command:
   1. checks once per run that `wrangler whoami --json` lists the copy's `account_id`, and stops that copy if not;
   2. runs `npm run build` once per run (a failed build stops everything before any copy changes);
-  3. applies the migrations with `wrangler d1 migrations apply DB --remote -c .copies/<name>/wrangler.jsonc`;
-  4. deploys with `wrangler deploy -c .copies/<name>/wrangler.jsonc` (only when the migrations succeeded);
+  3. applies the migrations with `wrangler d1 migrations apply DB --remote -c .copies/<name>/wrangler.jsonc`, then
+     checks with `wrangler d1 migrations list` that none is still pending. The apply asks the owner to confirm, which is
+     worth keeping (they see what will run), but a "no" exits 0, so the exit code alone can't be trusted; a pending
+     migration stops that copy with "migrations not applied; not deployed";
+  4. deploys with `wrangler deploy -c .copies/<name>/wrangler.jsonc` (only when the migrations are all applied);
   5. prints one line per copy (`<name>: updated` or `<name>: FAILED: <why>`), goes on past a failed copy, and exits
      non-zero at the end if any failed.
-  Every command sets `CLOUDFLARE_ACCOUNT_ID` to the copy's account, as well as the config's `account_id`.
+  Every command sets `CLOUDFLARE_ACCOUNT_ID` to the copy's account. The account checked is the `account_id` in the
+  copy's `wrangler.jsonc` (where wrangler deploys); a copy whose config and `copy.json` name different accounts is
+  refused. A copy with any provisioning step except the secrets still to do is refused too.
   `--dry-run` prints the commands and runs nothing.
 - **Not Workers Builds or GitHub Actions.** Either would need each client's account id or an API token for it in this
   public repo or in its secrets, and a CI job deploying into many client accounts is a much bigger blast radius than
@@ -34,8 +39,9 @@ outside the Worker, and the shape of the export files.
   Rate Limiting namespace ids (1001-1004, or the next free block of ten when another copy uses the same account);
   `.copies/<name>/wrangler.jsonc` from `config/wrangler.copy.template.jsonc` (paths relative to the copy folder; on a
   custom host a `custom_domain` route and `MCP_ALLOWED_HOSTNAMES`); migrations and `seed/defaults.sql` on both
-  databases (`--preview` reaches the preview database through `preview_database_id`); the owner emails into
-  `settings.owner_emails` on production (escaped SQL, version bumped; decision 0005); then `wrangler secret put` for
+  databases (`--preview` reaches the preview database through `preview_database_id`), each migrate step marked done only
+  once `migrations list` shows nothing pending; the owner emails into `settings.owner_emails` on both databases
+  (escaped SQL, version bumped; decision 0005), so a preview deployment can be signed in to; then `wrangler secret put` for
   each secret in `docs/SECRETS.md` the copy needs, each one skippable. A second run for the same copy is refused
   unless `--resume`, which skips the steps already done. Owner emails go only in the database, not in an
   `OWNER_EMAILS` var, so removing an owner is one change in one place.
@@ -87,10 +93,10 @@ service to two databases and compares every row and the audit entry.
 - The update applies migrations to the production database only. Previews share the preview database, whose
   migrations the owner applies with `--preview` when testing a release there first (docs/UPDATING.md).
 - `wrangler d1 execute --file` runs a local file in one batch (all or nothing; checked against wrangler 4.160.1's
-  source). Remote, it uses D1's import API, and whether a failure there rolls back the statements before it could not
-  be confirmed from the docs. The guards come first, so a stale contact stops the file before any write; a later
-  failure (for example a duplicate email added between the read and the write) could leave a partial import without
-  its audit row. Run imports while nobody is editing, and confirm on the first real import.
+  source). Remote, it uses D1's import API, and wrangler prints for it: "if the execution fails to complete, your DB
+  will return to its original state and you can safely retry" (wrangler 4.160.1). So a failure anywhere in the file
+  (a stale contact failing its write_guard check, or a duplicate email added between the read and the write) leaves
+  the database as it was, with no partial import and no audit row. Confirm that on the first real import.
 - One import is one change, so its audit row holds every row it writes; D1 allows 100 KB per statement, so a very large
   CSV (roughly a few hundred contacts with notes) is refused with "split the CSV". The board's export is one batch,
   so its tables come from one moment; the script reads table by table, so a write during an export can show in one
