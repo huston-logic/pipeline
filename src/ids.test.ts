@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { ID_PREFIXES, isChangeId, isContactId, isDealId, newId } from "./ids.ts";
+import { ID_PREFIXES, isChangeId, isContactId, isDealId, isTaskId, newId } from "./ids.ts";
 
 test("ids are <prefix>_ plus 12 lowercase base32 characters", () => {
   for (const prefix of ID_PREFIXES) {
@@ -41,4 +41,11 @@ test("isChangeId accepts newId's change ids and the demo seed's chg_seed00000013
   assert.ok(isChangeId("chg_seed00000013"));
   const bad = ["dl_seed01", "chg_", "chg", "CHG_ABC", "chg_a-b", "chg_a%2Fb", "chg_a/b", "<script>"];
   for (const id of [...bad, ` ${newId("chg")}`, `chg_${"a".repeat(33)}`]) assert.equal(isChangeId(id), false, id);
+});
+
+test("isTaskId accepts newId's task ids and the seed's tk_seed01 style, nothing else", () => {
+  for (let i = 0; i < 50; i++) assert.ok(isTaskId(newId("tk")));
+  assert.ok(isTaskId("tk_seed01"));
+  const bad = ["dl_seed01", "tk_", "tk", "TK_SEED01", "tk_a-b", "tk_a%2Fb", "tk_a/b", "<script>"];
+  for (const id of [...bad, ` ${newId("tk")}`, `tk_${"a".repeat(33)}`]) assert.equal(isTaskId(id), false, id);
 });
