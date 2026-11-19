@@ -265,9 +265,19 @@ test("0005 from the previous version: activities get an index on occurred_at and
     (await db.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'activities' ORDER BY name").all<{ name: string }>())
       .results.map((r) => r.name);
   assert.deepEqual(await indexes(), ["activities_contact", "activities_deal", "sqlite_autoindex_activities_1"]);
+  db.exec(`INSERT INTO contacts (id, name) VALUES ('ct_a', 'Pat Example');
+    INSERT INTO activities (id, contact_id, type, summary, occurred_at, actor)
+      VALUES ('ac_a', 'ct_a', 'note', 'Called back', '2026-11-01T10:00:00.000Z', 'owner');`);
+  const before = await db.prepare("SELECT * FROM activities").all();
 
   assert.deepEqual(await applyMigrations(db, 5), ["0005_activities_occurred_at.sql"]);
   assert.deepEqual(await indexes(), ["activities_contact", "activities_deal", "activities_occurred", "sqlite_autoindex_activities_1"]);
+  assert.deepEqual((await db.prepare("SELECT * FROM activities").all()).results, before.results, "the activity is kept as it was");
+  const found = await db
+    .prepare("SELECT id FROM activities INDEXED BY activities_occurred WHERE occurred_at >= ?")
+    .bind("2026-10-01T00:00:00.000Z")
+    .all<{ id: string }>();
+  assert.deepEqual(found.results.map((row) => row.id), ["ac_a"], "the index finds the row that was there before");
 });
 
 test("settings: the business name is 1 to 60 characters and the accent colour is #rrggbb in lower case", async () => {

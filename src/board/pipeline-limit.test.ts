@@ -9,14 +9,17 @@ import { STAGE_CARD_LIMIT, STAGE_LIST_LIMIT } from "./pages/pipeline.ts";
 
 const ctx = { waitUntil() {}, passThroughOnException() {}, props: {} } as unknown as ExecutionContext;
 
-/** `counts` open deals per stage; deal n entered its stage n minutes after 2026-01-01, so lower n is longer there. */
+/**
+ * `counts` open deals per stage. Ids run the other way from stage_entered_at: the highest id entered first, so the
+ * deals longest in a stage are the ones with the highest ids, and id order alone would pick the wrong 50.
+ */
 async function pipelineDb(counts: Record<string, number>): Promise<SqliteD1> {
   const db = await createTestDb();
   db.exec("INSERT INTO contacts (id, name) VALUES ('ct_many', 'Pat Example')");
   const rows: string[] = [];
   for (const [stage, n] of Object.entries(counts)) {
     for (let i = 0; i < n; i++) {
-      const entered = new Date(Date.UTC(2026, 0, 1, 0, i)).toISOString();
+      const entered = new Date(Date.UTC(2026, 0, 1, 0, n - 1 - i)).toISOString();
       rows.push(`('dl_${stage.replace("_", "")}${String(i).padStart(3, "0")}', 'ct_many', 'Deal ${i}', '${stage}', '${entered}')`);
     }
   }
@@ -48,7 +51,8 @@ test("a board column shows the 50 deals longest in the stage, its full count, an
   const { main } = await mainOf(db, "/pipeline");
   const replied = section(main, "stage-2");
   assert.match(replied, /<p class="stage-count">60 deals<\/p>/);
-  assert.deepEqual(dealIds(replied), Array.from({ length: 50 }, (_, i) => `dl_replied${String(i).padStart(3, "0")}`));
+  // Longest in the stage first: dl_replied059 entered first, then 058, ... down to 010.
+  assert.deepEqual(dealIds(replied), Array.from({ length: 50 }, (_, i) => `dl_replied${String(59 - i).padStart(3, "0")}`));
   assert.match(
     replied,
     /<p class="stage-more">Showing 50 of 60, longest in this stage first\. <a href="\/pipeline\?view=list&amp;stage=replied">Show all 60 in Replied<\/a><\/p>/,

@@ -522,3 +522,56 @@ test("preview_rule's activity read is served by the occurred_at index, not a sca
   assert.match(details, /USING INDEX activities_occurred/, details);
   assert.doesNotMatch(details, /\bSCAN activities\b(?! USING)/, details);
 });
+
+test("preview_rule's lookback boundary: an activity at exactly 30 + days back is read, one a millisecond older is not", async () => {
+  const db = await createTestDb();
+  const days = 7;
+  const start = NOW.getTime() - 30 * DAY;
+  const line = start - days * DAY;
+  const iso = (ms: number) => new Date(ms).toISOString();
+  const created = iso(line - 10 * DAY);
+  db.exec("INSERT INTO contacts (id, name) VALUES ('ct_edge', 'Pat Example')");
+  const deal = (id: string, stage: string, status: string, entered: string, last: string | null) =>
+    db.exec(`INSERT INTO deals (id, contact_id, title, stage_key, status, stage_entered_at, last_activity_at, created_at)
+      VALUES ('${id}', 'ct_edge', 'Edge ${id}', '${stage}', '${status}', '${entered}', ${last === null ? "NULL" : `'${last}'`}, '${created}')`);
+  let n = 0;
+  const activity = (dealId: string, type: string, at: number, data: string | null = null) =>
+    db.exec(`INSERT INTO activities (id, deal_id, contact_id, type, summary, data, occurred_at, actor)
+      VALUES ('ac_edge${n++}', '${dealId}', 'ct_edge', '${type}', 'Edge', ${data === null ? "NULL" : `'${data}'`}, '${iso(at)}', 'owner')`);
+  const moved = (from: string, to: string) => JSON.stringify({ from, to });
+
+  // Stage stays in Proposal sent: one entered exactly at the line, one a millisecond before it; both left later.
+  const left = start + DAY;
+  for (const [id, entered] of [["dl_edgeat", line], ["dl_edgebefore", line - 1]] as const) {
+    deal(id, "lost", "lost", iso(left), null);
+    activity(id, "stage_change", entered, moved("new_inquiry", "proposal_sent"));
+    activity(id, "stage_change", left, moved("proposal_sent", "lost"));
+  }
+  // Open deals with contact at the line, or a millisecond before it, then again inside the window.
+  const later = start + 2 * DAY;
+  for (const [id, at] of [["dl_quietat", line], ["dl_quietbefore", line - 1]] as const) {
+    deal(id, "new_inquiry", "open", created, iso(later));
+    activity(id, "email", at);
+    activity(id, "email", later);
+  }
+
+  const seen: string[] = [];
+  const followup = await previewRuleFor(recordingActivities(db, seen), NOW, { type: "stage_followup", stage: "Proposal sent", days });
+  assert.ok(seen.includes(iso(line)), "the activity at the line is read");
+  assert.ok(!seen.includes(iso(line - 1)), "the one a millisecond older is not");
+  assert.deepEqual(
+    followup.hits.map((hit) => [hit.dealId, hit.wouldFireAt]),
+    [["dl_edgeat", iso(start)]],
+    "an entry at the line fires at the window's start; one a millisecond older would have fired before it",
+  );
+
+  const quiet = await previewRuleFor(db, NOW, { type: "gone_quiet", days });
+  assert.deepEqual(
+    quiet.hits.map((hit) => [hit.dealId, hit.wouldFireAt]),
+    [
+      ["dl_quietat", iso(start)],
+      ["dl_quietbefore", iso(start)],
+    ],
+    "contact at the line or before it: quiet from the window's start either way, so the unread one changes nothing",
+  );
+});

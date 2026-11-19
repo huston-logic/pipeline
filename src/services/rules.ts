@@ -505,6 +505,9 @@ const PREVIEW_TYPES: ActivityType[] = ["form", "email", "call", "meeting", "note
  * began at most `days` before its firing, a gone_quiet hit a quiet spell that began at most `days` before it; an older
  * activity only moves that start further back, where it cannot produce a hit. An on_stage_enter hit is the entry
  * itself, so it needs nothing before the window.
+ * This is exact given two invariants the services keep (decision 0020): every stage_change is at or after its deal's
+ * created_at, so a first stay rebuilt from created_at starts no later than the true one; and the last stage_change's
+ * `to` is the deal's stage_key, so the current stay is always the one starting at stage_entered_at.
  */
 function lookbackDays(params: RuleParams): number {
   return params.type === "on_stage_enter" ? 0 : params.days;

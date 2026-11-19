@@ -24,7 +24,11 @@ says nothing about how big a list may get or how the export is written.
 - **Preview lookback per rule.** `preview_rule` reads activities from 30 days plus the rule's own `days` before now
   (30 days for `on_stage_enter`), not 30 + 365. This replaces the "Preview lookback" paragraph of 0010 in part: the
   argument there holds with the rule's own `days` in place of the longest allowed one, because a hit is a stay or quiet
-  spell that began at most `days` before its firing, and an older activity only moves that start further back. A test
+  spell that began at most `days` before its firing, and an older activity only moves that start further back. The
+  proof relies on two invariants the services enforce: every `stage_change` is at or after its deal's `created_at`
+  (so when older moves are not read, the first stay rebuilt from `created_at` starts no later than the true one, still
+  before the line), and the last `stage_change`'s `to` equals the deal's `stage_key` (so the current stay is the one
+  starting at `stage_entered_at`). Rows written outside the services (seed data, SQL) can break either. A test
   on the scaled seed checks ten rules give the same hits as a read of every activity. Migration 0005 adds
   `activities_occurred (occurred_at)`, so the read is an index range instead of a scan of the table. The engine skips
   the contact times of a deal that has no stay in the rule's stage.
