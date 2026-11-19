@@ -1,0 +1,134 @@
+// update_deal. The stage and the status move together: a won, lost or not_now stage sets that status, a closed
+// status moves the deal to the first stage of that kind, and an open stage reopens the deal.
+import type { ActivityRow, DealRow, DealStatus, StageRow } from "../db/db.ts";
+import { getContact } from "../db/queries.ts";
+import { newId } from "../ids.ts";
+import { type ChangeResult, changedColumns, commitChange, type Ctx, type RowChange, updatedRow } from "./change.ts";
+import { columnLabel, fieldsLabel, joinAnd, nextPart, withArticle } from "./describe.ts";
+import { UserError } from "./errors.ts";
+import { checkValue, clean, whenOrNull, withoutNulls } from "./input.ts";
+import {
+  checkFieldKeys,
+  type FieldValues,
+  findDeal,
+  findStage,
+  firstStageOfKind,
+  mergeFields,
+  ownerTimezone,
+  parseObject,
+  stageLabels,
+} from "./lookup.ts";
+
+export interface DealPatch {
+  /** Stage key or label. */
+  stage?: string;
+  status?: DealStatus;
+  title?: string;
+  value?: number | null;
+  nextStep?: string | null;
+  nextAt?: string | null;
+  /** Merged into the stored values; null removes a key. */
+  fields?: FieldValues;
+}
+
+const STATUS_WORDS: Record<DealStatus, string> = { open: "open", won: "won", lost: "lost", not_now: "not now" };
+
+async function targetStage(ctx: Ctx, deal: DealRow, patch: DealPatch): Promise<StageRow | null> {
+  const { db } = ctx;
+  if (patch.stage !== undefined) {
+    const stage = await findStage(db, patch.stage);
+    if (patch.status !== undefined && patch.status !== stage.kind) {
+      throw new UserError(
+        `${stage.label} is ${withArticle(STATUS_WORDS[stage.kind])} stage, ` +
+          `so the status can't be ${STATUS_WORDS[patch.status]}. Give just the stage; the status follows it.`,
+      );
+    }
+    return stage;
+  }
+  if (patch.status === undefined || patch.status === deal.status) return null;
+  if (patch.status === "open") {
+    const first = await firstStageOfKind(db, "open");
+    const example = first ? ` (for example ${first.key})` : "";
+    throw new UserError(
+      `Say which open stage to move "${deal.title}" back to${example}; the status follows the stage.`,
+    );
+  }
+  const stage = await firstStageOfKind(db, patch.status);
+  if (!stage) {
+    throw new UserError(`There's no ${STATUS_WORDS[patch.status]} stage to move it to. Add one with add_stage first.`);
+  }
+  return stage;
+}
+
+export async function updateDeal(ctx: Ctx, dealRef: string, patch: DealPatch): Promise<ChangeResult & { dealId: string }> {
+  const { db } = ctx;
+  const before = await findDeal(db, dealRef);
+  const tz = await ownerTimezone(db);
+  const contact = await getContact(db, before.contact_id);
+  if (!contact) throw new Error(`Deal ${before.id} points at a missing contact.`);
+  const now = ctx.now.toISOString();
+  const set: Partial<DealRow> = {};
+
+  const stage = await targetStage(ctx, before, patch);
+  const moved = stage !== null && stage.key !== before.stage_key;
+  if (stage !== null) {
+    set.status = stage.kind;
+    if (moved) {
+      set.stage_key = stage.key;
+      set.stage_entered_at = now;
+    }
+  }
+  if (patch.title !== undefined) {
+    const title = clean(patch.title);
+    if (title === null) throw new UserError("A deal's title can't be blank. Give the new title.");
+    set.title = title;
+  }
+  if (patch.value !== undefined) set.value = patch.value === null ? null : checkValue(patch.value);
+  if (patch.nextStep !== undefined) set.next_step = clean(patch.nextStep);
+  if (patch.nextAt !== undefined) set.next_at = whenOrNull(patch.nextAt, tz);
+  if (patch.fields !== undefined) {
+    await checkFieldKeys(db, "deal", withoutNulls(patch.fields));
+    set.fields = mergeFields(before.fields, patch.fields);
+  }
+
+  const after = updatedRow(before, set, ctx.now);
+  const changed = changedColumns(before, after).filter((c) => c !== "version" && c !== "updated_at");
+  if (changed.length === 0) {
+    throw new UserError(`Nothing to change on "${before.title}": every value you gave is already set.`);
+  }
+
+  const changes: RowChange[] = [{ table: "deals", id: before.id, before, after }];
+  const labels = await stageLabels(db);
+  if (moved) {
+    const activity: ActivityRow = {
+      id: newId("ac"),
+      deal_id: before.id,
+      contact_id: before.contact_id,
+      type: "stage_change",
+      summary: `Moved from ${labels.get(before.stage_key) ?? before.stage_key} to ${stage.label}.`,
+      untrusted_text: null,
+      data: JSON.stringify({ from: before.stage_key, to: stage.key }),
+      occurred_at: now,
+      actor: ctx.actor,
+      version: 1,
+      created_at: now,
+    };
+    changes.push({ table: "activities", id: activity.id, before: null, after: activity });
+  }
+
+  const who = `"${after.title}" (${contact.name})`;
+  const parts: string[] = [];
+  if (changed.includes("next_step") || changed.includes("next_at")) {
+    parts.push(nextPart(after.next_step, after.next_at, tz).replace(/^; /, "") || "next step cleared");
+  }
+  const others = changed
+    .filter((c) => ["title", "value", "fields"].includes(c))
+    .map((c) => (c === "fields" ? fieldsLabel(parseObject(before.fields), parseObject(after.fields)) : columnLabel(c)));
+  if (others.length > 0) parts.push(`changed ${joinAnd(others)}`);
+  const summary = moved
+    ? [`Moved ${who} to ${stage.label}`, ...parts].join("; ")
+    : `Updated ${who}: ${parts.join("; ") || `set the status to ${STATUS_WORDS[after.status]}`}`;
+
+  const result = await commitChange(ctx, { target: { table: "deals", id: before.id }, summary, changes });
+  return { ...result, dealId: before.id };
+}
