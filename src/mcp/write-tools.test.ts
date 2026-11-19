@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { buildDevSeed } from "../../scripts/seed-dev.ts";
+import { buildFixtureSeed } from "../../tests/helpers/fixture-seed.ts";
 import { CHANGE_LINE, connectInMemory, fails, ok } from "../../tests/helpers/mcp-client.ts";
 import { createTestDb } from "../db/sqlite-d1.ts";
 import { DEFAULT_TZ } from "../time.ts";
@@ -10,7 +10,7 @@ const NOW = new Date("2026-11-19T18:00:00.000Z");
 
 async function setup() {
   const db = await createTestDb();
-  db.exec(buildDevSeed(NOW, DEFAULT_TZ));
+  db.exec(buildFixtureSeed(NOW, DEFAULT_TZ));
   return { db, c: await connectInMemory(createMcpServer({ db, now: () => NOW })) };
 }
 
@@ -288,7 +288,7 @@ test("update_settings sets the business name and accent colour, get_settings sho
 
 test("update_settings accepts a brief email from the OWNER_EMAILS var too", async () => {
   const db = await createTestDb();
-  db.exec(buildDevSeed(NOW, DEFAULT_TZ));
+  db.exec(buildFixtureSeed(NOW, DEFAULT_TZ));
   const c = await connectInMemory(createMcpServer({ db, now: () => NOW, ownerEmailsVar: "a@example.test, Var@Example.test" }));
   const changed = await ok(c, "update_settings", { briefEmail: "var@example.test" });
   assert.match(changed.headline, /brief email to var@example\.test/);

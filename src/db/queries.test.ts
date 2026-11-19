@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { buildDevSeed } from "../../scripts/seed-dev.ts";
+import { buildFixtureSeed } from "../../tests/helpers/fixture-seed.ts";
 import { DEFAULT_TZ } from "../time.ts";
 import type { Db } from "./db.ts";
 import * as queries from "./queries.ts";
@@ -10,7 +10,7 @@ const NOW = new Date("2026-11-19T18:00:00.000Z");
 
 async function seededDb(): Promise<Db> {
   const db = await createTestDb();
-  db.exec(buildDevSeed(NOW, DEFAULT_TZ));
+  db.exec(buildFixtureSeed(NOW, DEFAULT_TZ));
   return db;
 }
 

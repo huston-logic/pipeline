@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { buildDevSeed } from "../../scripts/seed-dev.ts";
+import { buildFixtureSeed } from "../../tests/helpers/fixture-seed.ts";
 import { connectInMemory, fails, ok } from "../../tests/helpers/mcp-client.ts";
 import { createTestDb, openTestDb } from "../db/sqlite-d1.ts";
 import { DEFAULT_TZ } from "../time.ts";
@@ -15,7 +15,7 @@ async function emptyClient() {
 
 async function seededClient() {
   const db = await createTestDb();
-  db.exec(buildDevSeed(NOW, DEFAULT_TZ));
+  db.exec(buildFixtureSeed(NOW, DEFAULT_TZ));
   return connectInMemory(createMcpServer({ db, now: () => NOW }));
 }
 
@@ -128,7 +128,7 @@ test("read tools refuse unknown arguments by name", async () => {
 
 test("every deal, task, timeline and contact-deal item lists its outside values in untrusted_fields", async () => {
   const db = await createTestDb();
-  db.exec(buildDevSeed(NOW, DEFAULT_TZ));
+  db.exec(buildFixtureSeed(NOW, DEFAULT_TZ));
   db.exec(`INSERT INTO tasks (id, deal_id, title, due_at, untrusted_fields)
     VALUES ('tk_outside', 'dl_seed02', 'Follow up with Robin Sample', '2026-11-19T19:00:00.000Z', '["title"]')`);
   const c = await connectInMemory(createMcpServer({ db, now: () => NOW }));

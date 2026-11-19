@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { buildDevSeed } from "../../scripts/seed-dev.ts";
+import { buildFixtureSeed } from "../../tests/helpers/fixture-seed.ts";
 import { racing } from "../../tests/helpers/race-db.ts";
 import type { AuditRow, Db, RuleFiringRow, RuleRow, TaskRow } from "../db/db.ts";
 import { createTestDb, openTestDb } from "../db/sqlite-d1.ts";
@@ -21,7 +21,7 @@ const ctxFor = (db: Db, tool = "add_rule", now = NOW): Ctx => ({ db, now, actor:
 
 async function seededDb(): Promise<Db> {
   const db = await createTestDb();
-  db.exec(buildDevSeed(NOW, DEFAULT_TZ));
+  db.exec(buildFixtureSeed(NOW, DEFAULT_TZ));
   return db;
 }
 

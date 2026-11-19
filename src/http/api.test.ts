@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { buildDevSeed } from "../../scripts/seed-dev.ts";
+import { buildFixtureSeed } from "../../tests/helpers/fixture-seed.ts";
 import { matchBoardPage } from "../board/router.ts";
 import type { Db } from "../db/db.ts";
 import { createTestDb, type SqliteD1 } from "../db/sqlite-d1.ts";
@@ -18,7 +18,7 @@ const EVENING = new Date("2026-11-20T05:00:00.000Z");
 
 async function seededDb(now = new Date()): Promise<SqliteD1> {
   const db = await createTestDb();
-  db.exec(buildDevSeed(now, DEFAULT_TZ));
+  db.exec(buildFixtureSeed(now, DEFAULT_TZ));
   return db;
 }
 

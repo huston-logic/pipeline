@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { buildDevSeed } from "../../scripts/seed-dev.ts";
+import { buildFixtureSeed } from "../../tests/helpers/fixture-seed.ts";
 import { createTestDb, type SqliteD1 } from "../db/sqlite-d1.ts";
 import type { Env } from "../env.ts";
 import worker from "../index.ts";
@@ -20,7 +20,7 @@ const briefDay = () => headerDate(yesterday());
 /** The Worker reads the clock itself, so the seed is built from the real time too. */
 async function seededDb(): Promise<SqliteD1> {
   const db = await createTestDb();
-  db.exec(buildDevSeed(new Date(), DEFAULT_TZ));
+  db.exec(buildFixtureSeed(new Date(), DEFAULT_TZ));
   return db;
 }
 

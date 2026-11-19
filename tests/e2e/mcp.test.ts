@@ -59,9 +59,9 @@ test("lists the tools over Streamable HTTP, with the server instructions", async
 
 test("reads the seeded pipeline from local D1", async () => {
   const answer = await ok(client, "pipeline_summary");
-  assert.match(answer.headline, /^6 open deals \(total value 4650\) across 5 open stages; 1 won, 1 lost, 0 not now\.$/);
+  assert.match(answer.headline, /^14 open deals \(total value 86350\) across 5 open stages; 3 won, 2 lost, 1 not now\.$/);
   const brief = (await ok(client, "get_deal", { deal: "dl_seed02" })).data as { timeline: { untrusted_text: string | null }[] };
-  assert.match(brief.timeline[0]?.untrusted_text ?? "", /fake test message/);
+  assert.match(brief.timeline[0]?.untrusted_text ?? "", /made-up test message/);
 });
 
 test("a write and its undo go through real D1, and a second undo refuses", async () => {
@@ -122,9 +122,9 @@ test("/mcp answers with the Worker's security headers, and GET is refused (state
 });
 
 test("outside names stay out of write lines over HTTP too", async () => {
-  const answer = await ok(client, "update_deal", { deal: "dl_seed02", nextStep: "Send the menu template" });
-  assert.match(answer.headline, /^Updated deal dl_seed02 \(contact ct_seed02\): next: Send the menu template/);
-  assert.doesNotMatch(answer.text, /Robin|Sample Bakery/);
+  const answer = await ok(client, "update_deal", { deal: "dl_seed02", nextStep: "Send the site visit checklist" });
+  assert.match(answer.headline, /^Updated deal dl_seed02 \(contact ct_seed02\): next: Send the site visit checklist/);
+  assert.doesNotMatch(answer.text, /Jamie|Lindqvist|Oak Hollow/);
 });
 
 test("building blocks go through real D1: a stage added and renumbered in one batch, then undone", async () => {

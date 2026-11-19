@@ -1,16 +1,34 @@
-// Fake seed data for local development and the board's accessibility and Lighthouse checks. Obviously fake people
-// only (example.com addresses, 555-01xx phone numbers). Fixed ids and INSERT OR IGNORE make it safe to load twice;
-// dates are relative to `now`, so "overdue", "due today" and "gone quiet" always have something to show.
+// Fake seed data for local development, the demo and the board's accessibility and Lighthouse checks: the pipeline
+// of an obviously made-up small structural engineering firm. Made-up people only (example.com, example.org and
+// example.net addresses, 555-01xx phone numbers). Fixed ids and INSERT OR IGNORE make it safe to load twice; dates
+// are relative to `now`, so "overdue", "due today" and "gone quiet" always have something to show.
 //   node scripts/seed-dev.ts --out <file> [--tz <IANA timezone>]
-// `npm run dev` and `npm run preview` load it after seed/defaults.sql (scripts/dev.mjs).
+// `npm run dev` and `npm run preview` load it after seed/defaults.sql (scripts/dev.mjs). Unit tests use their own
+// fixture (tests/helpers/fixture-seed.ts), so this file can change without breaking them.
+// The audit_log rows are real snapshots: the newest change on a row matches the row as seeded (so it can be undone),
+// older ones are refused by undo_change as "changed since", and one change is already undone (decision 0016).
 import { writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { composeBrief } from "../src/brief/compose.ts";
-import { addDays, dayBoundsUtc, DEFAULT_TZ, localDate, zonedToUtc } from "../src/time.ts";
+import { nextPart } from "../src/services/describe.ts";
+import { addDays, dayBoundsUtc, DEFAULT_TZ, formatLocal, localDate, zonedToUtc } from "../src/time.ts";
 
-type SqlValue = string | number | null;
-type Row = Record<string, SqlValue>;
+export type SqlValue = string | number | null;
+export type Row = Record<string, SqlValue>;
+
+export const DEMO_BUSINESS_NAME = "Fernbrook Engineering (demo)";
+
+export interface DevSeed {
+  fieldDefs: Row[];
+  contacts: Row[];
+  deals: Row[];
+  activities: Row[];
+  tasks: Row[];
+  rules: Row[];
+  briefs: Row[];
+  audit: Row[];
+}
 
 function sqlValue(value: SqlValue): string {
   if (value === null) return "NULL";
@@ -18,169 +36,353 @@ function sqlValue(value: SqlValue): string {
   return `'${value.replaceAll("'", "''")}'`;
 }
 
-function insert(table: string, row: Row): string {
+export function insert(table: string, row: Row): string {
   const columns = Object.keys(row);
   return `INSERT OR IGNORE INTO ${table} (${columns.join(", ")}) VALUES (${columns
     .map((column) => sqlValue(row[column] ?? null))
     .join(", ")});`;
 }
 
-export function buildDevSeed(now: Date, tz: string): string {
+const STAGE_LABELS: Record<string, string> = {
+  new_inquiry: "New inquiry",
+  replied: "Replied",
+  call_booked: "Call booked",
+  call_done: "Call done",
+  proposal_sent: "Proposal sent",
+  won: "Won",
+  lost: "Lost",
+  not_now: "Not now",
+};
+
+const CLOSED = new Set(["won", "lost", "not_now"]);
+/** Activity types that count as contact with the lead (they move last_activity_at); stage changes don't. */
+const CONTACT_TYPES = new Set(["form", "email", "call", "meeting", "note"]);
+
+const n2 = (n: number) => String(n).padStart(2, "0");
+
+export function devSeed(now: Date, tz: string): DevSeed {
   const today = localDate(now, tz);
   /** Owner's local time `hhmm` on the day `days` from today (negative is the past), as a UTC ISO string. */
   const day = (days: number, hhmm: string) => zonedToUtc(`${addDays(today, days)}T${hhmm}`, tz).toISOString();
 
+  // Later today, whatever time the seed is made: 5 p.m., or the last minute of the day after that.
   const { end } = dayBoundsUtc(today, tz);
   const fivePm = zonedToUtc(`${today}T17:00`, tz).getTime();
   const lastMinute = end.getTime() - 60_000;
-  const dueToday = new Date(
+  const laterToday = new Date(
     fivePm > now.getTime() ? fivePm : lastMinute > now.getTime() ? lastMinute : end.getTime() - 1,
   ).toISOString();
 
-  const contact = (n: string, name: string, business: string, created: string, extra: Row = {}): Row => ({
-    id: `ct_seed${n}`,
+  const fieldDefs: Row[] = [
+    {
+      id: "fd_seed01",
+      entity: "contact",
+      key: "role",
+      label: "Role",
+      type: "text",
+      choices: null,
+      archived: 0,
+      version: 1,
+      created_at: day(-60, "09:00"),
+      updated_at: day(-60, "09:00"),
+    },
+    {
+      id: "fd_seed02",
+      entity: "deal",
+      key: "project_type",
+      label: "Project type",
+      type: "choice",
+      choices: '["Commercial","Industrial","Residential","Public"]',
+      archived: 0,
+      version: 1,
+      created_at: day(-60, "09:05"),
+      updated_at: day(-60, "09:05"),
+    },
+  ];
+
+  const contact = (
+    n: number,
+    name: string,
+    email: string,
+    business: string | null,
+    source: string,
+    created: string,
+    extra: Row = {},
+  ): Row => ({
+    id: `ct_seed${n2(n)}`,
     name,
-    email: `${name.split(" ")[0]?.toLowerCase()}@example.com`,
-    phone: `555-01${n}`,
+    email,
+    phone: `555-01${n2(n)}`,
     business,
-    source: "referral",
+    source,
     notes: null,
+    fields: "{}",
     untrusted_fields: "[]",
+    archived: 0,
+    version: 1,
     created_at: created,
     updated_at: created,
     ...extra,
   });
+  const role = (text: string) => JSON.stringify({ role: text });
 
-  const deal = (n: string, title: string, stage: string, entered: string, lastActivity: string | null, extra: Row = {}) => ({
-    id: `dl_seed${n}`,
-    contact_id: `ct_seed${n}`,
-    title,
-    stage_key: stage,
-    value: null,
-    next_step: null,
-    next_at: null,
-    status: "open",
-    stage_entered_at: entered,
-    last_activity_at: lastActivity,
-    created_at: entered,
-    updated_at: entered,
-    ...extra,
+  const contacts: Row[] = [
+    contact(1, "Dana Whitfield", "dana.whitfield@example.com", "Harbor Point Logistics", "referral", day(-9, "09:00"), {
+      notes: "Referred by Luis Ortega at Riverbend Self Storage.",
+      fields: role("Operations manager"),
+    }),
+    // Came in through the website form: what the form wrote is outside text.
+    contact(2, "Jamie Lindqvist", "jamie.lindqvist@example.net", "Oak Hollow Veterinary Clinic", "website form", day(-1, "06:40"), {
+      untrusted_fields: '["name","email","phone","business"]',
+    }),
+    contact(3, "Priya Raman", "priya.raman@example.org", "Cedar Row Housing Co-op", "referral", day(-7, "14:20"), {
+      fields: role("Board treasurer"),
+    }),
+    contact(4, "Elena Novak", "elena@example.com", "Lakeside Brewing Co.", "repeat client", day(-62, "10:00"), {
+      fields: role("Head brewer and co-owner"),
+    }),
+    contact(5, "Grace Liu", "grace.liu@example.org", "Northgate Medical Offices", "referral", day(-21, "10:00"), {
+      fields: role("Facilities manager"),
+    }),
+    contact(6, "Owen Price", "owen.price@example.net", "Alder & Finch Architects", "trade show", day(-12, "18:30"), {
+      notes: "Met at the regional architects' mixer. Does a lot of timber work.",
+      fields: role("Project architect"),
+    }),
+    contact(7, "Luis Ortega", "luis@example.com", "Riverbend Self Storage", "repeat client", day(-31, "09:00"), {
+      fields: role("Owner"),
+    }),
+    contact(8, "Ruth Adams", "ruth.adams@example.org", "Willow Creek Community Center", "phone call", day(-25, "10:00")),
+    contact(9, "Marcus Bell", "marcus.bell@example.com", "Harbor Point Logistics", "referral", day(-8, "13:00"), {
+      fields: role("Site lead"),
+    }),
+    contact(10, "Tom Okafor", "tom.okafor@example.org", "Cedar Row Housing Co-op", "referral", day(-28, "09:00")),
+    contact(11, "Ben Hartley", "ben.hartley@example.org", "Northgate Medical Offices", "referral", day(-10, "08:30"), {
+      fields: role("Imaging department lead"),
+    }),
+    contact(12, "Sofia Marin", "sofia.marin@example.org", "Northgate Medical Offices", "referral", day(-40, "10:00")),
+    contact(13, "Hannah Cole", "hannah@example.net", "Alder & Finch Architects", "referral", day(-7, "10:00")),
+    contact(14, "Jake Moreno", "jake@example.com", "Summit Ridge Builders", "repeat client", day(-14, "08:00"), {
+      fields: role("Site superintendent"),
+    }),
+    // Typed in lower case with a trailing space: the Companies view still groups it with Summit Ridge Builders.
+    contact(15, "Nina Patel", "nina.patel@example.com", "summit ridge builders ", "repeat client", day(-6, "09:00"), {
+      phone: "555-0115",
+      version: 2,
+      updated_at: day(-2, "16:00"),
+    }),
+    contact(16, "Aaron Brooks", "aaron.brooks@example.net", "Pinecrest Hotel", "phone call", day(-2, "17:45")),
+    contact(17, "Mei Tanaka", "mei.tanaka@example.com", "Copperline Fabrication", "trade show", day(-30, "13:00")),
+    contact(18, "Chris Dalton", "chris.dalton@example.net", null, "neighbour referral", day(-5, "18:00"), {
+      notes: "Homeowner. Lives two streets from the office.",
+    }),
+  ];
+
+  type DealSpec = {
+    n: number;
+    contact: number;
+    title: string;
+    stage: string;
+    value: number | null;
+    created: string;
+    extra?: Row;
+  };
+  const dealSpecs: DealSpec[] = [
+    { n: 1, contact: 1, title: "Structural review for warehouse mezzanine", stage: "call_booked", value: 8500, created: day(-9, "09:00"), extra: { next_step: "Site walk and discovery call", next_at: day(2, "14:00"), fields: '{"project_type":"Industrial"}', version: 3, updated_at: day(-2, "10:15") } },
+    { n: 2, contact: 2, title: "Jamie Lindqvist inquiry", stage: "new_inquiry", value: null, created: day(-1, "06:40"), extra: { untrusted_fields: '["title"]' } },
+    { n: 3, contact: 3, title: "Balcony condition assessment, 24 units", stage: "replied", value: 12000, created: day(-7, "14:20"), extra: { fields: '{"project_type":"Residential"}' } },
+    { n: 4, contact: 4, title: "Foundations for three new fermentation tanks", stage: "call_done", value: 14200, created: day(-6, "10:00"), extra: { next_step: "Send the proposal", next_at: day(1, "12:00"), fields: '{"project_type":"Industrial"}' } },
+    { n: 5, contact: 5, title: "Rooftop HVAC support framing", stage: "proposal_sent", value: 6800, created: day(-21, "10:00"), extra: { fields: '{"project_type":"Commercial"}' } },
+    { n: 6, contact: 6, title: "Peer review of a timber-frame library design", stage: "new_inquiry", value: null, created: day(-11, "09:00"), extra: { fields: '{"project_type":"Public"}' } },
+    { n: 7, contact: 7, title: "Seismic retrofit of storage building B", stage: "won", value: 22000, created: day(-31, "09:00"), extra: { fields: '{"project_type":"Commercial"}' } },
+    { n: 8, contact: 8, title: "Roof truss inspection after the storm", stage: "lost", value: 3200, created: day(-25, "10:00"), extra: { fields: '{"project_type":"Public"}' } },
+    { n: 9, contact: 9, title: "Loading dock slab repair", stage: "proposal_sent", value: 9400, created: day(-8, "13:00"), extra: { next_step: "Follow up on the proposal", next_at: day(3, "10:00"), fields: '{"project_type":"Industrial"}', version: 2, updated_at: day(-1, "11:20") } },
+    { n: 10, contact: 10, title: "Parking garage crack survey", stage: "not_now", value: 7500, created: day(-28, "09:00"), extra: { fields: '{"project_type":"Residential"}' } },
+    { n: 11, contact: 11, title: "Structural letter for the new MRI suite", stage: "call_booked", value: 4800, created: day(-10, "08:30"), extra: { next_step: "Call with Ben and the MRI vendor", next_at: laterToday, fields: '{"project_type":"Commercial"}' } },
+    { n: 12, contact: 12, title: "Parking canopy foundations", stage: "won", value: 11500, created: day(-40, "10:00"), extra: { fields: '{"project_type":"Commercial"}' } },
+    { n: 13, contact: 13, title: "Steel stair and landing for an office fit-out", stage: "replied", value: 3900, created: day(-7, "10:00"), extra: { next_step: "Send Hannah a fee range", next_at: day(-2, "12:00") } },
+    { n: 14, contact: 14, title: "Beam calculations for a two-storey addition", stage: "call_done", value: 2600, created: day(-14, "08:00"), extra: { next_step: "Send the revised calculations", next_at: day(5, "17:00"), fields: '{"project_type":"Residential"}', version: 4, updated_at: day(-3, "11:05") } },
+    { n: 15, contact: 15, title: "Retaining wall design for Hillcrest lot 7", stage: "proposal_sent", value: 5200, created: day(-6, "09:00"), extra: { fields: '{"project_type":"Residential"}' } },
+    { n: 16, contact: 16, title: "Pool deck and entrance canopy assessment", stage: "new_inquiry", value: null, created: day(-2, "17:45"), extra: { fields: '{"project_type":"Commercial"}' } },
+    { n: 17, contact: 17, title: "Crane runway beam check", stage: "lost", value: 6300, created: day(-30, "13:00"), extra: { fields: '{"project_type":"Industrial"}' } },
+    { n: 18, contact: 18, title: "Leaning timber retaining wall behind a deck", stage: "replied", value: 950, created: day(-5, "18:00"), extra: { fields: '{"project_type":"Residential"}' } },
+    { n: 19, contact: 7, title: "Seismic retrofit of storage building C", stage: "call_booked", value: 18000, created: day(-8, "10:00"), extra: { next_step: "Site visit for building C", next_at: day(6, "10:00"), fields: '{"project_type":"Commercial"}' } },
+    { n: 20, contact: 4, title: "Taproom mezzanine", stage: "won", value: 4400, created: day(-60, "11:00"), extra: { fields: '{"project_type":"Commercial"}' } },
+  ];
+
+  type ActivitySpec = { deal: number | null; contact?: number; type: string; summary: string; at: string; extra?: Row };
+  const move = (deal: number, from: string, to: string, at: string, actor = "owner"): ActivitySpec => ({
+    deal,
+    type: "stage_change",
+    summary: `Moved from ${STAGE_LABELS[from]} to ${STAGE_LABELS[to]}.`,
+    at,
+    extra: { data: JSON.stringify({ from, to }), actor },
   });
+  const said = (deal: number, type: string, summary: string, at: string, extra: Row = {}): ActivitySpec => ({ deal, type, summary, at, extra });
 
-  const activity = (n: string, dealN: string, type: string, summary: string, at: string, extra: Row = {}): Row => ({
-    id: `ac_seed${n}`,
-    deal_id: `dl_seed${dealN}`,
-    contact_id: `ct_seed${dealN}`,
-    type,
-    summary,
+  const activitySpecs: ActivitySpec[] = [
+    said(1, "email", "Dana asked whether the warehouse mezzanine can take a second level of pallet racking.", day(-9, "09:00")),
+    said(1, "call", "Intro call. They want the extra racking in by spring and need a stamped letter for the landlord.", day(-6, "11:00")),
+    move(1, "new_inquiry", "replied", day(-6, "11:05")),
+    said(1, "email", "Sent two times for a site walk. Dana picked the first one.", day(-2, "10:10")),
+    move(1, "replied", "call_booked", day(-2, "10:15"), "ai"),
+    said(2, "form", "Form submission", day(-1, "06:40"), {
+      actor: "system",
+      untrusted_text:
+        "Hello, this is a made-up test message from Jamie at Oak Hollow Veterinary Clinic. There is a long crack in " +
+        "the floor slab of our back kennel room and we would like someone to look at it. (Seed data, not a real person.)",
+    }),
+    said(3, "email", "Priya asked for a condition assessment of the balconies on all 24 units before the board meeting.", day(-7, "14:20")),
+    said(3, "email", "Replied with our approach and a rough fee range.", day(-4, "15:00")),
+    move(3, "new_inquiry", "replied", day(-4, "15:05")),
+    said(4, "email", "Elena is adding three 60-barrel fermentation tanks and needs new foundations.", day(-6, "10:00")),
+    move(4, "new_inquiry", "call_booked", day(-6, "10:05"), "ai"),
+    said(4, "meeting", "Site visit at the brewery. Checked the existing slab and marked where the tanks will go.", day(-3, "15:00")),
+    move(4, "call_booked", "call_done", day(-3, "16:00")),
+    said(5, "meeting", "Walked the roof with Grace and the mechanical contractor.", day(-14, "10:00")),
+    said(5, "email", "Sent the proposal for the HVAC support framing.", day(-6, "11:00")),
+    move(5, "call_done", "proposal_sent", day(-6, "11:05")),
+    // Before the deal was added, so it doesn't count as contact on it.
+    { deal: null, contact: 6, type: "note", summary: "Met Owen at the architects' mixer. He wants a peer review of a timber-frame library.", at: day(-12, "18:30") },
+    said(7, "call", "Luis asked us to price the seismic retrofit of storage building B.", day(-31, "09:00")),
+    said(7, "email", "Sent the proposal for building B.", day(-20, "16:00")),
+    move(7, "new_inquiry", "proposal_sent", day(-20, "16:05")),
+    said(7, "call", "Luis had questions about the permit drawings.", day(-18, "10:00")),
+    said(7, "call", "Luis said yes. Work starts once the permit comes through.", day(-10, "14:00")),
+    move(7, "proposal_sent", "won", day(-10, "14:05")),
+    said(8, "call", "Ruth called after the storm about sagging roof trusses in the main hall.", day(-25, "10:00")),
+    said(8, "email", "Sent our fee for a truss inspection.", day(-22, "09:30")),
+    move(8, "new_inquiry", "proposal_sent", day(-22, "09:35")),
+    said(8, "call", "Ruth said their insurer wants a second opinion.", day(-20, "14:00")),
+    said(8, "note", "Ruth went with the engineer their insurer suggested.", day(-15, "10:00")),
+    move(8, "proposal_sent", "lost", day(-15, "10:05")),
+    said(9, "email", "Marcus sent photos of the cracked slab at dock doors 4 to 7.", day(-8, "13:00")),
+    said(9, "meeting", "Looked at the dock slab with Marcus. Two panels need replacing; the rest can be patched.", day(-5, "09:00")),
+    said(9, "email", "Sent the proposal for the dock slab repair.", day(-2, "15:30")),
+    move(9, "call_done", "proposal_sent", day(-2, "15:35")),
+    said(9, "call", "Called Marcus. He is going through the proposal with their finance team this week.", day(-1, "11:20")),
+    said(10, "email", "Tom asked about a crack survey of the parking garage.", day(-28, "09:00")),
+    said(10, "meeting", "Walked the garage with Tom. Mostly shrinkage cracks, a few to keep an eye on.", day(-20, "10:00")),
+    said(10, "note", "The co-op board wants to revisit this after its spring budget meeting.", day(-18, "16:00")),
+    move(10, "call_done", "not_now", day(-18, "16:05")),
+    said(11, "email", "Ben needs a structural letter for the floor under the new MRI machine.", day(-10, "08:30")),
+    said(11, "call", "Booked a call with Ben and the MRI vendor for today.", day(-1, "13:00")),
+    move(11, "replied", "call_booked", day(-1, "13:05"), "ai"),
+    said(12, "meeting", "Sofia showed us the parking lot where the canopies go.", day(-40, "10:00")),
+    said(12, "email", "Sent the proposal for the canopy foundations.", day(-38, "11:00")),
+    move(12, "call_done", "proposal_sent", day(-38, "11:05")),
+    said(12, "call", "Sofia approved the proposal.", day(-26, "15:00")),
+    move(12, "proposal_sent", "won", day(-26, "15:05")),
+    said(13, "email", "Hannah asked us to design a steel stair and landing for a client's office fit-out.", day(-7, "10:00")),
+    said(13, "email", "Asked Hannah for the architectural drawings.", day(-3, "11:30")),
+    move(13, "new_inquiry", "replied", day(-3, "11:35")),
+    said(14, "call", "Jake needs beam calculations for a two-storey addition.", day(-14, "08:00")),
+    said(14, "meeting", "Went through the framing plan with Jake on site.", day(-4, "10:00")),
+    move(14, "call_booked", "call_done", day(-4, "10:30")),
+    said(15, "email", "Nina asked for a retaining wall design on Hillcrest lot 7.", day(-6, "09:00")),
+    said(15, "call", "Talked through the soil report with Nina.", day(-4, "13:00")),
+    said(15, "email", "Sent the proposal for the retaining wall.", day(-2, "14:00"), { actor: "ai" }),
+    move(15, "call_done", "proposal_sent", day(-2, "14:05"), "ai"),
+    said(16, "email", "Aaron asked for an assessment of the pool deck and the entrance canopy before summer.", day(-2, "17:45")),
+    said(17, "meeting", "Looked at the crane runway with Mei. The rails are worn at the east end.", day(-30, "13:00")),
+    said(17, "email", "Sent the proposal for the runway beam check.", day(-27, "10:00")),
+    move(17, "call_done", "proposal_sent", day(-27, "10:05")),
+    said(17, "call", "Mei asked how long the check would take.", day(-25, "15:00")),
+    said(17, "note", "Mei went with the crane supplier's in-house engineer.", day(-21, "09:00")),
+    move(17, "proposal_sent", "lost", day(-21, "09:05")),
+    said(18, "call", "Chris called about a leaning timber retaining wall behind his deck.", day(-5, "18:00")),
+    said(18, "email", "Replied with what a site visit covers and our fee.", day(-3, "09:15")),
+    move(18, "new_inquiry", "replied", day(-3, "09:20")),
+    said(19, "email", "Luis wants to talk about retrofitting building C next.", day(-8, "10:00")),
+    said(19, "call", "Agreed on a site visit for building C.", day(-4, "14:00")),
+    move(19, "replied", "call_booked", day(-4, "14:10")),
+    said(20, "email", "Elena asked about a mezzanine for the taproom.", day(-60, "11:00")),
+    said(20, "call", "Elena approved the taproom mezzanine.", day(-45, "11:00")),
+    move(20, "proposal_sent", "won", day(-45, "11:05")),
+  ];
+
+  const dealContact = new Map(dealSpecs.map((d) => [d.n, d.contact]));
+  const activities: Row[] = activitySpecs.map((spec, i) => ({
+    id: `ac_seed${n2(i + 1)}`,
+    deal_id: spec.deal === null ? null : `dl_seed${n2(spec.deal)}`,
+    contact_id: `ct_seed${n2(spec.contact ?? dealContact.get(spec.deal ?? 0) ?? 0)}`,
+    type: spec.type,
+    summary: spec.summary,
     untrusted_text: null,
     data: null,
-    occurred_at: at,
+    occurred_at: spec.at,
     actor: "owner",
-    created_at: at,
-    ...extra,
+    version: 1,
+    created_at: spec.at,
+    ...spec.extra,
+  }));
+
+  // last_activity_at and stage_entered_at follow from the activities, the way the services keep them.
+  const deals: Row[] = dealSpecs.map((spec) => {
+    const id = `dl_seed${n2(spec.n)}`;
+    const own = activities.filter((a) => a.deal_id === id);
+    const contactTimes = own.filter((a) => CONTACT_TYPES.has(String(a.type))).map((a) => String(a.occurred_at)).sort();
+    const moves = own.filter((a) => a.type === "stage_change").map((a) => String(a.occurred_at)).sort();
+    const entered = moves.at(-1) ?? spec.created;
+    const last = contactTimes.at(-1) ?? null;
+    return {
+      id,
+      contact_id: `ct_seed${n2(spec.contact)}`,
+      title: spec.title,
+      stage_key: spec.stage,
+      value: spec.value,
+      next_step: null,
+      next_at: null,
+      status: CLOSED.has(spec.stage) ? spec.stage : "open",
+      fields: "{}",
+      stage_entered_at: entered,
+      last_activity_at: last,
+      untrusted_fields: "[]",
+      archived: 0,
+      version: 1,
+      created_at: spec.created,
+      updated_at: [spec.created, entered, last ?? spec.created].sort().at(-1) ?? spec.created,
+      ...spec.extra,
+    };
   });
 
-  const task = (n: string, dealN: string, title: string, dueAt: string | null, created: string, extra: Row = {}) => ({
-    id: `tk_seed${n}`,
-    deal_id: `dl_seed${dealN}`,
-    contact_id: `ct_seed${dealN}`,
+  const task = (n: number, where: { deal?: number; contact?: number }, title: string, dueAt: string | null, created: string, extra: Row = {}): Row => ({
+    id: `tk_seed${n2(n)}`,
+    deal_id: where.deal === undefined ? null : `dl_seed${n2(where.deal)}`,
+    contact_id: `ct_seed${n2(where.contact ?? dealContact.get(where.deal ?? 0) ?? 0)}`,
     title,
     due_at: dueAt,
     done_at: null,
     snoozed_until: null,
     source: "owner",
+    untrusted_fields: "[]",
+    version: 1,
     created_at: created,
     updated_at: created,
     ...extra,
   });
 
-  const contacts = [
-    contact("01", "Pat Example", "Example Plumbing", day(-9, "09:00")),
-    contact("02", "Robin Sample", "Sample Bakery", day(-1, "08:40"), {
-      source: "website form",
-      untrusted_fields: '["name","email","business"]',
-    }),
-    contact("03", "Casey Placeholder", "Placeholder Landscaping", day(-6, "13:00")),
-    contact("04", "Jordan Fake", "Fake Street Bikes", day(-3, "15:00")),
-    contact("05", "Taylor Testcase", "Testcase Cafe", day(-14, "10:00")),
-    contact("06", "Morgan Demo", "Demo Hardware", day(-12, "09:00"), {
-      source: "trade fair",
-      notes: "Met at a (fake) trade fair. Wants a quote in the spring.",
-    }),
-    contact("07", "Alex Sample", "Sample Salon", day(-20, "11:00")),
-    contact("08", "Sam Example", "Example Auto Repair", day(-21, "16:00")),
-  ];
-
-  const deals = [
-    deal("01", "Website refresh for Example Plumbing", "call_booked", day(-2, "10:15"), day(-2, "10:10"), {
-      value: 1500,
-      next_step: "Discovery call",
-      next_at: day(2, "14:00"),
-      created_at: day(-9, "09:00"),
-    }),
-    // From the website form, so its title is outside text.
-    deal("02", "New website for Sample Bakery", "new_inquiry", day(-1, "08:40"), day(-1, "08:40"), {
-      untrusted_fields: '["title"]',
-    }),
-    deal("03", "Landscaping site with a quote form", "replied", day(-4, "15:00"), day(-4, "15:00"), {
-      created_at: day(-6, "13:00"),
-    }),
-    deal("04", "Online store for Fake Street Bikes", "call_done", day(-3, "16:00"), day(-3, "15:00"), {
-      value: 2400,
-      next_step: "Send the proposal",
-      next_at: day(1, "12:00"),
-      created_at: day(-3, "15:00"),
-    }),
-    deal("05", "Cafe website and menu", "proposal_sent", day(-6, "11:00"), day(-6, "11:00"), {
-      value: 750,
-      created_at: day(-14, "10:00"),
-    }),
-    deal("06", "Hardware store website", "new_inquiry", day(-12, "09:00"), null),
-    deal("07", "Salon booking site", "won", day(-10, "14:00"), day(-10, "14:00"), {
-      status: "won",
-      value: 1800,
-      created_at: day(-20, "11:00"),
-    }),
-    deal("08", "Auto repair landing page", "lost", day(-15, "10:00"), day(-15, "10:00"), {
-      status: "lost",
-      created_at: day(-21, "16:00"),
-    }),
-  ];
-
-  const activities = [
-    activity("01", "01", "email", "Pat asked about a new website for the plumbing business.", day(-8, "09:30")),
-    activity("02", "01", "call", "Short intro call. Pat wants online booking.", day(-5, "11:00")),
-    activity("03", "01", "email", "Sent two times for a call. Pat picked one.", day(-2, "10:10")),
-    activity("04", "01", "stage_change", "Moved from Replied to Call booked.", day(-2, "10:15"), {
-      data: '{"from":"replied","to":"call_booked"}',
-      actor: "ai",
-    }),
-    activity("05", "02", "form", "Website form: new inquiry.", day(-1, "08:40"), {
-      untrusted_text:
-        "Hi! This is a fake test message from Robin Sample at Sample Bakery. We would like a simple website " +
-        "with our menu and opening hours. (Seed data, not a real person.)",
-      actor: "system",
-    }),
-    activity("06", "03", "email", "Casey asked what a website costs.", day(-6, "13:00")),
-    activity("07", "03", "email", "Replied with the starting price and two examples.", day(-4, "15:00")),
-    activity("08", "04", "meeting", "Video call. Jordan wants an online store for about 40 bikes.", day(-3, "15:00")),
-    activity("09", "05", "email", "Sent the proposal.", day(-6, "11:00")),
-    activity("10", "07", "call", "Alex said yes.", day(-10, "14:00")),
-    activity("11", "08", "note", "Sam went with a cheaper option.", day(-15, "10:00")),
-  ];
-
-  const tasks = [
-    task("01", "01", "Prepare questions for Pat's call", dueToday, day(-2, "10:15")),
-    task("02", "03", "Send Casey the price sheet", day(-1, "09:00"), day(-4, "15:00")),
-    task("03", "04", "Write the proposal for Jordan", day(4, "10:00"), day(-3, "16:00")),
-    task("04", "05", "Check in with Taylor about the proposal", day(-1, "16:00"), day(-6, "11:00"), {
+  const tasks: Row[] = [
+    task(1, { deal: 1 }, "Pull the 1998 mezzanine drawings before Dana's call", laterToday, day(-2, "10:15")),
+    task(2, { deal: 3 }, "Send Priya the balcony inspection checklist", day(-1, "09:00"), day(-4, "15:05")),
+    task(3, { deal: 4 }, "Write the tank foundation proposal", day(4, "10:00"), day(-3, "16:00")),
+    task(4, { deal: 5 }, "Check in with Grace about the proposal", day(-1, "16:00"), day(-6, "11:05"), {
       snoozed_until: day(1, "09:00"),
+      version: 2,
+      updated_at: day(-4, "09:10"),
     }),
-    task("05", "06", "Find Morgan's business card", null, day(-12, "09:00"), { deal_id: null }),
-    task("06", "07", "Send Alex the welcome pack", day(-9, "09:00"), day(-10, "14:00"), {
+    task(5, { contact: 6 }, "Find Owen's card from the architects' mixer", null, day(-12, "18:30")),
+    task(6, { deal: 7 }, "Send Luis the signed retrofit agreement", day(-9, "09:00"), day(-10, "14:05"), {
       done_at: day(-9, "10:00"),
+      version: 2,
       updated_at: day(-9, "10:00"),
+    }),
+    task(7, { deal: 18 }, "Ask Chris for photos of the wall", day(-2, "17:00"), day(-3, "09:20")),
+    task(8, { deal: 9 }, "Check Marcus has what their finance team needs", laterToday, day(-1, "11:25")),
+    task(9, { deal: 19 }, "Pull the as-built drawings for building C", day(5, "09:00"), day(-4, "14:10")),
+    task(10, { deal: 16 }, "Reply to Aaron with two times for a call", day(1, "09:00"), day(-2, "17:50")),
+    task(11, { deal: 12 }, "Send Sofia the stamped drawings", day(-22, "12:00"), day(-26, "15:05"), {
+      done_at: day(-22, "11:00"),
+      updated_at: day(-22, "11:00"),
     }),
   ];
 
@@ -192,6 +394,7 @@ export function buildDevSeed(now: Date, tz: string): string {
       description: "Flag any open deal with no activity for 5 days in the daily brief.",
       active: 1,
       created_by: "owner",
+      version: 1,
       created_at: day(-20, "09:00"),
       updated_at: day(-20, "09:00"),
     },
@@ -202,40 +405,191 @@ export function buildDevSeed(now: Date, tz: string): string {
       description: "When a deal has been in Call done for 2 days with no activity, add a follow-up task. (Paused.)",
       active: 0,
       created_by: "owner",
+      version: 2,
       created_at: day(-20, "09:05"),
       updated_at: day(-19, "09:00"),
     },
   ];
 
+  const byId = (rows: Row[], id: string): Row => {
+    const row = rows.find((r) => r.id === id);
+    if (!row) throw new Error(`The seed has no row ${id}.`);
+    return row;
+  };
+  const C = (id: string) => byId(contacts, id);
+  const D = (id: string) => byId(deals, id);
+  const T = (id: string) => byId(tasks, id);
+  const R = (id: string) => byId(rules, id);
+  /** A deal as the services name it in change summaries: "Title" (Contact name). */
+  const dealLabel = (dealId: string) => {
+    const deal = D(dealId);
+    return `"${String(deal.title)}" (${String(C(String(deal.contact_id)).name)})`;
+  };
+  /** `row` as it was one change earlier: `patch` applied and the version one lower. */
+  const earlier = (row: Row, patch: Row): Row => ({ ...row, ...patch, version: Number(row.version) - 1 });
+  const activityOf = (what: string, test: (a: Row) => boolean): Row => {
+    const found = activities.find(test);
+    if (!found) throw new Error(`The seed has no ${what}.`);
+    return found;
+  };
+
+  type Touch = { table: string; id: string; before: Row | null; after: Row | null };
+  const audit: Row[] = [];
+  const change = (
+    n: number,
+    at: string,
+    actor: string,
+    tool: string,
+    target: [string, string],
+    summary: string,
+    touches: Touch[],
+    extra: Row = {},
+  ) => {
+    const id = `chg_seed${String(n).padStart(8, "0")}`;
+    const snapshot = (side: "before" | "after") =>
+      JSON.stringify(Object.fromEntries(touches.map((t) => [`${t.table}:${t.id}`, t[side]])));
+    audit.push({
+      id,
+      at,
+      actor,
+      tool,
+      target_table: target[0],
+      target_id: target[1],
+      before_json: snapshot("before"),
+      after_json: snapshot("after"),
+      summary: `${summary} (change ${id})`,
+      undone_at: null,
+      undone_by: null,
+      undo_of: null,
+      ...extra,
+    });
+  };
+
+  // Rule ru_seed01 is still as it was added, so this change can be undone.
+  change(1, day(-20, "09:00"), "owner", "add_rule", ["rules", "ru_seed01"], `Added rule ru_seed01: ${R("ru_seed01").description}`, [
+    { table: "rules", id: "ru_seed01", before: null, after: R("ru_seed01") },
+  ]);
+  change(2, day(-19, "09:00"), "owner", "pause_rule", ["rules", "ru_seed02"], "Paused rule ru_seed02", [
+    { table: "rules", id: "ru_seed02", before: earlier(R("ru_seed02"), { active: 1, updated_at: day(-20, "09:05") }), after: R("ru_seed02") },
+  ]);
+  // Dana's lead as it was first added; the deal has moved on since, so undo refuses this one.
+  const dana = C("ct_seed01");
+  const danaDeal = D("dl_seed01");
+  change(3, day(-9, "09:00"), "owner", "add_lead", ["deals", "dl_seed01"], `Added lead Dana Whitfield with deal "${danaDeal.title}" in New inquiry`, [
+    { table: "contacts", id: "ct_seed01", before: null, after: dana },
+    {
+      table: "deals",
+      id: "dl_seed01",
+      before: null,
+      after: {
+        ...danaDeal,
+        stage_key: "new_inquiry",
+        next_step: null,
+        next_at: null,
+        stage_entered_at: String(danaDeal.created_at),
+        last_activity_at: null,
+        version: 1,
+        updated_at: String(danaDeal.created_at),
+      },
+    },
+  ]);
+  change(4, day(-9, "10:00"), "owner", "complete_task", ["tasks", "tk_seed06"], `Completed task "${T("tk_seed06").title}" for ${dealLabel("dl_seed07")}`, [
+    { table: "tasks", id: "tk_seed06", before: earlier(T("tk_seed06"), { done_at: null, updated_at: String(T("tk_seed06").created_at) }), after: T("tk_seed06") },
+  ]);
+  change(5, day(-4, "09:10"), "ai", "snooze_task", ["tasks", "tk_seed04"], `Snoozed task "${T("tk_seed04").title}" for ${dealLabel("dl_seed05")} until ${formatLocal(day(1, "09:00"), tz)}`, [
+    { table: "tasks", id: "tk_seed04", before: earlier(T("tk_seed04"), { snoozed_until: null, updated_at: String(T("tk_seed04").created_at) }), after: T("tk_seed04") },
+  ]);
+
+  // A move made by mistake and undone a few minutes later: both entries stay in the log, neither can be undone again.
+  const jake = D("dl_seed14");
+  const jakeLabel = dealLabel("dl_seed14");
+  const wrongMove: Row = {
+    id: "ac_seedundone1",
+    deal_id: "dl_seed14",
+    contact_id: "ct_seed14",
+    type: "stage_change",
+    summary: "Moved from Call done to Proposal sent.",
+    untrusted_text: null,
+    data: '{"from":"call_done","to":"proposal_sent"}',
+    occurred_at: day(-3, "11:00"),
+    actor: "ai",
+    version: 1,
+    created_at: day(-3, "11:00"),
+  };
+  const jakeBefore = { ...jake, version: 2, updated_at: day(-4, "10:30") };
+  const jakeMoved = { ...jake, stage_key: "proposal_sent", stage_entered_at: day(-3, "11:00"), version: 3, updated_at: day(-3, "11:00") };
+  change(6, day(-3, "11:00"), "ai", "update_deal", ["deals", "dl_seed14"], `Moved ${jakeLabel} to Proposal sent`, [
+    { table: "deals", id: "dl_seed14", before: jakeBefore, after: jakeMoved },
+    { table: "activities", id: "ac_seedundone1", before: null, after: wrongMove },
+  ], { undone_at: day(-3, "11:05"), undone_by: "chg_seed00000007" });
+  change(7, day(-3, "11:05"), "owner", "undo_change", ["deals", "dl_seed14"], `Undid chg_seed00000006: Moved ${jakeLabel} back to Call done`, [
+    { table: "activities", id: "ac_seedundone1", before: wrongMove, after: null },
+    { table: "deals", id: "dl_seed14", before: jakeMoved, after: jake },
+  ], { undo_of: "chg_seed00000006" });
+
+  const danaMove = activityOf("move of dl_seed01", (a) => a.deal_id === "dl_seed01" && a.occurred_at === day(-2, "10:15"));
+  const danaNext = nextPart(String(danaDeal.next_step), String(danaDeal.next_at), tz);
+  change(8, day(-2, "10:15"), "ai", "update_deal", ["deals", "dl_seed01"], `Moved ${dealLabel("dl_seed01")} to Call booked${danaNext}`, [
+    {
+      table: "deals",
+      id: "dl_seed01",
+      before: earlier(danaDeal, { stage_key: "replied", stage_entered_at: day(-6, "11:05"), next_step: null, next_at: null, updated_at: day(-2, "10:10") }),
+      after: danaDeal,
+    },
+    { table: "activities", id: String(danaMove.id), before: null, after: danaMove },
+  ]);
+  change(9, day(-2, "16:00"), "owner", "update_contact", ["contacts", "ct_seed15"], "Updated Nina Patel: phone", [
+    { table: "contacts", id: "ct_seed15", before: earlier(C("ct_seed15"), { phone: null, updated_at: String(C("ct_seed15").created_at) }), after: C("ct_seed15") },
+  ]);
+  const form = activityOf("form on dl_seed02", (a) => a.deal_id === "dl_seed02" && a.type === "form");
+  change(10, day(-1, "06:40"), "system", "intake", ["deals", "dl_seed02"], "Form submission: new lead, deal dl_seed02 (contact ct_seed02) in New inquiry", [
+    { table: "contacts", id: "ct_seed02", before: null, after: C("ct_seed02") },
+    { table: "deals", id: "dl_seed02", before: null, after: D("dl_seed02") },
+    { table: "activities", id: String(form.id), before: null, after: form },
+  ]);
+  const marcusDeal = D("dl_seed09");
+  const marcusCall = activityOf("call on dl_seed09", (a) => a.deal_id === "dl_seed09" && a.occurred_at === day(-1, "11:20"));
+  change(11, day(-1, "11:20"), "owner", "log_activity", ["activities", String(marcusCall.id)], `Logged a call on ${dealLabel("dl_seed09")}: ${marcusCall.summary}`, [
+    { table: "activities", id: String(marcusCall.id), before: null, after: marcusCall },
+    { table: "deals", id: "dl_seed09", before: earlier(marcusDeal, { last_activity_at: day(-2, "15:30"), updated_at: day(-2, "15:35") }), after: marcusDeal },
+  ]);
+  change(12, day(-1, "11:25"), "ai", "add_task", ["tasks", "tk_seed08"], `Added task "${T("tk_seed08").title}" for ${dealLabel("dl_seed09")}, due ${formatLocal(laterToday, tz)}`, [
+    { table: "tasks", id: "tk_seed08", before: null, after: T("tk_seed08") },
+  ]);
+
   // Yesterday's brief, so the board shows one (with an outside line) and today's is still composed by the cron.
-  const briefAt = day(-1, "09:30");
+  const briefAt = day(-1, "07:00");
   const brief = composeBrief({
     now: new Date(briefAt),
     tz,
     tasks: {
-      overdue: [],
+      overdue: [
+        { id: "tk_seed07", title: String(T("tk_seed07").title), dueAt: day(-2, "17:00"), dealTitle: String(D("dl_seed18").title), contactName: "Chris Dalton", untrusted_fields: [] },
+      ],
       today: [
-        {
-          id: "tk_seed02",
-          title: "Send Casey the price sheet",
-          dueAt: day(-1, "09:00"),
-          dealTitle: "Landscaping site with a quote form",
-          contactName: "Casey Placeholder",
-          untrusted_fields: [],
-        },
+        { id: "tk_seed02", title: String(T("tk_seed02").title), dueAt: day(-1, "09:00"), dealTitle: String(D("dl_seed03").title), contactName: "Priya Raman", untrusted_fields: [] },
       ],
     },
     quietDeals: [
-      { id: "dl_seed06", title: "Hardware store website", contactName: "Morgan Demo", quietDays: 11, untrusted_fields: [] },
+      { id: "dl_seed06", title: String(D("dl_seed06").title), contactName: "Owen Price", quietDays: 9, untrusted_fields: [] },
+      { id: "dl_seed11", title: String(D("dl_seed11").title), contactName: "Ben Hartley", quietDays: 8, untrusted_fields: [] },
     ],
     newLeads: [
       {
         dealId: "dl_seed02",
         contactId: "ct_seed02",
-        title: "New website for Sample Bakery",
-        contactName: "Robin Sample",
-        createdAt: day(-1, "08:40"),
+        title: String(D("dl_seed02").title),
+        contactName: String(C("ct_seed02").name),
+        createdAt: day(-1, "06:40"),
         untrusted_fields: ["title", "contactName"],
+      },
+      {
+        dealId: "dl_seed16",
+        contactId: "ct_seed16",
+        title: String(D("dl_seed16").title),
+        contactName: "Aaron Brooks",
+        createdAt: day(-2, "17:45"),
+        untrusted_fields: [],
       },
     ],
   });
@@ -251,14 +605,23 @@ export function buildDevSeed(now: Date, tz: string): string {
     },
   ];
 
+  return { fieldDefs, contacts, deals, activities, tasks, rules, briefs, audit };
+}
+
+export function buildDevSeed(now: Date, tz: string): string {
+  const seed = devSeed(now, tz);
   return [
     "-- Fake development data from scripts/seed-dev.ts. Not real people.",
-    ...contacts.map((row) => insert("contacts", row)),
-    ...deals.map((row) => insert("deals", row)),
-    ...activities.map((row) => insert("activities", row)),
-    ...tasks.map((row) => insert("tasks", row)),
-    ...rules.map((row) => insert("rules", row)),
-    ...briefs.map((row) => insert("briefs", row)),
+    // Only when the owner hasn't named the local copy already.
+    `UPDATE settings SET business_name = ${sqlValue(DEMO_BUSINESS_NAME)} WHERE id = 1 AND business_name IS NULL;`,
+    ...seed.fieldDefs.map((row) => insert("field_defs", row)),
+    ...seed.contacts.map((row) => insert("contacts", row)),
+    ...seed.deals.map((row) => insert("deals", row)),
+    ...seed.activities.map((row) => insert("activities", row)),
+    ...seed.tasks.map((row) => insert("tasks", row)),
+    ...seed.rules.map((row) => insert("rules", row)),
+    ...seed.briefs.map((row) => insert("briefs", row)),
+    ...seed.audit.map((row) => insert("audit_log", row)),
     "",
   ].join("\n");
 }

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { buildDevSeed } from "../../scripts/seed-dev.ts";
+import { buildFixtureSeed } from "../../tests/helpers/fixture-seed.ts";
 import type { Db } from "../db/db.ts";
 import { createTestDb, openTestDb } from "../db/sqlite-d1.ts";
 import { DEFAULT_TZ } from "../time.ts";
@@ -17,7 +17,7 @@ const ids = (items: { id: string }[]) => items.map((item) => item.id);
 
 async function seededDb(): Promise<Db> {
   const db = await createTestDb();
-  db.exec(buildDevSeed(NOW, TZ));
+  db.exec(buildFixtureSeed(NOW, TZ));
   return db;
 }
 

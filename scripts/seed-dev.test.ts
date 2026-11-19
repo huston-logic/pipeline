@@ -5,10 +5,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import type { ActivityRow, ContactRow, DealRow, TaskRow } from "../src/db/db.ts";
+import type { ActivityRow, AuditRow, ContactRow, DealRow, TaskRow } from "../src/db/db.ts";
 import { createTestDb, type SqliteD1 } from "../src/db/sqlite-d1.ts";
+import { UserError } from "../src/services/errors.ts";
+import { listDealsFiltered } from "../src/services/read.ts";
+import { previewRuleFor } from "../src/services/rules.ts";
+import { undoChange } from "../src/services/undo.ts";
 import { dayBoundsUtc, DEFAULT_TZ, localDate } from "../src/time.ts";
-import { buildDevSeed, parseSeedArgs } from "./seed-dev.ts";
+import { buildDevSeed, DEMO_BUSINESS_NAME, parseSeedArgs } from "./seed-dev.ts";
 
 const NOW = new Date("2026-11-19T18:00:00.000Z"); // 10:00 in Los Angeles
 const CONTACT_TYPES = new Set(["form", "email", "call", "meeting", "note"]);
@@ -23,104 +27,156 @@ async function rows<T>(db: SqliteD1, sql: string): Promise<T[]> {
   return (await db.prepare(sql).all<T>()).results;
 }
 
+const TABLES = ["field_defs", "contacts", "deals", "activities", "tasks", "rules", "briefs", "audit_log"];
+
 test("the seed loads onto the defaults with clean foreign keys, and loading it twice adds nothing", async () => {
   const db = await seeded();
   assert.deepEqual(await rows(db, "PRAGMA foreign_key_check"), []);
   const counts = async () =>
-    Promise.all(
-      ["contacts", "deals", "activities", "tasks", "rules"].map((t) =>
-        db.prepare(`SELECT COUNT(*) AS n FROM ${t}`).first<number>("n"),
-      ),
-    );
+    Promise.all(TABLES.map((t) => db.prepare(`SELECT COUNT(*) AS n FROM ${t}`).first<number>("n")));
   const first = await counts();
+  assert.ok(first.every((n) => (n ?? 0) > 0), `every table has rows: ${first.join(", ")}`);
   db.exec(buildDevSeed(NOW, DEFAULT_TZ));
   assert.deepEqual(await counts(), first);
 });
 
-test("eight obviously fake contacts with fixed ids and example.com emails", async () => {
+test("the local copy is named after the demo firm, unless the owner has named it already", async () => {
   const db = await seeded();
-  const contacts = await rows<ContactRow>(db, "SELECT * FROM contacts ORDER BY id");
-  assert.deepEqual(
-    contacts.map((c) => c.id),
-    ["01", "02", "03", "04", "05", "06", "07", "08"].map((n) => `ct_seed${n}`),
-  );
-  for (const contact of contacts) assert.match(contact.email ?? "", /@example\.com$/, contact.name);
-  assert.ok(contacts.some((c) => c.name === "Pat Example"));
+  assert.equal(await db.prepare("SELECT business_name FROM settings").first("business_name"), DEMO_BUSINESS_NAME);
+  assert.match(DEMO_BUSINESS_NAME, /\(demo\)$/);
+  const named = await createTestDb();
+  named.exec("UPDATE settings SET business_name = 'My Firm'");
+  named.exec(buildDevSeed(NOW, DEFAULT_TZ));
+  assert.equal(await named.prepare("SELECT business_name FROM settings").first("business_name"), "My Firm");
 });
 
-test("deals cover every open stage, with one won and one lost", async () => {
+test("15 to 20 made-up contacts at 8 to 12 companies, several with two or three people, on example domains", async () => {
+  const db = await seeded();
+  const contacts = await rows<ContactRow>(db, "SELECT * FROM contacts ORDER BY id");
+  assert.ok(contacts.length >= 15 && contacts.length <= 20, `${contacts.length} contacts`);
+  assert.equal(contacts[0]?.id, "ct_seed01");
+  for (const contact of contacts) {
+    assert.match(contact.email ?? "", /@example\.(com|org|net)$/, contact.name);
+    assert.match(contact.phone ?? "", /^555-01\d\d$/, contact.name);
+  }
+  const companies = new Map<string, number>();
+  for (const { business } of contacts) {
+    const key = (business ?? "").trim().toLowerCase();
+    if (key !== "") companies.set(key, (companies.get(key) ?? 0) + 1);
+  }
+  assert.ok(companies.size >= 8 && companies.size <= 12, `${companies.size} companies`);
+  assert.ok([...companies.values()].filter((n) => n >= 2 && n <= 3).length >= 3, "several companies have 2 or 3 people");
+  assert.ok(contacts.some((c) => c.business === null), "someone without a company");
+  assert.ok(
+    contacts.some((c) => c.business !== null && c.business !== c.business.trim()),
+    "one company typed with stray spaces, to show the grouping",
+  );
+});
+
+test("15 to 25 deals over every stage, open and closed, with realistic values", async () => {
   const db = await seeded();
   const deals = await rows<DealRow & { kind: string }>(
     db,
     "SELECT d.*, s.kind FROM deals d JOIN stages s ON s.key = d.stage_key ORDER BY d.id",
   );
-  assert.equal(deals.length, 8);
-  assert.equal(deals[0]?.id, "dl_seed01");
-  const open = await rows<{ key: string }>(db, "SELECT key FROM stages WHERE kind = 'open'");
-  for (const { key } of open) assert.ok(deals.some((d) => d.stage_key === key && d.status === "open"), key);
-  assert.deepEqual(
-    deals.filter((d) => d.status !== "open").map((d) => [d.status, d.kind]),
-    [
-      ["won", "won"],
-      ["lost", "lost"],
-    ],
-  );
-  for (const deal of deals) assert.ok(deal.stage_entered_at <= NOW.toISOString(), deal.id);
+  assert.ok(deals.length >= 15 && deals.length <= 25, `${deals.length} deals`);
+  const stages = await rows<{ key: string; kind: string }>(db, "SELECT key, kind FROM stages");
+  for (const { key } of stages) assert.ok(deals.some((d) => d.stage_key === key), key);
+  for (const deal of deals) {
+    assert.equal(deal.status, deal.kind, `${deal.id}: status follows the stage`);
+    assert.ok(deal.stage_entered_at <= NOW.toISOString(), deal.id);
+    if (deal.value !== null) assert.ok(deal.value >= 500 && deal.value <= 50_000, `${deal.id}: ${deal.value}`);
+  }
+  const one = deals.find((d) => d.id === "dl_seed01");
+  assert.equal(one?.status, "open");
+  assert.equal(one?.untrusted_fields, "[]", "dl_seed01 is a normal deal");
+  assert.ok(one?.next_step && one.next_at && one.next_at > NOW.toISOString(), "dl_seed01 has an upcoming next step");
+  const two = deals.find((d) => d.id === "dl_seed02");
+  assert.deepEqual(JSON.parse(two?.untrusted_fields ?? "[]"), ["title"], "dl_seed02 came in through the website form");
+  assert.ok(deals.some((d) => d.status === "open" && d.next_at !== null && d.next_at < NOW.toISOString()), "an overdue next step");
 });
 
-test("tasks: overdue, due today, in the future, done, snoozed and one on a contact only", async () => {
+test("tasks: overdue, due later today, upcoming, done, snoozed and one on a contact only", async () => {
   const db = await seeded();
   const tasks = await rows<TaskRow>(db, "SELECT * FROM tasks");
   const now = NOW.toISOString();
   const today = dayBoundsUtc(localDate(NOW, DEFAULT_TZ), DEFAULT_TZ);
   const open = tasks.filter((t) => t.done_at === null);
-  assert.ok(open.some((t) => t.due_at !== null && t.due_at < today.start.toISOString()), "overdue");
-  assert.ok(
-    open.some((t) => t.due_at !== null && t.due_at >= now && t.due_at < today.end.toISOString()),
-    "due later today",
-  );
-  assert.ok(open.some((t) => t.due_at !== null && t.due_at >= today.end.toISOString()), "future");
+  const awake = open.filter((t) => t.snoozed_until === null || t.snoozed_until <= now);
+  assert.ok(awake.filter((t) => t.due_at !== null && t.due_at < today.start.toISOString()).length >= 2, "overdue");
+  assert.ok(awake.some((t) => t.due_at !== null && t.due_at >= now && t.due_at < today.end.toISOString()), "due later today");
+  assert.ok(open.some((t) => t.due_at !== null && t.due_at >= today.end.toISOString()), "upcoming");
   assert.ok(tasks.some((t) => t.done_at !== null), "done");
   assert.ok(open.some((t) => t.snoozed_until !== null && t.snoozed_until > now), "snoozed");
   assert.ok(tasks.some((t) => t.deal_id === null && t.contact_id !== null), "contact only");
 });
 
-test("a task due today is still due later today when the seed is made late in the evening", async () => {
+test("what is due later today is still later today when the seed is made late in the evening", async () => {
   const late = new Date("2026-11-20T07:30:00.000Z"); // 23:30 in Los Angeles
   const db = await seeded(late);
   const today = dayBoundsUtc(localDate(late, DEFAULT_TZ), DEFAULT_TZ);
-  const due = await rows<TaskRow>(
-    db,
-    `SELECT * FROM tasks WHERE done_at IS NULL AND due_at >= '${late.toISOString()}'
-       AND due_at < '${today.end.toISOString()}'`,
-  );
-  assert.equal(due.length, 1);
+  const between = `>= '${late.toISOString()}' AND %s < '${today.end.toISOString()}'`;
+  const tasks = await rows<TaskRow>(db, `SELECT * FROM tasks WHERE done_at IS NULL AND due_at ${between.replace("%s", "due_at")}`);
+  assert.ok(tasks.length >= 1);
+  const deals = await rows<DealRow>(db, `SELECT * FROM deals WHERE status = 'open' AND next_at ${between.replace("%s", "next_at")}`);
+  assert.ok(deals.length >= 1);
 });
 
-test("activities are in the past, and last_activity_at matches each deal's latest contact", async () => {
+test("activities are in the past, cover every type, and the deals' dates follow from them", async () => {
   const db = await seeded();
   const activities = await rows<ActivityRow>(db, "SELECT * FROM activities");
   for (const a of activities) assert.ok(a.occurred_at < NOW.toISOString(), a.id);
+  for (const type of ["form", "email", "call", "meeting", "note", "stage_change"]) {
+    assert.ok(activities.some((a) => a.type === type), type);
+  }
+  assert.ok(activities.some((a) => a.actor === "ai") && activities.some((a) => a.actor === "owner"));
   const deals = await rows<DealRow>(db, "SELECT * FROM deals");
   for (const deal of deals) {
-    const latest = activities
-      .filter((a) => a.deal_id === deal.id && CONTACT_TYPES.has(a.type))
-      .map((a) => a.occurred_at)
-      .sort()
-      .at(-1);
-    assert.equal(deal.last_activity_at, latest ?? null, deal.id);
+    const own = activities.filter((a) => a.deal_id === deal.id).sort((a, b) => a.occurred_at.localeCompare(b.occurred_at));
+    const latest = own.filter((a) => CONTACT_TYPES.has(a.type)).at(-1);
+    assert.equal(deal.last_activity_at, latest?.occurred_at ?? null, `${deal.id}: last activity`);
+    const move = own.filter((a) => a.type === "stage_change").at(-1);
+    assert.equal(deal.stage_entered_at, move?.occurred_at ?? deal.created_at, `${deal.id}: stage entered`);
+    if (move) assert.equal((JSON.parse(move.data ?? "{}") as { to?: string }).to, deal.stage_key, `${deal.id}: last move`);
+    for (const a of own) assert.equal(a.contact_id, deal.contact_id, `${a.id}: the deal's contact`);
   }
-  assert.ok(activities.some((a) => a.type === "stage_change" && a.data !== null));
+  // A note on a contact alone counts for their open deals, so the seed only has one from before their deal existed.
+  for (const note of activities.filter((a) => a.deal_id === null)) {
+    for (const deal of deals.filter((d) => d.contact_id === note.contact_id)) {
+      assert.ok(note.occurred_at < deal.created_at, `${note.id} predates ${deal.id}`);
+    }
+  }
 });
 
-test("exactly one form activity, whose untrusted text is an obvious fake", async () => {
+test("exactly one form activity, on dl_seed02, whose outside text is an obvious fake", async () => {
   const db = await seeded();
   const forms = await rows<ActivityRow>(db, "SELECT * FROM activities WHERE untrusted_text IS NOT NULL");
   assert.equal(forms.length, 1);
   assert.equal(forms[0]?.type, "form");
-  assert.match(forms[0]?.untrusted_text ?? "", /fake/i);
+  assert.equal(forms[0]?.deal_id, "dl_seed02");
+  assert.match(forms[0]?.untrusted_text ?? "", /made-up test message/);
   const contact = await db.prepare("SELECT untrusted_fields FROM contacts WHERE id = ?").bind(forms[0]?.contact_id).first();
-  assert.notEqual(contact?.untrusted_fields, "[]");
+  assert.ok(JSON.parse(String(contact?.untrusted_fields)).includes("business"), "the company came from the form too");
+});
+
+test("custom fields: a contact Role and a deal Project type, used by the seeded rows", async () => {
+  const db = await seeded();
+  const defs = await rows<{ entity: string; key: string }>(db, "SELECT entity, key FROM field_defs ORDER BY entity");
+  assert.deepEqual(defs, [
+    { entity: "contact", key: "role" },
+    { entity: "deal", key: "project_type" },
+  ]);
+  const types = await rows<{ t: string }>(db, "SELECT DISTINCT json_extract(fields, '$.project_type') AS t FROM deals WHERE t IS NOT NULL");
+  const choices = JSON.parse(String(await db.prepare("SELECT choices FROM field_defs WHERE key = 'project_type'").first("choices")));
+  for (const { t } of types) assert.ok(choices.includes(t), t);
+});
+
+test("only Grace's proposal sat three days without a reply, and only two open deals have gone quiet", async () => {
+  const db = await seeded();
+  const followup = await previewRuleFor(db, NOW, { type: "stage_followup", stage: "Proposal sent", days: 3 });
+  assert.deepEqual([...new Set(followup.hits.map((hit) => hit.dealId))], ["dl_seed05"]);
+  const quiet = await listDealsFiltered(db, { quiet: 5 }, NOW, DEFAULT_TZ);
+  assert.deepEqual(quiet.map((deal) => deal.id).sort(), ["dl_seed05", "dl_seed06"]);
 });
 
 test("one active and one paused rule", async () => {
@@ -134,26 +190,62 @@ test("one active and one paused rule", async () => {
 
 test("one brief, for yesterday, with an outside line, so the cron still composes today's", async () => {
   const db = await seeded();
-  const briefs = await rows<{ local_date: string; text: string; items: string; send_status: string }>(db, "SELECT * FROM briefs");
+  const briefs = await rows<{ local_date: string; text: string; items: string }>(db, "SELECT * FROM briefs");
   assert.equal(briefs.length, 1);
   assert.equal(briefs[0]?.local_date, "2026-11-18");
   assert.match(briefs[0]?.text ?? "", /^Pipeline brief for Wednesday Nov 18\n/);
   const items = JSON.parse(briefs[0]?.items ?? "[]") as { section: string; untrusted: boolean }[];
+  assert.deepEqual([...new Set(items.map((item) => item.section))], ["overdue", "due_today", "gone_quiet", "new_lead"]);
+  assert.ok(items.some((item) => item.untrusted));
+});
+
+test("the change log: recent changes by the owner, the AI and the form, each summary naming its change id", async () => {
+  const db = await seeded();
+  const audit = await rows<AuditRow>(db, "SELECT * FROM audit_log ORDER BY at");
+  assert.ok(audit.length >= 10, `${audit.length} changes`);
+  const monthAgo = new Date(NOW.getTime() - 30 * 86_400_000).toISOString();
+  for (const row of audit) {
+    assert.match(row.id, /^chg_[a-z0-9]{12}$/);
+    assert.ok(row.at > monthAgo && row.at < NOW.toISOString(), `${row.id}: in the last 30 days`);
+    assert.ok(row.summary.endsWith(` (change ${row.id})`), row.summary);
+  }
+  assert.deepEqual([...new Set(audit.map((row) => row.actor))].sort(), ["ai", "owner", "system"]);
+  const undone = audit.filter((row) => row.undone_at !== null);
+  assert.equal(undone.length, 1);
+  const undo = audit.find((row) => row.undo_of === undone[0]?.id);
+  assert.equal(undo?.id, undone[0]?.undone_by, "the undo is logged too");
+  // The form's change never quotes the outside name or company.
+  const intake = audit.find((row) => row.tool === "intake");
+  assert.doesNotMatch(intake?.summary ?? "", /Jamie|Lindqvist|Oak Hollow/);
+});
+
+test("every seeded change either undoes cleanly or is refused in plain English; the newest ones undo", async () => {
+  const ids = (await rows<{ id: string }>(await seeded(), "SELECT id FROM audit_log ORDER BY at")).map((r) => r.id);
+  const undoable: string[] = [];
+  for (const id of ids) {
+    const db = await seeded();
+    try {
+      await undoChange({ db, now: NOW, actor: "owner", tool: "undo_change" }, id);
+      undoable.push(id);
+      assert.deepEqual(await rows(db, "PRAGMA foreign_key_check"), [], id);
+    } catch (error) {
+      assert.ok(error instanceof UserError, `${id}: ${String(error)}`);
+    }
+  }
+  const db = await seeded();
+  const tools = async (list: string[]) =>
+    Promise.all(list.map(async (id) => String(await db.prepare("SELECT tool FROM audit_log WHERE id = ?").bind(id).first("tool"))));
   assert.deepEqual(
-    items.map((item) => [item.section, item.untrusted]),
-    [
-      ["due_today", false],
-      ["gone_quiet", false],
-      ["new_lead", true],
-    ],
+    (await tools(undoable)).sort(),
+    ["add_rule", "add_task", "complete_task", "intake", "log_activity", "pause_rule", "snooze_task", "update_contact", "update_deal"],
   );
-  assert.equal(briefs[0]?.send_status, "off: brief_enabled is off");
+  assert.equal(ids.length - undoable.length, 3, "the old add_lead, the undone move and its undo are refused");
 });
 
 test("the same time and timezone give the same SQL; quotes are escaped", () => {
   assert.equal(buildDevSeed(NOW, DEFAULT_TZ), buildDevSeed(new Date(NOW), DEFAULT_TZ));
   assert.notEqual(buildDevSeed(NOW, DEFAULT_TZ), buildDevSeed(NOW, "UTC"));
-  assert.match(buildDevSeed(NOW, DEFAULT_TZ), /Pat''s/);
+  assert.match(buildDevSeed(NOW, DEFAULT_TZ), /Dana''s call/);
 });
 
 test("parseSeedArgs needs --out and takes an optional --tz", () => {

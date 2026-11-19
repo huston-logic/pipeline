@@ -6,7 +6,8 @@ The test starts the real Worker with `wrangler dev --local` and a real local D1 
 order. Later sentences build on earlier ones: 8 undoes the change from 7, 9 sees the changes from 4 to 8.
 
 Only MCP tools are used, plus two other doors: `/intake` for sentence 12 and the cron trigger for sentence 10. Names
-below are the fake seed people (Pat Example, Casey Placeholder, Taylor Testcase) and one fake new lead (Jordan Testcase).
+below are made-up people from the fake seed of a demo engineering firm (Dana Whitfield, Priya Raman, Grace Liu) and one
+fake new lead (Jordan Testcase).
 
 Run it: `npm run test:e2e` (builds `out/` once, then runs every end-to-end file one at a time). Local only: no login,
 no remote database.
@@ -17,19 +18,20 @@ the email as an activity.
 
 ## 1. What's in my pipeline?
 - Tools: `pipeline_summary`.
-- Asserts: the headline ("6 open deals (total value 4650) across 5 open stages; 1 won, 1 lost, 0 not now.") and each
-  stage's count and value match the seed.
+- Asserts: the headline ("14 open deals (total value 86350) across 5 open stages; 3 won, 2 lost, 1 not now.") and
+  each stage's count and value match the seed.
 - Test: `1. "What's in my pipeline?"`
 
 ## 2. Who needs a follow-up today?
 - Tools: `whats_due`.
-- Asserts: the headline counts, the seed's overdue task (`tk_seed02`) and the task due today (`tk_seed01`); the snoozed
-  task stays out.
+- Asserts: the headline counts, the seed's overdue tasks (`tk_seed07`, `tk_seed02`), the tasks due today (`tk_seed01`,
+  `tk_seed08`), the deal whose next step is late (`dl_seed13`) and the one due today (`dl_seed11`); the snoozed task
+  stays out.
 - Test: `2. "Who needs a follow-up today?"`
 
 ## 3. Tell me everything about [name] before our call.
 - Tools: `get_deal` (by the contact's name).
-- Asserts: contact details, the four timeline entries newest first, the open task and the next step and date.
+- Asserts: contact details, the five timeline entries newest first, the open task and the next step and date.
 - Test: `3. "Tell me everything about [name] before our call."`
 
 ## 4. Add a lead: [name], met at [place], wants [thing].
@@ -70,7 +72,7 @@ the email as an activity.
 ## 10. From now on, nudge me three days after any proposal with no reply.
 - Tools: `preview_rule`, then `add_rule` (stage follow-up, Proposal sent, 3 days); the cron runs; `get_deal`,
   `list_rules`.
-- Asserts: the preview is called before `add_rule` and lists only the seed's proposal deal; after the cron that deal
+- Asserts: the preview is called before `add_rule` and lists only the seed's proposal that sat three days without a reply (Grace Liu's); after the cron that deal
   has exactly one task from the rule and the rule has fired once; a second cron run adds nothing; no other deal gets
   a task.
 - Test: `10. "From now on, nudge me three days after any proposal with no reply."`
