@@ -138,6 +138,24 @@ export function shownOf(specs: Spec[], row: StoredRow, tz: string): Map<string, 
   );
 }
 
+/**
+ * What a browser sends back for this field when the owner leaves it alone. A date input can't hold a value that isn't a
+ * date (an import's "next spring"), so it sends ""; the fingerprint is of that, so leaving it alone is not a change.
+ * (Selects always hold the stored value: an unknown one is added as an option.)
+ */
+function untouchedValue(spec: Spec, stored: string): string {
+  if (spec.kind === "date") return realDate(stored) ? stored : "";
+  if (spec.kind === "when") return stored === "" || realDate(stored.slice(0, 10)) ? stored : "";
+  return stored;
+}
+
+/** Both values, read the way the service would store them, are the same ("1,500" and "1500"). */
+function sameStored(spec: Spec, posted: string, stored: string): boolean {
+  const a = parseValue(spec, posted);
+  const b = parseValue({ ...spec, required: false }, stored);
+  return a.ok && b.ok && a.value === b.value;
+}
+
 /** An edit form as first drawn: stored values, their fingerprints, and which came from outside. */
 export async function editShown(specs: Spec[], row: StoredRow, tz: string): Promise<Map<string, Shown>> {
   const values = shownOf(specs, row, tz);
@@ -145,7 +163,7 @@ export async function editShown(specs: Spec[], row: StoredRow, tz: string): Prom
   const shown = new Map<string, Shown>();
   for (const spec of specs) {
     const value = values.get(spec.name) ?? "";
-    shown.set(spec.name, { value, was: await fingerprint(value, kindOf(spec)), outside: outside.has(spec.outsideKey) });
+    shown.set(spec.name, { value, was: await fingerprint(untouchedValue(spec, value), kindOf(spec)), outside: outside.has(spec.outsideKey) });
   }
   return shown;
 }
@@ -251,10 +269,13 @@ export async function collectEdit(specs: Spec[], form: URLSearchParams, row: Sto
   const shown = new Map<string, Shown>();
   for (const spec of specs) {
     const stored = current.get(spec.name) ?? "";
+    const untouched = untouchedValue(spec, stored);
     const posted = postedValue(form, spec);
     const was = form.get(`${WAS_PREFIX}${spec.name}`);
-    const outcome = await compareField(posted, was, stored, kindOf(spec));
-    const keep: Shown = { value: stored, was: await fingerprint(stored, kindOf(spec)), outside: outside.has(spec.outsideKey) };
+    const compared = await compareField(posted, was, untouched, kindOf(spec));
+    // A change is a new fingerprint AND a different value once read the way the service stores it.
+    const outcome = compared !== "unchanged" && posted !== null && sameStored(spec, posted, stored) ? "unchanged" : compared;
+    const keep: Shown = { value: stored, was: await fingerprint(untouched, kindOf(spec)), outside: outside.has(spec.outsideKey) };
     if (outcome === "unchanged" || posted === null) {
       shown.set(spec.name, keep);
       continue;

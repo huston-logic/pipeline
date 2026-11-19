@@ -8,7 +8,12 @@ export type FieldKind = "line" | "text";
 
 export type FieldOutcome = "unchanged" | "changed" | "conflict";
 
-/** The value as the services would store it from a form: trimmed, with what a browser does to it undone. */
+/**
+ * The value as the services would store it from a form: trimmed, with what a browser does to it undone. It covers a
+ * textarea's newlines sent as CRLF, newlines dropped from a one-line input's value, and spaces trimmed from the ends
+ * (an email input does that). A date input that can't hold its value sends "" instead, and a number can come back
+ * spelled differently; record-form.ts handles those (untouchedValue, sameStored).
+ */
 export function normalize(value: string, kind: FieldKind): string {
   const text = kind === "text" ? value.replace(/\r\n?/g, "\n") : value.replace(/[\r\n]/g, "");
   return text.trim();

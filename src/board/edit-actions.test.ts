@@ -15,6 +15,7 @@ import {
 } from "../../tests/helpers/board.ts";
 import type { ContactRow, DealRow, TaskRow } from "../db/db.ts";
 import type { SqliteD1 } from "../db/sqlite-d1.ts";
+import { addField } from "../services/fields.ts";
 import { updateContact } from "../services/leads.ts";
 import { DEFAULT_TZ, localDate, zonedToUtc } from "../time.ts";
 import { snoozePresets } from "./snooze.ts";
@@ -134,6 +135,30 @@ test("an outside email a browser would reject (intake accepts it) doesn't block 
   assert.equal(row?.phone, "555-0143");
   assert.equal(row?.email, "robin@exa_mple.com");
   assert.equal(row?.untrusted_fields, '["name","email","business"]');
+});
+
+test("a stored value a date input can't show comes back empty from the browser, and is kept, still from outside", async () => {
+  const db = await seededDb();
+  await addField({ db, now: new Date(), actor: "owner", tool: "add_field" }, { entity: "contact", label: "Met on", type: "date" });
+  db.exec(`UPDATE contacts SET fields = '{"met_on":"next spring"}', untrusted_fields = '["name","email","business","fields.met_on"]' WHERE id = 'ct_seed02'`);
+  const { body, cookie, token } = await load(devEnv(db), "/contacts/ct_seed02/edit");
+  const fields = formFields(body, "/contacts/ct_seed02/edit");
+  fields.set("cf.met_on", ""); // what a browser sends for a date input whose value isn't a date
+  fields.set("phone", "555-0144");
+  assert.equal((await post(devEnv(db), "/contacts/ct_seed02/edit", fields, { cookie, token })).res.status, 303);
+  const row = await contact(db, "ct_seed02");
+  assert.equal(row?.phone, "555-0144");
+  assert.equal(row?.fields, '{"met_on":"next spring"}');
+  assert.equal(row?.untrusted_fields, '["name","email","business","fields.met_on"]');
+});
+
+test("a value posted back in another spelling of the same thing (1,500 for 1500) is not a change", async () => {
+  const db = await seededDb();
+  const { fields, cookie, token } = await editForm(db, "/deals/dl_seed01/edit");
+  fields.set("value", "1,500");
+  const { res, body } = await post(devEnv(db), "/deals/dl_seed01/edit", fields, { cookie, token });
+  assert.equal(res.status, 422);
+  assert.match(body, /Nothing to save/);
 });
 
 test("changing an outside value makes it the owner's: that field leaves untrusted_fields, the others stay", async () => {
