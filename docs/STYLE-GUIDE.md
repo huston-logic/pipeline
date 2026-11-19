@@ -302,6 +302,26 @@ summary in `--accent` 600, 44px); open, the form sits in a white bordered box. H
 button, so a screen reader can tell the cards apart. The New lead button (§7.10 primary) sits under the lede on Today,
 Pipeline and Contacts.
 
+### 7.22 Phone actions (`.reach`; decision 0021)
+At the foot of the contact card on the deal page and the Details card on the contact page, on a `--divider` line,
+under the facts (so the number and address, labelled "From outside" when they are, sit right above): a row of Call,
+Text and Email in equal columns, then a hint line in `ink-2` 15px ("Called, texted or emailed? Log it in one tap."),
+then a row of "Log the call", "Log the text", "Log the email", one column per channel, so each Log button sits under
+its link. Only channels with a usable value get a column; a value that fails the check gets one `ink-2` line saying
+why instead. Phone (under 60rem): Call, Text and Email are primary buttons (§7.10) 56px tall; the Log buttons are
+quiet buttons 56px tall, centred, wrapping to two lines in a narrow column. Wide: Call, Text and Email turn quiet
+(white, ink, 44px), because a desktop rarely dials; the Log buttons are 48px. After a tap on Call, Text or Email the
+script focuses the matching Log button and fills it with `--accent` (white label), so the next tap logs it. Link texts
+are fixed words, never the number or address. No icons.
+
+### 7.23 Ask Claude (`.ask`, `.copy-status`; decision 0021)
+A section on the deal page after Next step: an h2 "Ask Claude", one `ink-2` note on what the links do, then one white
+panel with a row per prompt, split by a divider. Each row: the link as a primary button (full width on a phone, its
+own width wide; hidden words say it opens a new tab), "Copy prompt" beside it as a small quiet button (only when the
+script can use the clipboard; it starts `hidden`), a polite live line in `ink-2` that says "Copied.", and a "Show the
+prompt" disclosure (`ink-2` 600, like Snooze) holding the prompt in a labelled read-only textarea (§7.20 field).
+Nothing pops up and nothing disappears on its own.
+
 ## 8. Line art and icons
 
 Inline SVG in `src/board/icons.ts`, 24 × 24 viewBox, `stroke: currentColor`, stroke 1.75, round caps and joins, no
@@ -343,7 +363,8 @@ Checked at 375 and 1280px wide with no horizontal scroll (`npm run screenshots`)
 ## 12. Performance budget (the `lighthouse` check: 90 or higher on mobile, all four categories)
 
 - No font files, no images. Two small stylesheets (`/board.css` static, `/theme.css` from the Worker). One small
-  script, `/board.js` (under 3 KB gzipped, `defer`), on the pipeline board only; every other page has none.
+  script, `/board.js` (under 3 KB gzipped, `defer`), on the pipeline board, deal pages and contact pages (decision
+  0021); every other page has none.
 - The glow is one CSS radial gradient; no `filter`, no `backdrop-filter`.
 - Icons are inline SVG.
 
