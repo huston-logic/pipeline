@@ -12,9 +12,12 @@ const mainOf = (body: string) => /<main id="main">([\s\S]*)<\/main>/.exec(body)?
 const labels = (body: string) => [...body.matchAll(/<label\b[^>]*>([\s\S]*?)<\/label>/g)].map((m) => m[1] ?? "");
 const linkTexts = (body: string) => [...body.matchAll(/<a\b[^>]*>([\s\S]*?)<\/a>/g)].map((m) => m[1] ?? "");
 /** The form posting to `action`, as markup. */
-const formOf = (body: string, action: string) => {
-  const start = body.lastIndexOf("<form", body.indexOf(`action="${action}"`));
-  return start < 0 || !body.includes(`action="${action}"`) ? "" : body.slice(start, body.indexOf("</form>", start) + 7);
+/** The first form posting to `action` (of class `className` when given: the deal page has one-tap Log forms too). */
+const formOf = (body: string, action: string, className?: string) => {
+  const key = className === undefined ? `action="${action}"` : `<form class="${className}" method="post" action="${action}"`;
+  const at = body.indexOf(key);
+  const start = at < 0 ? -1 : body.lastIndexOf("<form", at + 1);
+  return start < 0 ? "" : body.slice(start, body.indexOf("</form>", start) + 7);
 };
 /** Every control id has a label for it (or sits in a fieldset with a legend, for a date and time pair). */
 function assertLabelled(form: string, where: string) {
@@ -154,11 +157,11 @@ test("the deal page offers Edit deal, Add a task and Log, and each task card has
   const task = formOf(body, "/deals/dl_seed01/tasks");
   assertLabelled(task, "add task");
   for (const action of ["/deals/dl_seed01/tasks", "/deals/dl_seed01/log"]) {
-    assert.match(formOf(body, action), new RegExp(`action="${action}" novalidate>`), action);
+    assert.match(formOf(body, action, "inline-form"), new RegExp(`action="${action}" novalidate>`), action);
   }
   assert.match(body, /<form class="snooze-until" method="post" action="\/tasks\/tk_seed01\/snooze" novalidate>/);
   assert.match(task, /<button class="button button-small" type="submit">Add the task<\/button>/);
-  const log = formOf(body, "/deals/dl_seed01/log");
+  const log = formOf(body, "/deals/dl_seed01/log", "inline-form");
   assertLabelled(log, "log");
   assert.match(log, /<select id="log-dl_seed01-type" name="type">\n<option value="note" selected>Note<\/option>\n<option value="call">Call<\/option>/);
   assert.match(formOf(body, "/tasks/tk_seed01/complete"), /<button class="button button-quiet button-small" type="submit">Done<span class="visually-hidden">: Prepare questions for Pat&#39;s call<\/span><\/button>/);
@@ -175,7 +178,7 @@ test("the contact page offers Edit details, Add a deal, Add a task and Log", asy
   assert.match(body, /<a href="\/contacts\/ct_seed01\/edit">Edit details<\/a>/);
   assert.match(body, /<a href="\/contacts\/ct_seed01\/deals\/new">Add a deal<\/a>/);
   assertLabelled(formOf(body, "/contacts/ct_seed01/tasks"), "contact add task");
-  assertLabelled(formOf(body, "/contacts/ct_seed01/log"), "contact log");
+  assertLabelled(formOf(body, "/contacts/ct_seed01/log", "inline-form"), "contact log");
   assert.ok(formOf(body, "/tasks/tk_seed01/complete"), "task cards have Done");
 });
 

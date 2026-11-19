@@ -73,7 +73,8 @@ test("a form message with markup shows on the deal page escaped and labelled Fro
   const added = deals.find((d) => d.title === "Quinn Example inquiry");
   assert.ok(added, "the new deal is listed");
   const body = await (await fetch(`${server.url}/deals/${added.id}`)).text();
-  assert.doesNotMatch(body, /<script/i);
+  // The page's only script is the board's own /board.js (decision 0021); the message's script tag is escaped.
+  assert.deepEqual([...body.matchAll(/<script\b[^>]*>/gi)].map((m) => m[0]), ['<script src="/board.js" defer>']);
   assert.match(
     body,
     /<span class="outside">From outside<\/span> Message as received<\/p><p class="outside-text">&lt;script&gt;alert\(1\)&lt;\/script&gt; Please call me back\.<\/p>/,

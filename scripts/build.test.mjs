@@ -30,10 +30,19 @@ test("copies public/ (board.css and board.js) into out/", () => {
   assert.ok(statSync(join(outDir, "board.js")).size > 0);
 });
 
-test("board.js stays small and plain: under 3 KB gzipped, no eval, no third-party code (decision 0014)", () => {
+test("board.js stays small and plain: under 3 KB gzipped, no eval, no third-party code (decisions 0014, 0021)", () => {
   const script = read("board.js");
   assert.ok(gzipSync(script).length < 3 * 1024, `${gzipSync(script).length} bytes gzipped`);
-  assert.doesNotMatch(script, /\beval\(|new Function|innerHTML|import\(|https?:\/\//);
+  assert.doesNotMatch(script, /\beval\(|new Function|innerHTML|outerHTML|insertAdjacentHTML|document\.write|\bfetch\(|XMLHttpRequest|import\(|https?:\/\//);
+});
+
+test("board.js copies prompts with the clipboard API and moves focus to the Log button after Call, Text or Email (decision 0021)", () => {
+  const script = read("board.js");
+  assert.match(script, /navigator\.clipboard\.writeText\(/);
+  assert.match(script, /"Copied\."/);
+  assert.match(script, /\[data-log\]/);
+  assert.match(script, /\.focus\(\)/);
+  assert.doesNotMatch(script, /\balert\(|\bconfirm\(|\bprompt\(/);
 });
 
 test("copies every icon from public/icons/ into out/icons/, byte for byte (decision 0019)", () => {

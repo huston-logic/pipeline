@@ -64,3 +64,33 @@
 
   document.addEventListener("dragend", clear);
 })();
+
+// Phone actions and Ask Claude on the deal and contact pages (decision 0021). Progressive enhancement only: without
+// this script the Log buttons are always there and each prompt can be copied by hand from its "Show the prompt" box.
+(() => {
+  // After Call, Text or Email opens the phone's own app, focus the matching Log button, so one more tap logs it.
+  for (const link of document.querySelectorAll("[data-log]")) {
+    link.addEventListener("click", () => {
+      const button = document.getElementById(link.dataset.log);
+      if (!button) return;
+      for (const each of document.querySelectorAll(".is-next")) each.classList.remove("is-next");
+      button.classList.add("is-next");
+      button.focus();
+    });
+  }
+
+  // Copy prompt: the button is hidden until the clipboard can be used; the result is said in a polite live region.
+  if (!navigator.clipboard) return;
+  for (const button of document.querySelectorAll("[data-copy]")) {
+    const source = document.getElementById(button.dataset.copy);
+    const status = document.getElementById(button.dataset.copyStatus);
+    if (!source || !status) continue;
+    button.hidden = false;
+    button.addEventListener("click", () => {
+      navigator.clipboard.writeText(source.value).then(
+        () => (status.textContent = "Copied."),
+        () => (status.textContent = "Couldn't copy. Open Show the prompt and copy it from there."),
+      );
+    });
+  }
+})();
