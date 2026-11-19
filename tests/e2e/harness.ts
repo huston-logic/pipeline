@@ -1,13 +1,14 @@
 // End-to-end harness: the real Worker under `wrangler dev --local` with a real local D1 database in a new temp
 // folder (migrations, defaults and the fake seed, set up the way `npm run dev` does it). Local only: no login, no
-// remote resources. One server per test file keeps the suite fast; always `await server.stop()` in `after()`.
+// remote resources. One server per test file; always `await server.stop()` in `after()`.
+// `npm run test:e2e` builds out/ once and runs the files one at a time (`--test-concurrency=1`), so no two files
+// rebuild out/ or start `wrangler dev` at the same moment.
 import { type ChildProcess, spawn } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { build } from "../../scripts/build.mjs";
 import { childEnv, setupLocalDatabase, WRANGLER, wranglerDevArgs } from "../../scripts/dev.mjs";
 
 export const ROOT = fileURLToPath(new URL("../..", import.meta.url));
@@ -101,23 +102,10 @@ async function waitUntilReady(url: string, child: ChildProcess, output: () => st
   throw new Error(`wrangler dev was not ready after ${START_TIMEOUT_MS / 1000}s:\n${output()}`);
 }
 
-/**
- * Test files run in parallel, and several `wrangler dev` processes starting at once can pick the same internal
- * port ("Address already in use"). That is a start-up race, not a bug in the Worker, so it is retried with new ports.
- */
 export async function startDevServer(): Promise<DevServer> {
-  for (let attempt = 1; ; attempt++) {
-    try {
-      return await startDevServerOnce();
-    } catch (error) {
-      if (attempt >= 4 || !/Address already in use/.test(String(error))) throw error;
-      await sleep(500 * attempt);
-    }
+  if (!existsSync(join(ROOT, "out", "index.html"))) {
+    throw new Error("out/ has not been built. Run the end-to-end tests with `npm run test:e2e`, which builds it first.");
   }
-}
-
-async function startDevServerOnce(): Promise<DevServer> {
-  build();
   const stateDir = prepareState();
   const port = await freePort();
   const url = `http://${HOST}:${port}`;
