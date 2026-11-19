@@ -16,8 +16,8 @@ Updated after every merge, so a fresh chat can pick up where the last one stoppe
 | 6 | M6 rules engine | [#7](https://github.com/huston-logic/pipeline/pull/7) | merged |
 | 7 | M7 daily brief | [#8](https://github.com/huston-logic/pipeline/pull/8) | merged |
 | 8 | M8 `/intake` | [#9](https://github.com/huston-logic/pipeline/pull/9) | merged |
-| 9 | M9 board | [#10](https://github.com/huston-logic/pipeline/pull/10) | open, auto-merge queued |
-| 10 | M10 production auth | | not started |
+| 9 | M9 board | [#10](https://github.com/huston-logic/pipeline/pull/10) | merged |
+| 10 | M10 production auth | [#11](https://github.com/huston-logic/pipeline/pull/11) | open, auto-merge queued |
 | 11 | M11 many copies | | not started |
 | 12 | M12 acceptance | | not started |
 
@@ -50,6 +50,12 @@ Files in `docs/decisions/`. Rulings made while running the plan:
 - The board is server-rendered with no client JavaScript; outside text shows a "From outside" label. CSV export
   guards spreadsheet formulas by prefixing `'` (decision 0013, which also lists three design defaults for you to
   look at).
+- Production sign-in (decision 0006): Cloudflare Access protects the board and `/api` (the Worker also verifies the
+  Access JWT); `/mcp` uses OAuth in the same Worker with Access for SaaS as the identity provider, and asks the owner
+  to approve each new AI app on a consent page. `/intake` and the OAuth paths bypass Access. A copy on a custom
+  domain must set `MCP_ALLOWED_HOSTNAMES`, or `/mcp` answers 403.
+- The intake rate limit is 30 per minute, because it counts the website server's requests, not visitors'.
+- End-to-end test files run one at a time after a single build (they raced when run in parallel).
 
 ## Dependencies added
 
@@ -77,7 +83,13 @@ Files in `docs/decisions/`. Rulings made while running the plan:
    `openssl rand -hex 32`), then `npx wrangler secret put INTAKE_SECRET -c .copies/<copy>/wrangler.jsonc`, and put the
    same value in the website's server-side form handler as the `X-Intake-Secret` header. Until it is set, `/intake`
    answers 503. README, "Connect a website form".
-5. **One leftover temp folder** from a manual test (harmless, nothing secret; the hook stops me deleting outside the
+5. **Cloudflare Access, per copy (dashboard).** Follow `docs/ACCESS-SETUP.md`: create the Access for SaaS (OIDC) app
+   for MCP and copy its five values into the `ACCESS_*` secrets; create the self-hosted app for the board with an Allow
+   policy for the owner email(s) and One-time PIN; add the Bypass rules for `/intake`, `/mcp`, `/authorize`,
+   `/callback`, `/token`, `/register` and `/.well-known/`; put the team domain and AUD tag into the copy's generated
+   config. Steps marked "check in the dashboard" there could not be confirmed from the docs alone. Also: Zero Trust
+   Free covers up to 50 users, so no paid plan is needed.
+6. **One leftover temp folder** from a manual test (harmless, nothing secret; the hook stops me deleting outside the
    repo): `rm -r /var/folders/xf/zt8g4lzn0211myfvc6kzmt0r0000gn/T/pipeline-e2e-p134is`
 
 ## How to resume
