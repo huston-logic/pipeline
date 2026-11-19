@@ -11,8 +11,8 @@ Updated after every merge, so a fresh chat can pick up where the last one stoppe
 | 1 | M1 repo identity and engine skeleton | [#2](https://github.com/huston-logic/pipeline/pull/2) | merged |
 | 2 | M2 D1 schema, migrations, seed, data access | [#3](https://github.com/huston-logic/pipeline/pull/3) | merged |
 | 3 | M3 service layer, audit, undo | [#4](https://github.com/huston-logic/pipeline/pull/4) | merged |
-| 4 | M4 MCP endpoint | [#5](https://github.com/huston-logic/pipeline/pull/5) | open, auto-merge queued |
-| 5 | M5 building blocks | | not started |
+| 4 | M4 MCP endpoint | [#5](https://github.com/huston-logic/pipeline/pull/5) | merged |
+| 5 | M5 building blocks | [#6](https://github.com/huston-logic/pipeline/pull/6) | open, auto-merge queued |
 | 6 | M6 rules engine | | not started |
 | 7 | M7 daily brief | | not started |
 | 8 | M8 `/intake` | | not started |
@@ -36,6 +36,9 @@ Files in `docs/decisions/`. Rulings made while running the plan:
 - Unit tests never load the `agents` package; the Worker loads the MCP handler lazily. `/mcp` is tested end to end
   against `wrangler dev --local`.
 - Undo of a lead is refused once a rule has fired on its deal (rule firings are kept so the rule does not fire twice).
+- Owner emails (who may sign in) cannot be changed through MCP (decision 0005); they are set at install time.
+- A call or email logged against just a contact counts as activity on all of that contact's open deals.
+- The last stage of each kind (open, won, lost, not now) cannot be archived, so a deal can always be closed.
 
 ## Dependencies added
 

@@ -50,7 +50,7 @@ test("every read answers an empty database with empty lists and zero counts", as
   assert.deepEqual(await listDealsFiltered(db, {}, NOW, TZ), []);
   assert.deepEqual(await listDealsFiltered(db, { due: "week", quiet: 3 }, NOW, TZ), []);
   assert.deepEqual(await recentChanges(db, new Date(0)), []);
-  await assert.rejects(getDealBrief(db, "dl_nothing", TZ), UserError);
+  await assert.rejects(getDealBrief(db, "dl_nothing", TZ, NOW), UserError);
 });
 
 test("pipelineSummary counts and lists the open deals per stage, plus closed counts", async () => {
@@ -102,7 +102,7 @@ test("whatsDue splits overdue and today in the owner's timezone and skips done a
 
 test("getDealBrief has the contact with untrusted_fields, the timeline newest first with untrusted_text, and open tasks", async () => {
   const db = await seededDb();
-  const robin = await getDealBrief(db, "dl_seed02", TZ);
+  const robin = await getDealBrief(db, "dl_seed02", TZ, NOW);
   assert.equal(robin.contact.name, "Robin Sample");
   assert.deepEqual(robin.contact.untrusted_fields, ["name", "email", "business"]);
   assert.equal(robin.stage.label, "New inquiry");
@@ -110,7 +110,7 @@ test("getDealBrief has the contact with untrusted_fields, the timeline newest fi
   assert.equal(form?.type, "form");
   assert.match(form?.untrusted_text ?? "", /fake test message/);
 
-  const pat = await getDealBrief(db, "website refresh for example plumbing", TZ);
+  const pat = await getDealBrief(db, "website refresh for example plumbing", TZ, NOW);
   assert.equal(pat.deal.id, "dl_seed01");
   assert.deepEqual(ids(pat.timeline), ["ac_seed04", "ac_seed03", "ac_seed02", "ac_seed01"]);
   assert.deepEqual(pat.timeline[0]?.data, { from: "replied", to: "call_booked" });
@@ -119,7 +119,7 @@ test("getDealBrief has the contact with untrusted_fields, the timeline newest fi
   assert.deepEqual(pat.next, { step: "Discovery call", at: "2026-11-21T22:00:00.000Z", atLocal: "Sat Nov 21, 2:00 PM" });
   assert.deepEqual(pat.contact.untrusted_fields, []);
 
-  const morgan = await getDealBrief(db, "dl_seed06", TZ);
+  const morgan = await getDealBrief(db, "dl_seed06", TZ, NOW);
   assert.deepEqual(ids(morgan.openTasks), ["tk_seed05"], "the contact's own tasks are included");
 });
 

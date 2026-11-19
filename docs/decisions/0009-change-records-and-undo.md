@@ -61,3 +61,16 @@ instead of a constraint error, which is what Review Focus 3 asks for.
   since" refusals) and the ambiguity lists in `lookup.ts` use the same rules. A snapshot from before 0002 has no
   `untrusted_fields` and counts as trusted (no outside text existed before intake).
 - So `audit_log.summary` is safe to show anywhere, and a write tool's headline can stay the service's summary.
+
+## Addendum 2 (task 5): a contact-only activity counts for the contact's open deals
+
+`last_activity_at` drives "gone quiet" and the stage follow-up rules. An email, call, meeting or note logged with only
+a contact (no deal) is still contact with that person, so `log_activity` now moves `last_activity_at` on every open,
+non-archived deal of that contact in the same change (an older activity never moves it back). Closed and archived deals
+are left alone. The deals are part of the change's snapshot, so `undo_change` puts their `last_activity_at` back. Before
+this, such an activity left every deal looking quiet.
+
+Other task 5 notes: `isGuardFailure` and `isForeignKeyFailure` look through the `cause` chain, because D1 and the
+shim wrap the SQLite text; when an undo's guard fails because another undo of the same change won, the loser re-reads
+the original and says it was already undone; and a duplicate-email failure at write time (another writer got in
+between the check and the batch) becomes the plain "Another contact already uses that email" answer.

@@ -6,6 +6,8 @@ import type {
   Db,
   DealRow,
   DealStatus,
+  FieldDefRow,
+  FieldEntity,
   RuleRow,
   RulebookRow,
   SettingsRow,
@@ -42,6 +44,17 @@ export async function getSettings(db: Db): Promise<SettingsRow> {
 export async function listStages(db: Db, options: { includeArchived?: boolean } = {}): Promise<StageRow[]> {
   const filter = options.includeArchived ? "" : "WHERE archived = 0";
   return all<StageRow>(db, `SELECT * FROM stages ${filter} ORDER BY position, key`, []);
+}
+
+/** Custom field definitions in the order they were added, optionally for one entity. */
+export async function listFieldDefs(
+  db: Db,
+  options: { entity?: FieldEntity; includeArchived?: boolean } = {},
+): Promise<FieldDefRow[]> {
+  const w = where();
+  if (options.entity !== undefined) add(w, "entity = ?", options.entity);
+  if (!options.includeArchived) add(w, "archived = 0");
+  return all<FieldDefRow>(db, `SELECT * FROM field_defs ${whereSql(w)} ORDER BY entity, created_at, rowid`, w.params);
 }
 
 export async function getContact(db: Db, id: string): Promise<ContactRow | null> {

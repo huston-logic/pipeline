@@ -1,5 +1,5 @@
 // log_activity. Owner and AI entries never carry untrusted_text: that column is only for text from outside.
-import type { ActivityRow, ActivityType } from "../db/db.ts";
+import type { ActivityRow, ActivityType, Db, DealRow } from "../db/db.ts";
 import { newId } from "../ids.ts";
 import { parseWhen } from "../time.ts";
 import { type ChangeResult, commitChange, type Ctx, type RowChange, updatedRow } from "./change.ts";
@@ -21,6 +21,14 @@ export interface ActivityInput {
   summary: string;
   /** When it happened; defaults to now. */
   occurredAt?: string;
+}
+
+async function openDealsOf(db: Db, contactId: string): Promise<DealRow[]> {
+  const found = await db
+    .prepare("SELECT * FROM deals WHERE contact_id = ? AND status = 'open' AND archived = 0 ORDER BY created_at, id")
+    .bind(contactId)
+    .all<DealRow>();
+  return found.results;
 }
 
 const isContactType = (type: string): type is (typeof CONTACT_TYPES)[number] =>
@@ -58,12 +66,15 @@ export async function logActivity(ctx: Ctx, input: ActivityInput): Promise<Chang
     created_at: ctx.now.toISOString(),
   };
   const changes: RowChange[] = [{ table: "activities", id: activity.id, before: null, after: activity }];
-  if (deal && (deal.last_activity_at === null || deal.last_activity_at < occurredAt)) {
+  // With only a contact, the activity counts for each of their open deals (decision 0009, addendum 2).
+  const touched = deal ? [deal] : await openDealsOf(db, contact.id);
+  for (const row of touched) {
+    if (row.last_activity_at !== null && row.last_activity_at >= occurredAt) continue;
     changes.push({
       table: "deals",
-      id: deal.id,
-      before: deal,
-      after: updatedRow(deal, { last_activity_at: occurredAt }, ctx.now),
+      id: row.id,
+      before: row,
+      after: updatedRow(row, { last_activity_at: occurredAt }, ctx.now),
     });
   }
 

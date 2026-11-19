@@ -1,8 +1,10 @@
-// add_task. Completing and snoozing tasks arrive in task 5.
-import type { TaskRow } from "../db/db.ts";
+// add_task, complete_task and snooze_task.
+import type { Db, TaskRow } from "../db/db.ts";
+import { getContact, getDeal } from "../db/queries.ts";
 import { newId } from "../ids.ts";
-import { formatLocal } from "../time.ts";
-import { type ChangeResult, commitChange, type Ctx } from "./change.ts";
+import { formatLocal, parseWhen } from "../time.ts";
+import { type ChangeResult, commitChange, type Ctx, type Row, updatedRow } from "./change.ts";
+import { capitalize, rowLabel } from "./describe.ts";
 import { UserError } from "./errors.ts";
 import { clean, whenOrNull } from "./input.ts";
 import { contactName, dealLabel } from "./labels.ts";
@@ -48,4 +50,65 @@ export async function addTask(ctx: Ctx, input: TaskInput): Promise<ChangeResult 
     changes: [{ table: "tasks", id: task.id, before: null, after: task }],
   });
   return { ...result, taskId: task.id };
+}
+
+/** task "Call back", or task tk_… when the title came from outside. */
+const taskName = (task: TaskRow) => rowLabel("tasks", task as Row);
+
+async function findTask(db: Db, ref: string): Promise<TaskRow> {
+  const id = ref.trim();
+  if (id === "") throw new UserError("Say which task: give its id (tk_...) from whats_due or get_deal.");
+  const found = await db.prepare("SELECT * FROM tasks WHERE id = ?").bind(id).first<TaskRow>();
+  if (!found) throw new UserError(`No task "${id}". Use whats_due or get_deal to find the task's id.`);
+  return found;
+}
+
+/** "\"Call back\" for \"Website refresh\" (Pat Example)", each part safe on its own. */
+async function describeTask(db: Db, task: TaskRow): Promise<string> {
+  const deal = task.deal_id === null ? null : await getDeal(db, task.deal_id);
+  const contact = await getContact(db, task.contact_id ?? deal?.contact_id ?? "");
+  const forWhom = deal && contact ? dealLabel(deal, contact) : contact ? contactName(contact) : null;
+  return forWhom === null ? taskName(task) : `${taskName(task)} for ${forWhom}`;
+}
+
+export async function completeTask(ctx: Ctx, ref: string): Promise<ChangeResult & { taskId: string }> {
+  const { db } = ctx;
+  const before = await findTask(db, ref);
+  if (before.done_at !== null) {
+    const tz = await ownerTimezone(db);
+    throw new UserError(`${capitalize(taskName(before))} is already done (${formatLocal(before.done_at, tz)}). Nothing to do.`);
+  }
+  const after = updatedRow(before, { done_at: ctx.now.toISOString() }, ctx.now);
+  const result = await commitChange(ctx, {
+    target: { table: "tasks", id: before.id },
+    summary: `Completed ${await describeTask(db, before)}`,
+    changes: [{ table: "tasks", id: before.id, before, after }],
+  });
+  return { ...result, taskId: before.id };
+}
+
+export async function snoozeTask(ctx: Ctx, ref: string, until: string): Promise<ChangeResult & { taskId: string }> {
+  const { db } = ctx;
+  const tz = await ownerTimezone(db);
+  const before = await findTask(db, ref);
+  if (before.done_at !== null) {
+    throw new UserError(`${capitalize(taskName(before))} is already done, so there is nothing to snooze.`);
+  }
+  const wake = parseWhen(until, tz);
+  if (wake.getTime() <= ctx.now.getTime()) {
+    throw new UserError(
+      `A task can only be snoozed to a time in the future; ${formatLocal(wake, tz)} has already passed. Give a later time.`,
+    );
+  }
+  const snoozedUntil = wake.toISOString();
+  if (before.snoozed_until === snoozedUntil) {
+    throw new UserError(`${capitalize(taskName(before))} is already snoozed until ${formatLocal(wake, tz)}. Nothing to change.`);
+  }
+  const after = updatedRow(before, { snoozed_until: snoozedUntil }, ctx.now);
+  const result = await commitChange(ctx, {
+    target: { table: "tasks", id: before.id },
+    summary: `Snoozed ${await describeTask(db, before)} until ${formatLocal(wake, tz)}`,
+    changes: [{ table: "tasks", id: before.id, before, after }],
+  });
+  return { ...result, taskId: before.id };
 }

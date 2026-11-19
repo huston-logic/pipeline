@@ -2,13 +2,23 @@
 import type { ActivityRow, ContactRow, DealRow } from "../db/db.ts";
 import { findContactByEmail } from "../db/queries.ts";
 import { newId } from "../ids.ts";
-import { type ChangeResult, changedColumns, commitChange, type Ctx, type Row, type RowChange, updatedRow } from "./change.ts";
+import {
+  type ChangeInput,
+  type ChangeResult,
+  changedColumns,
+  commitChange,
+  type Ctx,
+  isDuplicateEmailFailure,
+  type Row,
+  type RowChange,
+  updatedRow,
+} from "./change.ts";
+import { checkFieldValues } from "./fields.ts";
 import { columnLabel, fieldsLabel, joinAnd, nextPart } from "./describe.ts";
 import { UserError } from "./errors.ts";
 import { checkEmail, checkValue, clean, whenOrNull, withoutNulls } from "./input.ts";
 import { contactName, isTrusted } from "./labels.ts";
 import {
-  checkFieldKeys,
   type FieldValues,
   findContact,
   firstStageOfKind,
@@ -17,6 +27,20 @@ import {
   parseObject,
   parseStringArray,
 } from "./lookup.ts";
+
+/** commitChange, with a duplicate email that another writer got in first turned into a plain answer. */
+async function commitWithEmail(ctx: Ctx, input: ChangeInput, email: string | null): Promise<ChangeResult> {
+  try {
+    return await commitChange(ctx, input);
+  } catch (error) {
+    if (email === null || !isDuplicateEmailFailure(error)) throw error;
+    const other = await findContactByEmail(ctx.db, email);
+    const who = other ? `: contact ${other.id}` : "";
+    throw new UserError(`Another contact already uses that email${who}. Use update_contact on that one instead.`, {
+      cause: error,
+    });
+  }
+}
 
 export interface LeadInput {
   name: string;
@@ -53,8 +77,8 @@ export async function addLead(ctx: Ctx, input: LeadInput): Promise<AddLeadResult
   const nextAt = whenOrNull(input.nextAt ?? null, tz);
   const dealFields = withoutNulls(input.fields ?? {});
   const contactFields = withoutNulls(input.contactFields ?? {});
-  await checkFieldKeys(db, "deal", dealFields);
-  await checkFieldKeys(db, "contact", contactFields);
+  await checkFieldValues(db, "deal", dealFields);
+  await checkFieldValues(db, "contact", contactFields);
   const stage = await firstStageOfKind(db, "open");
   if (!stage) throw new UserError("There's no open stage to put a new deal in. Add one with add_stage first.");
 
@@ -130,7 +154,7 @@ export async function addLead(ctx: Ctx, input: LeadInput): Promise<AddLeadResult
       : `Added lead ${name} with deal "${deal.title}" in ${stage.label}`) +
     nextPart(nextStep, nextAt, tz) +
     (ignored ? "; contact details left as they were (use update_contact to change them)" : "");
-  const result = await commitChange(ctx, { target: { table: "deals", id: deal.id }, summary, changes });
+  const result = await commitWithEmail(ctx, { target: { table: "deals", id: deal.id }, summary, changes }, existing ? null : email);
   return { ...result, contactId: contact.id, dealId: deal.id, matchedExisting: existing !== null };
 }
 
@@ -177,12 +201,13 @@ export async function updateContact(ctx: Ctx, contactRef: string, patch: Contact
     confirmed.push(column);
   }
   if (patch.fields !== undefined) {
-    await checkFieldKeys(db, "contact", withoutNulls(patch.fields));
+    await checkFieldValues(db, "contact", patch.fields);
     set.fields = mergeFields(before.fields, patch.fields);
     confirmed.push(...Object.keys(patch.fields).map((key) => `fields.${key}`));
   }
   const untrusted = parseStringArray(before.untrusted_fields);
-  set.untrusted_fields = JSON.stringify(untrusted.filter((field) => !confirmed.includes(field)));
+  const remaining = untrusted.filter((field) => !confirmed.includes(field));
+  if (remaining.length !== untrusted.length) set.untrusted_fields = JSON.stringify(remaining);
 
   const after = updatedRow(before, set as Partial<ContactRow>, ctx.now);
   const changed = changedColumns(before, after).filter((c) => c !== "version" && c !== "updated_at");
@@ -197,9 +222,13 @@ export async function updateContact(ctx: Ctx, contactRef: string, patch: Contact
     labels.length > 0
       ? `Updated ${contactName(after)}: ${joinAnd(labels)}`
       : `Confirmed ${joinAnd(confirmedOnly.map(columnLabel))} for ${contactName(after)}`;
-  return commitChange(ctx, {
-    target: { table: "contacts", id: before.id },
-    summary,
-    changes: [{ table: "contacts", id: before.id, before, after }],
-  });
+  return commitWithEmail(
+    ctx,
+    {
+      target: { table: "contacts", id: before.id },
+      summary,
+      changes: [{ table: "contacts", id: before.id, before, after }],
+    },
+    typeof set.email === "string" ? set.email : null,
+  );
 }

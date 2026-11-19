@@ -5,6 +5,7 @@ import { openTestDb } from "../db/sqlite-d1.ts";
 import { logActivity } from "./activities.ts";
 import type { Ctx } from "./change.ts";
 import { addLead } from "./leads.ts";
+import { undoChange } from "./undo.ts";
 
 const CREATED = new Date("2026-11-16T18:00:00.000Z");
 const NOW = new Date("2026-11-19T18:00:00.000Z");
@@ -62,14 +63,27 @@ test("every contact type counts; an older activity never moves last_activity_at 
   assert.equal((await deal(db, dealId)).last_activity_at, NOW.toISOString());
 });
 
-test("an activity for a contact only leaves the deals alone", async () => {
+test("a contact-only activity moves last_activity_at on all of the contact's open deals, in the same change", async () => {
   const { db, dealId, contactId } = await setup();
+  await db.prepare("UPDATE contacts SET email = 'pat@example.com' WHERE id = ?").bind(contactId).run();
+  const second = await addLead(ctxAt(db, CREATED, "add_lead"), { name: "Pat Example", email: "pat@example.com", dealTitle: "Logo" });
+  const closed = await addLead(ctxAt(db, CREATED, "add_lead"), { name: "Pat Example", email: "pat@example.com", dealTitle: "Old job" });
+  await db.prepare("UPDATE deals SET status = 'lost', stage_key = 'lost' WHERE id = ?").bind(closed.dealId).run();
+
   const result = await logActivity(ctxAt(db, NOW), { contactId: "Pat Example", type: "email", summary: "Sent a hello." });
+
   assert.match(result.summary, /^Logged an email with Pat Example: Sent a hello\. \(change/);
   const row = await activity(db, result.activityId);
   assert.equal(row.deal_id, null);
   assert.equal(row.contact_id, contactId);
-  assert.equal((await deal(db, dealId)).version, 1);
+  assert.equal((await deal(db, dealId)).last_activity_at, NOW.toISOString());
+  assert.equal((await deal(db, second.dealId)).last_activity_at, NOW.toISOString());
+  assert.equal((await deal(db, closed.dealId)).last_activity_at, null, "a closed deal is left alone");
+  const audit = await db.prepare("SELECT after_json FROM audit_log WHERE id = ?").bind(result.changeId).first<{ after_json: string }>();
+  assert.equal(Object.keys(JSON.parse(audit?.after_json ?? "{}")).length, 3, "the activity and the two deals are one change");
+
+  await undoChange({ ...ctxAt(db, NOW, "undo_change") }, result.changeId);
+  assert.equal((await deal(db, dealId)).last_activity_at, null);
 });
 
 test("logActivity refuses stage changes, future times, mismatched contacts and missing targets", async () => {

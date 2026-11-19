@@ -278,7 +278,7 @@ export interface DealBrief {
 }
 
 /** A pre-call brief. `dealRef` is a deal id, title or contact name. */
-export async function getDealBrief(db: Db, dealRef: string, tz: string, now = new Date()): Promise<DealBrief> {
+export async function getDealBrief(db: Db, dealRef: string, tz: string, now: Date): Promise<DealBrief> {
   const found = await findDeal(db, dealRef);
   const [row] = await rows<DealJoin & { stage_kind: StageKind }>(
     db,

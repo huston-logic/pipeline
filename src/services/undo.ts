@@ -75,6 +75,9 @@ const sameRow = (current: Row | null, expected: Row | null) =>
 const dependsMessage = (changeId: string, what: string) =>
   `Can't undo ${changeId}: other records now depend on it (${what}). Change those first, or leave it.`;
 
+const alreadyUndone = (changeId: string, audit: AuditRow) =>
+  `${changeId} was already undone (by ${audit.undone_by ?? "an earlier undo"}). Nothing to do.`;
+
 const changedMessage = (changeId: string, what: string) =>
   `Can't undo ${changeId}: ${what} changed since (see recent_changes). Undo the later changes first, or leave it.`;
 
@@ -133,9 +136,7 @@ export async function undoChange(ctx: Ctx, changeId: string): Promise<ChangeResu
   const original = await db.prepare("SELECT * FROM audit_log WHERE id = ?").bind(id).first<AuditRow>();
   if (!original) throw new UserError(`There's no change ${id}. Use recent_changes to find the change id.`);
   if (original.undo_of !== null) throw new UserError("Undo entries can't be undone; make the change again instead.");
-  if (original.undone_at !== null) {
-    throw new UserError(`${id} was already undone (by ${original.undone_by ?? "an earlier undo"}). Nothing to do.`);
-  }
+  if (original.undone_at !== null) throw new UserError(alreadyUndone(id, original));
   if (!isChangeTable(original.target_table)) throw new Error(`Change ${id} targets an unknown table.`);
 
   const entries = entriesOf(original);
@@ -185,6 +186,9 @@ export async function undoChange(ctx: Ctx, changeId: string): Promise<ChangeResu
     });
   } catch (error) {
     if (error instanceof StaleWriteError) {
+      // Another undo of this change may have won the race: say so instead of blaming a later edit.
+      const latest = await db.prepare("SELECT * FROM audit_log WHERE id = ?").bind(id).first<AuditRow>();
+      if (latest?.undone_at) throw new UserError(alreadyUndone(id, latest), { cause: error });
       throw new UserError(changedMessage(id, "a record it touched"), { cause: error });
     }
     if (isForeignKeyFailure(error)) throw new UserError(dependsMessage(id, "records added since"), { cause: error });
