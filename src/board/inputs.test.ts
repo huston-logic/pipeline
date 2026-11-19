@@ -25,7 +25,7 @@ test("a hint and an error are read with the control, and the control is marked i
 
 test("values are escaped, and an outside value carries the From outside label beside the field's label", () => {
   const out = field({ id: "f-name", name: "name", label: "Name", kind: "text", value: SCRIPT, outside: true }).value;
-  assert.doesNotMatch(out, /<script>/);
+  assert.equal(out.includes(SCRIPT), false, "the raw markup never appears");
   assert.match(out, /value="&lt;script&gt;alert\(1\)&lt;\/script&gt;"/);
   assert.match(out, /<label for="f-name">Name<\/label> <span class="outside" id="f-name-outside">From outside<\/span>/);
   assert.match(out, /<input id="f-name"[^>]* aria-describedby="f-name-outside">/, "the label is read with the control");
