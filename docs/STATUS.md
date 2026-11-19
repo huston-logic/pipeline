@@ -14,8 +14,8 @@ Updated after every merge, so a fresh chat can pick up where the last one stoppe
 | 4 | M4 MCP endpoint | [#5](https://github.com/huston-logic/pipeline/pull/5) | merged |
 | 5 | M5 building blocks | [#6](https://github.com/huston-logic/pipeline/pull/6) | merged (a11y needed one re-run: CI runner apt mirror glitch) |
 | 6 | M6 rules engine | [#7](https://github.com/huston-logic/pipeline/pull/7) | merged |
-| 7 | M7 daily brief | [#8](https://github.com/huston-logic/pipeline/pull/8) | open, auto-merge queued |
-| 8 | M8 `/intake` | | not started |
+| 7 | M7 daily brief | [#8](https://github.com/huston-logic/pipeline/pull/8) | merged |
+| 8 | M8 `/intake` | [#9](https://github.com/huston-logic/pipeline/pull/9) | open, auto-merge queued |
 | 9 | M9 board | | not started |
 | 10 | M10 production auth | | not started |
 | 11 | M11 many copies | | not started |
@@ -44,6 +44,9 @@ Files in `docs/decisions/`. Rulings made while running the plan:
   up on stage entries from before it was resumed or retargeted.
 - The daily brief is composed and stored every day, whatever the "brief on/off" setting says; that setting (plus a
   deploy flag and secrets) only controls emailing it (decision 0011). Briefs are a system log, not audited or undoable.
+- `/intake` is server-to-server only (no CORS; the secret must never be in browser code). A form never overwrites an
+  existing contact's details; it adds a new deal and a form activity. Repeats within 10 minutes are ignored
+  (decision 0012).
 
 ## Dependencies added
 
@@ -67,7 +70,11 @@ Files in `docs/decisions/`. Rulings made while running the plan:
    `npx wrangler secret put RESEND_API_KEY -c .copies/<copy>/wrangler.jsonc`, set the vars `BRIEF_SENDING = "on"` and
    `BRIEF_FROM = "Pipeline <brief@<your domain>>"` in that copy's generated config, and ask the AI to
    `update_settings` with the brief address and brief on. Details: docs/SECRETS.md.
-4. **One leftover temp folder** from a manual test (harmless, nothing secret; the hook stops me deleting outside the
+4. **Intake secret, per copy, when you connect a website form.** Generate a long random value (for example
+   `openssl rand -hex 32`), then `npx wrangler secret put INTAKE_SECRET -c .copies/<copy>/wrangler.jsonc`, and put the
+   same value in the website's server-side form handler as the `X-Intake-Secret` header. Until it is set, `/intake`
+   answers 503. README, "Connect a website form".
+5. **One leftover temp folder** from a manual test (harmless, nothing secret; the hook stops me deleting outside the
    repo): `rm -r /var/folders/xf/zt8g4lzn0211myfvc6kzmt0r0000gn/T/pipeline-e2e-p134is`
 
 ## How to resume
