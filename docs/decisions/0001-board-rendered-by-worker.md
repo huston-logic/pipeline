@@ -1,5 +1,8 @@
 # 0001: The board is HTML rendered by the Worker; Next.js is removed
 
+Replaced in part by 0014 (run 2): the board is now editable and may load one small first-party script as
+progressive enhancement. Server rendering, the `html` tag and the removal of Next.js still stand.
+
 ## Context
 
 The repo started as a Next.js static-export website. The spec needs a read-only board that shows live D1 data behind

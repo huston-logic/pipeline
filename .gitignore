@@ -14,6 +14,9 @@
 /.copies/
 /exports/
 
+# owner review folder: screenshots and owner-only proposals from autonomous runs (never committed)
+/.owner-review/
+
 # misc
 .DS_Store
 *.pem
