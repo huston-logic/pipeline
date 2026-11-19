@@ -1390,6 +1390,11 @@ button.button {
   font-weight: 600;
 }
 
+/* The From outside label under a field's label, at its own width. */
+.field > .outside {
+  align-self: flex-start;
+}
+
 .field-required {
   color: var(--ink-2);
   font-weight: 500;

@@ -83,7 +83,7 @@ test("a refused New lead is a 422 with an error summary linking each field, the 
   assert.match(body, /<title>Error: New lead · Pipeline<\/title>/);
   assert.match(body, /<div class="error-summary" role="alert" aria-labelledby="error-summary-heading">\n<h2 id="error-summary-heading">3 things to fix<\/h2>/);
   assert.match(body, /<li><a href="#lead-name">Give the person&#39;s name\.<\/a><\/li>/);
-  assert.match(body, /<li><a href="#lead-value">Give a number of 0 or more, for example 1500\.<\/a><\/li>/);
+  assert.match(body, /<li><a href="#lead-value">Give a number of 0 or more\.<\/a><\/li>/);
   assert.match(body, /<li><a href="#lead-next_at-date">Give a date for this time, or clear the time\.<\/a><\/li>/);
   assert.match(body, /<input id="lead-name" name="name" type="text" value="" autocomplete="off" required maxlength="500" aria-describedby="lead-name-error" aria-invalid="true">/);
   assert.match(body, /name="email" type="email" value="lee@example\.com"/, "the values are kept");

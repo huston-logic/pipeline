@@ -4,13 +4,13 @@ import { getContact, listFieldDefs } from "../../db/queries.ts";
 import { contactName } from "../../services/labels.ts";
 import type { PageContext } from "../context.ts";
 import { contactHref } from "../parts.ts";
-import { dealSpecs } from "../record-form.ts";
+import { dealSpecs, type Spec } from "../record-form.ts";
 import { type FormState, recordFormPage } from "./record-page.ts";
 
 export const newDealPath = (contactId: string): string => `${contactHref(contactId)}/deals/new`;
 
 /** add_lead takes the title as dealTitle. */
-export const newDealSpecs = (defs: FieldDefRow[]) => dealSpecs(defs, { titleRequired: true, notes: true, titleProp: "dealTitle" });
+export const newDealSpecs = (defs: FieldDefRow[]): Spec[] => dealSpecs(defs, { titleRequired: true, notes: true, titleProp: "dealTitle" });
 
 export async function newDealPage(ctx: PageContext, contactId: string, state?: FormState): Promise<string | null> {
   const contact = await getContact(ctx.db, contactId);

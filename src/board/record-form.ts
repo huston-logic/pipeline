@@ -185,7 +185,7 @@ export function parseValue(spec: Spec, posted: string): Parsed {
       const plain = text.replace(/[,\s]/g, "");
       const n = Number(plain);
       if (spec.min0) {
-        return NUMBER.test(plain) && n >= 0 ? { ok: true, value: n } : fail("Give a number of 0 or more, for example 1500.");
+        return NUMBER.test(plain) && n >= 0 ? { ok: true, value: n } : fail("Give a number of 0 or more.");
       }
       return NUMBER.test(plain) && Number.isFinite(n) ? { ok: true, value: n } : fail("Give a number, for example 1500.");
     }

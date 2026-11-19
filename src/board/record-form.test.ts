@@ -124,8 +124,8 @@ test("parsing: required, email, numbers, dates and times, and choices, each with
   assert.deepEqual(parseValue(spec("email"), "pat@"), { ok: false, message: "Give an email address like name@example.com." });
   assert.deepEqual(parseValue(spec("email"), ""), { ok: true, value: null });
   assert.deepEqual(parseValue(spec("value"), "1,500"), { ok: true, value: 1500 });
-  assert.deepEqual(parseValue(spec("value"), "-3"), { ok: false, message: "Give a number of 0 or more, for example 1500." });
-  assert.deepEqual(parseValue(spec("value"), "lots"), { ok: false, message: "Give a number of 0 or more, for example 1500." });
+  assert.deepEqual(parseValue(spec("value"), "-3"), { ok: false, message: "Give a number of 0 or more." });
+  assert.deepEqual(parseValue(spec("value"), "lots"), { ok: false, message: "Give a number of 0 or more." });
   assert.deepEqual(parseValue(spec("df.budget"), "-2.5"), { ok: true, value: -2.5 });
   assert.deepEqual(parseValue(spec("next_at"), "T14:00"), { ok: false, message: "Give a date for this time, or clear the time." });
   assert.deepEqual(parseValue(spec("next_at"), "2026-02-30"), { ok: false, message: "Give a real date." });

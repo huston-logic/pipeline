@@ -42,7 +42,7 @@ ${postForm(
   "snooze-until",
   snoozeAction(task.id),
   form,
-  html`${field({ id, name: "until", label: "Or until", kind: "when", value: state.until ?? "", required: true, error: state.error })}
+  html`${field({ id, name: "until", label: "Or until", kind: "when", value: state.until ?? "", hint: "The time is optional: 9:00 AM if blank.", error: state.error })}
 <button class="button button-small" type="submit">Snooze${hiddenName(name)}</button>`,
 )}`;
 }
