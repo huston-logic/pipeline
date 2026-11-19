@@ -14,7 +14,10 @@ export function dialable(phone: string | null): string | null {
 }
 
 const LABEL = "[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?";
-const EMAIL = new RegExp(`^[A-Za-z0-9._+-]{1,64}@${LABEL}(?:\\.${LABEL})+$`);
+// The local part: 1 to 64 characters, runs of letters, digits, _ + - joined by single dots (no leading, trailing or
+// doubled dot).
+const LOCAL = "(?=[^@]{1,64}@)[A-Za-z0-9_+-]+(?:\\.[A-Za-z0-9_+-]+)*";
+const EMAIL = new RegExp(`^${LOCAL}@${LABEL}(?:\\.${LABEL})+$`);
 
 /** The address as it is when it matches the strict pattern (no query, no encoding, nothing but an address), else null. */
 export function mailable(email: string | null): string | null {

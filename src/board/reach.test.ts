@@ -50,7 +50,7 @@ test("a phone number with anything else in it, or too few or too many digits, is
 });
 
 test("an email address matching the strict pattern is used as it is", () => {
-  for (const raw of ["pat@example.com", "pat.example+leads@mail.example.org", "p_a-t@mail-1.example.org", "PAT@Example.COM"]) {
+  for (const raw of ["pat@example.com", "pat.example+leads@mail.example.org", "p_a-t@mail-1.example.org", "PAT@Example.COM", "p.a.t@example.com", "_pat-@example.com"]) {
     assert.equal(mailable(raw), raw, raw);
   }
 });
@@ -63,6 +63,10 @@ test("an email address with a query, an encoded character, quotes, spaces, slash
     "pat@",
     "pat@example",
     "pat@@example.com",
+    ".pat@example.com",
+    "pat.@example.com",
+    "pat..x@example.com",
+    "..@example.com",
     "pat@example.com?subject=hi",
     "pat@example.com?body=hi",
     "pat@example.com&cc=x@example.com",

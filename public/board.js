@@ -87,6 +87,8 @@
     if (!source || !status) continue;
     button.hidden = false;
     button.addEventListener("click", () => {
+      // Emptied first, so a second click says "Copied." again to a screen reader.
+      status.textContent = "";
       navigator.clipboard.writeText(source.value).then(
         () => (status.textContent = "Copied."),
         () => (status.textContent = "Couldn't copy. Open Show the prompt and copy it from there."),
