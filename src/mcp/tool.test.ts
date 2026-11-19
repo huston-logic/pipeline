@@ -30,6 +30,11 @@ test("a tool's JSON Schema is worked out once per tool name, not once per reques
   assert.equal(conversions, 1);
   assert.deepEqual(second, first);
   assert.equal((first.properties as Record<string, { description: string }>).name?.description, "The name.");
+  assert.ok(Object.isFrozen(first), "the cached schema is frozen");
+  assert.ok(Object.isFrozen(first.properties), "all the way down");
+  assert.throws(() => {
+    (first as Record<string, unknown>).type = "string";
+  }, TypeError);
 });
 
 test("tools/list answers the same from a second server, so the reused schemas are the right ones", async () => {

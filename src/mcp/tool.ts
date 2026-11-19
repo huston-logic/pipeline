@@ -48,16 +48,25 @@ type JsonSchemaOptions = Parameters<JsonSchemaConverter["input"]>[0];
 /**
  * JSON Schemas already worked out, by tool name, side and target. Every request builds its server and tools again
  * (decision 0004), but a tool's schema is the same code every time, so converting it once per isolate is enough: it
- * was about 40% of a tools/list request's CPU (docs/PAID-PLAN.md, CPU check). Tool names are unique per server.
+ * was about 40% of a tools/list request's CPU (docs/PAID-PLAN.md, CPU check). Tool names are unique per server. Each
+ * schema is frozen, all the way down, so no request can change what a later one is sent.
  */
 const converted = new Map<string, Record<string, unknown>>();
+
+function deepFreeze<T>(value: T): T {
+  if (typeof value === "object" && value !== null && !Object.isFrozen(value)) {
+    Object.freeze(value);
+    for (const child of Object.values(value)) deepFreeze(child);
+  }
+  return value;
+}
 
 function cachedConverter(name: string, jsonSchema: JsonSchemaConverter): JsonSchemaConverter {
   const once = (side: "input" | "output") => (options: JsonSchemaOptions) => {
     const key = `${name}\u0000${side}\u0000${options.target}`;
     let schema = converted.get(key);
     if (schema === undefined) {
-      schema = jsonSchema[side](options);
+      schema = deepFreeze(jsonSchema[side](options));
       converted.set(key, schema);
     }
     return schema;
