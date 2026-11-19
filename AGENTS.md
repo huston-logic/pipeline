@@ -43,8 +43,8 @@ this file before changing the repo, and update it when a rule changes.
   before the handler. A handler calls the same service function as the matching MCP tool (actor `owner`, tool = that
   tool's name), never SQL of its own, so every edit is audited and undoable; it answers 303 to the form's `return_to`
   (checked by `src/board/return-to.ts`) with `?change=<id>`, which the page shows in the change banner with an Undo
-  button. A `UserError` is a 422 page with the message. Closing a deal (Won, Lost, Not now) asks for confirmation
-  first. Forms use `postForm`/`formBasics` from `src/board/forms.ts`.
+  button. A `UserError` is a 422 page with the message. Closing a deal (Won, Lost, Not now), and an Undo that would
+  remove records, ask for confirmation first. Forms use `postForm`/`formBasics` from `src/board/forms.ts`.
 - **Browser JavaScript** (decision 0014): only first-party files from `public/`, loaded with `defer`, as progressive
   enhancement, and only on pages that pass `script: true` to `renderPage`. Every action must also work as a plain form
   with JavaScript off. No framework, no build step, no third-party code, no eval, at most 3 KB gzipped (a test checks).

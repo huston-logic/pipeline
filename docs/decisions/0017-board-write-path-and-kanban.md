@@ -32,7 +32,8 @@ stages are reached when they are not columns. Task R4 adds more edits on the sam
   one) makes one token and uses it in both its `Set-Cookie` and every form on the page.
 - **Page context.** Board pages take a `PageContext` (`src/board/context.ts`): db, now, the query, `here` (the page's
   path and query without `change`, used as every form's `return_to`), the CSRF token, the look and the banner. Pages
-  pass it to `renderPage` as `frame`; the layout draws the banner first in `main`.
+  pass it to `renderPage` as `frame`; the layout draws the banner right after the page's h1, so a screen reader meets
+  it straight after the heading.
 - **return_to** (`src/board/return-to.ts`). Accepted only when it starts with one `/` (not `//`), has no backslash and
   no control characters, is at most 2,000 characters, parses as a path on this site whose written path is exactly the
   parsed one (so `/./x` and `%2F` tricks fail), and is a board page by `matchBoardPage`. Otherwise the browser goes
@@ -44,6 +45,14 @@ stages are reached when they are not columns. Task R4 adds more edits on the sam
   says "This change was undone." Summaries never carry outside text (services name records through safe labels), so
   they are shown as they are. An undo answers 303 with the undo's own id, so the banner then shows "Undid …" and no
   button. A refused undo is a 422 page with the service's message.
+- **An undo that removes records asks first.** When the change added contacts, deals, tasks or activities (an intake
+  lead, a CSV import, an `add_lead` from the board or the AI), undoing it deletes them. Without `confirm=yes`, POST
+  `/changes/<id>/undo` then renders "Undo this change?" with "It removes 1 contact, 1 deal and 1 activity. They can't
+  be brought back." (counts only, so no record's text is shown), an "Undo the change" button (hidden `confirm=yes`,
+  token, `return_to`) and Cancel. The counts come from `undoRemovals` in `src/services/undo.ts`, which reads the
+  change's snapshot; a move's own stage-change entry doesn't count. An undo that only puts values back (a move, an
+  edit) stays one click. This holds for the banner's Undo and the change log's alike. MCP `undo_change` is unchanged:
+  the AI asks the owner in conversation.
 - **The change log** says who made each change in words: "You, on the board" (owner), "You, by a CSV import" (owner,
   tool `import`), "Your AI app", "Your website form" (system, tool `intake`) and "System" (other system jobs). Every
   change that is not an undo and not undone has an Undo button; the service still refuses one that can't be undone.
@@ -55,17 +64,22 @@ stages are reached when they are not columns. Task R4 adds more edits on the sam
   in every Move to list (grouped as "Close the deal"), and are drop areas for dragging. A move to one of them without
   `confirm=yes` renders a confirm page ("Mark "…" (Pat Example) as Won?", the deal named through `dealLabel`, so an
   outside title shows as "deal dl_…") whose form carries the stage, `confirm=yes`, the token and `return_to`, with
-  Cancel back to `return_to`. Nothing is written until it is confirmed, whichever way the request came.
+  Cancel back to `return_to`. Nothing is written until it is confirmed, whichever way the request came. A move to
+  the stage the deal is already in is refused first ("… is already in Won."), so a closed deal is never asked again.
 - **Move to form.** A real form: a labelled select of every stage (the deal's own marked "(current)") and a Move
   button, each with the deal's safe name in visually hidden text so a screen reader can tell the forms apart. On
   cards and list rows it sits inside a native `<details>` ("Move to another stage") so cards stay short; the deal page
-  and the refused page show it open with a visible label.
+  and the refused page show it open with a visible label. When the deal's stage is not in the list (an archived
+  stage), the select starts at "Choose a stage", so it never shows another stage as chosen. An archived deal's page
+  shows "This deal is archived." and no Move to form; a post for one is still accepted, as over MCP.
 - **Phone layout.** Under 40rem the columns stack, with a row of jump links to each stage (with its count) above them
   and the Closed summary after them. From 40rem the columns sit side by side in a `role="region"` labelled "Open
   stages" with `tabindex="0"`, which scrolls sideways on its own (the page never does); from 60rem it runs into the
   content's right padding so a cut-off column at the window's edge shows there is more. The Closed summary moves above
-  the board (CSS `order`, it has nothing focusable) where a dragged card can reach it. At 1280px about three and a
-  half of the five demo columns show; the rest scroll.
+  the board (CSS `order`, it has nothing focusable) where a dragged card can reach it. Lanes are 14rem (224px) and
+  share any spare room. At 1280px four columns and a sliver of the fifth show beside the 16rem side bar; all five
+  would need about 1,180px of board, more than the 72rem content column gives at any width, so the rest scroll.
+  Lanes of 240px or more could not show all five at 1280px with the side bar (that needs about 1,500px).
 - **List view.** `/pipeline?view=list` (a Board / List switch like People / Companies) lists every open deal as a row
   under its stage, each with its Move to form, and loads no script. It is in `boardRoutes`, so the a11y, Lighthouse
   and screenshot checks visit it; the harness takes the query string as it is.
@@ -96,6 +110,8 @@ stages are reached when they are not columns. Task R4 adds more edits on the sam
   each state. It writes only in the desktop drag test, and undoes it.
 - The undo service's messages mention `recent_changes` (an MCP tool name); the board shows them as they are.
 - A tab left open after the browser restarts has no cookie: its next post gets the out-of-date page.
+- Two board tabs opened at the same moment with no cookie each make a token; the last `Set-Cookie` wins, so the other
+  tab's next post gets the out-of-date page. Reloading it fixes it.
 - The cookie is `SameSite=Lax`, not the `Strict` 0014 first named (0014 is amended). With Strict, a board page
   opened from another site (a link in an email or the AI app, or the return from the Access sign-in) arrived without
   the cookie, set a new token, and other board tabs already open got the out-of-date page on their next post. Lax

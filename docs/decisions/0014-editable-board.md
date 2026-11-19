@@ -50,7 +50,8 @@ are refused, what JavaScript may do, and how a closing move (Won, Lost, Not now)
   Won?") unless the form already carries the confirmation, the same rule the AI follows (server instructions).
   The confirmation is a server-rendered page or panel whose form carries a hidden `confirm=yes` field and the CSRF
   token like any other board form, so it works without JavaScript; dragging a card to a closed stage goes through the
-  same step.
+  same step. *Added in R3 (decision 0017):* an Undo that would remove records (the change added contacts, deals, tasks
+  or activities) asks first in the same way.
 - **Static files stay first-party.** `script-src 'self'` lets any same-origin file run as script, so `public/` holds
   only scripts written in this repo. The web app manifest (task R6) is fetched by browsers without credentials unless
   its `<link>` says `crossorigin="use-credentials"`; behind Access it must say so.

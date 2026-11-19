@@ -252,7 +252,7 @@ heading inside a card (15px, 600, `ink-2`, the text face) on a `--divider` line,
 
 ### 7.16 Change banner (`.banner`)
 After every board write (decision 0017): the change's one-line summary, 600, in `ink` on `--accent-tint`, `--r-card`,
-at most 52rem wide, first in `main` above the h1, `role="status"`. An Undo button (quiet, §7.10) sits at its right
+at most 52rem wide, right after the page's h1, `role="status"`. An Undo button (quiet, §7.10) sits at its right
 end, or wraps under it on a phone. An undone change says "This change was undone." in place of the button. No icon, no
 close button, nothing that disappears on its own.
 
@@ -267,7 +267,7 @@ link.
 ### 7.18 Pipeline board (`.board`, `.column`, `.stage-jump`, `.closed`)
 - **Phone (under 40rem):** a row of jump links (white pills with an `--edge` border, label and count, 44px) above the
   stacked stage sections; each section is an h2 with its count line and the deal cards; the Closed summary comes last.
-- **From 40rem:** the columns sit side by side, 17.5rem each, as `--silver-2` lanes (`--r-card`, 12–14px padding) with
+- **From 40rem:** the columns sit side by side, 14rem each (sharing spare room), as `--silver-2` lanes (`--r-card`, 12–14px padding) with
   white cards, in a region (`role="region"`, labelled, `tabindex="0"`) that scrolls sideways on its own; from 60rem it
   runs into the content's right padding. Lane headings are 18px. The Closed summary ("Closed" in `ink-2` 600, then one
   white box per closed stage with its label and "3 deals") sits above the board.
@@ -278,7 +278,7 @@ link.
   Move to disclosure sits in a 19rem column on the right.
 
 ### 7.19 Confirm and refused pages
-The confirm page (closing a deal): the question as the h1 ("Mark … as Won?"), one lede line, then the primary button
+The confirm page (closing a deal, or an undo that removes records): the question as the h1 ("Mark … as Won?"), one lede line, then the primary button
 ("Mark as Won") and a Cancel link side by side, 44px tall. The refused page: an h1 saying what didn't happen, the
 service's message as the lede in `ink`, the form again in a card at most 28rem wide, and "Back to the page".
 
