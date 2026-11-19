@@ -81,6 +81,23 @@ test("database_id and account_id must be placeholders", () => {
   assert.match(problems[1], /database_id/);
 });
 
+test("KV namespace ids must be placeholders too", () => {
+  assert.equal(isPlaceholderId("00000000000000000000000000000000"), true);
+  assert.deepEqual(
+    checkWranglerConfig(
+      '{ "kv_namespaces": [{ "binding": "OAUTH_KV", "id": "00000000000000000000000000000000" }],\n' +
+        '  "previews": { "kv_namespaces": [{ "binding": "OAUTH_KV", "id": "[[PREVIEW_OAUTH_KV_ID]]" }] } }',
+    ),
+    [],
+  );
+  const problems = checkWranglerConfig(
+    '{ "kv_namespaces": [{ "binding": "OAUTH_KV", "id": "0f1e2d3c4b5a69788796a5b4c3d2e1f0", "preview_id": "abcdefabcdefabcdefabcdefabcdefab" }] }',
+  );
+  assert.equal(problems.length, 2);
+  assert.match(problems[0], /real id/);
+  assert.match(problems[1], /real preview_id/);
+});
+
 test(".gitignore must ignore /.copies/ and /exports/", () => {
   assert.deepEqual(checkGitignore("/node_modules\n/.copies/\n/exports/\n"), []);
   const problems = checkGitignore("/node_modules\n# /.copies/\n");

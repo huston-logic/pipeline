@@ -1,6 +1,7 @@
 // `npm run check:config`: fails if client data could be tracked in git (decision 0002). It checks that
 //   - no tracked file holds an email address outside the example domains (fake people only),
-//   - wrangler.jsonc has no real database_id or account_id (real ids live in /.copies/<name>/, git-ignored),
+//   - wrangler.jsonc has no real database_id, account_id or KV namespace id (real ids live in /.copies/<name>/,
+//     git-ignored),
 //   - .gitignore keeps /.copies/ and /exports/ out of git, and nothing under them is tracked.
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
@@ -18,7 +19,8 @@ const PRIVATE_FOLDERS = [".copies", "exports"];
 const EMAIL_SCAN_SKIP = ["package-lock.json"];
 
 const EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g;
-const WRANGLER_ID = /"((?:preview_)?database_id|account_id)"\s*:\s*"([^"]*)"/g;
+// "id" and "preview_id" are KV namespace ids; "namespace_id" (rate limits) is a small per-account number, not checked.
+const WRANGLER_ID = /"((?:preview_)?database_id|account_id|id|preview_id)"\s*:\s*"([^"]*)"/g;
 
 export function findEmails(text) {
   return text.match(EMAIL) ?? [];
@@ -55,7 +57,12 @@ export function checkTrackedFiles(files) {
 }
 
 export function isPlaceholderId(value) {
-  return /^\[\[[^\]]+\]\]$/.test(value) || /^0{8}-0{4}-0{4}-0{4}-0{12}$/.test(value) || value === "local";
+  return (
+    /^\[\[[^\]]+\]\]$/.test(value) ||
+    /^0{8}-0{4}-0{4}-0{4}-0{12}$/.test(value) ||
+    /^0{32}$/.test(value) ||
+    value === "local"
+  );
 }
 
 export function checkWranglerConfig(text) {

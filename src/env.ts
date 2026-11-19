@@ -1,4 +1,4 @@
-// The Worker's bindings, vars and secrets. Later tasks add rate limits, OAuth KV and secrets here.
+// The Worker's bindings, vars and secrets (docs/SECRETS.md lists each one and where it is set).
 import type { Db } from "./db/db.ts";
 
 /** The part of the static-assets binding the Worker uses, so tests can pass a plain object. */
@@ -13,8 +13,25 @@ export type Env = {
   DB: Db;
   /** "production" from wrangler.jsonc; `npm run dev` and `npm run preview` set "development". */
   ENVIRONMENT: string;
-  /** "dev" only in local development (scripts/dev.mjs). Anywhere else the Worker refuses every request. */
+  /**
+   * Unset: production sign-in (Cloudflare Access; decision 0006). "dev" only in local development (scripts/dev.mjs);
+   * anywhere else, or any other value, the Worker refuses every request.
+   */
   AUTH_MODE?: string;
+  /** The Zero Trust team domain, for example "example-team.cloudflareaccess.com" (a per-copy var). */
+  ACCESS_TEAM_DOMAIN?: string;
+  /** The Application Audience (AUD) tag of the board's self-hosted Access application (a per-copy var). */
+  ACCESS_AUD?: string;
+  /** Comma-separated owner emails allowed in, on top of settings.owner_emails (a per-copy var). */
+  OWNER_EMAILS?: string;
+  /** OAuth state for /mcp: clients, grants, hashed tokens, sign-in state (KV binding; workers-oauth-provider). */
+  OAUTH_KV?: KVNamespace;
+  /** The Access for SaaS (OIDC) application's client ID, client secret and endpoints (secrets). */
+  ACCESS_CLIENT_ID?: string;
+  ACCESS_CLIENT_SECRET?: string;
+  ACCESS_TOKEN_URL?: string;
+  ACCESS_AUTHORIZATION_URL?: string;
+  ACCESS_JWKS_URL?: string;
   /**
    * Comma-separated hostnames /mcp answers on, for a copy on a custom domain (for example "pipeline.example.com").
    * Unset, localhost and *.workers.dev hosts are checked and other hosts rely on Cloudflare routing (decision 0004).

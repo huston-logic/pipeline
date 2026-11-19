@@ -399,6 +399,31 @@ main .stage-count {
   padding: 1.25rem 0;
 }
 
+/* The /authorize consent page (decision 0006): two plain buttons, Allow first. */
+.consent-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin: 1.5rem 0;
+}
+
+.consent-actions button {
+  min-height: 44px;
+  padding: 0.5rem 1.5rem;
+  border: 1px solid var(--green);
+  border-radius: var(--radius);
+  background: var(--white);
+  color: var(--green);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.consent-actions button[value="approve"] {
+  background: var(--green);
+  color: var(--white);
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
