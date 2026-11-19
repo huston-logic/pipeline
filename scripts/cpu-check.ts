@@ -95,15 +95,17 @@ const mcpRequest = (body: object) =>
 
 const tool = (name: string, args: object = {}) => () => mcpRequest({ method: "tools/call", params: { name, arguments: args } });
 
-type Case = { name: string; run: (db: TimedD1, env: Env) => Promise<string>; reset?: (db: TimedD1) => void };
+/** `run` answers the response body's size in bytes. */
+type Case = { name: string; run: (db: TimedD1, env: Env) => Promise<number>; reset?: (db: TimedD1) => void };
 
 const fetchCase = (name: string, request: () => Request): Case => ({
   name,
   run: async (_db, env) => {
     const res = await worker.fetch(request(), env, ctx);
-    const body = await res.text();
-    if (res.status !== 200) throw new Error(`${name} answered ${res.status}: ${body.slice(0, 300)}`);
-    return body;
+    // Read as bytes: decoding the text would be the client's work, not the Worker's.
+    const body = await res.arrayBuffer();
+    if (res.status !== 200) throw new Error(`${name} answered ${res.status}: ${new TextDecoder().decode(body).slice(0, 300)}`);
+    return body.byteLength;
   },
 });
 
@@ -126,7 +128,7 @@ function cases(briefAt: Date): Case[] {
       } else {
         await runScheduled(env, at, jobs);
       }
-      return "";
+      return 0;
     },
   });
   const rulesOnly = CRON_JOBS.filter(([name]) => name === "rules");
@@ -146,6 +148,7 @@ function cases(briefAt: Date): Case[] {
     fetchCase("/api/export.json", () => new Request(`${ORIGIN}/api/export.json`)),
     fetchCase("/pipeline", () => new Request(`${ORIGIN}/pipeline`)),
     fetchCase("/pipeline?view=list", () => new Request(`${ORIGIN}/pipeline?view=list`)),
+    fetchCase("/pipeline?view=list&stage=replied", () => new Request(`${ORIGIN}/pipeline?view=list&stage=replied`)),
     fetchCase("/contacts", () => new Request(`${ORIGIN}/contacts`)),
     fetchCase("/companies", () => new Request(`${ORIGIN}/companies`)),
     fetchCase("/ (Today)", () => new Request(`${ORIGIN}/`)),
@@ -190,9 +193,9 @@ async function main(): Promise<void> {
       console.log = () => {};
       const started = performance.now();
       const cpuStart = process.cpuUsage();
-      let body: string;
+      let bytes: number;
       try {
-        body = await c.run(db, env);
+        bytes = await c.run(db, env);
       } finally {
         console.log = quiet;
       }
@@ -205,7 +208,7 @@ async function main(): Promise<void> {
       d1.push(db.d1CpuUs / 1000);
       est.push(total - db.d1CpuUs / 1000);
       calls = `${db.statements} (${db.batched} in ${db.batches} batches)`;
-      size = Buffer.byteLength(body) / 1024;
+      size = bytes / 1024;
     }
     const f = (n: number) => n.toFixed(1);
     console.log(`${c.name} | ${f(median(wall))} | ${f(median(cpu))} | ${f(median(d1))} | ${f(median(est))} | ${calls} | ${f(size)}`);
