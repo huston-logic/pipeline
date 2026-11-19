@@ -35,6 +35,7 @@ const READS: [name: string, path: string, init?: RequestInit][] = [
   ["/api/export.json", "/api/export.json"],
   ["/pipeline", "/pipeline"],
   ["/pipeline?view=list", "/pipeline?view=list"],
+  ["/pipeline?view=list&stage=replied", "/pipeline?view=list&stage=replied"],
   ["/contacts", "/contacts"],
   ["/companies", "/companies"],
   ["/ (Today)", "/"],

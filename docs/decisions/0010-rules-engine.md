@@ -69,7 +69,8 @@ rebuilds the past, since the database keeps only each deal's current stage.
   stage (or the current stage when the deal never moved), and the current stay starts at `stage_entered_at`. It
   returns each hit as the deal and contact ids, a safe label (outside titles and names become id labels) and
   `wouldFireAt`, plus a headline count of deals and firings.
-- **Preview lookback** (final review). The preview reads only activities from the last 30 + 365 days (the window plus
+- **Preview lookback** (final review; replaced in part by 0020: the lookback is now 30 days plus the rule's own
+  `days`, read through the `activities_occurred` index of migration 0005). The preview reads only activities from the last 30 + 365 days (the window plus
   the longest `days` a rule may have), not the whole history. This is exact, not an estimate: a hit in the window
   comes from a stage stay or a quiet spell that began at most 365 days before the window starts, and an older
   activity can only move a stay's or spell's start further back, before that line, where it cannot produce a hit. A
