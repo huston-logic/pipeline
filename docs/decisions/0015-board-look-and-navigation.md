@@ -29,8 +29,16 @@ and Contacts show before tasks R2 and R3.
   (trimmed, one line, null or blank clears) and `accentColor` (null clears); `get_settings` shows both. Both are
   owner-set, audited and undoable like the other settings.
 - **Accent contrast rule** (`src/services/accent.ts`). A colour is refused unless white text on it, it as text on
-  white, and it as text on the page silver all reach 4.5:1 (WCAG AA body text). The refusal says the ratio it has and
-  "Pick a darker colour." The silver value is checked against `board.css` by a test.
+  white, it as text on the page silver (`#f3f5f4`) and it as text on the darkest point of the glow all reach 4.5:1
+  (WCAG AA body text). Accent links can sit on the glow (it is drawn behind the top of the content, where "Back to the
+  pipeline" is), so its darkest colour is part of the rule: `--glow-soft` `rgba(180, 222, 200, 0.5)` over silver,
+  each channel rounded down, is `#d3e9de` (`PAGE_GLOW`). Keeping links out of the glow would have tied the rule to
+  where each page puts its links; one extra pair in the check is simpler. Tests keep the silver and glow values in
+  step with `board.css`. The refusal says the ratio it has and "Pick a darker colour."; a value that is not `#rrggbb`
+  gets "That isn't a colour I can use: give it as #rrggbb, for example #2b6455.", which does not repeat the input.
+- **Business name.** Trimmed, at most 60 characters, one line of plain text: control characters (C0 and C1), format
+  characters (bidi overrides such as U+202E, zero-width joiners) and line or paragraph separators are refused. The
+  change summary quotes the new name: the owner asked for it, it is capped and checked, so it is not outside text.
 - **`/theme.css`.** The CSP is `style-src 'self'`, so the accent arrives as a stylesheet the Worker writes:
   `:root{--accent:#…;}`, or a one-line comment when unset or unusable. It is matched before the static-file branch,
   sits behind the same sign-in as the board pages, and answers `text/css`, `no-store`, with the security headers. The

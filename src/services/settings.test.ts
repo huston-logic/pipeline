@@ -137,10 +137,22 @@ test("business name: trimmed, at most 60 characters, one line; null or blank cle
     await refusal(updateSettings(ctxFor(db), { businessName: "x".repeat(61) })),
     "A business name can be at most 60 characters (this one has 61). Give a shorter name.",
   );
-  assert.equal(
-    await refusal(updateSettings(ctxFor(db), { businessName: "Fernwood\nEngineering" })),
-    "A business name must be one line of text, without line breaks or tabs.",
-  );
+  const invisible = {
+    "a line feed (C0 control)": "Fernwood\nEngineering",
+    "a tab (C0 control)": "Fernwood\tEngineering",
+    "a next-line character (C1 control)": "Fernwood\u0085Engineering",
+    "a right-to-left override (format character)": "Fernwood‮Engineering",
+    "a zero-width joiner (format character)": "Fernwood‍Engineering",
+    "a line separator": "Fernwood Engineering",
+    "a paragraph separator": "Fernwood Engineering",
+  };
+  for (const [what, name] of Object.entries(invisible)) {
+    assert.equal(
+      await refusal(updateSettings(ctxFor(db), { businessName: name })),
+      "A business name must be one line of plain text, without line breaks, tabs or invisible formatting characters.",
+      what,
+    );
+  }
   assert.equal((await getSettings(db)).businessName, "Fernwood Engineering");
 
   const cleared = await updateSettings(ctxFor(db), { businessName: null });
@@ -157,7 +169,10 @@ test("accent colour: #rrggbb stored in lower case, refused when too light, null 
   assert.equal(set.summary, `Updated settings: accent colour to #1e4a3d (change ${set.changeId})`);
   assert.equal((await getSettings(db)).accentColor, "#1e4a3d");
 
-  assert.match(await refusal(updateSettings(ctxFor(db), { accentColor: "teal" })), /^"teal" isn't a colour I can use\. Give a hex colour like #2b6455/);
+  assert.equal(
+    await refusal(updateSettings(ctxFor(db), { accentColor: "teal" })),
+    "That isn't a colour I can use: give it as #rrggbb, for example #2b6455.",
+  );
   assert.match(await refusal(updateSettings(ctxFor(db), { accentColor: "#88c0a0" })), /too light .* Pick a darker colour\.$/);
   assert.equal((await getSettings(db)).accentColor, "#1e4a3d");
 

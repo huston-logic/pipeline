@@ -50,8 +50,9 @@ All colors are the `:root` tokens in `public/board.css`; nothing else in the rep
 **The accent.** `--accent` is what makes a copy feel like the owner's: the current tab, primary buttons, card-title
 links and standalone links. It defaults to `--green`. The owner sets another with `update_settings` (`accentColor`,
 `#rrggbb`); the Worker serves it as `/theme.css` (`:root{--accent:#…}`), linked after `board.css` (decision 0015).
-A colour is refused unless **white text on it, it as text on white, and it as text on `--silver` all reach 4.5:1**
-(`src/services/accent.ts`); the message says to pick a darker colour. Derived tokens: `--accent-tint` (12% accent on
+A colour is refused unless **white text on it, it as text on white, on `--silver` and on the darkest point of the glow
+(`--glow-soft` over silver, `#d3e9de`) all reach 4.5:1** (`src/services/accent.ts`); the message says to pick a
+darker colour. Derived tokens: `--accent-tint` (12% accent on
 white: the current-tab pill and the side bar's current row) and `--on-accent` (white, text on accent). Accent text is
 only ever placed on white or silver, never on `--accent-tint`, so the 4.5:1 rule holds for every accent; text on the
 tint is `--ink`.
@@ -69,7 +70,8 @@ shadows in §4.
 | `ink-2` on `white` / `silver` / `silver-2` | 7.6 / 6.9 / 6.4 | All text |
 | `green` (default accent) on `white` / `silver` / `tint` | 6.9 / 6.3 / 5.9 | All text |
 | white on `green` | 6.9 | All text (primary button) |
-| any accent the settings accept, on `white` / `silver`, and white on it | 4.5 or more | All text (checked on input and again in `/theme.css`) |
+| `green` on the glow's centre (`#d3e9de`) | 5.4 | All text |
+| any accent the settings accept, on `white` / `silver` / the glow's centre, and white on it | 4.5 or more | All text (checked on input and again in `/theme.css`) |
 | `rust` on `white` / `silver` / `tint` / `silver-2` | 6.1 / 5.5 / 5.2 / 5.2 | All text |
 | `rust` focus ring on `silver` / `white` | 5.5 / 6.1 | Non-text 3:1 |
 | `line` on `silver` | 1.3 | Decorative only |

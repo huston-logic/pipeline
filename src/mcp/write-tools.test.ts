@@ -278,7 +278,7 @@ test("update_settings sets the business name and accent colour, get_settings sho
   assert.deepEqual([shown.businessName, shown.accentColor], ["Fernwood Engineering", "#1e4a3d"]);
 
   assert.match(await fails(c, "update_settings", { accentColor: "#d0e8dc" }), /too light to use on the board.*Pick a darker colour\./);
-  assert.match(await fails(c, "update_settings", { accentColor: "blue" }), /isn't a colour I can use\. Give a hex colour like #2b6455/);
+  assert.match(await fails(c, "update_settings", { accentColor: "blue" }), /^That isn't a colour I can use: give it as #rrggbb, for example #2b6455\.$/);
   assert.match(await fails(c, "update_settings", { businessName: "x".repeat(61) }), /at most 60 characters/);
 
   await ok(c, "undo_change", { changeId: dataOf<{ changeId: string }>(changed).changeId });

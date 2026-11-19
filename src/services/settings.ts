@@ -82,8 +82,11 @@ const MAX_BUSINESS_NAME = 60;
 function checkBusinessName(input: string | null): string | null {
   const name = clean(input);
   if (name === null) return null;
-  if (/[\u0000-\u001f\u007f]/.test(name)) {
-    throw new UserError("A business name must be one line of text, without line breaks or tabs.");
+  // Controls (C0 and C1), format characters (bidi overrides, zero-width joiners) and line or paragraph separators.
+  if (/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u.test(name)) {
+    throw new UserError(
+      "A business name must be one line of plain text, without line breaks, tabs or invisible formatting characters.",
+    );
   }
   const length = [...name].length;
   if (length > MAX_BUSINESS_NAME) {
