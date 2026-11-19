@@ -229,6 +229,22 @@ one-line description in `ink-2`. The whole card is the link.
 ### 7.12 Footer
 `ink-2`, 15px, one line: "Changes are made by talking to your AI app." (true until the board can edit, task R3).
 
+### 7.13 View switch (`.view-switch`)
+Two views of one tab (People / Companies, decision 0016): a white strip with an `--edge` border and `--r-btn`
+radius holding two links, each at least 44px tall, `ink-2` at 600. The current one is `aria-current="page"` on an
+`--accent-tint` fill, `ink` at 700. A list of links, not a second `nav`.
+
+### 7.14 Search form (`.search`, `.field`)
+A GET form with `role="search"` and no JavaScript. Each field is a visible label (600), an optional hint in `ink-2`
+at 15px (tied with `aria-describedby`), then the control: white, 48px tall, 1px `ink-2` border (an edge a control can
+be seen by, never `--line`), `--r-field` radius, the body font. The submit is a primary button (§7.10). Phone: the
+search box on its own row, the other control and the button below; from 40rem, one row.
+
+### 7.15 Card sub-parts
+`.card-sub`: one line under a card title in `ink-2`, 15px ("2 open deals, value 17,900"). `.card-sub-head`: a small
+heading inside a card (15px, 600, `ink-2`, the text face) on a `--divider` line, when a card holds two lists. Links in
+`.card-links` sit above a card title's whole-card link, so both can be tapped.
+
 ## 8. Line art and icons
 
 Inline SVG in `src/board/icons.ts`, 24 × 24 viewBox, `stroke: currentColor`, stroke 1.75, round caps and joins, no
