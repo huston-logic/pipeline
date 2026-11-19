@@ -41,7 +41,7 @@ test("wrangler dev runs local only, in development mode, without prompts", () =>
     ".wrangler/preview-1",
   ]);
   const vars = args.flatMap((arg, i) => (args[i - 1] === "--var" ? [arg] : []));
-  assert.deepEqual(vars, ["ENVIRONMENT:development", "AUTH_MODE:dev"]);
+  assert.deepEqual(vars, ["ENVIRONMENT:development", "AUTH_MODE:dev", "INTAKE_SECRET:dev-intake-secret"]);
   assert.ok(!args.some((arg) => /remote|deploy/.test(arg)));
 });
 

@@ -51,6 +51,9 @@ export function wranglerDevArgs({ port, stateDir, ip, testScheduled = false }) {
     "ENVIRONMENT:development",
     "--var",
     "AUTH_MODE:dev",
+    // A fake value so /intake can be tried locally; real secrets are set with `wrangler secret put` (docs/SECRETS.md).
+    "--var",
+    "INTAKE_SECRET:dev-intake-secret",
     // No keyboard shortcuts panel, which would wait for a TTY in CI.
     "--show-interactive-dev-session=false",
   ];

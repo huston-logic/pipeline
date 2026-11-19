@@ -3,8 +3,11 @@ import { homePage } from "./board/pages/home.ts";
 import { notFoundPage } from "./board/pages/not-found.ts";
 import { runScheduled } from "./cron.ts";
 import type { Env } from "./env.ts";
+import { handleIntake } from "./http/intake.ts";
 import { MCP_ROUTE } from "./mcp/route.ts";
 import { withSecurityHeaders } from "./security.ts";
+
+const INTAKE_ROUTE = "/intake";
 
 const pages = new Map<string, () => string>([["/", homePage]]);
 
@@ -50,6 +53,9 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
     const { handleMcp } = await import("./mcp/handler.ts");
     return withSecurityHeaders(await handleMcp(request, env, ctx, auth.email));
   }
+
+  // /intake has its own secret instead of a sign-in, so it sits outside the /mcp auth gate (decision 0012).
+  if (pathname === INTAKE_ROUTE) return withSecurityHeaders(await handleIntake(request, env, new Date()));
 
   if (request.method !== "GET" && request.method !== "HEAD") return methodNotAllowed();
 

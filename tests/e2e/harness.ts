@@ -101,7 +101,22 @@ async function waitUntilReady(url: string, child: ChildProcess, output: () => st
   throw new Error(`wrangler dev was not ready after ${START_TIMEOUT_MS / 1000}s:\n${output()}`);
 }
 
+/**
+ * Test files run in parallel, and several `wrangler dev` processes starting at once can pick the same internal
+ * port ("Address already in use"). That is a start-up race, not a bug in the Worker, so it is retried with new ports.
+ */
 export async function startDevServer(): Promise<DevServer> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await startDevServerOnce();
+    } catch (error) {
+      if (attempt >= 4 || !/Address already in use/.test(String(error))) throw error;
+      await sleep(500 * attempt);
+    }
+  }
+}
+
+async function startDevServerOnce(): Promise<DevServer> {
   build();
   const stateDir = prepareState();
   const port = await freePort();

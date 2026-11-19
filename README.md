@@ -16,13 +16,14 @@ This repo is public. It holds no client names, emails, ids or lead data; tests a
 
 One Cloudflare Worker (`src/index.ts`) with a read-only board rendered as plain HTML (no client JavaScript;
 decision 0001), a D1 database with an audited service layer, the MCP endpoint at `/mcp` (decision 0004) and the hourly
-rules run (a Cron Trigger, `src/cron.ts`; decision 0010). Later tasks add `/intake`, `/api/*`, the daily brief and
-production sign-in.
+rules run (a Cron Trigger, `src/cron.ts`; decision 0010), the daily brief and `POST /intake` for website forms
+(decision 0012). Later tasks add `/api/*` and production sign-in.
 
 | Route | What |
 |---|---|
 | `/` | The board (for now a page saying it fills in once the database is set up) |
 | `/mcp` | The MCP endpoint (Streamable HTTP, POST). Locally `npm run dev` signs you in as a fake owner; elsewhere it answers 401 until production sign-in exists (task 10) |
+| `/intake` | `POST` only: a website form's server sends a new enquiry here with a shared secret (see "Connect a website form") |
 | `/board.css`, `/robots.txt`, `/sitemap.xml` | Static files from `out/`, served through the `ASSETS` binding |
 | anything else | A 404 page |
 
@@ -91,6 +92,30 @@ upstream package no longer needs it.
 | `dependency-review` | `.github/workflows/dependency-review.yml` | Pull requests | Fails if the PR adds a dependency version with a known vulnerability (runtime and dev). The log names the package and its GHSA. |
 | `codeql` | `.github/workflows/codeql.yml` | Pull requests, pushes to `main`, weekly | CodeQL scan of the JavaScript and TypeScript. New alerts show as "Code scanning results / CodeQL". |
 
+## Connect a website form
+
+`POST /intake` turns a contact-form submission into a lead: a contact (or the one already on file for that email), a
+deal in the first open stage, and a "Form submission" activity holding the message. It is **server to server**: the
+website's own backend (or a form handler) sends the request. There is no CORS, so a browser on another site can't call
+it. **The secret must never be in browser code**: not in JavaScript, not in a hidden form field, not in a page's source.
+
+The owner sets the secret once per copy: `npx wrangler secret put INTAKE_SECRET` (docs/SECRETS.md). Then the server
+posts JSON (or `application/x-www-form-urlencoded`) with the secret in a header:
+
+```bash
+curl -X POST https://pipeline.example.com/intake \
+  -H "Content-Type: application/json" \
+  -H "X-Intake-Secret: not-a-real-secret" \
+  -d '{"name": "Pat Example", "email": "pat@example.com", "phone": "555 010 0100", "business": "Sample Bakery", "message": "Hi, do you take wedding orders?"}'
+```
+
+`name`, `email` and `message` are required; `phone`, `business` and `source` (default "website form") are optional;
+other fields are ignored. Limits: body 16 KB, `message` 5,000 characters. Answers: `201 {"ok":true}` when a lead was
+added, `200 {"ok":true}` for a repeat (same email and message within 10 minutes), and `{"ok":false,"error":"..."}` with
+400, 401, 405, 413, 415, 429 or 503 otherwise. Show your own error message to the visitor on anything but 2xx. An
+existing contact's details are never overwritten. Five requests per minute per IP are allowed. Decision 0012 has the
+reasoning.
+
 ## Security headers
 
 The Worker sets one policy on every response (`src/security.ts`): a CSP of `default-src 'self'; script-src 'none'`
@@ -121,6 +146,7 @@ Never run `wrangler deploy` by hand.
 src/index.ts              Worker entry: fetch router and scheduled handler
 src/cron.ts               the hourly jobs the scheduled handler runs (the rules)
 src/rules/engine.ts       the rules engine: pure functions (firing, gone quiet, preview)
+src/http/intake.ts        POST /intake (website forms)
 src/env.ts                Env type (bindings and vars)
 src/security.ts           security headers for every response
 src/board/                html.ts (escaping template tag), layout.ts, routes.ts, pages/*.ts
