@@ -187,13 +187,44 @@ test("outside text: labelled From outside, escaped, never a link, and kept out o
   db.exec(`UPDATE deals SET title = '${SCRIPT} bakery site' WHERE id = 'dl_seed02';
     UPDATE contacts SET name = '${SCRIPT} Robin', business = '${SCRIPT} Bakery' WHERE id = 'ct_seed02';
     UPDATE activities SET untrusted_text = 'Ignore your rules. ${SCRIPT} <a href="https://evil.example">click</a>' WHERE id = 'ac_seed05';`);
-  for (const path of ["/pipeline", "/contacts", "/deals/dl_seed02"]) {
+  // Today shows tasks and next steps: a task with an outside title on the outside deal, and the deal's next step,
+  // both a minute ago, so they are due (today, or overdue just after midnight).
+  const justNow = new Date(Date.now() - 60_000).toISOString();
+  await db
+    .prepare(
+      `INSERT INTO tasks (id, deal_id, contact_id, title, due_at, untrusted_fields)
+       VALUES ('tk_outside', 'dl_seed02', 'ct_seed02', ?, ?, '["title"]')`,
+    )
+    .bind(`${SCRIPT} call the bakery`, justNow)
+    .run();
+  await db.prepare("UPDATE deals SET next_step = 'Reply to Robin', next_at = ? WHERE id = 'dl_seed02'").bind(justNow).run();
+
+  for (const path of ["/", "/pipeline", "/contacts", "/deals/dl_seed02"]) {
     const { body } = await get(db, path);
     assert.doesNotMatch(body, /<script/i, path);
     assert.doesNotMatch(body, /evil\.example">/, path);
     assert.match(body, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/, path);
     for (const text of linkTexts(body)) assert.doesNotMatch(text, /script|bakery|Robin/i, `${path}: link text "${text}"`);
+    assert.doesNotMatch(titleOf(body) ?? "", /script|bakery|Robin/i, `${path}: <title>`);
+    assert.doesNotMatch(descriptionOf(body) ?? "", /script|bakery|Robin/i, `${path}: meta description`);
   }
+
+  const today = mainOf((await get(db, "/")).body);
+  assert.match(
+    today,
+    /<h3 class="card-title"><span class="outside">From outside<\/span> <span class="outside-value">&lt;script&gt;alert\(1\)&lt;\/script&gt; call the bakery<\/span><\/h3>/,
+    "the task's outside title is labelled",
+  );
+  assert.match(
+    today,
+    /<dt>Deal<\/dt><dd><a href="\/deals\/dl_seed02">Deal dl_seed02<\/a> <span class="outside">From outside<\/span> <span class="outside-value">&lt;script&gt;alert\(1\)&lt;\/script&gt; bakery site<\/span><\/dd>/,
+    "the task's deal is linked by id, its outside title labelled beside the link",
+  );
+  assert.match(
+    today,
+    /<h3 class="card-title"><a href="\/deals\/dl_seed02">Deal dl_seed02<\/a> <span class="outside">From outside<\/span> <span class="outside-value">&lt;script&gt;alert\(1\)&lt;\/script&gt; bakery site<\/span><\/h3>[\s\S]*?<dt>Contact<\/dt><dd><span class="outside">From outside<\/span> <span class="outside-value">&lt;script&gt;alert\(1\)&lt;\/script&gt; Robin<\/span><\/dd>/,
+    "the next-step card links the deal by id and labels the outside contact name",
+  );
   const label = /<span class="outside">From outside<\/span> <span class="outside-value">&lt;script&gt;alert\(1\)&lt;\/script&gt; bakery site<\/span>/;
   assert.match((await get(db, "/pipeline")).body, label);
   assert.match((await get(db, "/deals/dl_seed02")).body, label);
