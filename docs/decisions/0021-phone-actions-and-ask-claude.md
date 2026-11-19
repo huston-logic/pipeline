@@ -26,8 +26,9 @@ prompts say, how Ask Claude opens, and how copying works without JavaScript.
     digits (`^\+?[0-9]{7,15}$`; 15 is E.164's longest). Letters, `;ext=`, `?`, `%`, `#`, `,`, a second `+`, tabs,
     non-breaking spaces, and non-ASCII digits (Arabic-Indic, full-width) are refused, so nothing but a dial string
     reaches the phone. `tel:` and `sms:` get the cleaned value.
-  - Email: `local@domain`, the local part 1 to 64 of letters, digits, `.`, `_`, `+`, `-`; the domain two or more labels of
-    letters, digits and `-` (not starting or ending with `-`) joined by single dots, 254 characters at most in all.
+  - Email: `local@domain`. The local part is 1 to 64 characters: runs of letters, digits, `_`, `+` and `-` joined by
+    single dots (no leading, trailing or doubled `.`). The domain is two or more labels of letters, digits and `-`
+    (not starting or ending with `-`) joined by single dots. 254 characters at most in all.
     So no `?`, `&`, `%`, `#`, quotes, spaces, slashes, backslashes, angle brackets or non-ASCII letters. `mailto:` gets
     the address as stored, with no subject, body or other query.
   - The link text is fixed ("Call", "Text", "Email"), never the value; the value is shown separately, in the card's
@@ -87,6 +88,9 @@ prompts say, how Ask Claude opens, and how copying works without JavaScript.
   harmful. That is why the buttons are quieter on wide screens.
 - A number stored without its country code (`555-0101`) dials as a local number.
 - The deal and contact pages now load `/board.js`; their Lighthouse and a11y runs include it.
+- Two quick taps on a Log button write two activities (each its own change); Undo on the banner removes one.
+- A phone number from outside could be a premium-rate number. It is labelled "From outside" in the card right above
+  the buttons, so the owner decides before tapping Call.
 
 ## "AI defaults" (human-touch-design), flagged for the owner
 
