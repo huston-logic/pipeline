@@ -18,8 +18,8 @@ Updated after every merge, so a fresh chat can pick up where the last one stoppe
 | 8 | M8 `/intake` | [#9](https://github.com/huston-logic/pipeline/pull/9) | merged |
 | 9 | M9 board | [#10](https://github.com/huston-logic/pipeline/pull/10) | merged |
 | 10 | M10 production auth | [#11](https://github.com/huston-logic/pipeline/pull/11) | merged |
-| 11 | M11 many copies | [#12](https://github.com/huston-logic/pipeline/pull/12) | open, auto-merge queued |
-| 12 | M12 acceptance | | not started |
+| 11 | M11 many copies | [#12](https://github.com/huston-logic/pipeline/pull/12) | merged |
+| 12 | M12 acceptance | [#13](https://github.com/huston-logic/pipeline/pull/13) | open, auto-merge queued |
 
 ## Decisions
 
