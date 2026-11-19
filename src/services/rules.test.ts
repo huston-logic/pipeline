@@ -116,6 +116,27 @@ test("updateRule changes parameters, rewrites a generated description, and refus
   assert.match(undone.summary, /^Undid chg_[a-z0-9]{12}: Put back the earlier description on rule "When a deal has sat in Replied/);
 });
 
+test("updateRule keeps a custom title when other settings change, and title null puts back the default", async () => {
+  const db = await openTestDb();
+  const { ruleId } = await addRule(ctxFor(db), { type: "stage_followup", stage: "replied", days: 2, title: "Nudge {contact}" });
+  await updateRule(ctxFor(db, "update_rule"), ruleId, { days: 4, stage: "Proposal sent" });
+  const params = async () => JSON.parse((await one<RuleRow>(db, "SELECT * FROM rules WHERE id = ?", ruleId)).params);
+  assert.deepEqual(await params(), { type: "stage_followup", stage: "proposal_sent", days: 4, title: "Nudge {contact}" });
+
+  const reset = await updateRule(ctxFor(db, "update_rule"), ruleId, { title: null });
+  assert.match(reset.summary, new RegExp(`^Updated rule ${ruleId}: title; now: .* add a follow-up task\\.`));
+  assert.deepEqual(await params(), { type: "stage_followup", stage: "proposal_sent", days: 4 });
+  await assert.rejects(updateRule(ctxFor(db, "update_rule"), ruleId, { title: null }), /Nothing to change on rule/);
+
+  const enter = await addRule(ctxFor(db), { type: "on_stage_enter", stage: "replied", title: "Prepare", dueInDays: 1 });
+  await assert.rejects(
+    updateRule(ctxFor(db, "update_rule"), enter.ruleId, { title: null }),
+    /An on_stage_enter rule needs a title, so it can't go back to a default\. Give the new title instead\./,
+  );
+  const quiet = await addRule(ctxFor(db), { type: "gone_quiet", days: 7 });
+  await assert.rejects(updateRule(ctxFor(db, "update_rule"), quiet.ruleId, { title: null }), /A gone_quiet rule doesn't take "title"/);
+});
+
 test("pauseRule and resumeRule flip active, refuse a no-op, and listRules shows every rule with its stage label", async () => {
   const db = await openTestDb();
   const { ruleId } = await addRule(ctxFor(db), { type: "stage_followup", stage: "proposal_sent", days: 3 });
