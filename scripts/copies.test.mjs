@@ -418,6 +418,11 @@ test("the template holds placeholders only and keeps the shared settings in step
   assert.deepEqual(bindings(template.previews), bindings(dev.previews));
 });
 
+test("the template turns off version preview URLs, which would run on the production bindings", () => {
+  const template = parseJsonc(readFileSync(TEMPLATE, "utf8"));
+  assert.equal(template.preview_urls, false);
+});
+
 test("every secret provisioning asks for is listed in docs/SECRETS.md", () => {
   const doc = readFileSync(join(ROOT, "docs", "SECRETS.md"), "utf8");
   for (const name of secretNames({ briefFrom: "brief@example.com" })) {
