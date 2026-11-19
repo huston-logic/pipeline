@@ -38,6 +38,16 @@ test("add_lead answers one line ending with its change id, then the new ids", as
   assert.equal(brief.next.at, "2026-11-20T17:00:00.000Z");
 });
 
+test("add_lead with a contact adds a deal for that contact, with no name or email needed", async () => {
+  const { c } = await setup();
+  const answer = await ok(c, "add_lead", { contact: "ct_seed07", dealTitle: "Gift card page" });
+  assert.match(answer.headline, /^Added deal "Gift card page" for existing contact Alex Sample in New inquiry/);
+  const data = answer.data as { contactId: string; matchedExisting: boolean };
+  assert.equal(data.contactId, "ct_seed07");
+  assert.equal(data.matchedExisting, true);
+  assert.match(await fails(c, "add_lead", {}), /^A lead needs a name\. Give the person's name\.$/);
+});
+
 test("writes are recorded as the ai actor under the tool's name", async () => {
   const { c } = await setup();
   const id = changeIdOf((await ok(c, "add_lead", { name: "Lee Example" })).data);
@@ -109,9 +119,9 @@ test("bad write input names the field and the shape it needs", async () => {
   const { c } = await setup();
   const message = await fails(c, "add_lead", { email: "lee@example.com", value: -5, extra: 1 });
   assert.match(message, /^Fix the add_lead request: /);
-  assert.match(message, /"name" is missing; it needs text \(the person's name\)\./);
   assert.match(message, /"value" must be at least 0/);
-  assert.match(message, /Unknown field "extra"\. Use only: name, email/);
+  assert.match(message, /Unknown field "extra"\. Use only: name, contact, email/);
+  assert.match(await fails(c, "add_task", { deal: "dl_seed01" }), /"title" is missing; it needs text \(what to do, in a few words\)\./);
   assert.match(await fails(c, "add_lead", { name: "Lee", email: "not-an-email" }), /^"not-an-email" doesn't look like an email address/);
 });
 

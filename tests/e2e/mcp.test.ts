@@ -83,7 +83,7 @@ test("undo after a later edit refuses in plain English against real D1", async (
 });
 
 test("bad input gets a plain-English answer naming the field", async () => {
-  assert.match(await fails(client, "add_lead", {}), /^Fix the add_lead request: "name" is missing; it needs text/);
+  assert.match(await fails(client, "add_task", { deal: "dl_seed01" }), /^Fix the add_task request: "title" is missing; it needs text/);
 });
 
 test("the scheduled handler runs through wrangler's test route", async () => {

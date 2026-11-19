@@ -17,7 +17,7 @@ import { checkFieldValues } from "./fields.ts";
 import { columnLabel, fieldsLabel, joinAnd, nextPart } from "./describe.ts";
 import { UserError } from "./errors.ts";
 import { checkEmail, checkValue, clean, whenOrNull, withoutNulls } from "./input.ts";
-import { contactName, isTrusted } from "./labels.ts";
+import { contactName, dealTitle, isTrusted } from "./labels.ts";
 import {
   type FieldValues,
   findContact,
@@ -43,7 +43,10 @@ async function commitWithEmail(ctx: Ctx, input: ChangeInput, email: string | nul
 }
 
 export interface LeadInput {
-  name: string;
+  /** Needed unless `contact` is given. */
+  name?: string;
+  /** An existing contact (id or exact name) to add the deal to; the person's details are then left as they are. */
+  contact?: string;
   email?: string;
   phone?: string;
   business?: string;
@@ -68,10 +71,11 @@ export interface AddLeadResult extends ChangeResult {
 export async function addLead(ctx: Ctx, input: LeadInput): Promise<AddLeadResult> {
   const { db } = ctx;
   const tz = await ownerTimezone(db);
+  const chosen = input.contact === undefined ? null : await findContact(db, input.contact);
   const name = clean(input.name);
-  if (name === null) throw new UserError("A lead needs a name. Give the person's name.");
+  if (name === null && chosen === null) throw new UserError("A lead needs a name. Give the person's name.");
   const email = clean(input.email);
-  if (email !== null) checkEmail(email);
+  if (email !== null && chosen === null) checkEmail(email);
   const value = input.value === undefined ? null : checkValue(input.value);
   const nextStep = clean(input.nextStep);
   const nextAt = whenOrNull(input.nextAt ?? null, tz);
@@ -84,11 +88,12 @@ export async function addLead(ctx: Ctx, input: LeadInput): Promise<AddLeadResult
 
   const now = ctx.now.toISOString();
   const changes: RowChange[] = [];
-  const existing = email === null ? null : await findContactByEmail(db, email);
+  const existing = chosen ?? (email === null ? null : await findContactByEmail(db, email));
   let contact: ContactRow;
   if (existing) {
     contact = existing;
   } else {
+    if (name === null) throw new Error("A new contact needs a name.");
     contact = {
       id: newId("ct"),
       name,
@@ -108,10 +113,14 @@ export async function addLead(ctx: Ctx, input: LeadInput): Promise<AddLeadResult
   }
 
   const notes = clean(input.notes);
+  const title = clean(input.dealTitle);
+  // A default title built from a name that came from outside is outside text too (as /intake does it).
+  const namedFrom = title === null ? chosen : null;
+  const titleOutside = namedFrom !== null && !isTrusted(namedFrom, "name");
   const deal: DealRow = {
     id: newId("dl"),
     contact_id: contact.id,
-    title: clean(input.dealTitle) ?? `${name} inquiry`,
+    title: title ?? `${namedFrom?.name ?? name} inquiry`,
     stage_key: stage.key,
     value,
     next_step: nextStep,
@@ -120,7 +129,7 @@ export async function addLead(ctx: Ctx, input: LeadInput): Promise<AddLeadResult
     fields: JSON.stringify(dealFields),
     stage_entered_at: now,
     last_activity_at: notes === null ? null : now,
-    untrusted_fields: "[]",
+    untrusted_fields: titleOutside ? '["title"]' : "[]",
     archived: 0,
     version: 1,
     created_at: now,
@@ -145,12 +154,15 @@ export async function addLead(ctx: Ctx, input: LeadInput): Promise<AddLeadResult
   }
 
   const detailsGiven =
-    [input.phone, input.business, input.source].some((v) => clean(v) !== null) ||
+    [input.phone, input.business, input.source, chosen === null ? undefined : input.email].some((v) => clean(v) !== null) ||
     Object.keys(contactFields).length > 0;
   const ignored = existing !== null && detailsGiven;
+  // "deal \"Garage plans\"" or "deal dl_…"; "contact Pat Example" or "contact ct_…".
+  const dealPart = isTrusted(deal, "title") ? `deal ${dealTitle(deal)}` : dealTitle(deal);
+  const contactPart = existing && isTrusted(existing, "name") ? `contact ${contactName(existing)}` : existing ? contactName(existing) : "";
   const summary =
     (existing
-      ? `Added deal "${deal.title}" for existing contact ${contactName(existing)} in ${stage.label}`
+      ? `Added ${dealPart} for existing ${contactPart} in ${stage.label}`
       : `Added lead ${name} with deal "${deal.title}" in ${stage.label}`) +
     nextPart(nextStep, nextAt, tz) +
     (ignored ? "; contact details left as they were (use update_contact to change them)" : "");
