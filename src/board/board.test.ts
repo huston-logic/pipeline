@@ -166,14 +166,15 @@ test("the contacts page shows every contact that is not archived, by name, with 
   const body = mainOf((await get(db, "/contacts")).body);
   assert.match(body, /<h1>Contacts<\/h1>/);
   assert.match(body, /7 contacts, sorted by name\./);
-  const names = [...body.matchAll(/<h2 class="card-title">([\s\S]*?)<\/h2>/g)].map((m) => (m[1] ?? "").replace(/<[^>]+>/g, ""));
+  // Compared as markup, not stripped text, so the outside name is checked together with its label.
+  const names = [...body.matchAll(/<h2 class="card-title">([\s\S]*?)<\/h2>/g)].map((m) => m[1] ?? "");
   assert.deepEqual(names, [
     "Alex Sample",
     "Casey Placeholder",
     "Jordan Fake",
     "Morgan Demo",
     "Pat Example",
-    "From outside Robin Sample",
+    '<span class="outside">From outside</span> <span class="outside-value">Robin Sample</span>',
     "Taylor Testcase",
   ]);
   assert.match(body, /<h2 class="card-title">Pat Example<\/h2>[\s\S]*?<dt>Company<\/dt><dd>Example Plumbing<\/dd>[\s\S]*?<dt>Open deals<\/dt><dd>1<\/dd>[\s\S]*?<dt>Last activity<\/dt><dd><time datetime="[^"]+">[^<]+<\/time><\/dd>[\s\S]*?<a href="\/deals\/dl_seed01">Website refresh for Example Plumbing<\/a>/);
