@@ -12,7 +12,8 @@ import { getChange } from "../services/read.ts";
 import { type Removal, undoChange, undoRemovals } from "../services/undo.ts";
 import { joinAnd } from "../services/describe.ts";
 import { canUndo, undoAction } from "./banner.ts";
-import { type ActionContext, type ActionResult, asOwner, backTo, type BoardAction, notFound, page, redirect, refusedPage } from "./action-kit.ts";
+import { MAX_BODY_BYTES, RECORD_FORM_MAX_BYTES } from "../http/limits.ts";
+import { type ActionContext, type ActionResult, asOwner, backTo, type MatchedAction, notFound, page, redirect, refusedPage, type Route } from "./action-kit.ts";
 import { EDIT_ROUTES } from "./edit-actions.ts";
 import { type FormContext, hidden, postForm } from "./forms.ts";
 import { html } from "./html.ts";
@@ -131,19 +132,17 @@ async function stillThere(ctx: ActionContext, back: string): Promise<string> {
   return found !== null ? back : kind === "deals" ? "/pipeline" : "/contacts";
 }
 
-type Route = { path: RegExp; handle: (ctx: ActionContext, id: string) => Promise<ActionResult> };
-
 const ROUTES: Route[] = [
   { path: /^\/deals\/([^/]+)\/move$/, handle: moveDeal },
   { path: /^\/changes\/([^/]+)\/undo$/, handle: undo },
   ...EDIT_ROUTES,
 ];
 
-/** The handler for a board write path, or null: every other POST keeps the 405 answer. */
-export function matchBoardAction(pathname: string): BoardAction | null {
+/** The handler for a board write path and its body cap, or null: every other POST keeps the 405 answer. */
+export function matchBoardAction(pathname: string): MatchedAction | null {
   for (const route of ROUTES) {
     const id = route.path.exec(pathname)?.[1];
-    if (id !== undefined) return (ctx) => route.handle(ctx, id);
+    if (id !== undefined) return { run: (ctx) => route.handle(ctx, id), maxBytes: route.big ? RECORD_FORM_MAX_BYTES : MAX_BODY_BYTES };
   }
   return null;
 }

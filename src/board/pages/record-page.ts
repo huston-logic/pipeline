@@ -61,6 +61,7 @@ ${cards}
 <a class="form-cancel" href="${options.cancel}">Cancel</a>
 </div>
 `,
+  { novalidate: true },
 )}`,
   });
 }

@@ -122,12 +122,45 @@ test("re-saving a contact whose values came from outside keeps them marked as ou
   assert.equal(row?.name, "Robin Sample");
 });
 
+test("an outside email a browser would reject (intake accepts it) doesn't block saving another field", async () => {
+  const db = await seededDb();
+  db.exec(`UPDATE contacts SET email = 'robin@exa_mple.com' WHERE id = 'ct_seed02'`);
+  const { body, cookie, token } = await load(devEnv(db), "/contacts/ct_seed02/edit");
+  assert.match(body, /action="\/contacts\/ct_seed02\/edit" novalidate>/, "the browser's email rule is off; the server checks");
+  const fields = formFields(body, "/contacts/ct_seed02/edit");
+  fields.set("phone", "555-0143");
+  assert.equal((await post(devEnv(db), "/contacts/ct_seed02/edit", fields, { cookie, token })).res.status, 303);
+  const row = await contact(db, "ct_seed02");
+  assert.equal(row?.phone, "555-0143");
+  assert.equal(row?.email, "robin@exa_mple.com");
+  assert.equal(row?.untrusted_fields, '["name","email","business"]');
+});
+
 test("changing an outside value makes it the owner's: that field leaves untrusted_fields, the others stay", async () => {
   const db = await seededDb();
   const { fields, cookie, token } = await editForm(db, "/contacts/ct_seed02/edit");
   fields.set("business", "Sample Bakery Ltd");
   await post(devEnv(db), "/contacts/ct_seed02/edit", fields, { cookie, token });
   assert.equal((await contact(db, "ct_seed02"))?.untrusted_fields, '["name","email"]');
+});
+
+test("a record form may be bigger than other board posts: 10,000 accented characters of notes and a phone edit save", async () => {
+  const db = await seededDb();
+  const notes = "é".repeat(10_000);
+  db.exec(`UPDATE contacts SET notes = '${notes}' WHERE id = 'ct_seed01'`);
+  const { fields, cookie, token } = await editForm(db, "/contacts/ct_seed01/edit");
+  assert.ok(fields.toString().length > 16 * 1024, "the form is over the 16 KB other posts get");
+  fields.set("phone", "555-0199");
+  const { res } = await post(devEnv(db), "/contacts/ct_seed01/edit", fields, { cookie, token });
+  assert.equal(res.status, 303);
+  const row = await contact(db, "ct_seed01");
+  assert.equal(row?.phone, "555-0199");
+  assert.equal(row?.notes, notes, "the notes are left as they were");
+
+  fields.set("notes", "x".repeat(130 * 1024));
+  assert.equal((await post(devEnv(db), "/contacts/ct_seed01/edit", fields, { cookie, token })).res.status, 413, "128 KB is still a limit");
+  const big = await post(devEnv(db), "/deals/dl_seed01/tasks", { title: "x".repeat(17 * 1024) });
+  assert.equal(big.res.status, 413, "other board posts keep 16 KB");
 });
 
 test("clearing an optional field sets it to null", async () => {

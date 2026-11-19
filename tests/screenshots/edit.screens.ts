@@ -24,10 +24,6 @@ async function check(page: Page, name: string) {
   await page.setViewportSize(viewport);
 }
 
-/** Lets a form reach the server with what the browser itself would refuse, to show the server's own answer. */
-const skipBrowserChecks = (page: Page, action: string) =>
-  page.locator(`form[action="${action}"]`).evaluate((form) => ((form as HTMLFormElement).noValidate = true));
-
 test("the deal page with Add a task, Log and a task's Snooze open", async ({ page }) => {
   await page.goto("/deals/dl_seed01");
   await page.getByText("Add a task", { exact: true }).click();
@@ -60,7 +56,6 @@ test("Edit contact with outside values, and saving it unchanged is refused", asy
 test("a refused log: Nothing was logged, with the form again", async ({ page }) => {
   await page.goto("/deals/dl_seed01");
   await page.getByText("Log a call, email or note", { exact: true }).click();
-  await skipBrowserChecks(page, "/deals/dl_seed01/log");
   await page.getByRole("button", { name: "Log it" }).click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Nothing was logged");
   await check(page, "edit-log-error");

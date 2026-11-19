@@ -37,7 +37,8 @@ test("New lead: one h1, every field labelled, name required in words, the token,
   assert.equal(h1Count(body), 1);
   assert.match(body, /<h1>New lead<\/h1>/);
   const form = formOf(body, "/leads/new");
-  assert.match(form, /<form class="record-form" method="post" action="\/leads\/new">/);
+  // The server checks every value, so the browser's own rules (stricter than intake's for email) never block a save.
+  assert.match(form, /<form class="record-form" method="post" action="\/leads\/new" novalidate>/);
   assert.match(form, /<input type="hidden" name="csrf" value="[A-Za-z0-9_-]{43}">/);
   assert.match(form, /<input type="hidden" name="return_to" value="\/contacts">/);
   assertLabelled(form, "/leads/new");
@@ -100,6 +101,7 @@ test("Edit deal: title, value, next step and the next date in the owner's time; 
   const { body } = await load(env, "/deals/dl_seed01/edit");
   assert.match(body, /<h1>Edit Website refresh for Example Plumbing<\/h1>/);
   const form = formOf(body, "/deals/dl_seed01/edit");
+  assert.match(form, /action="\/deals\/dl_seed01\/edit" novalidate>/);
   assertLabelled(form, "edit deal");
   assert.match(form, /name="title" type="text" value="Website refresh for Example Plumbing"/);
   assert.match(form, /name="value" type="text" value="1500"/);
@@ -142,6 +144,10 @@ test("the deal page offers Edit deal, Add a task and Log, and each task card has
   assert.match(body, /<a href="\/deals\/dl_seed01\/edit">Edit deal<\/a>/);
   const task = formOf(body, "/deals/dl_seed01/tasks");
   assertLabelled(task, "add task");
+  for (const action of ["/deals/dl_seed01/tasks", "/deals/dl_seed01/log"]) {
+    assert.match(formOf(body, action), new RegExp(`action="${action}" novalidate>`), action);
+  }
+  assert.match(body, /<form class="snooze-until" method="post" action="\/tasks\/tk_seed01\/snooze" novalidate>/);
   assert.match(task, /<button class="button button-small" type="submit">Add the task<\/button>/);
   const log = formOf(body, "/deals/dl_seed01/log");
   assertLabelled(log, "log");

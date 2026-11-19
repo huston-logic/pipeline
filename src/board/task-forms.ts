@@ -44,6 +44,7 @@ ${postForm(
   form,
   html`${field({ id, name: "until", label: "Or until", kind: "when", value: state.until ?? "", hint: "The time is optional: 9:00 AM if blank.", error: state.error })}
 <button class="button button-small" type="submit">Snooze${hiddenName(name)}</button>`,
+  { novalidate: true },
 )}`;
 }
 
@@ -84,6 +85,7 @@ export function addTaskForm(subject: Subject, form: FormContext, state?: FormSta
     form,
     html`${specFields(specs, state?.shown ?? new Map(), prefix)}
 <button class="button button-small" type="submit">Add the task</button>`,
+    { novalidate: true },
   );
   if (state !== undefined) return html`${formErrorSummary(state.errors, specs, prefix)}<div class="card refused-form">${inner}</div>`;
   return html`<details class="add-details">

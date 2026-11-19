@@ -5,6 +5,12 @@
 export const MAX_BODY_BYTES = 16 * 1024;
 
 /**
+ * Body size cap for the board's record forms and Log (decision 0018): an edit form posts every field back, and a
+ * 10,000-character note of accented text is about 60 KB once form-encoded.
+ */
+export const RECORD_FORM_MAX_BYTES = 128 * 1024;
+
+/**
  * Reads at most `max` bytes, whatever Content-Length claims, and answers null for a longer body without reading the
  * rest.
  */

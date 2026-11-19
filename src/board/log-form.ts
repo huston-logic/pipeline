@@ -33,6 +33,7 @@ export function logForm(subject: Subject, form: FormContext, state?: FormState):
     form,
     html`${specFields(specs, shown, prefix)}
 <button class="button button-small" type="submit">Log it</button>`,
+    { novalidate: true },
   );
   if (state !== undefined) return html`${formErrorSummary(state.errors, specs, prefix)}<div class="card refused-form">${inner}</div>`;
   return html`<details class="add-details">

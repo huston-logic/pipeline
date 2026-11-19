@@ -13,7 +13,12 @@ export const hidden = (name: string, value: string): Html => html`<input type="h
 /** The token and the return path, as hidden fields. */
 export const formBasics = (form: FormContext): Html => html`${hidden(CSRF_FIELD, form.csrf)}${hidden(RETURN_FIELD, form.here)}`;
 
-/** A POST form to a board write route. */
-export function postForm(className: string, action: string, form: FormContext, inner: Html): Html {
-  return html`<form class="${className}" method="post" action="${action}">${formBasics(form)}${inner}</form>`;
+/**
+ * A POST form to a board write route. A record form is `novalidate` (decision 0018): the server checks every value
+ * and answers with its own errors, and the browser's rules (stricter than intake's for an email) would otherwise
+ * block saving a form that holds outside data. The input types stay, for the phone's keyboard.
+ */
+export function postForm(className: string, action: string, form: FormContext, inner: Html, options: { novalidate?: boolean } = {}): Html {
+  const novalidate = options.novalidate ? html` novalidate` : "";
+  return html`<form class="${className}" method="post" action="${action}"${novalidate}>${formBasics(form)}${inner}</form>`;
 }

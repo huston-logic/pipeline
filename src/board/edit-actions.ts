@@ -15,6 +15,7 @@ import {
   type ActionContext,
   type ActionResult,
   asOwner,
+  type Route,
   backTo,
   notFound,
   page,
@@ -38,8 +39,6 @@ import { fieldId } from "./record-fields.ts";
 import { withChange } from "./return-to.ts";
 import { MORNING, snoozePresets } from "./snooze.ts";
 import { addTaskForm, snoozeForms, type Subject, subjectHref, taskSpecs } from "./task-forms.ts";
-
-type Route = { path: RegExp; handle: (ctx: ActionContext, id: string) => Promise<ActionResult> };
 
 const NOTHING_TO_SAVE = "Nothing to save: every field is as it was. Change a value, or cancel to go back.";
 
@@ -247,14 +246,14 @@ async function snooze(ctx: ActionContext, id: string): Promise<ActionResult> {
 }
 
 export const EDIT_ROUTES: Route[] = [
-  { path: /^\/leads\/(new)$/, handle: (ctx) => newLead(ctx) },
-  { path: /^\/contacts\/([^/]+)\/deals\/new$/, handle: newDeal },
-  { path: /^\/contacts\/([^/]+)\/edit$/, handle: editContact },
-  { path: /^\/deals\/([^/]+)\/edit$/, handle: editDeal },
+  { path: /^\/leads\/(new)$/, handle: (ctx) => newLead(ctx), big: true },
+  { path: /^\/contacts\/([^/]+)\/deals\/new$/, handle: newDeal, big: true },
+  { path: /^\/contacts\/([^/]+)\/edit$/, handle: editContact, big: true },
+  { path: /^\/deals\/([^/]+)\/edit$/, handle: editDeal, big: true },
   { path: /^\/deals\/([^/]+)\/tasks$/, handle: addTaskTo("deal") },
   { path: /^\/contacts\/([^/]+)\/tasks$/, handle: addTaskTo("contact") },
-  { path: /^\/deals\/([^/]+)\/log$/, handle: logOn("deal") },
-  { path: /^\/contacts\/([^/]+)\/log$/, handle: logOn("contact") },
+  { path: /^\/deals\/([^/]+)\/log$/, handle: logOn("deal"), big: true },
+  { path: /^\/contacts\/([^/]+)\/log$/, handle: logOn("contact"), big: true },
   { path: /^\/tasks\/([^/]+)\/complete$/, handle: complete },
   { path: /^\/tasks\/([^/]+)\/snooze$/, handle: snooze },
 ];
