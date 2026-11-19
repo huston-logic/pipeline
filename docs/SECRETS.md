@@ -10,16 +10,27 @@ and this repo never see them, and nothing here should be pasted into chat, a pul
 |---|---|---|
 | `ENVIRONMENT` | `production` (default) or `development` | `vars` in `wrangler.jsonc`; `npm run dev` and `npm run preview` pass `--var ENVIRONMENT:development` |
 | `AUTH_MODE` | `dev`, or unset | Only `npm run dev`, `npm run preview` and the e2e tests set it (`--var AUTH_MODE:dev`). It works only with `ENVIRONMENT=development` on localhost; anywhere else every route answers 500. Unset, `/mcp` answers 401 until task 10 (decision 0004). |
+| `BRIEF_SENDING` | `on`, or unset | The master switch for emailing the daily brief (decision 0011). Unset (the default) or any other value keeps sending off; the brief is still composed and stored each day. Set it in the copy's own config `vars`, never in this repo's `wrangler.jsonc`. |
+| `BRIEF_FROM` | An address on a domain verified in Resend, or unset | The "from" address of the brief email. Unset keeps sending off. Set it in the copy's own config `vars`. |
 | `MCP_ALLOWED_HOSTNAMES` | Comma-separated hostnames, or unset | A copy on a custom domain sets it (for example `pipeline.example.com`) so `/mcp` refuses other Host headers. Unset, localhost and `*.workers.dev` are checked automatically (decision 0004). |
 
 ## Secrets
 
-The Worker reads no secrets yet. Later tasks add them here, by name, with the exact `wrangler secret put` command, when
-the code that reads them lands:
+The only secret the Worker reads so far is `RESEND_API_KEY` (below). Later tasks add theirs here, by name, with the exact
+`wrangler secret put` command, when the code that reads them lands:
+
+| Name | For | Set with |
+|---|---|---|
+| `RESEND_API_KEY` | Emailing the daily brief through Resend (task 7). Read only when sending is on. | `npx wrangler secret put RESEND_API_KEY` (the owner, in their own Cloudflare account) |
+
+Sending the brief needs all of these at once: `settings.brief_enabled` on (`update_settings`), a `brief_email` address in
+the settings, `BRIEF_SENDING=on`, `BRIEF_FROM` and `RESEND_API_KEY`. If any one is missing the brief is only composed and
+stored, and its `send_status` says which switch is off.
+
+Still to come:
 
 | Added by | For |
 |---|---|
-| Task 7 (daily brief) | `RESEND_API_KEY` and the sender address `BRIEF_FROM`; sending also needs `BRIEF_SENDING=on` and stays off otherwise |
 | Task 8 (`/intake`) | The shared secret a website form sends in the `X-Intake-Secret` header |
 | Task 10 (auth) | The allowed owner email(s) (`OWNER_EMAILS`), the Cloudflare Access team domain and AUD, and the OAuth settings |
 

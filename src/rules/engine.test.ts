@@ -218,3 +218,38 @@ test("previewRule labels deals safely: an outside title or name becomes an id la
   const [hit] = previewRule({ type: "stage_followup", stage: "proposal_sent", days: 3 }, { now: NOW, deals: [d], activities: [] });
   assert.equal(hit?.label, "deal dl_a (contact ct_a)");
 });
+
+test("a rule's `since` cut-over: stage entries before it never fire, entries at or after it do", () => {
+  const params = { type: "on_stage_enter", stage: "proposal_sent", title: "Send the checklist", dueInDays: 1 } as const;
+  const moved = rule({ ...params, since: ago(2) }, { createdAt: ago(30) });
+  const run = (r: EngineRule, d: EngineDeal) => evaluateRules({ now: NOW, rules: [r], deals: [d], firedKeys: new Set() });
+  assert.deepEqual(run(moved, deal({ stageEnteredAt: ago(3) })), [], "entered before the cut-over, after creation");
+  assert.equal(run(moved, deal({ stageEnteredAt: ago(2) })).length, 1, "entered exactly at the cut-over");
+  assert.equal(run(moved, deal({ stageEnteredAt: ago(1) })).length, 1);
+
+  const resumed = rule({ type: "stage_followup", stage: "proposal_sent", days: 3, since: ago(2) });
+  assert.deepEqual(run(resumed, deal({ stageEnteredAt: ago(4), lastActivityAt: null })), [], "overdue, but entered before the resume");
+  assert.deepEqual(run(followup(), deal({ stageEnteredAt: ago(4), lastActivityAt: null })).map((f) => f.dealId), ["dl_a"]);
+});
+
+test("previewRule groups activities by deal and by contact once, instead of scanning them for every deal", () => {
+  const reads = new Map<EngineActivity, number>();
+  const watch = (activity: EngineActivity) =>
+    new Proxy(activity, {
+      get(target, key, receiver) {
+        if (key === "dealId") reads.set(target, (reads.get(target) ?? 0) + 1);
+        return Reflect.get(target, key, receiver);
+      },
+    });
+  const deals = Array.from({ length: 25 }, (_, i) =>
+    deal({ id: `dl_${i}`, contact: { id: `ct_${i}`, name: "Pat Example", untrusted_fields: "[]" }, stageEnteredAt: ago(5), createdAt: ago(5) }),
+  );
+  const activities = [
+    ...deals.map((d) => watch(stageChange(d.id, "replied", "proposal_sent", ago(5)))),
+    watch(contactActivity("dl_3", ago(4))),
+    watch(contactActivity(null, ago(4))),
+  ];
+  const hits = previewRule({ type: "stage_followup", stage: "proposal_sent", days: 3 }, { now: NOW, deals, activities });
+  assert.equal(hits.length, 25 - 1, "dl_3 had contact; the contact-only activity belongs to no deal's contact");
+  for (const [activity, count] of reads) assert.ok(count <= 2, `${activity.type} read ${count} times`);
+});

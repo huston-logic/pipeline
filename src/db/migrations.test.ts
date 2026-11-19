@@ -208,7 +208,7 @@ test("0002 from the previous version: deals and tasks keep their data and get un
   await addDeal(db, "dl_a", "ct_a");
   await db.prepare("INSERT INTO tasks (id, deal_id, title) VALUES ('tk_a', 'dl_a', 'Call back')").run();
 
-  assert.deepEqual(await applyMigrations(db), ["0002_untrusted_provenance.sql"]);
+  assert.deepEqual(await applyMigrations(db, 2), ["0002_untrusted_provenance.sql"]);
   const deal = await db.prepare("SELECT title, contact_id, untrusted_fields FROM deals WHERE id = 'dl_a'").first();
   assert.deepEqual({ ...deal }, { title: "Example website", contact_id: "ct_a", untrusted_fields: "[]" });
   const task = await db.prepare("SELECT title, deal_id, untrusted_fields FROM tasks WHERE id = 'tk_a'").first();
@@ -226,4 +226,36 @@ test("untrusted_fields on deals and tasks must be a JSON array", async () => {
   await db.prepare(`UPDATE deals SET untrusted_fields = '["title"]'`).run();
   await assert.rejects(db.prepare("UPDATE deals SET untrusted_fields = 'title'").run(), /CHECK/);
   await assert.rejects(db.prepare("UPDATE tasks SET untrusted_fields = '{}'").run(), /CHECK/);
+});
+
+test("0003 from the previous version: existing data is untouched and briefs starts empty", async () => {
+  const db = new SqliteD1();
+  assert.deepEqual(await applyMigrations(db, 2), ["0001_init.sql", "0002_untrusted_provenance.sql"]);
+  applySqlFile(db, "seed/defaults.sql");
+  await addContact(db, "ct_a", "pat@example.com");
+  await addDeal(db, "dl_a", "ct_a");
+  await db.prepare("INSERT INTO tasks (id, deal_id, title, untrusted_fields) VALUES ('tk_a', 'dl_a', 'Call back', '[\"title\"]')").run();
+
+  assert.deepEqual(await applyMigrations(db), ["0003_briefs.sql"]);
+  assert.equal(await count(db, "briefs"), 0);
+  const deal = await db.prepare("SELECT title, untrusted_fields FROM deals WHERE id = 'dl_a'").first();
+  assert.deepEqual({ ...deal }, { title: "Example website", untrusted_fields: "[]" });
+  const task = await db.prepare("SELECT title, untrusted_fields FROM tasks WHERE id = 'tk_a'").first();
+  assert.deepEqual({ ...task }, { title: "Call back", untrusted_fields: '["title"]' });
+  assert.equal(await db.prepare("SELECT brief_hour FROM settings").first("brief_hour"), 7);
+  assert.deepEqual((await db.prepare("PRAGMA foreign_key_check").all()).results, []);
+});
+
+test("briefs: one per local date, items must be a JSON array", async () => {
+  const db = await createTestDb();
+  const insert = (id: string, date: string, items = "[]") =>
+    db
+      .prepare("INSERT INTO briefs (id, local_date, composed_at, text, items) VALUES (?, ?, '2026-11-19T15:00:00.000Z', 'x', ?)")
+      .bind(id, date, items)
+      .run();
+  await insert("br_a", "2026-11-19");
+  await assert.rejects(insert("br_b", "2026-11-19"), /UNIQUE constraint failed: briefs\.local_date/);
+  await assert.rejects(insert("br_c", "2026-11-20", "{}"), /CHECK/);
+  const row = await db.prepare("SELECT sent_at, send_status FROM briefs").first();
+  assert.deepEqual({ ...row }, { sent_at: null, send_status: null });
 });

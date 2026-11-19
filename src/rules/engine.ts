@@ -11,9 +11,13 @@ export const PREVIEW_DAYS = 30;
 /** The activity types that count as contact (the rest, stage_change and system, do not). */
 const CONTACT_TYPES: ReadonlySet<ActivityType> = new Set(["form", "email", "call", "meeting", "note"]);
 
+/**
+ * `since` (UTC ISO) is a cut-over the services set, never the owner: when a rule is resumed, or an on_stage_enter rule
+ * is pointed at another stage, stage entries before that moment never fire (decision 0010).
+ */
 export type RuleParams =
-  | { type: "stage_followup"; stage: string; days: number; title?: string }
-  | { type: "on_stage_enter"; stage: string; title: string; dueInDays: number }
+  | { type: "stage_followup"; stage: string; days: number; title?: string; since?: string }
+  | { type: "on_stage_enter"; stage: string; title: string; dueInDays: number; since?: string }
   | { type: "gone_quiet"; days: number };
 
 export const DEFAULT_FOLLOWUP_TITLE = "Follow up with {contact} about {deal}";
@@ -94,6 +98,7 @@ function dueFor(rule: EngineRule, deal: EngineDeal, now: Date): { dueAt: string;
   const { params } = rule;
   if (params.type === "gone_quiet" || params.stage !== deal.stageKey) return null;
   const entered = ms(deal.stageEnteredAt);
+  if (params.since !== undefined && entered < ms(params.since)) return null;
   if (params.type === "stage_followup") {
     const at = entered + params.days * DAY_MS;
     if (at > now.getTime() || !noContactSinceEntry(deal)) return null;
@@ -226,11 +231,20 @@ export function previewRule(
   const end = data.now.getTime();
   const start = end - PREVIEW_DAYS * DAY_MS;
   const hits: PreviewHit[] = [];
+  // Grouped once: a deal's own activities, and the contact-only ones (no deal) of its contact.
+  const byDeal = new Map<string, EngineActivity[]>();
+  const byContact = new Map<string, EngineActivity[]>();
+  for (const activity of data.activities) {
+    const { dealId } = activity;
+    const [key, groups] = dealId !== null ? [dealId, byDeal] : [activity.contactId, byContact];
+    if (key === null) continue;
+    const group = groups.get(key);
+    if (group) group.push(activity);
+    else groups.set(key, [activity]);
+  }
   for (const deal of data.deals) {
     if (deal.archived) continue;
-    const mine = data.activities.filter(
-      (a) => a.dealId === deal.id || (a.dealId === null && a.contactId === deal.contact.id),
-    );
+    const mine = [...(byDeal.get(deal.id) ?? []), ...(byContact.get(deal.contact.id) ?? [])];
     const contacts = mine
       .filter((a) => CONTACT_TYPES.has(a.type))
       .map((a) => ms(a.occurredAt))

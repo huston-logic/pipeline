@@ -21,7 +21,7 @@ import { formatLocal } from "../time.ts";
 import { type ChangeResult, commitChange, type Ctx, isFireKeyFailure, updatedRow } from "./change.ts";
 import { capitalize, joinAnd, rowLabel, short, withArticle } from "./describe.ts";
 import { UserError } from "./errors.ts";
-import { dealLabel } from "./labels.ts";
+import { dealLabel, untrustedFields } from "./labels.ts";
 import { findStage, ownerTimezone, stageLabels } from "./lookup.ts";
 
 export type { RuleParams };
@@ -56,9 +56,13 @@ const title = z.string().trim().min(1).max(MAX_TITLE);
 const days = z.number().int().min(1).max(365);
 const dueInDays = z.number().int().min(0).max(365);
 
+// `since` is the cut-over the services set (decision 0010). It is read back from storage but never taken from a request:
+// checkParams leaves it out of what it returns, and the RuleSettings type has no field for it.
+const since = z.iso.datetime();
+
 const SCHEMAS = {
-  stage_followup: z.strictObject({ type: z.literal("stage_followup"), stage, days, title: title.optional() }),
-  on_stage_enter: z.strictObject({ type: z.literal("on_stage_enter"), stage, title, dueInDays }),
+  stage_followup: z.strictObject({ type: z.literal("stage_followup"), stage, days, title: title.optional(), since: since.optional() }),
+  on_stage_enter: z.strictObject({ type: z.literal("on_stage_enter"), stage, title, dueInDays, since: since.optional() }),
   gone_quiet: z.strictObject({ type: z.literal("gone_quiet"), days }),
 } satisfies Record<RuleType, z.ZodType<RuleParams>>;
 
@@ -230,6 +234,10 @@ export async function updateRule(ctx: Ctx, ref: string, patch: RulePatch): Promi
   if (!paramsChanged && nextDescription === before.description) {
     throw new UserError(`Nothing to change on ${ruleName(before)}: every value you gave is already set.`);
   }
+  // Entries into the stage before this moment must not fire for a rule that now watches it (the owner never set `since`).
+  const moved = params.type === "on_stage_enter" && stored.type === "on_stage_enter" && params.stage !== stored.stage;
+  const cutOver = moved ? ctx.now.toISOString() : stored.type === "gone_quiet" ? undefined : stored.since;
+  if (params.type !== "gone_quiet" && cutOver !== undefined) params.since = cutOver;
   const after = updatedRow(before, { params: JSON.stringify(params), description: nextDescription }, ctx.now);
   const labels = changed.map((key) => PARAM_LABELS[key] ?? key);
   if (description !== undefined && description !== before.description) labels.push("description");
@@ -250,7 +258,15 @@ async function setActive(ctx: Ctx, ref: string, active: boolean): Promise<Change
         : `${capitalize(ruleName(before))} is already paused. Resume it with resume_rule.`,
     );
   }
-  const after = updatedRow(before, { active: active ? 1 : 0 }, ctx.now);
+  const patch: Partial<RuleRow> = { active: active ? 1 : 0 };
+  if (active) {
+    // Stage entries from before the resume (made while paused, or already overdue) must not fire all at once.
+    const stored = parseRuleParams(before);
+    if (stored !== null && stored.type !== "gone_quiet") {
+      patch.params = JSON.stringify({ ...stored, since: ctx.now.toISOString() });
+    }
+  }
+  const after = updatedRow(before, patch, ctx.now);
   const result = await commitChange(ctx, {
     target: { table: "rules", id: before.id },
     summary: `${active ? "Resumed" : "Paused"} ${ruleName(before)}: ${short(before.description, 200)}`,
@@ -419,11 +435,39 @@ export async function runRules(db: Db, now: Date): Promise<RuleRunCounts> {
   return counts;
 }
 
-/** Open deals the active gone_quiet rules flag now (the daily brief's list). */
-export async function listQuietDeals(db: Db, now: Date): Promise<{ dealId: string; ruleId: string; quietDays: number }[]> {
+export interface QuietDeal {
+  dealId: string;
+  ruleId: string;
+  quietDays: number;
+  title: string;
+  contactName: string;
+  /** Which of title and contactName came from outside. */
+  untrusted_fields: ("title" | "contactName")[];
+}
+
+/** Open deals the active gone_quiet rules flag now (the daily brief's list), one entry per deal and rule. */
+export async function listQuietDeals(db: Db, now: Date): Promise<QuietDeal[]> {
   const rules = (await activeRules(db)).filter((rule) => rule.params.type === "gone_quiet");
   if (rules.length === 0) return [];
-  return quietDeals({ now, rules, deals: await engineDeals(db, true) });
+  const deals = await engineDeals(db, true);
+  const byId = new Map(deals.map((deal) => [deal.id, deal]));
+  return quietDeals({ now, rules, deals }).flatMap((flag) => {
+    const deal = byId.get(flag.dealId);
+    if (!deal) return [];
+    const outside = untrustedFields(deal);
+    const outsideContact = untrustedFields(deal.contact);
+    return [
+      {
+        ...flag,
+        title: deal.title,
+        contactName: deal.contact.name,
+        untrusted_fields: [
+          ...(outside.has("title") ? (["title"] as const) : []),
+          ...(outsideContact.has("name") ? (["contactName"] as const) : []),
+        ],
+      },
+    ];
+  });
 }
 
 const PREVIEW_TYPES: ActivityType[] = ["form", "email", "call", "meeting", "note", "stage_change"];

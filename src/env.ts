@@ -17,4 +17,10 @@ export type Env = {
    * Unset, localhost and *.workers.dev hosts are checked and other hosts rely on Cloudflare routing (decision 0004).
    */
   MCP_ALLOWED_HOSTNAMES?: string;
+  /** "on" lets the daily brief be emailed; anything else, or unset, keeps sending off (decision 0011). */
+  BRIEF_SENDING?: string;
+  /** The "from" address for the brief email, on a domain verified in Resend. */
+  BRIEF_FROM?: string;
+  /** Resend API key (a secret: set with `wrangler secret put`, never in the repo). */
+  RESEND_API_KEY?: string;
 };
