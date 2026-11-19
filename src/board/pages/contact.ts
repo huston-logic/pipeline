@@ -49,7 +49,8 @@ ${pairs([
       name: "Next date",
       value: html`${when(deal.nextAt, deal.nextAtLocal)}${deal.overdue ? html` ${tag("Overdue", true)}` : ""}`,
     },
-  closed && { name: "Status", value: STATUS[deal.status] },
+  // A closed stage's label usually says it already ("Won"); the status is shown when the owner renamed the stage.
+  closed && STATUS[deal.status] !== deal.stageLabel && { name: "Status", value: STATUS[deal.status] },
 ])}
 </li>`;
 }

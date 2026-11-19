@@ -481,10 +481,18 @@ main {
   border-top: 0;
 }
 
+/* A link with a short note after it (a deal and its stage); the note wraps under the link as a whole. */
+.card-links li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 0.5rem;
+}
+
 .card-link-meta {
-  margin-left: 0.25rem;
   color: var(--ink-2);
   font-size: 0.9375rem;
+  white-space: nowrap;
 }
 
 /* Facts: one grid for the whole list, so every value starts at the widest label. */
@@ -1075,6 +1083,11 @@ ol.panel {
   .brand {
     margin: 0 0 1.75rem;
     padding: 0 0.5rem;
+  }
+
+  /* The side bar has room for a long business name on two lines. */
+  .brand-name {
+    white-space: normal;
   }
 
   .app-nav {
