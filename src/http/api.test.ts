@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { buildDevSeed } from "../../scripts/seed-dev.ts";
+import { matchBoardPage } from "../board/router.ts";
+import type { Db } from "../db/db.ts";
 import { createTestDb, type SqliteD1 } from "../db/sqlite-d1.ts";
 import type { Env } from "../env.ts";
+import { newId } from "../ids.ts";
 import worker from "../index.ts";
 import { DEFAULT_TZ } from "../time.ts";
 import { handleApi } from "./api.ts";
@@ -109,6 +112,32 @@ test("an unknown deal, an unknown table and an unknown API path are 404 JSON", a
     const res = await fetchApi(db, path);
     assert.equal(res.status, 404, path);
     assert.match((await jsonOf<{ error: string }>(res)).error, /\S/, path);
+  }
+});
+
+test("the board and the API take the same deal ids, and look up nothing that can't be one", async () => {
+  // A database that fails on any query: an id that can't be a deal must be answered without one.
+  const noLookup = { prepare() { throw new Error("looked up"); } } as unknown as Db;
+  const ids: [string, boolean][] = [
+    [newId("dl"), true],
+    ["dl_seed01", true],
+    ["ct_seed01", false],
+    [newId("tk"), false],
+    ["dl_", false],
+    ["dl_Seed01", false],
+    ["dl_a-b", false],
+    ["dl_a%2Fb", false],
+    [`dl_${"a".repeat(33)}`, false],
+  ];
+  for (const [id, isDeal] of ids) {
+    assert.equal(matchBoardPage(`/deals/${id}`) !== null, isDeal, `board ${id}`);
+    const answer = handleApi(new Request(`http://localhost:4821/api/deals/${id}`), { DB: noLookup }, EVENING);
+    if (isDeal) await assert.rejects(answer, /looked up/, `api ${id}`);
+    else {
+      const res = await answer;
+      assert.equal(res.status, 404, `api ${id}`);
+      assert.match((await jsonOf<{ error: string }>(res)).error, /^There's no deal with that id\./, `api ${id}`);
+    }
   }
 });
 

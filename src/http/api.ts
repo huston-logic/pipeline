@@ -3,6 +3,7 @@
 // (`untrusted_fields`, `untrusted_text`, `untrusted`). Decision 0013.
 import { getDeal } from "../db/queries.ts";
 import type { Env } from "../env.ts";
+import { isDealId } from "../ids.ts";
 import { ownerTimezone } from "../services/lookup.ts";
 import { changeLog, getDealBrief, latestBrief, pipelineSummary, whatsDue } from "../services/read.ts";
 import { listRules } from "../services/rules.ts";
@@ -64,7 +65,7 @@ export async function handleApi(request: Request, env: Pick<Env, "DB">, now: Dat
 
   const dealId = DEAL_PATH.exec(pathname)?.[1];
   if (dealId !== undefined) {
-    if ((await getDeal(db, dealId)) === null) {
+    if (!isDealId(dealId) || (await getDeal(db, dealId)) === null) {
       return json({ error: "There's no deal with that id. Use /api/pipeline to find the deal's id (dl_...)." }, 404);
     }
     return json(await getDealBrief(db, dealId, await ownerTimezone(db), now));
