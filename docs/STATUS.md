@@ -3,7 +3,26 @@
 Spec: `docs/SPEC.md`. Plan: `docs/PLAN.md`. Rules: CLAUDE.md, "Autonomous runs". Run 1 started 2026-11-18.
 Updated after every merge, so a fresh chat can pick up where the last one stopped.
 
-## Tasks
+## Run 2 (started 2026-11-18)
+
+The board becomes the owner's daily screen (docs/PLAN.md, "Run 2"; decision 0014). Updated in the first and the
+closing PR of the run.
+
+| # | Task | PR | State |
+| --- | --- | --- | --- |
+| 0 | Spec change: editable board (decision 0014) | this PR | open |
+| R1 | Look and navigation | | |
+| R2 | Contacts and companies | | |
+| R3 | Pipeline as a kanban | | |
+| R4 | Editing | | |
+| R5 | Phone actions | | |
+| R6 | Home-screen app | | |
+| R7 | CPU check | | |
+| R8 | Deferred minor findings | | |
+| R9 | Decision wording | | |
+| R10 | Owner-only proposals | | |
+
+## Run 1 tasks
 
 | # | Task | PR | State |
 | --- | --- | --- | --- |
@@ -20,7 +39,7 @@ Updated after every merge, so a fresh chat can pick up where the last one stoppe
 | 10 | M10 production auth | [#11](https://github.com/huston-logic/pipeline/pull/11) | merged |
 | 11 | M11 many copies | [#12](https://github.com/huston-logic/pipeline/pull/12) | merged |
 | 12 | M12 acceptance | [#13](https://github.com/huston-logic/pipeline/pull/13) | merged |
-| - | Whole-run review fixes | [#14](https://github.com/huston-logic/pipeline/pull/14) | open, auto-merge queued |
+| - | Whole-run review fixes | [#14](https://github.com/huston-logic/pipeline/pull/14) | merged |
 
 Run 1 finished on 2026-11-18: every milestone in the spec is built, reviewed and merged. What is left needs a real
 Cloudflare account or the owner (see "STOP queue" and "What's left").

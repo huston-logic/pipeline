@@ -1,7 +1,7 @@
 # Pipeline engine: permanent rules
 
 A sales follow-up engine: one Cloudflare Worker per client copy, with a D1 database, an MCP endpoint at `/mcp`, an
-hourly rules run, a daily brief, `/intake` and a read-only board. Every copy runs the identical code in this repo. Read
+hourly rules run, a daily brief, `/intake` and an editable board. Every copy runs the identical code in this repo. Read
 this file before changing the repo, and update it when a rule changes.
 
 ## Sources of truth
@@ -30,10 +30,17 @@ this file before changing the repo, and update it when a rule changes.
   Agents SDK, not `McpAgent`), and in later tasks `/intake`, `/api/*` and the `scheduled` handler (hourly rules, daily
   brief). `run_worker_first: true`, so every request reaches the Worker; it hands file requests
   (a path ending in `name.ext`) to `env.ASSETS` and renders its own 404 page when the file is missing.
-- **The board is HTML rendered by the Worker** (decision 0001): no client JavaScript, no React, no framework. Pages
+- **The board is HTML rendered by the Worker** (decisions 0001 and 0014): no React, no framework. Pages
   are modules in `src/board/pages/` that return `renderPage({ title, description, body, current })` from
   `src/board/layout.ts`. Every board path is listed in `src/board/routes.ts` (import-free; the accessibility test and
-  `lighthouserc.cjs` read it). The board is read-only: GET and HEAD only, `Cache-Control: no-store`.
+  `lighthouserc.cjs` read it). Pages are GET and HEAD with `Cache-Control: no-store`.
+- **Board edits** (decision 0014): a board `POST` calls the same service function as the matching MCP tool (actor
+  `owner`), never SQL of its own, so every edit is audited and undoable. Each POST needs the sign-in, a same-origin
+  request and the CSRF token (hidden `csrf` field matching the cookie), then answers 303 back to the page with
+  `?change=<id>` and an Undo button. Closing a deal (Won, Lost, Not now) asks for confirmation first.
+- **Browser JavaScript** (decision 0014): only first-party files from `public/`, loaded with `defer`, as progressive
+  enhancement. Every action must also work as a plain form with JavaScript off. No framework, no build step, no
+  third-party code, at most 3 KB gzipped.
 - **Markup goes through the `html` tag** (`src/board/html.ts`), which escapes every interpolation. `raw()` is only for
   markup written in this repo, never for data. No other way of building HTML.
 - **Static files:** `npm run build` (`scripts/build.mjs`) copies `public/` (`board.css`, `robots.txt`, `_headers`) into
@@ -95,7 +102,7 @@ this file before changing the repo, and update it when a rule changes.
 
 - No secrets in the repo, in tests or in logs. Secrets exist only as Worker secrets that each copy's owner sets;
   `docs/SECRETS.md` lists names only. `.env*` (except `.env.example`) and `.dev.vars*` are git-ignored.
-- Every response carries the headers in `src/security.ts`: CSP `default-src 'self'; script-src 'none'`
+- Every response carries the headers in `src/security.ts`: CSP `default-src 'self'; script-src 'none'` (`'self'` once the first board script ships, decision 0014)
   (`style-src 'self'`, `img-src 'self' data:`, `object-src 'none'`, `base-uri 'none'`, `form-action 'self'`,
   `frame-ancestors 'none'`), `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy`,
   `Permissions-Policy`, HSTS and COOP/CORP. `public/_headers` repeats them for static files and must stay identical
