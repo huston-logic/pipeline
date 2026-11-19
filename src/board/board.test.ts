@@ -619,8 +619,11 @@ test("the More page links to Rules, Changes and Export, each with a one-line des
 
 test("board pages answer GET and HEAD only: any other method is 405 (writes have their own paths)", async () => {
   const db = await seededDb();
+  // A record form page (New lead, Edit, New deal) is posted back to its own path (decision 0018).
+  const formPage = (path: string) => /\/(?:edit|new)$/.test(path);
   for (const path of boardRoutes) {
     for (const method of ["POST", "PUT", "DELETE", "PATCH"]) {
+      if (method === "POST" && formPage(path)) continue;
       const { res } = await get(db, path, { method });
       assert.equal(res.status, 405, `${method} ${path}`);
       assert.equal(res.headers.get("Allow"), "GET, HEAD");

@@ -408,7 +408,7 @@ test("an undo that would remove records asks first and writes nothing; confirmed
   assert.equal(await auditCount(db), before, "nothing written yet");
   assert.equal(ask.body.match(/<h1[\s>]/g)?.length, 1);
   assert.match(ask.body, /<h1>Undo this change\?<\/h1>/);
-  assert.match(ask.body, /It removes 1 contact and 1 deal\. They can't be brought back\./);
+  assert.match(ask.body, /It removes 1 contact and 1 deal\. This can't be reversed\./);
   assert.match(ask.body, new RegExp(`<form class="confirm" method="post" action="/changes/${lead.changeId}/undo">`));
   for (const [name, value] of [["confirm", "yes"], ["return_to", "/changes"], ["csrf", ask.token]]) {
     assert.match(ask.body, new RegExp(`<input type="hidden" name="${name}" value="${value}">`), name);

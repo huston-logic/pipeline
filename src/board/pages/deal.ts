@@ -9,7 +9,10 @@ import type { FormContext } from "../forms.ts";
 import { renderPage } from "../layout.ts";
 import { moveForm, safeDealName } from "../move.ts";
 import { contactHref, empty, formatNumber, labelled, type Pair, pairs, section, tag, when } from "../parts.ts";
+import { logForm } from "../log-form.ts";
 import { customRows, outsideNote, STATUS, taskCard, timelineItem } from "../records.ts";
+import { addTaskForm, type Subject } from "../task-forms.ts";
+import { dealEditPath } from "./deal-edit.ts";
 
 function contactSection(brief: DealBrief, labels: Map<string, string>): Html {
   const { contact } = brief;
@@ -55,16 +58,19 @@ ${pairs([
   ...customRows(deal.fields, labels, new Set()),
 ])}
 ${deal.archived ? html`<p class="note">This deal is archived.</p>` : ""}
+<p class="card-actions"><a href="${dealEditPath(deal.id)}">Edit deal</a></p>
 ${deal.archived ? "" : html`<div class="card-move">${moveForm({ id: deal.id, name, stageKey: stage.key }, stages, form)}</div>`}
 </div>`,
   );
 }
 
 function nextSection(brief: DealBrief): Html {
+  const edit = html`<p class="card-actions"><a href="${dealEditPath(brief.deal.id)}">${brief.next.step === null && brief.next.at === null ? "Set a next step" : "Change the next step"}</a></p>`;
   const { next, deal } = brief;
   const body =
     next.step === null && next.at === null
-      ? empty("No next step set.", "Ask your AI app to set one, with a date if you have one.")
+      ? html`${empty("No next step set.")}
+${edit}`
       : html`<div class="card">
 <p class="card-title">${next.step ?? "No step written down"}</p>
 ${pairs([
@@ -74,28 +80,35 @@ ${pairs([
       value: html`${when(next.at, next.atLocal)}${deal.overdue ? html` ${tag("Overdue", true)}` : ""}`,
     },
 ])}
+${edit}
 </div>`;
   return section("next-heading", "Next step", body);
 }
 
-function tasksSection(brief: DealBrief, now: Date, tz: string): Html {
+function tasksSection(brief: DealBrief, now: Date, tz: string, form: FormContext, subject: Subject): Html {
   return section(
     "tasks-heading",
     "Open tasks",
-    brief.openTasks.length === 0
-      ? empty("No open tasks.")
-      : html`<ul class="cards cards-single">${brief.openTasks.map((task) => taskCard(task, now, tz))}</ul>`,
+    html`${
+      brief.openTasks.length === 0
+        ? empty("No open tasks.")
+        : html`<ul class="cards cards-single">${brief.openTasks.map((task) => taskCard(task, now, tz, false, form))}</ul>`
+    }
+${addTaskForm(subject, form)}`,
   );
 }
 
-function timelineSection(brief: DealBrief): Html {
+function timelineSection(brief: DealBrief, form: FormContext, subject: Subject): Html {
   return section(
     "timeline-heading",
     "Timeline",
-    brief.timeline.length === 0
-      ? empty("Nothing logged yet.", "Calls, emails and notes you log through your AI app show up here.")
-      : html`<p class="section-note">Newest first.</p>
-<ol class="panel rows timeline">${brief.timeline.map((item) => timelineItem(item))}</ol>`,
+    html`${logForm(subject, form)}
+${
+      brief.timeline.length === 0
+        ? empty("Nothing logged yet.", "Calls, emails and notes you log here or through your AI app show up here.")
+        : html`<p class="section-note">Newest first.</p>
+<ol class="panel rows timeline">${brief.timeline.map((item) => timelineItem(item))}</ol>`
+    }`,
   );
 }
 
@@ -122,6 +135,7 @@ export async function dealPage(ctx: PageContext, id: string): Promise<string | n
   // The <title> and meta description can't show the label, so outside text never goes there.
   const name = titleOutside ? `Deal ${brief.deal.id}` : brief.deal.title;
   const note = hasOutsideText(brief) ? outsideNote() : "";
+  const subject: Subject = { kind: "deal", id: brief.deal.id };
   return renderPage({
     title: name,
     description: `Before the call: contact, next step, open tasks and timeline for ${name}.`,
@@ -138,8 +152,8 @@ ${dealSection(brief, labelsFor("deal"), tz, await listStages(db), ctx)}
 </div>
 <div>
 ${nextSection(brief)}
-${tasksSection(brief, now, tz)}
-${timelineSection(brief)}
+${tasksSection(brief, now, tz, ctx, subject)}
+${timelineSection(brief, ctx, subject)}
 </div>
 </div>`,
   });

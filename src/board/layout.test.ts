@@ -30,7 +30,7 @@ test("has a skip link first, a header, one labelled nav, main#main and a footer"
   assert.equal(out.match(/<nav\b/g)?.length, 1);
   assert.match(out, /<nav class="app-nav" aria-label="Board pages">/);
   assert.match(out, /<main id="main"/);
-  assert.match(out, /<footer class="app-footer">\n<p>Move deals and undo changes here, or change anything by talking to your AI app\.<\/p>/);
+  assert.match(out, /<footer class="app-footer">\n<p>Add leads, edit contacts and deals, and move, log and undo here, or change anything by talking to your AI app\.<\/p>/);
 });
 
 test("the layout adds no <h1> and no script of its own", () => {

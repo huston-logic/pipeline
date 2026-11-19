@@ -11,9 +11,13 @@ import { changesPage } from "./pages/changes.ts";
 import { isContactId, isDealId } from "../ids.ts";
 import { companiesPage } from "./pages/companies.ts";
 import { contactPage } from "./pages/contact.ts";
+import { contactEditPage } from "./pages/contact-edit.ts";
 import { contactsPage } from "./pages/contacts.ts";
+import { dealEditPage } from "./pages/deal-edit.ts";
+import { newDealPage } from "./pages/deal-new.ts";
 import { dealPage } from "./pages/deal.ts";
 import { exportPage } from "./pages/export.ts";
+import { LEAD_PATH, leadPage } from "./pages/lead-new.ts";
 import { morePage } from "./pages/more.ts";
 import { notFoundPage } from "./pages/not-found.ts";
 import { pipelinePage } from "./pages/pipeline.ts";
@@ -37,12 +41,16 @@ const PAGES = new Map<string, Page>([
   ["/rules", rulesPage],
   ["/changes", changesPage],
   ["/export", exportPage],
+  [LEAD_PATH, (ctx) => leadPage(ctx)],
 ]);
 
 /** Anything isDealId or isContactId refuses can't be a record, so it gets the plain 404 without a lookup. */
 const RECORD_PATHS: { path: RegExp; isId: (id: string) => boolean; page: RecordPage }[] = [
   { path: /^\/deals\/([^/]+)$/, isId: isDealId, page: dealPage },
   { path: /^\/contacts\/([^/]+)$/, isId: isContactId, page: contactPage },
+  { path: /^\/deals\/([^/]+)\/edit$/, isId: isDealId, page: (ctx, id) => dealEditPage(ctx, id) },
+  { path: /^\/contacts\/([^/]+)\/edit$/, isId: isContactId, page: (ctx, id) => contactEditPage(ctx, id) },
+  { path: /^\/contacts\/([^/]+)\/deals\/new$/, isId: isContactId, page: (ctx, id) => newDealPage(ctx, id) },
 ];
 
 async function contextFor({ db, now, url, csrf }: PageRequest): Promise<PageContext> {

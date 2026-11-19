@@ -6,7 +6,7 @@ import { getSettings } from "../db/queries.ts";
 import type { Env } from "../env.ts";
 import { MAX_BODY_BYTES, readCappedBody } from "../http/limits.ts";
 import { htmlResponse, seeOther, textResponse } from "../http/respond.ts";
-import type { BoardAction } from "./actions.ts";
+import type { BoardAction } from "./action-kit.ts";
 import { CSRF_FIELD, type CsrfMode, csrfFromCookies, csrfMatches } from "./csrf.ts";
 import { html } from "./html.ts";
 import { type Look, lookOf, renderPage } from "./layout.ts";
