@@ -45,6 +45,14 @@ this file before changing the repo, and update it when a rule changes.
   (checked by `src/board/return-to.ts`) with `?change=<id>`, which the page shows in the change banner with an Undo
   button. A `UserError` is a 422 page with the message. Closing a deal (Won, Lost, Not now), and an Undo that would
   remove records, ask for confirmation first. Forms use `postForm`/`formBasics` from `src/board/forms.ts`.
+- **Board forms** (decision 0018): the editing routes are in `src/board/edit-actions.ts` (listed in the same table);
+  shared handler pieces are in `src/board/action-kit.ts`. Record forms are built from specs (`src/board/record-form.ts`)
+  and drawn with `src/board/inputs.ts` (visible label, "(required)" in words, `aria-describedby`/`aria-invalid` errors,
+  an error summary, the "From outside" label beside the field's label). An edit sends only the fields the owner
+  changed: each field carries a fingerprint of the value it was drawn with (`was.<name>`), and a field still matching
+  it is never written, because `update_contact` marks every field it sets as the owner's. Never build an edit patch
+  from every posted field. A refused form is a 422 with the values kept. Dates are a date plus an optional time, read
+  in the owner's timezone.
 - **Browser JavaScript** (decision 0014): only first-party files from `public/`, loaded with `defer`, as progressive
   enhancement, and only on pages that pass `script: true` to `renderPage`. Every action must also work as a plain form
   with JavaScript off. No framework, no build step, no third-party code, no eval, at most 3 KB gzipped (a test checks).

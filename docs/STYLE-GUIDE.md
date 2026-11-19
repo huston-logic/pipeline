@@ -231,8 +231,8 @@ Each destination (Rules, Changes, Export) is one link styled as a card: icon til
 one-line description in `ink-2`. The whole card is the link.
 
 ### 7.12 Footer
-`ink-2`, 15px, one line: "Move deals and undo changes here, or change anything by talking to your AI app." (R4 widens
-it as more edits arrive).
+`ink-2`, 15px, one line: "Add leads, edit contacts and deals, and move, log and undo here, or change anything by
+talking to your AI app." (decision 0018).
 
 ### 7.13 View switch (`.view-switch`)
 Two views of one tab (People / Companies, decision 0016): a white strip with an `--edge` border and `--r-btn`
@@ -281,6 +281,25 @@ link.
 The confirm page (closing a deal, or an undo that removes records): the question as the h1 ("Mark … as Won?"), one lede line, then the primary button
 ("Mark as Won") and a Cancel link side by side, 44px tall. The refused page: an h1 saying what didn't happen, the
 service's message as the lede in `ink`, the form again in a card at most 28rem wide, and "Back to the page".
+
+### 7.20 Record forms (`.record-form`, `.field`, `.error-summary`; decision 0018)
+New lead, a new deal, Edit contact and Edit deal are pages: a "Back to …" link, the h1, one lede line, the fields in
+one white card (two cards under h2s, Contact and Deal, on New lead), then the primary button ("Add the lead", "Save
+changes") and a Cancel link side by side, 44px or more. Each field: a visible label (600), "(required)" in words in
+`ink-2` 500, an optional hint (§7.14), the control (48px, 1px `ink-2` edge, `--r-field`; textareas 7rem, resizable).
+A value that came from outside has the "From outside" pill under its label, at its own width. A date is a group: a
+legend, then Date and Time side by side (wrapping on a phone), the time optional. A refused form: an error summary at
+the top (white, 2px rust edge, `--r-card`, an h2 such as "2 things to fix", each message a rust link to its field), and
+above each wrong control its message in rust 600, with the control's edge 2px rust. The words carry the state, never
+colour alone.
+
+### 7.21 Task actions, Add a task and Log (`.task-actions`, `.add-details`)
+At the foot of every task card, on a `--divider` line: Done (a small quiet button, §7.10) and a Snooze disclosure
+(`ink-2` 600, like Move to). Open, it shows two quiet buttons ("Tomorrow morning", "Next week"), one hint line on what
+they mean, and a date and time with a small Snooze button. Add a task and Log are disclosures under their section (the
+summary in `--accent` 600, 44px); open, the form sits in a white bordered box. Hidden words name the task in every
+button, so a screen reader can tell the cards apart. The New lead button (§7.10 primary) sits under the lede on Today,
+Pipeline and Contacts.
 
 ## 8. Line art and icons
 
