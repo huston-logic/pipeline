@@ -63,16 +63,16 @@ let fieldChangeId = "";
 describe("the twelve owner sentences", () => {
   test('1. "What\'s in my pipeline?"', async () => {
     const summary = await tool("pipeline_summary");
-    assert.equal(summary.headline, "6 open deals (total value 4650) across 5 open stages; 1 won, 1 lost, 0 not now.");
+    assert.equal(summary.headline, "14 open deals (total value 86350) across 5 open stages; 3 won, 2 lost, 1 not now.");
     const data = summary.data as { stages: { key: string; count: number; value: number }[] };
     assert.deepEqual(
       data.stages.map((s) => [s.key, s.count, s.value]),
       [
-        ["new_inquiry", 2, 0],
-        ["replied", 1, 0],
-        ["call_booked", 1, 1500],
-        ["call_done", 1, 2400],
-        ["proposal_sent", 1, 750],
+        ["new_inquiry", 3, 0],
+        ["replied", 3, 16850],
+        ["call_booked", 3, 31300],
+        ["call_done", 2, 16800],
+        ["proposal_sent", 3, 21400],
       ],
     );
     tz = ((await tool("get_settings")).data as { timezone: string }).timezone;
@@ -80,31 +80,38 @@ describe("the twelve owner sentences", () => {
 
   test('2. "Who needs a follow-up today?"', async () => {
     const answer = await tool("whats_due");
-    assert.match(answer.headline, /^Due by the end of today \(\d{4}-\d{2}-\d{2}\): 1 overdue task, 1 task due today, 0 overdue deals, 0 deals with a next step today\.$/);
-    const due = answer.data as { overdueTasks: { id: string }[]; todayTasks: { id: string }[] };
-    assert.deepEqual(due.overdueTasks.map((t) => t.id), ["tk_seed02"], "Casey's price sheet is overdue");
-    assert.deepEqual(due.todayTasks.map((t) => t.id), ["tk_seed01"], "Pat's call prep is due today");
+    assert.match(answer.headline, /^Due by the end of today \(\d{4}-\d{2}-\d{2}\): 2 overdue tasks, 2 tasks due today, 1 overdue deal, 1 deal with a next step today\.$/);
+    const due = answer.data as {
+      overdueTasks: { id: string }[];
+      todayTasks: { id: string }[];
+      overdueDeals: { id: string }[];
+      todayDeals: { id: string }[];
+    };
+    assert.deepEqual(due.overdueTasks.map((t) => t.id), ["tk_seed07", "tk_seed02"], "Chris's photos and Priya's checklist are overdue");
+    assert.deepEqual(due.todayTasks.map((t) => t.id), ["tk_seed01", "tk_seed08"], "Dana's call prep and Marcus's check are due today");
+    assert.deepEqual(due.overdueDeals.map((d) => d.id), ["dl_seed13"], "Hannah's fee range is late");
+    assert.deepEqual(due.todayDeals.map((d) => d.id), ["dl_seed11"], "Ben's call is today");
     const everyId = JSON.stringify(due);
     assert.doesNotMatch(everyId, /tk_seed04/, "the snoozed task stays out");
   });
 
   test('3. "Tell me everything about [name] before our call."', async () => {
-    const answer = await tool("get_deal", { deal: "Pat Example" });
-    assert.match(answer.headline, /^Deal dl_seed01 is in Call booked: 4 timeline entries, 1 open task, a next step is set\.$/);
+    const answer = await tool("get_deal", { deal: "Dana Whitfield" });
+    assert.match(answer.headline, /^Deal dl_seed01 is in Call booked: 5 timeline entries, 1 open task, a next step is set\.$/);
     const brief = answer.data as {
       contact: { name: string; email: string; phone: string; business: string };
       timeline: { type: string; summary: string; occurredAt: string }[];
       openTasks: { id: string; title: string }[];
       next: { step: string | null; at: string | null };
     };
-    assert.equal(brief.contact.name, "Pat Example");
-    assert.equal(brief.contact.email, "pat@example.com");
-    assert.equal(brief.contact.business, "Example Plumbing");
-    assert.equal(brief.timeline.length, 4);
+    assert.equal(brief.contact.name, "Dana Whitfield");
+    assert.equal(brief.contact.email, "dana.whitfield@example.com");
+    assert.equal(brief.contact.business, "Harbor Point Logistics");
+    assert.equal(brief.timeline.length, 5);
     const times = brief.timeline.map((t) => t.occurredAt);
     assert.deepEqual(times, [...times].sort().reverse(), "the timeline is newest first");
     assert.deepEqual(brief.openTasks.map((t) => t.id), ["tk_seed01"]);
-    assert.equal(brief.next.step, "Discovery call");
+    assert.equal(brief.next.step, "Site walk and discovery call");
     assert.ok(brief.next.at, "the next date is set");
   });
 
@@ -132,7 +139,7 @@ describe("the twelve owner sentences", () => {
     const thursday = nextWeekday(tz, 4);
     const expected = formatLocal(zonedToUtc(`${thursday}T14:00`, tz), tz);
     assert.match(expected, /^Thu .*, 2:00 PM$/);
-    const answer = await tool("update_deal", { deal: "Casey Placeholder", stage: "Call booked", nextAt: `${thursday}T14:00` });
+    const answer = await tool("update_deal", { deal: "Priya Raman", stage: "Call booked", nextAt: `${thursday}T14:00` });
     assert.match(answer.headline, CHANGE_LINE);
     assert.ok(answer.headline.includes("Call booked"), answer.headline);
     assert.ok(answer.headline.includes(expected), `${answer.headline} should show ${expected}`);
@@ -144,10 +151,10 @@ describe("the twelve owner sentences", () => {
 
   test('6. "Log that I called [name]. She wants a quote by Friday."', async () => {
     const friday = nextWeekday(tz, 5);
-    const call = await tool("log_activity", { deal: "Casey Placeholder", type: "call", summary: "Called Casey. She wants a quote by Friday." });
+    const call = await tool("log_activity", { deal: "Priya Raman", type: "call", summary: "Called Priya. She wants a quote by Friday." });
     assert.match(call.headline, CHANGE_LINE);
     callChangeId = changeIdOf(call);
-    const task = await tool("add_task", { deal: "Casey Placeholder", title: "Send quote", dueAt: `${friday}T17:00` });
+    const task = await tool("add_task", { deal: "Priya Raman", title: "Send quote", dueAt: `${friday}T17:00` });
     assert.match(task.headline, CHANGE_LINE);
     taskChangeId = changeIdOf(task);
     assert.notEqual(callChangeId, taskChangeId);
@@ -170,9 +177,9 @@ describe("the twelve owner sentences", () => {
     assert.ok((docs[0]?.markdown ?? "").length > 0, "the voice document has text to follow");
 
     const logged = await tool("log_activity", {
-      deal: "Casey Placeholder",
+      deal: "Priya Raman",
       type: "email",
-      summary: "Emailed Casey a follow-up about the quote.",
+      summary: "Emailed Priya a follow-up about the quote.",
     });
     assert.match(logged.headline, CHANGE_LINE);
     const data = logged.data as { changeId: string; activityId: string };
@@ -228,7 +235,7 @@ describe("the twelve owner sentences", () => {
     assert.match(preview.headline, /^This rule would have caught 1 deal in the last 30 days \(\d+ times?\)\. Nothing was changed\.$/);
     const hits = (preview.data as { hits: { dealId: string }[] }).hits;
     assert.ok(hits.length > 0);
-    assert.ok(hits.every((hit) => hit.dealId === "dl_seed05"), "only Taylor's proposal is caught");
+    assert.ok(hits.every((hit) => hit.dealId === "dl_seed05"), "only Grace's proposal is caught");
 
     assert.match(added.headline, CHANGE_LINE);
 
@@ -243,7 +250,7 @@ describe("the twelve owner sentences", () => {
     };
     assert.equal((await ruleTasks()).length, 0, "nothing fires until the hourly run");
     await server.runCron();
-    assert.equal((await ruleTasks()).length, 1, "Taylor's proposal gets exactly one follow-up task");
+    assert.equal((await ruleTasks()).length, 1, "Grace's proposal gets exactly one follow-up task");
     assert.equal(await firedByRule(), 1);
     await server.runCron();
     assert.equal((await ruleTasks()).length, 1, "a second run adds none");
@@ -291,7 +298,7 @@ describe("the twelve owner sentences", () => {
     const summaryAfter = await tool("pipeline_summary");
     const open = (text: string) => Number(/^(\d+) open deals/.exec(text)?.[1]);
     assert.equal(open(summaryAfter.headline), open(summaryBefore.headline) + 1, "exactly one new lead");
-    assert.match(summaryAfter.headline, /1 won, 1 lost, 0 not now\.$/);
+    assert.match(summaryAfter.headline, /3 won, 2 lost, 1 not now\.$/);
     assert.equal(((await tool("list_deals", { status: "won" })).data as { deals: unknown[] }).deals.length, wonBefore);
     const leads = ((await tool("list_deals", { stage: "New inquiry" })).data as { deals: { id: string; title: string }[] }).deals;
     const lead = leads.find((d) => d.title === "Riley Formtest inquiry");
@@ -321,8 +328,9 @@ describe("the twelve owner sentences", () => {
     }
     const audit = after.audit_log?.at(-1);
     assert.equal(audit?.tool, "intake");
-    assert.ok(after.deals?.every((d) => d.status === "won" ? d.id === "dl_seed07" : true), "no deal was marked won");
-    assert.equal(after.deals?.filter((d) => d.status === "won").length, 1);
+    const won = (tables: Tables) => tables.deals?.filter((d) => d.status === "won").map((d) => d.id);
+    assert.deepEqual(won(after), won(before), "no deal was marked won");
+    assert.deepEqual(won(after), ["dl_seed07", "dl_seed12", "dl_seed20"]);
     assert.equal(after.contacts?.at(-1)?.email, "riley@example.com");
   });
 });

@@ -64,7 +64,8 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
   const mode = authMode(request, env);
   if (mode.kind === "misconfigured") return textResponse(mode.message, 500);
 
-  const { pathname } = new URL(request.url);
+  const url = new URL(request.url);
+  const { pathname } = url;
   // /intake has its own secret instead of a sign-in, so it sits outside both sign-ins (decision 0012).
   if (pathname === INTAKE_ROUTE) return withSecurityHeaders(await handleIntake(request, env, new Date()));
 
@@ -118,7 +119,7 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
     try {
       const auth = await signIn();
       if (!auth.ok) return textResponse(auth.message, auth.status);
-      const result = await page(env.DB, new Date());
+      const result = await page(env.DB, new Date(), url.searchParams);
       return htmlResponse(result.body, result.status);
     } catch {
       console.error(JSON.stringify({ event: "board_failed" }));

@@ -26,9 +26,11 @@ export type PageOptions = {
   look?: Look;
 };
 
-/** The nav item a page belongs to without being it: a deal is in Pipeline; Rules, Changes and Export are in More. */
+/** The nav item a page belongs to without being it: a deal is in Pipeline; a contact and Companies are in Contacts;
+ * Rules, Changes and Export are in More. */
 function sectionOf(path: string): string | null {
   if (path.startsWith("/deals/")) return "/pipeline";
+  if (path.startsWith("/contacts/") || path === "/companies") return "/contacts";
   if (moreItems.some((item) => item.href === path)) return "/more";
   return null;
 }

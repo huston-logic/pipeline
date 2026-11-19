@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { buildDevSeed } from "../../scripts/seed-dev.ts";
+import { buildFixtureSeed } from "../../tests/helpers/fixture-seed.ts";
 import { CHANGE_LINE, connectInMemory, fails, ok } from "../../tests/helpers/mcp-client.ts";
 import { createTestDb, openTestDb } from "../db/sqlite-d1.ts";
 import { DEFAULT_TZ } from "../time.ts";
@@ -10,7 +10,7 @@ const NOW = new Date("2026-11-19T18:00:00.000Z");
 
 async function setup(seeded = true) {
   const db = seeded ? await createTestDb() : null;
-  db?.exec(buildDevSeed(NOW, DEFAULT_TZ));
+  db?.exec(buildFixtureSeed(NOW, DEFAULT_TZ));
   const database = db ?? (await openTestDb());
   return { db: database, c: await connectInMemory(createMcpServer({ db: database, now: () => NOW })) };
 }

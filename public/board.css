@@ -431,6 +431,13 @@ main {
   margin: 1rem 0 0;
 }
 
+.card-actions a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  font-weight: 600;
+}
+
 .card-links {
   margin: 0.5rem 0 0;
   padding: 0.25rem 0 0;
@@ -439,10 +446,53 @@ main {
 }
 
 .card-links a {
+  position: relative; /* above the card title's whole-card link */
+  z-index: 1;
   display: inline-flex;
   align-items: center;
   min-height: 44px;
   font-weight: 600;
+}
+
+/* A line under a card title: "2 open deals, value 17,900". */
+.card-sub {
+  margin: 0.25rem 0 0;
+  color: var(--ink-2);
+  font-size: 0.9375rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* A small heading inside a card (a company's People and Open deals), on a divider. */
+.card-sub-head {
+  margin: 0.875rem 0 0;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--divider);
+  color: var(--ink-2);
+  font-family: var(--font-text);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  line-height: 1.45;
+}
+
+.card-sub-head + .card-links {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
+/* A link with a short note after it (a deal and its stage); the note wraps under the link as a whole. */
+.card-links li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 0.5rem;
+}
+
+.card-link-meta {
+  color: var(--ink-2);
+  font-size: 0.9375rem;
+  white-space: nowrap;
 }
 
 /* Facts: one grid for the whole list, so every value starts at the widest label. */
@@ -728,6 +778,114 @@ ol.panel {
   font-size: 0.8125rem;
 }
 
+.row-deal {
+  margin: 0.125rem 0 0;
+  color: var(--ink-2);
+  font-size: 0.9375rem;
+}
+
+.row-deal a {
+  padding-block: 0.625rem;
+  font-weight: 600;
+}
+
+.detail-columns > div > section:first-child h2 {
+  margin-top: 1.5rem;
+}
+
+/* Contacts: the People / Companies switch, and the search form (a GET form, no JavaScript). */
+.view-switch {
+  display: inline-flex;
+  gap: 0.25rem;
+  margin: 0.5rem 0 1.25rem;
+  padding: 0.25rem;
+  list-style: none;
+  border: 1px solid var(--edge);
+  border-radius: var(--r-btn);
+  background: var(--white);
+}
+
+.view-switch a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 1.125rem;
+  border-radius: var(--r-field);
+  color: var(--ink-2);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.view-switch a:hover {
+  background: var(--silver);
+  color: var(--ink);
+}
+
+.view-switch a[aria-current] {
+  background: var(--accent-tint);
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.search {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.75rem;
+  align-items: end;
+  max-width: 52rem;
+  margin: 0 0 1rem;
+}
+
+.search .field-grow {
+  grid-column: 1 / -1;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.field label {
+  font-weight: 600;
+}
+
+.field-hint {
+  margin: 0 0 0.25rem;
+  color: var(--ink-2);
+  font-size: 0.9375rem;
+}
+
+.field input,
+.field select {
+  width: 100%;
+  min-height: 3rem;
+  padding: 0 0.875rem;
+  border: 1px solid var(--ink-2);
+  border-radius: var(--r-field);
+  background-color: var(--white);
+  color: var(--ink);
+  font: inherit;
+}
+
+.search .button {
+  border: 0;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.search-clear {
+  margin: -0.25rem 0 0.75rem;
+}
+
+.search-clear a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  font-weight: 600;
+}
+
 /* More: one card per destination; the whole card is the link. */
 .card-link {
   display: flex;
@@ -886,6 +1044,14 @@ ol.panel {
     padding: 1.125rem 1.25rem;
   }
 
+  .search {
+    grid-template-columns: minmax(0, 1fr) 15rem auto;
+  }
+
+  .search .field-grow {
+    grid-column: auto;
+  }
+
   .panel {
     padding-inline: 1.25rem;
   }
@@ -917,6 +1083,11 @@ ol.panel {
   .brand {
     margin: 0 0 1.75rem;
     padding: 0 0.5rem;
+  }
+
+  /* The side bar has room for a long business name on two lines. */
+  .brand-name {
+    white-space: normal;
   }
 
   .app-nav {
@@ -1011,7 +1182,8 @@ ol.panel {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .deal-columns {
+  .deal-columns,
+  .detail-columns {
     display: grid;
     grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
     gap: 0 2rem;

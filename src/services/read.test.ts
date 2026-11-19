@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { buildDevSeed } from "../../scripts/seed-dev.ts";
+import { buildFixtureSeed } from "../../tests/helpers/fixture-seed.ts";
 import type { Db } from "../db/db.ts";
 import { createTestDb, openTestDb } from "../db/sqlite-d1.ts";
 import { DEFAULT_TZ } from "../time.ts";
@@ -8,7 +8,18 @@ import type { Ctx } from "./change.ts";
 import { updateDeal } from "./deals.ts";
 import { UserError } from "./errors.ts";
 import { addLead } from "./leads.ts";
-import { getDealBrief, listContacts, listDealsFiltered, pipelineSummary, recentChanges, searchContacts, whatsDue } from "./read.ts";
+import {
+  contactDetail,
+  type ContactSort,
+  getDealBrief,
+  listCompanies,
+  listContacts,
+  listDealsFiltered,
+  pipelineSummary,
+  recentChanges,
+  searchContacts,
+  whatsDue,
+} from "./read.ts";
 import { undoChange } from "./undo.ts";
 
 const NOW = new Date("2026-11-19T18:00:00.000Z");
@@ -17,7 +28,7 @@ const ids = (items: { id: string }[]) => items.map((item) => item.id);
 
 async function seededDb(): Promise<Db> {
   const db = await createTestDb();
-  db.exec(buildDevSeed(NOW, TZ));
+  db.exec(buildFixtureSeed(NOW, TZ));
   return db;
 }
 
@@ -148,8 +159,9 @@ test("listContacts: every contact not archived, by name, with open deals, last a
     .prepare("INSERT INTO activities (id, contact_id, type, summary, occurred_at, actor) VALUES ('ac_x', 'ct_seed06', 'note', 'Left a voicemail', ?, 'owner')")
     .bind("2026-11-19T17:00:00.000Z")
     .run();
-  const contacts = await listContacts(db, TZ);
+  const { contacts, total } = await listContacts(db, TZ);
   assert.deepEqual(ids(contacts), ["ct_seed07", "ct_seed03", "ct_seed04", "ct_seed06", "ct_seed01", "ct_seed02", "ct_seed05"]);
+  assert.equal(total, 7);
 
   const pat = contacts.find((c) => c.id === "ct_seed01");
   assert.deepEqual(pat?.openDeals, [{ id: "dl_seed01", title: "Website refresh for Example Plumbing", untrusted_fields: [] }]);
@@ -164,7 +176,187 @@ test("listContacts: every contact not archived, by name, with open deals, last a
   const robin = contacts.find((c) => c.id === "ct_seed02");
   assert.deepEqual(robin?.untrusted_fields, ["name", "business"]);
   assert.deepEqual(robin?.openDeals[0]?.untrusted_fields, ["title"]);
-  assert.deepEqual(await listContacts(await openTestDb(), TZ), []);
+  assert.deepEqual(await listContacts(await openTestDb(), TZ), { contacts: [], total: 0 });
+});
+
+/** A contact row with the given fields, written straight to the database. */
+async function addContact(db: Db, id: string, row: { name: string; business?: string | null; email?: string; phone?: string; untrusted?: string[]; archived?: number }) {
+  await db
+    .prepare("INSERT INTO contacts (id, name, business, email, phone, untrusted_fields, archived) VALUES (?, ?, ?, ?, ?, ?, ?)")
+    .bind(id, row.name, row.business ?? null, row.email ?? null, row.phone ?? null, JSON.stringify(row.untrusted ?? []), row.archived ?? 0)
+    .run();
+}
+
+async function addDeal(db: Db, id: string, contactId: string, value: number | null, status = "open") {
+  const stage = status === "open" ? "replied" : status;
+  await db
+    .prepare("INSERT INTO deals (id, contact_id, title, stage_key, value, status, stage_entered_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
+    .bind(id, contactId, `Deal ${id}`, stage, value, status, "2026-11-01T17:00:00.000Z")
+    .run();
+}
+
+test("listContacts searches name, email, phone and company, ignoring case, and counts the matches", async () => {
+  const db = await seededDb();
+  const found = async (query: string) => {
+    const list = await listContacts(db, TZ, { query });
+    assert.equal(list.total, list.contacts.length, query);
+    return ids(list.contacts);
+  };
+  assert.deepEqual(await found("sample"), ["ct_seed07", "ct_seed02"], "name and company");
+  assert.deepEqual(await found("BAKERY"), ["ct_seed02"]);
+  assert.deepEqual(await found("casey@example"), ["ct_seed03"], "email");
+  assert.deepEqual(await found("555-0104"), ["ct_seed04"], "phone");
+  assert.deepEqual(await found("  pat  "), ["ct_seed01"], "trimmed");
+  assert.deepEqual(await found("%"), [], "LIKE wildcards are plain text");
+  assert.deepEqual(await found("_"), []);
+  assert.equal((await found("")).length, 8, "an empty search lists everyone");
+  assert.deepEqual(await found("nobody"), []);
+});
+
+test("listContacts sorts by name, company, open deals or last activity, either way, ties by name", async () => {
+  const db = await seededDb();
+  await addContact(db, "ct_nocompany", { name: "Dee Nocompany" });
+  await addDeal(db, "dl_second", "ct_seed03", 100);
+  const sorted = async (sort: ContactSort, dir: "asc" | "desc") => ids((await listContacts(db, TZ, { sort, dir })).contacts);
+  const byName = ["ct_seed07", "ct_seed03", "ct_nocompany", "ct_seed04", "ct_seed06", "ct_seed01", "ct_seed02", "ct_seed08", "ct_seed05"];
+  assert.deepEqual(await sorted("name", "asc"), byName);
+  assert.deepEqual(await sorted("name", "desc"), [...byName].reverse());
+  // Demo Hardware, Example Auto Repair, Example Plumbing, Fake Street Bikes, Placeholder..., Sample Bakery, Sample
+  // Salon, Testcase Cafe; no company last either way.
+  const byCompany = ["ct_seed06", "ct_seed08", "ct_seed01", "ct_seed04", "ct_seed03", "ct_seed02", "ct_seed07", "ct_seed05"];
+  assert.deepEqual(await sorted("company", "asc"), [...byCompany, "ct_nocompany"]);
+  assert.deepEqual(await sorted("company", "desc"), [...[...byCompany].reverse(), "ct_nocompany"]);
+  const deals = await sorted("deals", "desc");
+  assert.equal(deals[0], "ct_seed03", "two open deals come first");
+  assert.deepEqual(deals.slice(-3), ["ct_seed07", "ct_nocompany", "ct_seed08"], "no open deals last, by name");
+  assert.equal((await sorted("deals", "asc"))[0], "ct_seed07");
+  const latest = await sorted("activity", "desc");
+  assert.equal(latest[0], "ct_seed02", "the form came in yesterday");
+  assert.deepEqual(latest.slice(-2), ["ct_nocompany", "ct_seed06"], "nothing logged goes last, by name");
+  const oldest = await sorted("activity", "asc");
+  assert.equal(oldest[0], "ct_seed08", "the lost deal's note, 15 days ago");
+  assert.deepEqual(oldest.slice(-2), ["ct_nocompany", "ct_seed06"], "nothing logged goes last either way");
+});
+
+test("listContacts shows at most `limit` contacts and says how many matched", async () => {
+  const db = await seededDb();
+  const list = await listContacts(db, TZ, { limit: 3 });
+  assert.deepEqual(ids(list.contacts), ["ct_seed07", "ct_seed03", "ct_seed04"]);
+  assert.equal(list.total, 8);
+  const search = await listContacts(db, TZ, { query: "sample", limit: 1 });
+  assert.equal(search.contacts.length, 1);
+  assert.equal(search.total, 2);
+});
+
+test("listCompanies groups contacts by company, ignoring case and spaces, with their open deals; no company last", async () => {
+  const db = await createTestDb();
+  await addContact(db, "ct_a", { name: "Ann Acme", business: "Acme Ltd" });
+  await addContact(db, "ct_b", { name: "Bo Acme", business: "  acme   LTD " });
+  await addContact(db, "ct_c", { name: "Cy Acme", business: "ACME LTD", untrusted: ["name", "business"] });
+  await addContact(db, "ct_d", { name: "Di Beta", business: "Beta Co", untrusted: ["business"] });
+  await addContact(db, "ct_e", { name: "Ed Solo" });
+  await addContact(db, "ct_f", { name: "Fi Blank", business: "   " });
+  await addContact(db, "ct_g", { name: "Gus Gone", business: "Acme Ltd", archived: 1 });
+  await addDeal(db, "dl_a", "ct_a", 1000);
+  await addDeal(db, "dl_b", "ct_b", 500);
+  await addDeal(db, "dl_won", "ct_b", 9999, "won");
+  await addDeal(db, "dl_d", "ct_d", null);
+  await addDeal(db, "dl_g", "ct_g", 7);
+
+  const { companies, noCompany } = await listCompanies(db, NOW, TZ);
+  assert.deepEqual(
+    companies.map((c) => [c.name, c.nameOutside, ids(c.contacts), c.openDealCount, c.openValue, ids(c.openDeals)]),
+    [
+      ["Acme Ltd", false, ["ct_a", "ct_b", "ct_c"], 2, 1500, ["dl_a", "dl_b"]],
+      ["Beta Co", true, ["ct_d"], 1, 0, ["dl_d"]],
+    ],
+  );
+  assert.deepEqual(companies[0]?.contacts[2]?.untrusted_fields, ["name"], "a contact's own outside name stays labelled");
+  assert.deepEqual(ids(noCompany?.contacts ?? []), ["ct_e", "ct_f"]);
+  assert.equal(noCompany?.openDealCount, 0);
+  assert.deepEqual(await listCompanies(await openTestDb(), NOW, TZ), { companies: [], noCompany: null });
+});
+
+test("listCompanies shows a company typed only by outside forms with the label, and sorts companies by name", async () => {
+  const db = await createTestDb();
+  await addContact(db, "ct_z", { name: "Zed", business: "zeta works" });
+  await addContact(db, "ct_y", { name: "Yan", business: "Alpha", untrusted: ["business"] });
+  await addContact(db, "ct_x", { name: "Xi", business: "alpha" });
+  const { companies } = await listCompanies(db, NOW, TZ);
+  assert.deepEqual(
+    companies.map((c) => [c.name, c.nameOutside]),
+    [
+      ["alpha", false],
+      ["zeta works", false],
+    ],
+    "the trusted spelling wins over the outside one",
+  );
+});
+
+test("contactDetail: the contact, every deal they have, open tasks and one timeline newest first", async () => {
+  const db = await seededDb();
+  assert.equal(await contactDetail(db, "ct_nothing", TZ, NOW), null);
+
+  const pat = await contactDetail(db, "ct_seed01", TZ, NOW);
+  assert.ok(pat);
+  assert.equal(pat.contact.name, "Pat Example");
+  assert.deepEqual(ids(pat.deals), ["dl_seed01"]);
+  assert.equal(pat.deals[0]?.stageLabel, "Call booked");
+  assert.deepEqual(ids(pat.openTasks), ["tk_seed01"]);
+  assert.deepEqual(ids(pat.timeline), ["ac_seed04", "ac_seed03", "ac_seed02", "ac_seed01"]);
+  assert.equal(pat.timeline[0]?.dealId, "dl_seed01");
+  assert.equal(pat.timelineMore, false);
+
+  const alex = await contactDetail(db, "ct_seed07", TZ, NOW);
+  assert.deepEqual(alex?.deals.map((d) => [d.id, d.status]), [["dl_seed07", "won"]], "closed deals are listed too");
+  assert.deepEqual(ids(alex?.openTasks ?? []), [], "done tasks are left out");
+
+  const morgan = await contactDetail(db, "ct_seed06", TZ, NOW);
+  assert.deepEqual(ids(morgan?.openTasks ?? []), ["tk_seed05"], "a task on the contact alone");
+
+  const robin = await contactDetail(db, "ct_seed02", TZ, NOW);
+  assert.deepEqual(robin?.contact.untrusted_fields, ["name", "email", "business"]);
+  assert.match(robin?.timeline[0]?.untrusted_text ?? "", /fake test message/);
+  assert.deepEqual(robin?.deals[0]?.untrusted_fields, ["title", "contactName"]);
+
+  await db
+    .prepare("INSERT INTO activities (id, contact_id, type, summary, occurred_at, actor) VALUES ('ac_own', 'ct_seed01', 'note', 'Own note', ?, 'owner')")
+    .bind("2026-11-19T17:00:00.000Z")
+    .run();
+  const again = await contactDetail(db, "ct_seed01", TZ, NOW);
+  assert.equal(again?.timeline[0]?.id, "ac_own", "the contact's own notes are in the timeline");
+  assert.equal(again?.timeline[0]?.dealId, null);
+});
+
+test("contactDetail names the deal of every timeline entry, archived deals included", async () => {
+  const db = await seededDb();
+  await db.prepare("UPDATE deals SET archived = 1 WHERE id = 'dl_seed01'").run();
+  const pat = await contactDetail(db, "ct_seed01", TZ, NOW);
+  assert.deepEqual(ids(pat?.deals ?? []), [], "archived deals are not listed as deals");
+  assert.equal(pat?.timeline.length, 4);
+  for (const item of pat?.timeline ?? []) {
+    assert.deepEqual(item.deal, { id: "dl_seed01", title: "Website refresh for Example Plumbing", untrusted_fields: [], archived: true }, item.id);
+  }
+  const robin = await contactDetail(db, "ct_seed02", TZ, NOW);
+  assert.deepEqual(robin?.timeline[0]?.deal, { id: "dl_seed02", title: "New website for Sample Bakery", untrusted_fields: ["title"], archived: false });
+  await db
+    .prepare("INSERT INTO activities (id, contact_id, type, summary, occurred_at, actor) VALUES ('ac_own', 'ct_seed01', 'note', 'Own note', ?, 'owner')")
+    .bind("2026-11-19T17:00:00.000Z")
+    .run();
+  assert.equal((await contactDetail(db, "ct_seed01", TZ, NOW))?.timeline[0]?.deal, null, "a note on the contact alone");
+});
+
+test("contactDetail keeps the newest 50 timeline entries and says there are more", async () => {
+  const db = await seededDb();
+  for (let i = 0; i < 55; i++) {
+    await db
+      .prepare("INSERT INTO activities (id, contact_id, type, summary, occurred_at, actor) VALUES (?, 'ct_seed05', 'note', ?, ?, 'owner')")
+      .bind(`ac_many${i}`, `Note ${i}`, new Date(Date.UTC(2026, 9, 1, 0, i)).toISOString())
+      .run();
+  }
+  const detail = await contactDetail(db, "ct_seed05", TZ, NOW);
+  assert.equal(detail?.timeline.length, 50);
+  assert.equal(detail?.timelineMore, true);
 });
 
 test("listDealsFiltered filters by stage, status, due window and quiet days", async () => {

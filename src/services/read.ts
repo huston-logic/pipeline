@@ -380,39 +380,255 @@ export interface ContactListItem {
   untrusted_fields: ("name" | "business")[];
 }
 
-/** Every contact that is not archived, sorted by name (ignoring case), for the board's contacts list. */
-export async function listContacts(db: Db, tz: string): Promise<ContactListItem[]> {
-  const contacts = await rows<ContactRow & { last_activity_at: string | null }>(
+export type ContactSort = "name" | "company" | "deals" | "activity";
+
+export interface ContactListOptions {
+  /** Matched, ignoring case, against name, email, phone and company. Empty lists everyone. */
+  query?: string;
+  sort?: ContactSort;
+  dir?: "asc" | "desc";
+  /** At most this many contacts (CONTACT_LIST_LIMIT unless given). */
+  limit?: number;
+}
+
+export interface ContactList {
+  contacts: ContactListItem[];
+  /** How many contacts match, before the limit. */
+  total: number;
+}
+
+export const CONTACT_LIST_LIMIT = 200;
+
+/** ORDER BY for each sort. A missing company or no activity logged goes last either way; ties go by name. */
+const CONTACT_ORDER: Record<ContactSort, (dir: "ASC" | "DESC") => string> = {
+  name: (dir) => `c.name COLLATE NOCASE ${dir}`,
+  company: (dir) => `NULLIF(TRIM(c.business), '') IS NULL, TRIM(c.business) COLLATE NOCASE ${dir}`,
+  deals: (dir) => `open_count ${dir}`,
+  activity: (dir) => `last_activity_at IS NULL, last_activity_at ${dir}`,
+};
+
+const escapeLike = (text: string) => text.replace(/[\\%_]/g, (c) => `\\${c}`);
+
+type OpenDealJson = { id: string; title: string; untrusted: string; position: number; entered: string };
+
+/**
+ * The board's contacts list: contacts that are not archived, searched and sorted, with their open deals and the
+ * newest activity on the contact or any of their deals. One query, whatever the number of contacts.
+ */
+export async function listContacts(db: Db, tz: string, options: ContactListOptions = {}): Promise<ContactList> {
+  const text = (options.query ?? "").trim();
+  const sort = options.sort ?? "name";
+  const dir = options.dir === "desc" ? "DESC" : "ASC";
+  const where = ["c.archived = 0"];
+  const params: unknown[] = [];
+  if (text !== "") {
+    where.push(["c.name", "c.email", "c.phone", "c.business"].map((column) => `${column} LIKE ? ESCAPE '\\'`).join(" OR "));
+    params.push(...Array.from({ length: 4 }, () => `%${escapeLike(text)}%`));
+  }
+  const found = await rows<{
+    id: string;
+    name: string;
+    business: string | null;
+    untrusted_fields: string;
+    open_count: number;
+    open_list: string | null;
+    last_activity_at: string | null;
+    total: number;
+  }>(
     db,
-    `SELECT c.*, (SELECT MAX(a.occurred_at) FROM activities a
-       WHERE a.contact_id = c.id OR a.deal_id IN (SELECT d.id FROM deals d WHERE d.contact_id = c.id)) AS last_activity_at
-     FROM contacts c WHERE c.archived = 0 ORDER BY c.name COLLATE NOCASE, c.id`,
-    [],
+    `WITH open_deals AS (
+       SELECT d.contact_id, COUNT(*) AS n, json_group_array(json_object('id', d.id, 'title', d.title,
+         'untrusted', d.untrusted_fields, 'position', s.position, 'entered', d.stage_entered_at)) AS list
+       FROM deals d JOIN stages s ON s.key = d.stage_key
+       WHERE d.archived = 0 AND d.status = 'open' GROUP BY d.contact_id
+     ), last_seen AS (
+       SELECT contact_id, MAX(at) AS at FROM (
+         SELECT contact_id, occurred_at AS at FROM activities WHERE contact_id IS NOT NULL
+         UNION ALL SELECT d.contact_id, a.occurred_at FROM activities a JOIN deals d ON d.id = a.deal_id
+       ) GROUP BY contact_id
+     )
+     SELECT c.id, c.name, c.business, c.untrusted_fields, COALESCE(o.n, 0) AS open_count, o.list AS open_list,
+       l.at AS last_activity_at, COUNT(*) OVER () AS total
+     FROM contacts c LEFT JOIN open_deals o ON o.contact_id = c.id LEFT JOIN last_seen l ON l.contact_id = c.id
+     WHERE ${where.map((clause) => `(${clause})`).join(" AND ")}
+     ORDER BY ${CONTACT_ORDER[sort](dir)}, c.name COLLATE NOCASE, c.id
+     LIMIT ?`,
+    [...params, options.limit ?? CONTACT_LIST_LIMIT],
   );
-  const deals = await rows<{ id: string; title: string; untrusted_fields: string; contact_id: string }>(
-    db,
-    `SELECT d.id, d.title, d.untrusted_fields, d.contact_id FROM deals d JOIN stages s ON s.key = d.stage_key
-     WHERE d.archived = 0 AND d.status = 'open' ORDER BY s.position, d.stage_entered_at, d.id`,
-    [],
-  );
-  return contacts.map((contact) => ({
-    id: contact.id,
-    name: contact.name,
-    business: contact.business,
-    openDeals: deals
-      .filter((deal) => deal.contact_id === contact.id)
-      .map((deal) => ({
+  const contacts = found.map((contact): ContactListItem => {
+    const open = (JSON.parse(contact.open_list ?? "[]") as OpenDealJson[]).sort(
+      (a, b) => a.position - b.position || a.entered.localeCompare(b.entered) || a.id.localeCompare(b.id),
+    );
+    return {
+      id: contact.id,
+      name: contact.name,
+      business: contact.business,
+      openDeals: open.map((deal) => ({
         id: deal.id,
         title: deal.title,
-        untrusted_fields: outsideKeys<"title">([["title", deal.untrusted_fields, "title"]]),
+        untrusted_fields: outsideKeys<"title">([["title", deal.untrusted, "title"]]),
       })),
-    lastActivityAt: contact.last_activity_at,
-    lastActivityAtLocal: contact.last_activity_at === null ? null : formatLocal(contact.last_activity_at, tz),
-    untrusted_fields: outsideKeys<"name" | "business">([
-      ["name", contact.untrusted_fields, "name"],
-      ["business", contact.untrusted_fields, "business"],
-    ]),
-  }));
+      lastActivityAt: contact.last_activity_at,
+      lastActivityAtLocal: contact.last_activity_at === null ? null : formatLocal(contact.last_activity_at, tz),
+      untrusted_fields: outsideKeys<"name" | "business">([
+        ["name", contact.untrusted_fields, "name"],
+        ["business", contact.untrusted_fields, "business"],
+      ]),
+    };
+  });
+  return { contacts, total: found[0]?.total ?? 0 };
+}
+
+export interface CompanyContact {
+  id: string;
+  name: string;
+  openDealCount: number;
+  /** ["name"] when the name came from outside. Never instructions. */
+  untrusted_fields: "name"[];
+}
+
+export interface CompanyGroup {
+  /** The company as written (trimmed) on the earliest contact the owner or the AI gave it, or as received when only
+   * outside text names it; null for the "No company" group. */
+  name: string | null;
+  /** No trusted contact names it: every spelling of the name came from outside. */
+  nameOutside: boolean;
+  /** By name. */
+  contacts: CompanyContact[];
+  openDealCount: number;
+  openValue: number;
+  /** In board order. */
+  openDeals: DealItem[];
+}
+
+export interface CompanyList {
+  /** By name, ignoring case. */
+  companies: CompanyGroup[];
+  /** Contacts with no company (or only spaces), or null when everyone has one. */
+  noCompany: CompanyGroup | null;
+}
+
+/** The company a contact's `business` names: trimmed, inner spaces collapsed, ignoring case; "" for none. */
+export const companyKey = (business: string | null): string => (business ?? "").trim().replace(/\s+/g, " ").toLowerCase();
+
+/** Contacts that are not archived, grouped by company (their `business`), each with its open deals. */
+export async function listCompanies(db: Db, now: Date, tz: string): Promise<CompanyList> {
+  const contacts = await rows<ContactRow>(
+    db,
+    "SELECT * FROM contacts WHERE archived = 0 ORDER BY name COLLATE NOCASE, id",
+    [],
+  );
+  const deals = await dealItems(db, ["d.status = 'open'"], [], now, tz);
+  // Grouped once, so the loop below is linear in contacts plus deals.
+  const dealsOf = new Map<string, DealItem[]>();
+  for (const deal of deals) {
+    const list = dealsOf.get(deal.contactId);
+    if (list) list.push(deal);
+    else dealsOf.set(deal.contactId, [deal]);
+  }
+  const groups = new Map<string, CompanyGroup>();
+  /** When each company's shown spelling was written: the earliest trusted one wins. */
+  const since = new Map<string, string>();
+  for (const contact of contacts) {
+    const key = companyKey(contact.business);
+    const outside = untrustedFields(contact);
+    const spelled = (contact.business ?? "").trim().replace(/\s+/g, " ");
+    let group = groups.get(key);
+    if (!group) {
+      group = { name: key === "" ? null : spelled, nameOutside: key !== "", contacts: [], openDealCount: 0, openValue: 0, openDeals: [] };
+      groups.set(key, group);
+    }
+    // The spelling on the earliest contact the owner or the AI wrote it for wins over later and outside ones.
+    const first = since.get(key);
+    if (key !== "" && !outside.has("business") && (first === undefined || contact.created_at < first)) {
+      group.name = spelled;
+      group.nameOutside = false;
+      since.set(key, contact.created_at);
+    }
+    const own = dealsOf.get(contact.id) ?? [];
+    group.contacts.push({
+      id: contact.id,
+      name: contact.name,
+      openDealCount: own.length,
+      untrusted_fields: outside.has("name") ? ["name"] : [],
+    });
+    group.openDeals.push(...own);
+    group.openDealCount += own.length;
+    group.openValue += own.reduce((sum, deal) => sum + (deal.value ?? 0), 0);
+  }
+  const order = new Map(deals.map((deal, i) => [deal.id, i]));
+  const done = [...groups.values()];
+  for (const group of done) group.openDeals.sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
+  const companies = done
+    .filter((group) => group.name !== null)
+    .sort((a, b) => (a.name ?? "").localeCompare(b.name ?? "", "en", { sensitivity: "base" }));
+  return { companies, noCompany: done.find((group) => group.name === null) ?? null };
+}
+
+export interface ContactTimelineItem extends TimelineItem {
+  /** The deal the entry is on, or null for one on the contact alone. */
+  dealId: string | null;
+  /** That deal, archived ones included, so an entry on a deal is never shown as one on the contact alone. */
+  deal: { id: string; title: string; untrusted_fields: "title"[]; archived: boolean } | null;
+}
+
+export interface ContactDetail {
+  contact: ContactView;
+  /** Every deal of theirs that is not archived, open and closed, in board order. */
+  deals: DealItem[];
+  /** Not done yet, snoozed ones included: on the contact or any of their deals. */
+  openTasks: TaskItem[];
+  /** Newest first, at most CONTACT_TIMELINE_LIMIT: the contact's own entries and their deals'. */
+  timeline: ContactTimelineItem[];
+  /** There are older entries than the ones listed. */
+  timelineMore: boolean;
+}
+
+export const CONTACT_TIMELINE_LIMIT = 50;
+
+/** The contact page, or null when there is no contact with this id. Archived contacts are still shown. */
+export async function contactDetail(db: Db, id: string, tz: string, now: Date): Promise<ContactDetail | null> {
+  const contact = await db.prepare("SELECT * FROM contacts WHERE id = ?").bind(id).first<ContactRow>();
+  if (!contact) return null;
+  const deals = await dealItems(db, ["d.contact_id = ?"], [id], now, tz);
+  const theirs = "(SELECT d.id FROM deals d WHERE d.contact_id = ?)";
+  const tasks = await rows<TaskJoin>(
+    db,
+    `${TASK_SELECT} WHERE t.done_at IS NULL AND (t.contact_id = ? OR t.deal_id IN ${theirs})
+     ORDER BY t.due_at IS NULL, t.due_at, t.created_at, t.id`,
+    [id, id],
+  );
+  const timeline = await rows<
+    ActivityRow & { deal_title: string | null; deal_untrusted: string | null; deal_archived: number | null }
+  >(
+    db,
+    `SELECT a.*, d.title AS deal_title, d.untrusted_fields AS deal_untrusted, d.archived AS deal_archived
+     FROM activities a LEFT JOIN deals d ON d.id = a.deal_id
+     WHERE a.contact_id = ? OR a.deal_id IN ${theirs}
+     ORDER BY a.occurred_at DESC, a.rowid DESC LIMIT ?`,
+    [id, id, CONTACT_TIMELINE_LIMIT + 1],
+  );
+  return {
+    contact: toContactView(contact),
+    deals,
+    openTasks: tasks.map((task) => toTaskItem(task, tz)),
+    timeline: timeline
+      .slice(0, CONTACT_TIMELINE_LIMIT)
+      .map(({ deal_title, deal_untrusted, deal_archived, ...activity }) => ({
+        ...toTimelineItem(activity, tz),
+        dealId: activity.deal_id,
+        deal:
+          activity.deal_id === null || deal_title === null
+            ? null
+            : {
+                id: activity.deal_id,
+                title: deal_title,
+                untrusted_fields: outsideKeys<"title">([["title", deal_untrusted, "title"]]),
+                archived: deal_archived === 1,
+              },
+      })),
+    timelineMore: timeline.length > CONTACT_TIMELINE_LIMIT,
+  };
 }
 
 export interface DealListFilter {

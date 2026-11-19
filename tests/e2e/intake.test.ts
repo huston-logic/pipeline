@@ -28,7 +28,9 @@ const post = (body: unknown, secret = "dev-intake-secret") =>
   });
 
 test("a form post becomes a lead that MCP shows with its outside text labelled", async () => {
-  assert.match((await ok(client, "pipeline_summary")).headline, /^6 open deals/);
+  // Counts are compared with the seed's own, so the test doesn't depend on how many deals the seed has.
+  const counts = (headline: string) => /^(\d+) open deals .*; (\d+ won, \d+ lost)/.exec(headline)?.slice(1) ?? [];
+  const [openBefore, closedBefore] = counts((await ok(client, "pipeline_summary")).headline);
 
   const wrong = await post({ name: "X", email: "x@example.com", message: "x" }, "wrong");
   assert.equal(wrong.status, 401);
@@ -47,8 +49,9 @@ test("a form post becomes a lead that MCP shows with its outside text labelled",
   assert.equal(again.status, 200);
 
   const summary = await ok(client, "pipeline_summary");
-  assert.match(summary.headline, /^7 open deals/);
-  assert.match(summary.headline, /1 won, 1 lost/);
+  const [openAfter, closedAfter] = counts(summary.headline);
+  assert.equal(Number(openAfter), Number(openBefore) + 1, "one new open deal, not two");
+  assert.equal(closedAfter, closedBefore, "no deal was closed");
 
   const { deals } = (await ok(client, "list_deals", { stage: "New inquiry" })).data as { deals: { id: string; title: string }[] };
   const added = deals.find((d) => d.title === "Mallory Example inquiry");
