@@ -18,7 +18,7 @@ skeleton, so the palette tokens already in `public/board.css` (decision 0001) ar
   `/rules`, `/changes` (the last 30 days, newest first, at most 200, undone ones flagged "Undone", undo entries say
   which change they undid) and `/export`. Every page has its own `<title>` and meta description. An unknown deal id,
   or a path that can't be an id, gets the 404 page. An empty database gives each page a plain "nothing yet" sentence.
-- **Sign-in until task 10.** The board pages and `/api/*` use the `/mcp` gate (`src/auth/dev.ts`): signed in by the
+- **Sign-in until task 10** (replaced by decision 0006: Cloudflare Access in production). The board pages and `/api/*` use the `/mcp` gate (`src/auth/dev.ts`): signed in by the
   dev mode locally, 401 everywhere else. Static files and the 404 page need no sign-in (they show no data). This
   replaces the line in decision 0004 that said the board was unaffected by the gate.
 - **Outside text** (a value listed in `untrusted_fields`, an activity's `untrusted_text`, a brief item with
@@ -82,6 +82,6 @@ Reading the JSON export in one batch avoids a file in which, say, a deal points 
   characters.
 - Excel may show non-ASCII text in a CSV wrongly without a byte order mark; Google Sheets and Numbers read UTF-8.
   Revisit if the owner opens exports in Excel.
-- The board is not reachable in production until task 10 adds Cloudflare Access verification.
+- The board is not reachable in production until task 10 adds Cloudflare Access verification (done: decision 0006).
 - A change log longer than 200 entries in 30 days shows the newest 200 and says so; `recent_changes` over MCP still
   reaches older ones.

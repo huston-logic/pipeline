@@ -27,9 +27,29 @@ export const SECURITY_HEADERS: Readonly<Record<string, string>> = {
   "Cross-Origin-Resource-Policy": "same-origin",
 };
 
+export interface SecurityOptions {
+  /**
+   * Origins a form on this page may submit to besides 'self'. Browsers also apply form-action to the redirects that
+   * follow a form post, so the /mcp consent page names where its Allow and Deny redirects go (decision 0006).
+   */
+  formAction?: readonly string[];
+}
+
+// Responses that already carry the headers, so wrapping them again (the router wraps every answer) keeps their policy.
+const secured = new WeakSet<Response>();
+
 /** Copies the response (asset responses have immutable headers) and sets every security header on it. */
-export function withSecurityHeaders(response: Response): Response {
-  const secured = new Response(response.body, response);
-  for (const [name, value] of Object.entries(SECURITY_HEADERS)) secured.headers.set(name, value);
-  return secured;
+export function withSecurityHeaders(response: Response, options: SecurityOptions = {}): Response {
+  if (secured.has(response)) return response;
+  const copy = new Response(response.body, response);
+  for (const [name, value] of Object.entries(SECURITY_HEADERS)) copy.headers.set(name, value);
+  const extra = (options.formAction ?? []).filter((origin) => /^https?:\/\/[A-Za-z0-9.:[\]-]+$/.test(origin));
+  if (extra.length > 0) {
+    copy.headers.set(
+      "Content-Security-Policy",
+      CONTENT_SECURITY_POLICY.replace("form-action 'self'", `form-action 'self' ${[...new Set(extra)].join(" ")}`),
+    );
+  }
+  secured.add(copy);
+  return copy;
 }

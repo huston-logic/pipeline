@@ -36,7 +36,7 @@ and the authorization page; plus the installed `agents` 0.33.0 types in `dist/mc
 - **Custom domains:** a copy served on its own domain sets the `MCP_ALLOWED_HOSTNAMES` variable (comma-separated
   hostnames, for example `pipeline.example.com`); the handler then passes it as `allowedHostnames`. Unset, the
   defaults above apply. Task 11's provisioning writes it into the copy's git-ignored config.
-- **Sign-in until task 10:** `src/auth/dev.ts`. `AUTH_MODE=dev` signs in a fake owner (`owner@example.test`) only when
+- **Sign-in until task 10** (production sign-in is now decision 0006; the dev mode below is unchanged): `src/auth/dev.ts`. `AUTH_MODE=dev` signs in a fake owner (`owner@example.test`) only when
   `ENVIRONMENT=development` and the host is `localhost`, `127.0.0.1` or `[::1]`. `AUTH_MODE=dev` anywhere else, or any
   other `AUTH_MODE` value, is a misconfiguration: every route answers 500 (fail closed). Without `AUTH_MODE`, `/mcp`
   answers 401 with a plain message; the board is unaffected (Access protects it in production). (Changed by 0013:

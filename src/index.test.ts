@@ -3,6 +3,8 @@ import { test } from "node:test";
 import { createTestDb, openTestDb, SqliteD1 } from "./db/sqlite-d1.ts";
 import type { Env } from "./env.ts";
 import worker from "./index.ts";
+import { FakeKv } from "../tests/helpers/fake-kv.ts";
+import { makeKey, signJwt, type TestKey } from "../tests/helpers/jwt.ts";
 
 type AssetCall = { url: string };
 
@@ -25,6 +27,23 @@ function fakeEnv(calls: AssetCall[] = []): Env {
 /** Signed in with the local dev sign-in, on a database with the migrations and defaults. */
 async function devEnv(calls: AssetCall[] = []): Promise<Env> {
   return { ...fakeEnv(calls), AUTH_MODE: "dev", DB: await createTestDb() };
+}
+
+/** Serves the test key at every Access certs URL through a mocked global fetch (the Worker's default JWKS fetcher). */
+function accessKeysFetch(key: TestKey) {
+  const original = globalThis.fetch;
+  return {
+    install() {
+      globalThis.fetch = (async (input: RequestInfo | URL) => {
+        const url = String(input instanceof Request ? input.url : input);
+        if (url.endsWith("/cdn-cgi/access/certs")) return Response.json({ keys: [key.jwk] });
+        throw new Error(`Unexpected fetch in a unit test: ${url}`);
+      }) as typeof fetch;
+    },
+    restore() {
+      globalThis.fetch = original;
+    },
+  };
 }
 
 const ctx = { waitUntil() {}, passThroughOnException() {}, props: {} } as unknown as ExecutionContext;
@@ -128,19 +147,30 @@ function mcpPost(env: Env, host = "localhost:4821") {
 }
 
 // /mcp itself (the MCP SDK behind the dynamic import) is tested in tests/e2e/mcp.test.ts; these tests stop before it.
-test("/mcp without a sign-in mode answers 401 with a plain message", async () => {
+// The full production sign-in (OAuth with Access upstream) is in src/auth/oauth-provider.test.ts.
+test("in production (no AUTH_MODE), /mcp without a token is 401 with the OAuth challenge", async () => {
   for (const ENVIRONMENT of ["production", "development"]) {
-    const res = await mcpPost({ ...fakeEnv(), ENVIRONMENT });
+    const res = await mcpPost({ ...fakeEnv(), ENVIRONMENT, OAUTH_KV: new FakeKv() as unknown as KVNamespace });
     assert.equal(res.status, 401, ENVIRONMENT);
-    assert.match(res.headers.get("Content-Type") ?? "", /^text\/plain/);
-    assert.match(await res.text(), /Sign-in for \/mcp isn't set up/);
+    assert.match(
+      res.headers.get("WWW-Authenticate") ?? "",
+      /^Bearer realm="OAuth", resource_metadata="http:\/\/localhost:4821\/\.well-known\/oauth-protected-resource\/mcp"/,
+    );
     assertSecurityHeaders(res);
   }
 });
 
+test("in production, /mcp and the sign-in pages fail closed with 500 until OAUTH_KV and the Access settings exist", async () => {
+  const res = await mcpPost({ ...fakeEnv(), ENVIRONMENT: "production" });
+  assert.equal(res.status, 500);
+  assert.match(await res.text(), /Sign-in isn't set up yet\./);
+  const authorize = await get("/authorize?response_type=code&client_id=x", { ...fakeEnv(), OAUTH_KV: new FakeKv() as unknown as KVNamespace });
+  assert.equal(authorize.status, 500);
+});
+
 test("AUTH_MODE=dev in production fails closed with 500 on every route", async () => {
   const env: Env = { ...fakeEnv(), ENVIRONMENT: "production", AUTH_MODE: "dev" };
-  const responses = [await get("/", env), await get("/board.css", env), await get("/nope", env), await mcpPost(env)];
+  const responses = [await get("/", env), await get("/board.css", env), await get("/nope", env), await mcpPost(env), await get("/api/pipeline", env)];
   for (const res of responses) {
     assert.equal(res.status, 500);
     assert.match(await res.text(), /misconfigured/);
@@ -148,24 +178,67 @@ test("AUTH_MODE=dev in production fails closed with 500 on every route", async (
   }
 });
 
-test("without a sign-in mode the board and /api answer 401; static files and the 404 page still work", async () => {
+const BOARD_PATHS = ["/", "/rules", "/deals/dl_seed01", "/export"];
+const API_PATHS = ["/api/pipeline", "/api/export.json", "/api/export/contacts.csv"];
+
+test("in production without Access settings the board and /api fail closed with 500; static files and the 404 page still work", async () => {
   for (const ENVIRONMENT of ["production", "development"]) {
-    const env: Env = { ...fakeEnv(), ENVIRONMENT, DB: await createTestDb() };
-    for (const path of ["/", "/rules", "/deals/dl_seed01", "/export"]) {
+    const env: Env = { ...fakeEnv(), ENVIRONMENT, DB: await createTestDb(), OWNER_EMAILS: "owner@example.com" };
+    for (const path of BOARD_PATHS) {
       const res = await get(path, env);
-      assert.equal(res.status, 401, `${ENVIRONMENT} ${path}`);
-      assert.match(await res.text(), /Sign-in for the board isn't set up/);
+      assert.equal(res.status, 500, `${ENVIRONMENT} ${path}`);
+      assert.equal(await res.text(), "Sign-in isn't set up yet.\n");
       assertSecurityHeaders(res);
     }
-    for (const path of ["/api/pipeline", "/api/export.json", "/api/export/contacts.csv"]) {
+    for (const path of API_PATHS) {
       const res = await get(path, env);
-      assert.equal(res.status, 401, `${ENVIRONMENT} ${path}`);
+      assert.equal(res.status, 500, `${ENVIRONMENT} ${path}`);
       assert.match(res.headers.get("Content-Type") ?? "", /^application\/json/);
-      assert.match(((await res.json()) as { error: string }).error, /Sign-in for the board isn't set up/);
+      assert.deepEqual(await res.json(), { error: "Sign-in isn't set up yet." });
     }
     assert.equal((await get("/nope", env)).status, 404);
     assert.equal((await get("/board.css", env)).status, 200);
   }
+});
+
+test("in production the board and /api need a valid Access token for an owner email", async () => {
+  const key = await makeKey("kid-1");
+  // A team domain of its own, so the JWKS cache this test fills is not shared.
+  const team = "index-test.cloudflareaccess.com";
+  const fetchJwks = accessKeysFetch(key);
+  const env: Env = {
+    ...fakeEnv(),
+    ENVIRONMENT: "production",
+    DB: await createTestDb(),
+    ACCESS_TEAM_DOMAIN: team,
+    ACCESS_AUD: "board-aud",
+    OWNER_EMAILS: "owner@example.com",
+  };
+  const token = (email: string) => signJwt(key, { iss: `https://${team}`, aud: ["board-aud"], email, exp: Date.now() / 1000 + 300 });
+  fetchJwks.install();
+  try {
+    for (const path of [...BOARD_PATHS, ...API_PATHS]) {
+      assert.equal((await get(path, env)).status, 401, `no token ${path}`);
+      const stranger = await get(path, env, { headers: { "Cf-Access-Jwt-Assertion": await token("stranger@example.com") } });
+      assert.equal(stranger.status, 403, `stranger ${path}`);
+      const owner = await get(path, env, { headers: { "Cf-Access-Jwt-Assertion": await token("Owner@Example.com") } });
+      // The test database has no deals, so the deal page is the board's own 404: signed in, nothing to show.
+      assert.equal(owner.status, path.startsWith("/deals/") ? 404 : 200, `owner ${path}`);
+    }
+  } finally {
+    fetchJwks.restore();
+  }
+});
+
+test("/intake stays outside both sign-ins in production: its own secret is the only check", async () => {
+  const env: Env = { ...fakeEnv(), ENVIRONMENT: "production", DB: await createTestDb(), INTAKE_SECRET: "test-intake-secret" };
+  const res = await get("/intake", env, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Intake-Secret": "test-intake-secret" },
+    body: JSON.stringify({ name: "Pat Example", email: "pat@example.com", message: "Hello there" }),
+  });
+  assert.equal(res.status, 201);
+  assertSecurityHeaders(res);
 });
 
 test("a failure while reading answers 500 with no internals and logs only a fixed event", async (t) => {

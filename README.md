@@ -17,10 +17,13 @@ This repo is public. It holds no client names, emails, ids or lead data; tests a
 One Cloudflare Worker (`src/index.ts`) with a read-only board rendered as plain HTML (no client JavaScript;
 decision 0001), a D1 database with an audited service layer, the MCP endpoint at `/mcp` (decision 0004) and the hourly
 rules run (a Cron Trigger, `src/cron.ts`; decision 0010), the daily brief and `POST /intake` for website forms
-(decision 0012), and the board's JSON API and export (decision 0013). Task 10 adds production sign-in.
+(decision 0012), the board's JSON API and export (decision 0013), and production sign-in (decision 0006).
 
-Until then the board and `/api/*` use the same sign-in as `/mcp`: `npm run dev` signs you in locally, and anywhere
-else they answer 401.
+**Sign-in.** In production Cloudflare Access signs the owner in (a one-time code by email): the board and `/api/*`
+sit behind an Access application and the Worker checks Access's token and the owner email; `/mcp` uses OAuth (the
+`workers-oauth-provider` library) with Access as the sign-in step, so an AI app connects once and gets its own token.
+The dashboard steps are in [`docs/ACCESS-SETUP.md`](docs/ACCESS-SETUP.md). Until a copy is set up, the board, `/api/*`
+and `/mcp` answer 500 "Sign-in isn't set up yet." Locally, `npm run dev` signs you in as a fake owner.
 
 | Route | What |
 |---|---|
@@ -29,7 +32,8 @@ else they answer 401.
 | `/brief`, `/rules`, `/changes`, `/export` | The latest daily brief, the rules, the last 30 days of changes, and the export downloads |
 | `/api/pipeline`, `/api/due`, `/api/deals/<id>`, `/api/rules`, `/api/changes`, `/api/brief` | The same data as JSON |
 | `/api/export.json`, `/api/export/<table>.csv` | The full export as one JSON file, or one table as CSV (decision 0013) |
-| `/mcp` | The MCP endpoint (Streamable HTTP, POST). Locally `npm run dev` signs you in as a fake owner; elsewhere it answers 401 until production sign-in exists (task 10) |
+| `/mcp` | The MCP endpoint (Streamable HTTP, POST). In production it needs an OAuth token (401 with the sign-in details without one); locally `npm run dev` signs you in as a fake owner |
+| `/authorize`, `/callback`, `/token`, `/register`, `/.well-known/*` | Production only: the OAuth sign-in an AI app goes through to get its `/mcp` token (decision 0006) |
 | `/intake` | `POST` only: a website form's server sends a new enquiry here with a shared secret (see "Connect a website form") |
 | `/board.css`, `/robots.txt`, `/sitemap.xml` | Static files from `out/`, served through the `ASSETS` binding |
 | anything else | A 404 page |
@@ -60,7 +64,9 @@ Cloudflare account: there is no login, no remote resource and no deploy.
 | `npm run check:config` | Fails if client data could be tracked (decision 0002) |
 | `npm run lint` | ESLint with `typescript-eslint` |
 | `npm run typecheck` | `tsc` for the Worker, then for `tests/a11y` (which needs DOM types) |
-| `npm run test:worker` | Unit tests (`src/**/*.test.ts`, `scripts/*.test.mjs`) and the end-to-end tests (`tests/e2e/*.test.ts`: the Worker under `wrangler dev --local` on a temp database), Node's built-in runner, no network beyond localhost |
+| `npm run test:worker` | `test:unit`, then `test:e2e` (what CI runs) |
+| `npm run test:unit` | Unit tests (`src/**/*.test.ts`, `scripts/*.test.mjs`), Node's built-in runner, no network |
+| `npm run test:e2e` | Builds `out/` once, then the end-to-end tests (`tests/e2e/*.test.ts`: the Worker under `wrangler dev --local` on a temp database, in dev sign-in mode), one file at a time, no network beyond localhost |
 | `npm run check` | `check:config`, lint, typecheck, `test:worker`, build, in that order |
 | `npm run test:a11y` | Playwright + axe against `npm run preview` (run `npm run build` first) |
 | `npm run test:lighthouse` | Lighthouse CI against `npm run preview` (run `npm run build` first) |

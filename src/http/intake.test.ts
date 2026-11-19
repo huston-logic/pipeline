@@ -4,7 +4,7 @@ import { TABLE_NAMES, type ContactRow, type DealRow } from "../db/db.ts";
 import { createTestDb, type SqliteD1 } from "../db/sqlite-d1.ts";
 import type { Env } from "../env.ts";
 import { addLead } from "../services/leads.ts";
-import { handleIntake, MAX_BODY_BYTES } from "./intake.ts";
+import { handleIntake, MAX_BODY_BYTES, parseBody } from "./intake.ts";
 
 const SECRET = "test-intake-secret";
 const NOW = new Date("2026-11-19T18:00:00.000Z");
@@ -107,6 +107,15 @@ test("source defaults to 'website form'; unknown fields are ignored; a form body
   const contact = await one<ContactRow>(db, "SELECT * FROM contacts");
   assert.equal(contact?.source, "website form");
   assert.deepEqual(JSON.parse(contact?.untrusted_fields ?? "[]"), ["name", "email", "source"]);
+});
+
+test("form fields named like Object.prototype keys are kept as plain own fields; the first value wins", () => {
+  const fields = parseBody("application/x-www-form-urlencoded", "constructor=a&__proto__=b&toString=c&name=Pat&name=Again");
+  assert.deepEqual(Object.keys(fields).sort(), ["__proto__", "constructor", "name", "toString"]);
+  assert.equal(Object.hasOwn(fields, "constructor") && fields.constructor, "a");
+  assert.equal(Object.hasOwn(fields, "__proto__") && fields["__proto__"], "b");
+  assert.equal(fields.name, "Pat");
+  assert.equal(Object.getPrototypeOf(fields), null);
 });
 
 test("every error is {ok:false,error} with the right status", async () => {

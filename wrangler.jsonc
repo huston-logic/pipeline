@@ -6,7 +6,9 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-11-11",
   // The MCP handler (`agents/mcp/server`) imports node:async_hooks and the MCP SDK imports node:process (decision 0004).
-  "compatibility_flags": ["nodejs_compat"],
+  // global_fetch_strictly_public: outbound fetches (Resend, Cloudflare Access) always go to the public internet, never
+  // to an origin in the same zone; workers-oauth-provider asks for it (decision 0006).
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
   "assets": {
     "directory": "./out",
     "binding": "ASSETS",
@@ -15,6 +17,8 @@
     "run_worker_first": true
   },
   // `npm run dev` and `npm run preview` override this with --var ENVIRONMENT:development.
+  // Per-copy vars live only in each copy's git-ignored config (task 11), never here: ACCESS_TEAM_DOMAIN, ACCESS_AUD,
+  // OWNER_EMAILS and, on a custom domain, MCP_ALLOWED_HOSTNAMES (docs/SECRETS.md, docs/ACCESS-SETUP.md).
   "vars": { "ENVIRONMENT": "production" },
   // The placeholder id is only used locally (`--local`); each copy's real ids live in its git-ignored config.
   "d1_databases": [
@@ -25,12 +29,17 @@
       "migrations_dir": "migrations"
     }
   ],
-  // /intake's rate limit: 5 requests per 60 seconds per client IP (decision 0012). The namespace id is a placeholder;
-  // each copy's own config gives its own number. Rate Limiting bindings are free; without one /intake still works.
-  "ratelimits": [{ "name": "INTAKE_RATE_LIMIT", "namespace_id": "1001", "simple": { "limit": 5, "period": 60 } }],
-  // Preview deployments get their own database, so they never touch production data.
+  // /mcp's OAuth state: clients, grants, hashed tokens and the 10-minute sign-in state (decision 0006). The id is a
+  // placeholder used only locally; each copy's own config has its real id. KV is on the free plan.
+  "kv_namespaces": [{ "binding": "OAUTH_KV", "id": "00000000000000000000000000000000" }],
+  // /intake's rate limit: 30 requests per 60 seconds per client IP (decision 0012). The client is the website's own
+  // backend, so this caps the whole site's form traffic. The namespace id is a placeholder; each copy's own config gives
+  // its own number. Rate Limiting bindings are free; without one /intake still works.
+  "ratelimits": [{ "name": "INTAKE_RATE_LIMIT", "namespace_id": "1001", "simple": { "limit": 30, "period": 60 } }],
+  // Preview deployments get their own database and OAuth KV, so they never touch production data or sign-ins.
   "previews": {
-    "ratelimits": [{ "name": "INTAKE_RATE_LIMIT", "namespace_id": "1002", "simple": { "limit": 5, "period": 60 } }],
+    "ratelimits": [{ "name": "INTAKE_RATE_LIMIT", "namespace_id": "1002", "simple": { "limit": 30, "period": 60 } }],
+    "kv_namespaces": [{ "binding": "OAUTH_KV", "id": "[[PREVIEW_OAUTH_KV_ID]]" }],
     "d1_databases": [
       {
         "binding": "DB",
