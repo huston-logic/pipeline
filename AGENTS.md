@@ -19,7 +19,8 @@ this file before changing the repo, and update it when a rule changes.
 - The repo is public. Never commit real names, emails or lead data; tests use fake people.
 - Fake people use `example.com`, `example.test`, `example.org` or `example.net` addresses. `npm run check:config`
   fails on any other address in a tracked file (except the commit-trailer addresses), on a non-placeholder
-  `database_id`/`account_id` in `wrangler.jsonc`, and if `/.copies/` or `/exports/` is not git-ignored.
+  `database_id`/`account_id` in `wrangler.jsonc` or `config/wrangler.copy.template.jsonc`, and if `/.copies/` or
+  `/exports/` is not git-ignored.
 - `wrangler.jsonc` is the generic local-development config (`pipeline-dev`). Ids in it are placeholders
   (`[[...]]`, the all-zero UUID or `local`).
 
@@ -57,6 +58,18 @@ this file before changing the repo, and update it when a rule changes.
 - **Local only:** `scripts/dev.mjs` (`npm run dev`, `npm run preview`) runs `wrangler dev --local` with
   `ENVIRONMENT=development` and `AUTH_MODE=dev`, and applies migrations with `--local`. Wrangler runs only through
   npm scripts, only locally. Never deploy, log in or touch a remote database from this repo.
+- **Client copies** (decision 0007): `scripts/copies.mjs` (`copies:provision`, `copies:update`, `copies:export`) and
+  `scripts/import-csv.ts` (`import:contacts`) are the only code that reaches a real Cloudflare account, and only the
+  repo owner runs them, with their own wrangler login. Every outside command goes through `run()` in
+  `scripts/wrangler-run.mjs`; tests replace it with a recorder over `tests/helpers/wrangler-stub.mjs`, and
+  `PIPELINE_WRANGLER` points the scripts at that stub. Claude and CI run them only with `--dry-run`, against the stub,
+  or with `--local`. Each copy's config is generated from `config/wrangler.copy.template.jsonc` into the git-ignored
+  `/.copies/<name>/`; keep the template's shared settings in step with `wrangler.jsonc` (a test checks).
+- **CSV import** (`src/import/`): `plan.ts` plans (pure), `change.ts` builds one audited change (actor `owner`, tool
+  `import`) with `buildChange` from `src/services/change.ts`, and `sql.ts` renders its bound values as literal SQL for
+  `wrangler d1 execute --file`. Imported fields are listed in `untrusted_fields`; a merge never overwrites a value.
+- **Migrations:** every new migration must keep the data of the previous version; `src/db/migrations.test.ts` checks
+  each one against fake rows for every table (add rows to `FAKE_ROWS` for a new table).
 - Files: unit tests sit beside the code (`src/**/*.test.ts`, `scripts/*.test.mjs`). `tests/e2e/*.test.ts` run the
   real Worker under `wrangler dev --local` on a temp database (`tests/e2e/harness.ts`; one server per test file, always
   stopped in `after()`); `tests/helpers/` holds shared test code. Node 22.19+ runs the `.ts` files
@@ -149,5 +162,7 @@ exist and are non-empty. Job `a11y` runs `npm run build` and `npm run test:a11y`
 
 ## Deploys
 
-This repo has no production deploy of its own. Each client copy is provisioned and updated by the copy scripts
-(task 11), run by the copy's owner with their own wrangler login. Never run `wrangler deploy` by hand.
+This repo has no production deploy of its own, and merging into `main` deploys nothing. Each client copy is
+provisioned and updated by the copy scripts (`npm run copies:provision`, `npm run copies:update`; docs/INSTALL.md,
+docs/UPDATING.md, decision 0007), run by the repo owner with their own wrangler login, which the client has invited
+into their Cloudflare account. Never run `wrangler deploy` by hand.

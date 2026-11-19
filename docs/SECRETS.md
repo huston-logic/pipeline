@@ -10,16 +10,18 @@ and this repo never see them, and nothing here should be pasted into chat, a pul
 |---|---|---|
 | `ENVIRONMENT` | `production` (default) or `development` | `vars` in `wrangler.jsonc`; `npm run dev` and `npm run preview` pass `--var ENVIRONMENT:development` |
 | `AUTH_MODE` | `dev`, or unset | Unset (the production default): Cloudflare Access sign-in (decision 0006). Only `npm run dev`, `npm run preview` and the e2e tests set `dev` (`--var AUTH_MODE:dev`); it works only with `ENVIRONMENT=development` on localhost. `dev` anywhere else, or any other value, makes every route answer 500. |
-| `ACCESS_TEAM_DOMAIN` | `<team>.cloudflareaccess.com` | Per copy, in the copy's own config `vars` (task 11 writes it). The Zero Trust team domain; the board and `/api` check Access tokens against it. Unset: they answer 500 "Sign-in isn't set up yet." (docs/ACCESS-SETUP.md, step 4) |
-| `ACCESS_AUD` | The board application's AUD tag | Per copy, in the copy's own config `vars`. Unset: the board and `/api` answer 500 (docs/ACCESS-SETUP.md, step 4) |
-| `OWNER_EMAILS` | Comma-separated emails | Per copy, in the copy's own config `vars`. Who may sign in, together with `settings.owner_emails` (decision 0005); compared ignoring case. With neither, the board and `/api` answer 500 and no one can connect `/mcp` |
+| `ACCESS_TEAM_DOMAIN` | `<team>.cloudflareaccess.com` | Per copy, in the copy's own config `vars` (`npm run copies:provision` writes it). The Zero Trust team domain; the board and `/api` check Access tokens against it. Unset: they answer 500 "Sign-in isn't set up yet." (docs/ACCESS-SETUP.md, step 4) |
+| `ACCESS_AUD` | The board application's AUD tag | Per copy, in the copy's own config `vars` (provisioning writes it). Unset: the board and `/api` answer 500 (docs/ACCESS-SETUP.md, step 4) |
+| `OWNER_EMAILS` | Comma-separated emails, or unset | Optional, per copy, in the copy's own config `vars`. Who may sign in, together with `settings.owner_emails` (decision 0005); compared ignoring case. Provisioning writes the owner emails into `settings.owner_emails` only and leaves this unset (decision 0007), so there is one list to change. With neither, the board and `/api` answer 500 and no one can connect `/mcp` |
 | `BRIEF_SENDING` | `on`, or unset | The master switch for emailing the daily brief (decision 0011). Unset (the default) or any other value keeps sending off; the brief is still composed and stored each day. Set it in the copy's own config `vars`, never in this repo's `wrangler.jsonc`. |
 | `BRIEF_FROM` | An address on a domain verified in Resend, or unset | The "from" address of the brief email. Unset keeps sending off. Set it in the copy's own config `vars`. |
-| `MCP_ALLOWED_HOSTNAMES` | Comma-separated hostnames, or unset | Per copy. A copy on a custom domain must set it (for example `pipeline.example.com`): `/mcp` and its OAuth sign-in answer only on the listed hosts. Unset, they answer only on `*.workers.dev` and localhost (decisions 0004 and 0006). |
+| `MCP_ALLOWED_HOSTNAMES` | Comma-separated hostnames, or unset | Per copy (provisioning writes it for a custom hostname). A copy on a custom domain must set it (for example `pipeline.example.com`): `/mcp` and its OAuth sign-in answer only on the listed hosts. Unset, they answer only on `*.workers.dev` and localhost (decisions 0004 and 0006). |
 
 ## Secrets
 
-Every secret the Worker reads, by name, with the exact `wrangler secret put` command:
+Every secret the Worker reads, by name, with the exact `wrangler secret put` command. `npm run copies:provision` offers
+to set each one a copy needs (docs/INSTALL.md, step 4). Run by hand, add the copy's config so the secret reaches the
+right Worker: `npx wrangler secret put <NAME> -c .copies/<name>/wrangler.jsonc`.
 
 | Name | For | Set with |
 |---|---|---|
@@ -38,7 +40,10 @@ sign-in state in `OAUTH_KV`, encrypted, and binds it to the browser itself.
 Bindings (not secrets), in `wrangler.jsonc` with placeholder ids; each copy's own config gives its real ids:
 
 - `INTAKE_RATE_LIMIT`: Rate Limiting for `/intake`, 30 requests per 60 s per client IP (decision 0012).
+- `OAUTH_RATE_LIMIT`: Rate Limiting for `/register` and `/authorize`, 20 requests per 60 s per client IP (decision
+  0006). Both rate limits have their own namespace ids in `previews`; provisioning picks ids unique within the account.
 - `OAUTH_KV`: the KV namespace for `/mcp`'s OAuth state (decision 0006), with its own namespace in `previews`.
+- `DB`: the D1 database, with the copy's preview database as `preview_database_id` and in `previews`.
 
 Sending the brief needs all of these at once: `settings.brief_enabled` on (`update_settings`), a `brief_email` address in
 the settings, `BRIEF_SENDING=on`, `BRIEF_FROM` and `RESEND_API_KEY`. If any one is missing the brief is only composed and

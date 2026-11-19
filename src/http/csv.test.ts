@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { parseCsv, toCsv } from "./csv.ts";
+import { parseCsv, parseCsvRecords, toCsv } from "./csv.ts";
 
 const LONG = "x".repeat(9_990) + ", \"end\"";
 
@@ -73,4 +73,18 @@ test("parseCsv drops one byte order mark at the very start of a file and reads L
 
 test("parseCsv refuses an unclosed quote instead of guessing", () => {
   assert.throws(() => parseCsv('a\r\n"open'), /quote/);
+});
+
+test("parseCsvRecords gives each record the line it starts on, counting line breaks inside quoted fields", () => {
+  const text = 'name,notes\r\nPat,"one\ntwo\r\nthree"\r\nRobin,plain\rCasey,x\n';
+  assert.deepEqual(parseCsvRecords(text), [
+    { line: 1, fields: ["name", "notes"] },
+    { line: 2, fields: ["Pat", "one\ntwo\r\nthree"] },
+    { line: 5, fields: ["Robin", "plain"] },
+    { line: 6, fields: ["Casey", "x"] },
+  ]);
+  assert.deepEqual(parseCsvRecords("﻿a\r\nb"), [
+    { line: 1, fields: ["a"] },
+    { line: 2, fields: ["b"] },
+  ]);
 });

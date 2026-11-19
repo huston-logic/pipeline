@@ -105,3 +105,9 @@ test(".gitignore must ignore /.copies/ and /exports/", () => {
   assert.match(problems[0], /\/\.copies\//);
   assert.match(problems[1], /\/exports\//);
 });
+
+test("a real id is reported with the file it is in, so the copy template is checked like wrangler.jsonc", () => {
+  const [problem] = checkWranglerConfig('{ "account_id": "0123456789abcdef0123456789abcdef" }', "config/wrangler.copy.template.jsonc");
+  assert.match(problem, /^config\/wrangler\.copy\.template\.jsonc has a real account_id/);
+  assert.deepEqual(checkWranglerConfig('{ "account_id": "[[ACCOUNT_ID]]", "id": "[[KV_ID]]" }', "x"), []);
+});

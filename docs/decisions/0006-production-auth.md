@@ -76,6 +76,13 @@ authorization-server, mcp-discovery, migration-1.x) and `dist/oauth-provider.d.t
 - **Modes.** `src/auth/dev.ts` `authMode()`: no `AUTH_MODE` (or empty) is production sign-in, in any environment;
   `AUTH_MODE=dev` is the local dev sign-in exactly as before (only with `ENVIRONMENT=development` on a loopback host,
   else 500 on every route); any other value is a 500 misconfiguration. The e2e tests stay in dev mode.
+- **Rate limit on the paths that write before sign-in** (task 11). `/register` stores a client record and `GET
+  /authorize` starts a consent (a stored handle and a cookie), both before anyone has signed in, so anyone could make
+  the copy write to `OAUTH_KV` in a loop and use up the free plan's 1,000 KV writes a day, which would stop the
+  owner's own sign-ins and token refreshes until the next day. The `OAUTH_RATE_LIMIT` Rate Limiting binding (20 per
+  60 s per `CF-Connecting-IP`, top level and in `previews`) answers 429 in plain text with `Retry-After: 60` on those
+  two paths before the library runs; without the binding they still work and log `oauth_rate_limit_missing`. `HEAD
+  /authorize` validates the request like `GET` but never calls `beginConsent`, so it writes nothing.
 - **Outside both sign-ins:** `/intake` (its own secret, decision 0012) and static files and the 404 page (no data).
 - **Logs** hold fixed event names, status codes and the library's error codes and reason slugs only, never a token,
   code, email, secret or `props`; the library's default error logger (which prints the error description) is
@@ -96,7 +103,8 @@ parts that are specific to Access, each tested.
 ## Consequences
 
 - Each copy needs the Access setup in `docs/ACCESS-SETUP.md`: two Access applications and bypass rules, five secrets,
-  four vars and a KV namespace. Task 11's provisioning writes the vars and the KV id into the copy's config.
+  four vars and a KV namespace. Task 11's provisioning writes the vars and the KV ids into the copy's config
+  (decision 0007).
 - The id token's `iss` is accepted as either the app's OIDC base URL or the team domain; the first live sign-in should
   confirm which one Access sends (see the report). Both belong to the owner's team, and the key and `aud` checks bind
   the token to this app.
@@ -107,3 +115,12 @@ parts that are specific to Access, each tested.
   owner; revisit if `OAUTH_KV` grows).
 - A copy reachable on both its workers.dev host and a custom domain issues tokens per host; set
   `MCP_ALLOWED_HOSTNAMES` to the one host clients use.
+- The rate limit is per IP and per Cloudflare location, so a flood from many addresses can still spend KV writes; it
+  raises the cost a lot without blocking a real owner (a connection makes about three limited requests). If KV writes
+  still run out, Workers Paid lifts the KV limit (docs/PAID-PLAN.md).
+- **`form-action` and redirect chains (not yet confirmed live).** Browsers apply the consent page's `form-action` to
+  every redirect that follows the Allow or Deny post. The policy lists this origin, the Access authorization origin and
+  the client's redirect origin, so a chain that passes through another origin (an identity provider in front of
+  Access, or Access redirecting via another host) or ends at a custom-scheme client (`appname://callback`, which has
+  no web origin to list) may be blocked by the browser. Confirm on the first live connection (docs/ACCESS-SETUP.md,
+  "If Allow seems to do nothing"); the likely fix is to add the redirect's scheme for a non-https client.

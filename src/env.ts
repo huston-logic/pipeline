@@ -47,4 +47,6 @@ export type Env = {
   INTAKE_SECRET?: string;
   /** Rate limit for /intake by client IP (binding in wrangler.jsonc). Absent: requests are allowed and a log line says so. */
   INTAKE_RATE_LIMIT?: RateLimiter;
+  /** Rate limit for /register and /authorize by client IP (binding in wrangler.jsonc). Absent: allowed, and logged. */
+  OAUTH_RATE_LIMIT?: RateLimiter;
 };

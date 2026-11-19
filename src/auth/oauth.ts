@@ -160,6 +160,12 @@ export async function handleAuthorize(request: Request, env: Env, deps: OAuthDep
     if (request.method === "GET" || request.method === "HEAD") {
       const authRequest = await oauth.parseAuthRequest(request);
       const details = await oauth.describeConsent(authRequest);
+      // A HEAD shows no page, so it must not start a consent (a cookie and a stored handle per request).
+      if (request.method === "HEAD") {
+        return withSecurityHeaders(
+          new Response(null, { status: 200, headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" } }),
+        );
+      }
       const consent = await oauth.beginConsent(authRequest);
       const formAction = [originOf(config.authorizationUrl), originOf(details.redirectUri)].filter((o): o is string => o !== null);
       return consentPage(details, consent.handle, consent.headers, formAction);

@@ -19,7 +19,8 @@ clearly one or the other, ask me.
   exact error; do not commit.
 - When the work is done, open a pull request. Never merge it yourself; I merge.
 - This repo has no production deploy of its own: merging into `main` deploys nothing.
-  Each client copy is updated by the copy update script (task 11), run by its owner.
+  I update every client copy myself with `npm run copies:update` (decision 0007, docs/UPDATING.md),
+  using my own wrangler login, which each client has invited into their Cloudflare account.
   Never run `wrangler deploy` by hand (a hook blocks it).
 
 ## Protect main (GitHub ruleset)
@@ -132,6 +133,11 @@ are still open and unmerged, update it only in the first PR and one closing PR s
   Uses the installed Google Chrome; no browser download.
 - Wrangler only through these npm scripts, only locally. Never `wrangler deploy`, `wrangler login`
   or anything with `--remote`.
+- `npm run copies:provision`, `copies:update`, `copies:export` and `import:contacts` reach real client
+  accounts: only I run them for real. You may run them only with `--dry-run`, with `--local`, or with
+  `PIPELINE_WRANGLER` pointing at `tests/helpers/wrangler-stub.mjs`.
+- You may run `import:contacts` only with `--local` or the stub: even its default dry run reads the copy's
+  remote database.
 
 ## Command style (keeps permission prompts down)
 - One plain command per Bash call. No shell variables, `$(...)`, `for` loops, functions or

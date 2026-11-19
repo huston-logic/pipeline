@@ -113,36 +113,39 @@ host keeps it. **Check in the dashboard:**
 ## 5. The KV namespace
 
 The pipeline keeps the OAuth state (registered AI apps, hashed tokens, the 10-minute sign-in state) in a KV namespace
-bound as `OAUTH_KV`. Create one (Workers & Pages > KV > Create, or `npx wrangler kv namespace create OAUTH_KV`) and
-put its id in your copy's own config (the copy's `kv_namespaces`, which provisioning writes, task 11). For preview
-deployments, create a second one for `previews.kv_namespaces`.
+bound as `OAUTH_KV`. `npm run copies:provision` creates it (`pipeline-<name>-oauth`, plus `pipeline-<name>-oauth-preview`
+for preview deployments) and writes both ids into the copy's config (docs/INSTALL.md, step 4). Nothing to do here when
+you provision with the script.
 
 ## 6. Settings and secrets
 
-**Settings** (plain variables, in your copy's own config `vars`; provisioning writes them, task 11):
+**Settings** (plain variables, in your copy's own config `vars`; `npm run copies:provision` asks for them and writes
+them):
 
 | Name | Value |
 |---|---|
 | `ACCESS_TEAM_DOMAIN` | The team domain from step 4, for example `example-team.cloudflareaccess.com` |
 | `ACCESS_AUD` | The AUD tag from step 4 |
-| `OWNER_EMAILS` | Your owner email(s), comma-separated, for example `owner@example.com` |
+| `OWNER_EMAILS` | Optional. Provisioning stores the owner emails in the database instead (below) and leaves this out |
 | `MCP_ALLOWED_HOSTNAMES` | On a custom domain: `<copy host>`. On workers.dev: leave it out |
 
-**Secrets** (each one: run the command, then paste the value when it asks; nobody else ever sees them):
+**Secrets** (provisioning offers to set each one; to set one later, run the command, then paste the value when it
+asks; nobody else ever sees them):
 
 ```bash
-npx wrangler secret put ACCESS_CLIENT_ID
-npx wrangler secret put ACCESS_CLIENT_SECRET
-npx wrangler secret put ACCESS_TOKEN_URL
-npx wrangler secret put ACCESS_AUTHORIZATION_URL
-npx wrangler secret put ACCESS_JWKS_URL
+npx wrangler secret put ACCESS_CLIENT_ID -c .copies/<name>/wrangler.jsonc
+npx wrangler secret put ACCESS_CLIENT_SECRET -c .copies/<name>/wrangler.jsonc
+npx wrangler secret put ACCESS_TOKEN_URL -c .copies/<name>/wrangler.jsonc
+npx wrangler secret put ACCESS_AUTHORIZATION_URL -c .copies/<name>/wrangler.jsonc
+npx wrangler secret put ACCESS_JWKS_URL -c .copies/<name>/wrangler.jsonc
 ```
 
 For preview deployments, set the same five with `npx wrangler preview base-config secret put <NAME>` if you want to
 sign in on previews too.
 
-Owner emails can also live in the database (`settings.owner_emails`, set at provisioning); either list lets an email
-in. They are never changeable through the AI app (decision 0005).
+Owner emails live in the database (`settings.owner_emails`, written by provisioning; docs/INSTALL.md says how to
+change them). An `OWNER_EMAILS` var, if you add one, also lets its emails in. Neither is changeable through the AI app
+(decision 0005).
 
 ## 7. Check it
 
@@ -154,6 +157,16 @@ in. They are never changeable through the AI app (decision 0005).
    opens a page "Allow <app name> to use your pipeline?". Check that it names your AI app and the place the access goes,
    then select **Allow**. Access asks for your email and code, and you're sent back to the app, connected.
 4. If your website's form posts to `/intake`, send a test enquiry: it should arrive as a new lead.
+
+### If "Allow" seems to do nothing
+
+The "Allow" page is a form, and its security policy (`form-action`) lists only the pages that form may lead to: this
+copy, the Access sign-in (`https://<team>.cloudflareaccess.com`) and the AI app's own return address. Browsers apply
+that list to every redirect that follows the form too. So a sign-in that passes through another address (for example
+an identity provider other than One-time PIN), or an AI app whose return address is not a web address (a desktop app
+with its own `appname://` link), may be stopped by the browser after you select **Allow**. This could not be tested
+before the first live connection: on the first connection, if nothing happens after **Allow**, open the browser's
+developer console, look for a message about `form-action`, and report it (decision 0006).
 
 ## workers.dev or a custom domain
 

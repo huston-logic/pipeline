@@ -33,12 +33,20 @@
   // placeholder used only locally; each copy's own config has its real id. KV is on the free plan.
   "kv_namespaces": [{ "binding": "OAUTH_KV", "id": "00000000000000000000000000000000" }],
   // /intake's rate limit: 30 requests per 60 seconds per client IP (decision 0012). The client is the website's own
-  // backend, so this caps the whole site's form traffic. The namespace id is a placeholder; each copy's own config gives
-  // its own number. Rate Limiting bindings are free; without one /intake still works.
-  "ratelimits": [{ "name": "INTAKE_RATE_LIMIT", "namespace_id": "1001", "simple": { "limit": 30, "period": 60 } }],
+  // backend, so this caps the whole site's form traffic. OAUTH_RATE_LIMIT: 20 per 60 seconds per client IP for
+  // /register and /authorize, the two sign-in paths a stranger can call that write to OAUTH_KV (decision 0006). The
+  // namespace ids are placeholders; each copy's own config gets its own numbers from provisioning. Rate Limiting
+  // bindings are free; without one each path still works and logs that the limit is missing.
+  "ratelimits": [
+    { "name": "INTAKE_RATE_LIMIT", "namespace_id": "1001", "simple": { "limit": 30, "period": 60 } },
+    { "name": "OAUTH_RATE_LIMIT", "namespace_id": "1003", "simple": { "limit": 20, "period": 60 } }
+  ],
   // Preview deployments get their own database and OAuth KV, so they never touch production data or sign-ins.
   "previews": {
-    "ratelimits": [{ "name": "INTAKE_RATE_LIMIT", "namespace_id": "1002", "simple": { "limit": 30, "period": 60 } }],
+    "ratelimits": [
+      { "name": "INTAKE_RATE_LIMIT", "namespace_id": "1002", "simple": { "limit": 30, "period": 60 } },
+      { "name": "OAUTH_RATE_LIMIT", "namespace_id": "1004", "simple": { "limit": 20, "period": 60 } }
+    ],
     "kv_namespaces": [{ "binding": "OAUTH_KV", "id": "[[PREVIEW_OAUTH_KV_ID]]" }],
     "d1_databases": [
       {

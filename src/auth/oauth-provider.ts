@@ -11,6 +11,12 @@ import { handleAuthorize, handleCallback, type OAuthDeps } from "./oauth.ts";
 import { AUTHORIZE_PATH, CALLBACK_PATH, isAllowedOAuthHost, REGISTER_PATH, TOKEN_PATH } from "./oauth-routes.ts";
 import { isOwnerEmail } from "./owners.ts";
 
+/**
+ * The paths a stranger can call without a token that write to OAUTH_KV: registering a client, and starting a consent.
+ * Limited per client IP (OAUTH_RATE_LIMIT, decision 0006), so a flood can't use up the free plan's KV writes.
+ */
+const RATE_LIMITED_PATHS = new Set([REGISTER_PATH, AUTHORIZE_PATH]);
+
 /** Serves a signed-in /mcp request; the email is the owner's, from the token's props. */
 export type McpHandler = (request: Request, env: Env, ctx: ExecutionContext, email: string) => Promise<Response>;
 
@@ -76,6 +82,19 @@ export async function handleOAuth(
     return withSecurityHeaders(
       text(403, "/mcp isn't set up for this hostname. Add it to MCP_ALLOWED_HOSTNAMES (docs/ACCESS-SETUP.md)."),
     );
+  }
+  if (RATE_LIMITED_PATHS.has(url.pathname)) {
+    if (env.OAUTH_RATE_LIMIT) {
+      const { success } = await env.OAUTH_RATE_LIMIT.limit({ key: request.headers.get("CF-Connecting-IP") ?? "unknown" });
+      if (!success) {
+        console.log(JSON.stringify({ event: "oauth_rate_limited" }));
+        const res = text(429, "Too many requests. Wait a minute and try again.");
+        res.headers.set("Retry-After", "60");
+        return withSecurityHeaders(res);
+      }
+    } else {
+      console.log(JSON.stringify({ event: "oauth_rate_limit_missing" }));
+    }
   }
   // A copy of env: the library stores its helpers on the env it is given, and those are tied to this request's origin.
   const response = await createOAuthProvider(url.origin, mcp, deps).fetch(request, { ...env }, ctx);

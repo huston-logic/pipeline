@@ -131,33 +131,44 @@ function checkChange(change: RowChange): { table: ChangeTable; pk: string } {
   return { table, pk };
 }
 
-/** Fails the batch (write_guard's CHECK) unless the row is still exactly as `before` says. */
-function guardStatement(db: Db, table: ChangeTable, pk: string, before: Row): D1PreparedStatement {
-  const sql = "INSERT INTO write_guard (ok) SELECT COUNT(*) = 1 FROM";
-  if (typeof before.version === "number") {
-    return db.prepare(`${sql} ${table} WHERE ${pk} = ? AND version = ?`).bind(before[pk], before.version);
-  }
-  const columns = columnsOf(before);
-  return db
-    .prepare(`${sql} ${table} WHERE ${columns.map((column) => `${column} IS ?`).join(" AND ")}`)
-    .bind(...columns.map((column) => before[column]));
+/** A statement as SQL text and the values bound to its `?`s, before it is prepared on a database. */
+export interface SqlStatement {
+  sql: string;
+  params: SqlValue[];
 }
 
-function writeStatement(db: Db, table: ChangeTable, pk: string, change: RowChange): D1PreparedStatement {
+const cellOf = (row: Row, column: string): SqlValue => row[column] ?? null;
+
+/** Fails the batch (write_guard's CHECK) unless the row is still exactly as `before` says. */
+function guardStatement(table: ChangeTable, pk: string, before: Row): SqlStatement {
+  const sql = "INSERT INTO write_guard (ok) SELECT COUNT(*) = 1 FROM";
+  if (typeof before.version === "number") {
+    return { sql: `${sql} ${table} WHERE ${pk} = ? AND version = ?`, params: [cellOf(before, pk), before.version] };
+  }
+  const columns = columnsOf(before);
+  return {
+    sql: `${sql} ${table} WHERE ${columns.map((column) => `${column} IS ?`).join(" AND ")}`,
+    params: columns.map((column) => cellOf(before, column)),
+  };
+}
+
+function writeStatement(table: ChangeTable, pk: string, change: RowChange): SqlStatement {
   const { before, after } = change;
   if (after === null) {
-    return db.prepare(`DELETE FROM ${table} WHERE ${pk} = ?`).bind(before?.[pk]);
+    return { sql: `DELETE FROM ${table} WHERE ${pk} = ?`, params: [before === null ? null : cellOf(before, pk)] };
   }
   const columns = columnsOf(after);
   if (before === null) {
-    return db
-      .prepare(`INSERT INTO ${table} (${columns.join(", ")}) VALUES (${columns.map(() => "?").join(", ")})`)
-      .bind(...columns.map((column) => after[column]));
+    return {
+      sql: `INSERT INTO ${table} (${columns.join(", ")}) VALUES (${columns.map(() => "?").join(", ")})`,
+      params: columns.map((column) => cellOf(after, column)),
+    };
   }
   const set = columns.filter((column) => column !== pk);
-  return db
-    .prepare(`UPDATE ${table} SET ${set.map((column) => `${column} = ?`).join(", ")} WHERE ${pk} = ?`)
-    .bind(...set.map((column) => after[column]), after[pk]);
+  return {
+    sql: `UPDATE ${table} SET ${set.map((column) => `${column} = ?`).join(", ")} WHERE ${pk} = ?`,
+    params: [...set.map((column) => cellOf(after, column)), cellOf(after, pk)],
+  };
 }
 
 /** The error's message and those of every `cause` below it: D1 wraps the SQLite text in its own error. */
@@ -184,14 +195,25 @@ export const isDuplicateEmailFailure = (error: unknown) =>
 export const isFireKeyFailure = (error: unknown) =>
   /UNIQUE constraint failed: rule_firings\.fire_key/.test(errorText(error));
 
-export async function commitChange(ctx: Ctx, input: ChangeInput): Promise<ChangeResult> {
-  const { db } = ctx;
+/** A change as statements: the guards and row writes, then (after any extra statements) the audit row and cleanup. */
+export interface BuiltChange {
+  changeId: string;
+  summary: string;
+  writes: SqlStatement[];
+  audit: SqlStatement[];
+}
+
+/**
+ * The statements commitChange runs, without a database. The CSV import (scripts/import-csv.ts) renders them as a SQL
+ * file, so an import is written exactly the way the services write.
+ */
+export function buildChange(ctx: Pick<Ctx, "now" | "actor" | "tool">, input: ChangeInput): BuiltChange {
   if (!isChangeTable(input.target.table)) {
     throw new Error(`A change can't target the table ${JSON.stringify(input.target.table)}.`);
   }
   const seen = new Set<string>();
-  const guards: D1PreparedStatement[] = [];
-  const writes: D1PreparedStatement[] = [];
+  const guards: SqlStatement[] = [];
+  const writes: SqlStatement[] = [];
   const before: Record<string, Row | null> = {};
   const after: Record<string, Row | null> = {};
   for (const change of input.changes) {
@@ -199,20 +221,18 @@ export async function commitChange(ctx: Ctx, input: ChangeInput): Promise<Change
     const key = rowKey(table, change.id);
     if (seen.has(key)) throw new Error(`A change touches ${key} twice.`);
     seen.add(key);
-    if (change.before) guards.push(guardStatement(db, table, pk, change.before));
-    writes.push(writeStatement(db, table, pk, change));
+    if (change.before) guards.push(guardStatement(table, pk, change.before));
+    writes.push(writeStatement(table, pk, change));
     before[key] = change.before;
     after[key] = change.after;
   }
 
   const changeId = input.changeId ?? newId("chg");
   const summary = `${oneLine(input.summary)} (change ${changeId})`;
-  const audit = db
-    .prepare(
-      `INSERT INTO audit_log (id, at, actor, tool, target_table, target_id, before_json, after_json, summary, undo_of)
+  const audit: SqlStatement = {
+    sql: `INSERT INTO audit_log (id, at, actor, tool, target_table, target_id, before_json, after_json, summary, undo_of)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    )
-    .bind(
+    params: [
       changeId,
       ctx.now.toISOString(),
       ctx.actor,
@@ -223,10 +243,18 @@ export async function commitChange(ctx: Ctx, input: ChangeInput): Promise<Change
       JSON.stringify(after),
       summary,
       input.undoOf ?? null,
-    );
+    ],
+  };
+  return { changeId, summary, writes: [...guards, ...writes], audit: [audit, { sql: "DELETE FROM write_guard", params: [] }] };
+}
 
+export async function commitChange(ctx: Ctx, input: ChangeInput): Promise<ChangeResult> {
+  const { db } = ctx;
+  const { changeId, summary, writes, audit } = buildChange(ctx, input);
+  const prepare = ({ sql, params }: SqlStatement) =>
+    params.length === 0 ? db.prepare(sql) : db.prepare(sql).bind(...params);
   try {
-    await db.batch([...guards, ...writes, ...(input.extra ?? []), audit, db.prepare("DELETE FROM write_guard")]);
+    await db.batch([...writes.map(prepare), ...(input.extra ?? []), ...audit.map(prepare)]);
   } catch (error) {
     if (isGuardFailure(error)) {
       const { table, id } = input.target;
