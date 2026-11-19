@@ -1,13 +1,17 @@
 import { accessSignIn, type AccessResult } from "./auth/access.ts";
 import { authMode } from "./auth/dev.ts";
 import { isOAuthPath } from "./auth/oauth-routes.ts";
+import { matchBoardAction } from "./board/actions.ts";
+import { type CsrfMode, csrfCookie, csrfFromCookies, newCsrfToken } from "./board/csrf.ts";
 import { notFoundPage, serverErrorPage } from "./board/pages/not-found.ts";
+import { handleBoardPost } from "./board/post.ts";
 import { matchBoardPage } from "./board/router.ts";
 import { THEME_PATH, themeStylesheet } from "./board/theme.ts";
 import { runScheduled } from "./cron.ts";
 import type { Env } from "./env.ts";
 import { apiMethodNotAllowed, handleApi, isApiPath, json } from "./http/api.ts";
 import { handleIntake } from "./http/intake.ts";
+import { htmlResponse, textResponse } from "./http/respond.ts";
 import { MCP_ROUTE } from "./mcp/route.ts";
 import { withSecurityHeaders } from "./security.ts";
 
@@ -18,33 +22,15 @@ const FILE_PATH = /\/[^/]+\.[A-Za-z0-9]+$/;
 
 const SERVER_ERROR = "Something went wrong on the server. Nothing was changed.";
 
-function htmlResponse(body: string, status: number): Response {
-  return withSecurityHeaders(
-    new Response(body, {
-      status,
-      headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" },
-    }),
-  );
-}
-
 function cssResponse(body: string): Response {
   return withSecurityHeaders(
     new Response(body, { headers: { "Content-Type": "text/css; charset=utf-8", "Cache-Control": "no-store" } }),
   );
 }
 
-function textResponse(body: string, status: number): Response {
-  return withSecurityHeaders(
-    new Response(`${body}\n`, {
-      status,
-      headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" },
-    }),
-  );
-}
-
 function methodNotAllowed(): Response {
   return withSecurityHeaders(
-    new Response("The board is read-only. Send a GET request instead.\n", {
+    new Response("This address only answers GET requests.\n", {
       status: 405,
       headers: { "Content-Type": "text/plain; charset=utf-8", Allow: "GET, HEAD" },
     }),
@@ -100,7 +86,18 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
     }
   }
 
-  if (!isRead(request)) return methodNotAllowed();
+  // Board writes: only the paths in src/board/actions.ts; every other POST, PUT, DELETE ... is 405 (decision 0017).
+  const csrfMode: CsrfMode = mode.kind === "dev" ? "dev" : "production";
+  if (!isRead(request)) {
+    const action = request.method === "POST" ? matchBoardAction(pathname) : null;
+    if (action === null) return methodNotAllowed();
+    try {
+      return await handleBoardPost(request, env, csrfMode, signIn, action);
+    } catch {
+      console.error(JSON.stringify({ event: "board_post_failed" }));
+      return htmlResponse(serverErrorPage(), 500);
+    }
+  }
 
   // Before the static-file branch: it looks like a file, but the Worker writes it from the settings.
   if (pathname === THEME_PATH) {
@@ -119,8 +116,12 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
     try {
       const auth = await signIn();
       if (!auth.ok) return textResponse(auth.message, auth.status);
-      const result = await page(env.DB, new Date(), url.searchParams);
-      return htmlResponse(result.body, result.status);
+      // A page that finds no CSRF cookie makes one token for its Set-Cookie and every form on it (decision 0014).
+      const cookie = csrfFromCookies(request, csrfMode);
+      const csrf = cookie ?? newCsrfToken();
+      const result = await page({ db: env.DB, now: new Date(), url, csrf });
+      const headers: Record<string, string> = cookie === null ? { "Set-Cookie": csrfCookie(csrf, csrfMode) } : {};
+      return htmlResponse(result.body, result.status, headers);
     } catch {
       console.error(JSON.stringify({ event: "board_failed" }));
       return htmlResponse(serverErrorPage(), 500);

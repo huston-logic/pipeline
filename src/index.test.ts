@@ -56,7 +56,7 @@ function assertSecurityHeaders(res: Response) {
   const csp = res.headers.get("Content-Security-Policy") ?? "";
   assert.match(csp, /default-src 'self'/);
   assert.match(csp, /frame-ancestors 'none'/);
-  assert.match(csp, /script-src 'none'/);
+  assert.match(csp, /script-src 'self'/);
   assert.doesNotMatch(csp, /unsafe-inline|unsafe-eval/);
   assert.equal(res.headers.get("X-Content-Type-Options"), "nosniff");
   assert.ok(res.headers.get("Referrer-Policy"));
@@ -132,7 +132,7 @@ test("/theme.css comes from the settings: text/css, not cached, security headers
   assert.equal((await get("/theme.css", env, { method: "POST" })).status, 405);
 });
 
-test("the read-only board refuses POST with 405 and an Allow header", async () => {
+test("a POST to a board page that is not a write path is 405 with an Allow header", async () => {
   const res = await get("/", fakeEnv(), { method: "POST", body: "x" });
   assert.equal(res.status, 405);
   assert.equal(res.headers.get("Allow"), "GET, HEAD");

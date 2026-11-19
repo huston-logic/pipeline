@@ -1,12 +1,12 @@
 // /contacts/<id>: one contact's details, custom fields, every deal of theirs, their open tasks and one timeline (the
 // contact's own entries and their deals', newest first). Outside text is labelled exactly as on the deal page.
-import type { Db } from "../../db/db.ts";
 import { listFieldDefs } from "../../db/queries.ts";
 import { ownerTimezone } from "../../services/lookup.ts";
 import { type ContactDetail, contactDetail, type DealItem } from "../../services/read.ts";
 import { formatLocal } from "../../time.ts";
 import { type Html, html } from "../html.ts";
-import { type Look, renderPage } from "../layout.ts";
+import type { PageContext } from "../context.ts";
+import { renderPage } from "../layout.ts";
 import { dealLink, empty, formatNumber, labelled, type Pair, pairs, section, tag, when } from "../parts.ts";
 import { customRows, outsideNote, STATUS, taskCard, timelineItem } from "../records.ts";
 
@@ -103,7 +103,8 @@ function hasOutsideText(detail: ContactDetail): boolean {
 }
 
 /** The contact page, or null when there is no contact with this id (the caller answers with the 404 page). */
-export async function contactPage(db: Db, id: string, now: Date, look: Look): Promise<string | null> {
+export async function contactPage(ctx: PageContext, id: string): Promise<string | null> {
+  const { db, now } = ctx;
   const tz = await ownerTimezone(db);
   const detail = await contactDetail(db, id, tz, now);
   if (detail === null) return null;
@@ -121,7 +122,7 @@ export async function contactPage(db: Db, id: string, now: Date, look: Look): Pr
     title: name,
     description: `Details, deals, open tasks and timeline for ${name}.`,
     current: `/contacts/${contact.id}`,
-    look,
+    frame: ctx,
     body: html`<p class="back"><a href="/contacts">Back to contacts</a></p>
 <h1>${labelled(contact.name, outside.has("name"))}</h1>
 ${company}

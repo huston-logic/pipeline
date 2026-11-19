@@ -31,22 +31,28 @@ this file before changing the repo, and update it when a rule changes.
   brief). `run_worker_first: true`, so every request reaches the Worker; it hands file requests
   (a path ending in `name.ext`) to `env.ASSETS` and renders its own 404 page when the file is missing.
 - **The board is HTML rendered by the Worker** (decisions 0001 and 0014): no React, no framework. Pages
-  are modules in `src/board/pages/` that return `renderPage({ title, description, body, current, look })` from
-  `src/board/layout.ts` (the layout appends " · <business name>" to the title). Every board path is listed in
-  `src/board/routes.ts` (import-free; the accessibility test, `npm run screenshots` and `lighthouserc.cjs` read it),
+  are modules in `src/board/pages/` that take a `PageContext` (`src/board/context.ts`: db, now, query, `here`, the CSRF
+  token, the look and the change banner) and return `renderPage({ title, description, body, current, frame: ctx })`
+  from `src/board/layout.ts` (the layout appends " · <business name>" to the title and draws the banner). Every board
+  path is listed in `src/board/routes.ts` (import-free; the accessibility test, `npm run screenshots` and `lighthouserc.cjs` read it),
   with the nav (`navItems`: Today, Pipeline, Contacts, Brief, More; `moreItems`: Rules, Changes, Export). Pages are
-  GET and HEAD with `Cache-Control: no-store`.
-- **Board edits** (decision 0014): a board `POST` calls the same service function as the matching MCP tool (actor
-  `owner`), never SQL of its own, so every edit is audited and undoable. Each POST needs the sign-in, a same-origin
-  request and the CSRF token (hidden `csrf` field matching the cookie), then answers 303 back to the page with
-  `?change=<id>` and an Undo button. Closing a deal (Won, Lost, Not now) asks for confirmation first.
+  GET and HEAD with `Cache-Control: no-store`; a page that finds no CSRF cookie sets one.
+- **Board edits** (decisions 0014, 0017): every board write path is in the route table in `src/board/actions.ts`; a
+  POST to any other path is 405. `src/board/post.ts` checks, in order, the sign-in, the same origin, a form body
+  (`application/x-www-form-urlencoded`, at most 16 KB) and the CSRF token (hidden `csrf` field matching the cookie),
+  before the handler. A handler calls the same service function as the matching MCP tool (actor `owner`, tool = that
+  tool's name), never SQL of its own, so every edit is audited and undoable; it answers 303 to the form's `return_to`
+  (checked by `src/board/return-to.ts`) with `?change=<id>`, which the page shows in the change banner with an Undo
+  button. A `UserError` is a 422 page with the message. Closing a deal (Won, Lost, Not now), and an Undo that would
+  remove records, ask for confirmation first. Forms use `postForm`/`formBasics` from `src/board/forms.ts`.
 - **Browser JavaScript** (decision 0014): only first-party files from `public/`, loaded with `defer`, as progressive
-  enhancement. Every action must also work as a plain form with JavaScript off. No framework, no build step, no
-  third-party code, at most 3 KB gzipped.
+  enhancement, and only on pages that pass `script: true` to `renderPage`. Every action must also work as a plain form
+  with JavaScript off. No framework, no build step, no third-party code, no eval, at most 3 KB gzipped (a test checks).
+  Today that is `public/board.js`: drag a pipeline card to another stage, which submits the card's Move to form.
 - **Markup goes through the `html` tag** (`src/board/html.ts`), which escapes every interpolation. `raw()` is only for
   markup written in this repo, never for data. No other way of building HTML.
-- **Static files:** `npm run build` (`scripts/build.mjs`) copies `public/` (`board.css`, `robots.txt`, `_headers`) into
-  `out/` and writes `index.html` (a notice for when the Worker is not running), `404.html` and an empty `sitemap.xml`.
+- **Static files:** `npm run build` (`scripts/build.mjs`) copies `public/` (`board.css`, `board.js`, `robots.txt`,
+  `_headers`) into `out/` and writes `index.html` (a notice for when the Worker is not running), `404.html` and an empty `sitemap.xml`.
 - **Styles:** one stylesheet, `public/board.css`, following `docs/STYLE-GUIDE.md` (Huston Logic v3 adapted to the
   board, decision 0015). Colors are the `:root` tokens there (`--silver`, `--ink`, `--ink-2`, `--green`, `--rust`,
   `--tint`, `--line`, `--accent`, ...); never hard-code a color elsewhere. Components use `--accent` for brand accents
@@ -111,9 +117,9 @@ this file before changing the repo, and update it when a rule changes.
 
 - No secrets in the repo, in tests or in logs. Secrets exist only as Worker secrets that each copy's owner sets;
   `docs/SECRETS.md` lists names only. `.env*` (except `.env.example`) and `.dev.vars*` are git-ignored.
-- Every response carries the headers in `src/security.ts`: CSP `default-src 'self'; script-src 'none'` (`'self'` once the first board script ships, decision 0014)
-  (`style-src 'self'`, `img-src 'self' data:`, `object-src 'none'`, `base-uri 'none'`, `form-action 'self'`,
-  `frame-ancestors 'none'`), `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy`,
+- Every response carries the headers in `src/security.ts`: CSP `default-src 'self'; script-src 'self'` (the board's own
+  `/board.js`, decisions 0014 and 0017; `public/` holds only scripts written in this repo) (`style-src 'self'`,
+  `img-src 'self' data:`, `object-src 'none'`, `base-uri 'none'`, `form-action 'self'`, `frame-ancestors 'none'`), `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy`,
   `Permissions-Policy`, HSTS and COOP/CORP. `public/_headers` repeats them for static files and must stay identical
   (a test checks). Never add `'unsafe-inline'` or `'unsafe-eval'`, and never loosen the policy without a decision
   record.

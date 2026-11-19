@@ -1,11 +1,11 @@
 // /companies: the Contacts tab's second view. Contacts grouped by company (their `business`, compared ignoring case and
 // spaces), each with its people, open deals and open value; "No company" last. A company name from outside is
 // labelled and never becomes a link or part of a URL (decision 0016).
-import type { Db } from "../../db/db.ts";
 import { ownerTimezone } from "../../services/lookup.ts";
 import { type CompanyGroup, listCompanies } from "../../services/read.ts";
 import { type Html, html } from "../html.ts";
-import { type Look, renderPage } from "../layout.ts";
+import type { PageContext } from "../context.ts";
+import { renderPage } from "../layout.ts";
 import { contactLink, count, dealLink, empty, formatNumber, labelled } from "../parts.ts";
 import { viewSwitch } from "./contacts.ts";
 
@@ -35,7 +35,8 @@ ${
 </li>`;
 }
 
-export async function companiesPage(db: Db, now: Date, look: Look): Promise<string> {
+export async function companiesPage(ctx: PageContext): Promise<string> {
+  const { db, now } = ctx;
   const tz = await ownerTimezone(db);
   const { companies, noCompany } = await listCompanies(db, now, tz);
   const groups = noCompany === null ? companies : [...companies, noCompany];
@@ -50,7 +51,7 @@ ${noCompany === null ? "" : html`<ul class="cards cards-wide">${companyCard(noCo
     title: "Companies",
     description: "Your contacts grouped by company, with each company's people, open deals and open value.",
     current: "/companies",
-    look,
+    frame: ctx,
     body: html`<h1>Companies</h1>
 ${viewSwitch("/companies")}
 ${body}`,

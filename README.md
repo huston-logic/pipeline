@@ -131,7 +131,7 @@ reasoning.
 
 ## Security headers
 
-The Worker sets one policy on every response (`src/security.ts`): a CSP of `default-src 'self'; script-src 'none'` (`'self'` once the first board script ships, decision 0014)
+The Worker sets one policy on every response (`src/security.ts`): a CSP of `default-src 'self'; script-src 'self'` (only the board's own `/board.js`, decision 0014)
 with `style-src 'self'`, `img-src 'self' data:`, `base-uri 'none'`, `form-action 'self'`, `frame-ancestors 'none'`, plus
 `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`, HSTS and COOP/CORP. Board pages
 also send `Cache-Control: no-store`. `public/_headers` repeats the same headers for static files; a test fails if the

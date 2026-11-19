@@ -9,8 +9,13 @@ const TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa", "best-prac
 const OUT = ".owner-review/screenshots";
 const NOT_FOUND_PATH = "/this-page-does-not-exist";
 
+// "/pipeline?view=list" becomes "pipeline-list".
 const nameOf = (path: string) =>
-  path === "/" ? "today" : path === NOT_FOUND_PATH ? "not-found" : path.slice(1).replaceAll("/", "-");
+  path === "/"
+    ? "today"
+    : path === NOT_FOUND_PATH
+      ? "not-found"
+      : path.slice(1).replace(/\?view=/, "-").replaceAll("/", "-");
 
 for (const path of [...boardRoutes, NOT_FOUND_PATH]) {
   test(`${path}: screenshot, no axe violations, no horizontal scroll`, async ({ page }) => {
@@ -35,6 +40,8 @@ for (const path of [...boardRoutes, NOT_FOUND_PATH]) {
     // (a stitched full-page capture leaves the tab bar in the middle of the page).
     const height = await page.evaluate(() => document.documentElement.scrollHeight);
     await page.setViewportSize({ width: viewport.width, height: Math.max(height, viewport.height) });
+    // Two frames after the resize, so the capture is of the page laid out at the new height (otherwise it can repeat).
+    await page.evaluate(() => new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done()))));
     await page.screenshot({ path: `${OUT}/${nameOf(path)}-${viewport.width}.png`, fullPage: true });
   });
 }

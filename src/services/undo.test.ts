@@ -9,7 +9,7 @@ import { updateDeal } from "./deals.ts";
 import { UserError } from "./errors.ts";
 import { addLead, updateContact } from "./leads.ts";
 import { addTask } from "./tasks.ts";
-import { undoChange } from "./undo.ts";
+import { undoChange, undoRemovals } from "./undo.ts";
 
 const CREATED = new Date("2026-11-16T18:00:00.000Z");
 const NOW = new Date("2026-11-19T18:00:00.000Z");
@@ -188,4 +188,21 @@ test("when another undo wins the race, the slower one is told the change was alr
 
   assert.match(message, new RegExp(`^${move.changeId} was already undone \\(by chg_[a-z2-7]{12}\\)\\. Nothing to do\\.$`));
   assert.equal((await deal(db, dealId))?.stage_key, "new_inquiry", "restored once, not twice");
+});
+
+test("undoRemovals counts the records an undo would remove; a move's own stage-change entry doesn't count", async () => {
+  const { db, changeId, dealId } = await setup();
+  assert.deepEqual(await undoRemovals(db, changeId), [
+    { table: "contacts", count: 1 },
+    { table: "deals", count: 1 },
+  ]);
+  const task = await addTask(ctxAt(db, NOW, "add_task"), { dealId, title: "Call back" });
+  assert.deepEqual(await undoRemovals(db, task.changeId), [{ table: "tasks", count: 1 }]);
+  const logged = await logActivity(ctxAt(db, NOW, "log_activity"), { dealId, type: "call", summary: "Called." });
+  assert.deepEqual(await undoRemovals(db, logged.changeId), [{ table: "activities", count: 1 }]);
+  const moved = await updateDeal(ctxAt(db, NOW, "update_deal"), dealId, { stage: "replied" });
+  assert.deepEqual(await undoRemovals(db, moved.changeId), [], "a move only puts values back");
+  const edited = await updateContact(ctxAt(db, NOW, "update_contact"), "Pat Example", { phone: "555-0100" });
+  assert.deepEqual(await undoRemovals(db, edited.changeId), []);
+  assert.deepEqual(await undoRemovals(db, "chg_nothing0000"), []);
 });

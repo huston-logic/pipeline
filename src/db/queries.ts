@@ -193,6 +193,19 @@ export async function getRulebook(db: Db, name?: string): Promise<RulebookRow[]>
     : all<RulebookRow>(db, "SELECT * FROM rulebook WHERE name = ?", [name]);
 }
 
+export async function getAudit(db: Db, id: string): Promise<AuditRow | null> {
+  return db.prepare("SELECT * FROM audit_log WHERE id = ?").bind(id).first<AuditRow>();
+}
+
+/** Deals that are not archived, counted per stage key. */
+export async function countDealsByStage(db: Db): Promise<{ stage_key: string; n: number }[]> {
+  return all<{ stage_key: string; n: number }>(
+    db,
+    "SELECT stage_key, COUNT(*) AS n FROM deals WHERE archived = 0 GROUP BY stage_key",
+    [],
+  );
+}
+
 /** Changes at or after `since` (UTC ISO), newest first. */
 export async function listAudit(db: Db, since: string, options: { limit?: number } = {}): Promise<AuditRow[]> {
   return all<AuditRow>(db, "SELECT * FROM audit_log WHERE at >= ? ORDER BY at DESC, rowid DESC LIMIT ?", [

@@ -10,7 +10,7 @@ const page = (current?: string, look?: { name: string }) =>
     description: "A <fake> description",
     body: html`<h1>Heading</h1>`,
     current,
-    look,
+    frame: look === undefined ? undefined : { look },
   });
 
 test("renders a full document with lang, a viewport that covers the safe areas, title and meta description", () => {
@@ -30,7 +30,7 @@ test("has a skip link first, a header, one labelled nav, main#main and a footer"
   assert.equal(out.match(/<nav\b/g)?.length, 1);
   assert.match(out, /<nav class="app-nav" aria-label="Board pages">/);
   assert.match(out, /<main id="main"/);
-  assert.match(out, /<footer class="app-footer">\n<p>Changes are made by talking to your AI app\.<\/p>/);
+  assert.match(out, /<footer class="app-footer">\n<p>Move deals and undo changes here, or change anything by talking to your AI app\.<\/p>/);
 });
 
 test("the layout adds no <h1> and no script of its own", () => {
@@ -80,4 +80,19 @@ test("without a look the page says Pipeline and links no theme; with one it show
 test("lookOf uses the business name, or Pipeline when none is set", () => {
   assert.deepEqual(lookOf({ business_name: "Fernwood Engineering" }), { name: "Fernwood Engineering" });
   assert.deepEqual(lookOf({ business_name: null }), { name: "Pipeline" });
+});
+
+test("a change banner from the frame sits right after the page's h1, so it is the first thing read after the heading", () => {
+  const frame = { look: { name: "Pipeline" }, banner: html`<div class="banner" role="status">Moved</div>` };
+  const out = renderPage({ title: "Pipeline", description: "x", body: html`<h1>Pipeline</h1>\n<p>Rest</p>`, frame });
+  assert.match(out, /<main id="main">\n<h1>Pipeline<\/h1>\n<div class="banner" role="status">Moved<\/div>\n<p>Rest<\/p>/);
+  const backFirst = renderPage({ title: "Deal", description: "x", body: html`<p class="back">Back</p>\n<h1>Deal</h1>\n<p>Rest</p>`, frame });
+  assert.match(backFirst, /<h1>Deal<\/h1>\n<div class="banner" role="status">Moved<\/div>\n<p>Rest<\/p>/);
+});
+
+test("script: true loads /board.js with defer in the head; pages without it load no script", () => {
+  const out = renderPage({ title: "Pipeline", description: "x", body: html`<h1>Pipeline</h1>`, script: true });
+  assert.equal(out.match(/<script\b/g)?.length, 1);
+  assert.match(out, /<script src="\/board.js" defer><\/script>\n<\/head>/);
+  assert.doesNotMatch(page("/"), /board\.js/);
 });

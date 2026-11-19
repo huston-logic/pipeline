@@ -1,7 +1,7 @@
 // The board's page frame (docs/STYLE-GUIDE.md §7): an app bar and a fixed tab bar on phones, a side bar on wide
 // screens. Both are one <nav>; CSS lays it out for the width. The page body supplies the single <h1>.
 import type { SettingsRow } from "../db/db.ts";
-import { type Html, html } from "./html.ts";
+import { type Html, html, raw } from "./html.ts";
 import { icon } from "./icons.ts";
 import { moreItems, type NavItem, navItems } from "./routes.ts";
 
@@ -14,6 +14,9 @@ export function lookOf(settings: Pick<SettingsRow, "business_name">): Look {
   return { name: settings.business_name ?? DEFAULT_NAME };
 }
 
+/** What the router hands every signed-in page's frame: the owner's look and the change banner (decision 0017). */
+export type PageFrame = { look: Look; banner?: Html | "" };
+
 export type PageOptions = {
   /** The page's own title; the layout adds " · <business name>". */
   title: string;
@@ -21,9 +24,11 @@ export type PageOptions = {
   body: Html;
   /** Path of the page being shown; its nav link gets aria-current. Leave out on pages outside the nav. */
   current?: string;
-  /** The owner's look, on signed-in pages. Without it (404, static and sign-in pages) the board says "Pipeline" and
-   * links no /theme.css, which needs a sign-in. */
-  look?: Look;
+  /** The owner's look and the change banner, on signed-in pages. Without it (404, static and sign-in pages) the board
+   * says "Pipeline" and links no /theme.css, which needs a sign-in. */
+  frame?: PageFrame;
+  /** Loads /board.js (decision 0014): only pages whose forms it enhances. */
+  script?: boolean;
 };
 
 /** The nav item a page belongs to without being it: a deal is in Pipeline; a contact and Companies are in Contacts;
@@ -66,8 +71,20 @@ ${items}
 /** The first letter of the business name, for the monogram tile. */
 const initial = (name: string) => ([...name.trim()][0] ?? "P").toUpperCase();
 
-export function renderPage({ title, description, body, current, look }: PageOptions): string {
-  const name = look?.name ?? DEFAULT_NAME;
+/**
+ * The page body with the change banner right after its h1, so a screen reader meets it straight after the heading.
+ * Both are markup this repo wrote (data inside the h1 is escaped, so its closing tag can only be the page's own).
+ */
+function withBanner(body: Html, banner: Html | "" | undefined): Html {
+  if (!banner) return body;
+  const end = body.value.indexOf("</h1>");
+  if (end < 0) return html`${banner}\n${body}`;
+  const split = end + "</h1>".length;
+  return html`${raw(body.value.slice(0, split))}\n${banner}${raw(body.value.slice(split))}`;
+}
+
+export function renderPage({ title, description, body, current, frame, script = false }: PageOptions): string {
+  const name = frame?.look.name ?? DEFAULT_NAME;
   return html`<!doctype html>
 <html lang="en">
 <head>
@@ -77,7 +94,7 @@ export function renderPage({ title, description, body, current, look }: PageOpti
 <meta name="description" content="${description}">
 <link rel="icon" href="data:,">
 <link rel="stylesheet" href="/board.css">
-${look ? html`<link rel="stylesheet" href="/theme.css">\n` : ""}</head>
+${frame ? html`<link rel="stylesheet" href="/theme.css">\n` : ""}${script ? html`<script src="/board.js" defer></script>\n` : ""}</head>
 <body>
 <a class="skip-link" href="#main">Skip to content</a>
 <div class="app">
@@ -87,10 +104,10 @@ ${nav(current)}
 </header>
 <div class="app-body">
 <main id="main">
-${body}
+${withBanner(body, frame?.banner)}
 </main>
 <footer class="app-footer">
-<p>Changes are made by talking to your AI app.</p>
+<p>Move deals and undo changes here, or change anything by talking to your AI app.</p>
 </footer>
 </div>
 </div>

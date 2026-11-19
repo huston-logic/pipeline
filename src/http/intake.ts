@@ -7,8 +7,9 @@ import { newId } from "../ids.ts";
 import { commitChange, type Ctx, isDuplicateEmailFailure, oneLine, type RowChange } from "../services/change.ts";
 import { dealLabel, isTrusted } from "../services/labels.ts";
 import { firstStageOfKind } from "../services/lookup.ts";
+import { MAX_BODY_BYTES, readCappedBody, secretMatches } from "./limits.ts";
 
-export const MAX_BODY_BYTES = 16 * 1024;
+export { MAX_BODY_BYTES };
 export const DEDUPE_WINDOW_MS = 10 * 60 * 1000;
 export const DEFAULT_SOURCE = "website form";
 
@@ -30,46 +31,6 @@ function json(status: number, body: { ok: true } | { ok: false; error: string },
 }
 
 const logEvent = (event: string) => console.log(JSON.stringify({ event }));
-
-/** Reads at most MAX_BODY_BYTES, whatever Content-Length claims; a longer body is refused without reading the rest. */
-async function readCappedBody(request: Request): Promise<string> {
-  const tooBig = () => new Reject(413, "That request is too large. Send at most 16 KB.");
-  const declared = Number(request.headers.get("Content-Length"));
-  if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) throw tooBig();
-  if (!request.body) return "";
-  const reader = request.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    total += value.byteLength;
-    if (total > MAX_BODY_BYTES) {
-      await reader.cancel();
-      throw tooBig();
-    }
-    chunks.push(value);
-  }
-  const bytes = new Uint8Array(total);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return new TextDecoder().decode(bytes);
-}
-
-async function sha256(text: string): Promise<Uint8Array> {
-  return new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text)));
-}
-
-/** Compares SHA-256 digests with an XOR loop, so the time doesn't depend on how much of the secret matched. */
-async function secretMatches(given: string, expected: string): Promise<boolean> {
-  const [a, b] = await Promise.all([sha256(given), sha256(expected)]);
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= (a[i] ?? 0) ^ (b[i] ?? 0);
-  return diff === 0;
-}
 
 type Fields = Record<string, unknown>;
 
@@ -236,6 +197,7 @@ async function store(env: Env, enquiry: Enquiry, now: Date): Promise<"created" |
 async function handle(request: Request, env: Env, now: Date): Promise<Response> {
   if (request.method !== "POST") throw new Reject(405, "Send the enquiry with POST.", { Allow: "POST" });
   const body = await readCappedBody(request);
+  if (body === null) throw new Reject(413, "That request is too large. Send at most 16 KB.");
 
   if (env.INTAKE_RATE_LIMIT) {
     const key = request.headers.get("CF-Connecting-IP") ?? "unknown";

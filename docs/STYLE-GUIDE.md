@@ -204,7 +204,7 @@ Pill, 14px 600: `ink` on `--tint` for neutral states (a stage, "Active"), rust o
 ### 7.8 Empty state (`.empty`)
 A quiet white panel (`--white`, `--r-card`, `--edge`, no shadow): one line saying what is missing ("Nothing due today."),
 one line in `ink-2` saying how things get here (by talking to the AI app, by the website form, by a rule). No
-illustration, no button (the board gets edit buttons in later tasks).
+illustration, and no promise of a button the page doesn't have.
 
 ### 7.9 Outside text (`.outside`, `.outside-block`)
 The label: a rust outline pill "From outside". The block (a form message): a `--silver-2` panel, `--r-card`, the
@@ -214,6 +214,10 @@ label and "Message as received" on top, then the text as received (`pre-wrap`). 
 - **Primary button** (`.button`): `--accent` fill, white label, 17px 600, at least 48px tall, padding 0 20px,
   `--r-btn`, an inline icon before the label when one helps (download). Hover and focus: the slow underline draws on
   the label. No color change, no scale.
+- **Small button** (`.button-small`): the primary button at 44px tall, 16px, padding 0 16px, for a button inside a
+  card (Move).
+- **Quiet button** (`.button-quiet`): white fill, `ink` label, a 1px `ink-2` inset edge, 44px tall, for a second
+  action or a button on a tinted panel (Undo).
 - **Standalone link:** `--accent`, with the slow underline.
 - **Link in a sentence:** inherits the text color with a permanent 1px `--underline` underline (`.25em` offset); the
   rust underline draws over it.
@@ -227,7 +231,8 @@ Each destination (Rules, Changes, Export) is one link styled as a card: icon til
 one-line description in `ink-2`. The whole card is the link.
 
 ### 7.12 Footer
-`ink-2`, 15px, one line: "Changes are made by talking to your AI app." (true until the board can edit, task R3).
+`ink-2`, 15px, one line: "Move deals and undo changes here, or change anything by talking to your AI app." (R4 widens
+it as more edits arrive).
 
 ### 7.13 View switch (`.view-switch`)
 Two views of one tab (People / Companies, decision 0016): a white strip with an `--edge` border and `--r-btn`
@@ -244,6 +249,38 @@ search box on its own row, the other control and the button below; from 40rem, o
 `.card-sub`: one line under a card title in `ink-2`, 15px ("2 open deals, value 17,900"). `.card-sub-head`: a small
 heading inside a card (15px, 600, `ink-2`, the text face) on a `--divider` line, when a card holds two lists. Links in
 `.card-links` sit above a card title's whole-card link, so both can be tapped.
+
+### 7.16 Change banner (`.banner`)
+After every board write (decision 0017): the change's one-line summary, 600, in `ink` on `--accent-tint`, `--r-card`,
+at most 52rem wide, right after the page's h1, `role="status"`. An Undo button (quiet, §7.10) sits at its right
+end, or wraps under it on a phone. An undone change says "This change was undone." in place of the button. No icon, no
+close button, nothing that disappears on its own.
+
+### 7.17 Move to form (`.move`, `.move-details`)
+A select of every stage (open ones first, then "Close the deal": Won, Lost, Not now; the deal's own marked
+"(current)") and a small Move button, in one row that wraps when narrow. The select is 44px tall with a 1px `ink-2`
+edge (§7.14). On cards and list rows it sits under a native disclosure, "Move to another stage" (15px, 600, `ink-2`,
+the browser's own triangle), on a `--divider` line, so a card stays short; its label is then read, not shown. On the
+deal page and the refused page it is open, with a visible "Move to" label. It sits above the card title's whole-card
+link.
+
+### 7.18 Pipeline board (`.board`, `.column`, `.stage-jump`, `.closed`)
+- **Phone (under 40rem):** a row of jump links (white pills with an `--edge` border, label and count, 44px) above the
+  stacked stage sections; each section is an h2 with its count line and the deal cards; the Closed summary comes last.
+- **From 40rem:** the columns sit side by side, 14rem each (sharing spare room), as `--silver-2` lanes (`--r-card`, 12–14px padding) with
+  white cards, in a region (`role="region"`, labelled, `tabindex="0"`) that scrolls sideways on its own; from 60rem it
+  runs into the content's right padding. Lane headings are 18px. The Closed summary ("Closed" in `ink-2` 600, then one
+  white box per closed stage with its label and "3 deals") sits above the board.
+- **Dragging** (desktop, `board.js`): a draggable card shows a grab cursor; while dragging, the card fades to half,
+  every stage it can go to gets a 2px dashed `ink-2` outline, and the one under the pointer a 3px solid `--accent`
+  outline, the `--accent-tint` fill and the words "Drop here". No motion.
+- **List view:** the stage sections of the phone layout at every width, each deal a row on one panel; from 40rem the
+  Move to disclosure sits in a 19rem column on the right.
+
+### 7.19 Confirm and refused pages
+The confirm page (closing a deal, or an undo that removes records): the question as the h1 ("Mark … as Won?"), one lede line, then the primary button
+("Mark as Won") and a Cancel link side by side, 44px tall. The refused page: an h1 saying what didn't happen, the
+service's message as the lede in `ink`, the form again in a card at most 28rem wide, and "Back to the page".
 
 ## 8. Line art and icons
 
@@ -285,7 +322,8 @@ Checked at 375 and 1280px wide with no horizontal scroll (`npm run screenshots`)
 
 ## 12. Performance budget (the `lighthouse` check: 90 or higher on mobile, all four categories)
 
-- No font files, no images, no JavaScript. Two small stylesheets (`/board.css` static, `/theme.css` from the Worker).
+- No font files, no images. Two small stylesheets (`/board.css` static, `/theme.css` from the Worker). One small
+  script, `/board.js` (under 3 KB gzipped, `defer`), on the pipeline board only; every other page has none.
 - The glow is one CSS radial gradient; no `filter`, no `backdrop-filter`.
 - Icons are inline SVG.
 

@@ -7,6 +7,7 @@ import type {
   ActivityRow,
   ActivityType,
   Actor,
+  AuditRow,
   BriefRow,
   ContactRow,
   Db,
@@ -15,7 +16,7 @@ import type {
   StageKind,
   TaskRow,
 } from "../db/db.ts";
-import { listAudit, listStages, searchContacts as searchContactRows } from "../db/queries.ts";
+import { countDealsByStage, getAudit, listAudit, listStages, searchContacts as searchContactRows } from "../db/queries.ts";
 import { isQuiet } from "../rules/engine.ts";
 import { addDays, dayBoundsUtc, formatLocal, localDate } from "../time.ts";
 import { UserError } from "./errors.ts";
@@ -694,9 +695,8 @@ export interface ChangeItem {
   undoOf: string | null;
 }
 
-/** Changes at or after `since`, newest first; at most `limit` (100 unless given). */
-export async function recentChanges(db: Db, since: Date, options: { limit?: number } = {}): Promise<ChangeItem[]> {
-  return (await listAudit(db, since.toISOString(), options)).map((row) => ({
+function toChangeItem(row: AuditRow): ChangeItem {
+  return {
     changeId: row.id,
     at: row.at,
     actor: row.actor,
@@ -708,7 +708,23 @@ export async function recentChanges(db: Db, since: Date, options: { limit?: numb
     undoneAt: row.undone_at,
     undoneBy: row.undone_by,
     undoOf: row.undo_of,
-  }));
+  };
+}
+
+/** Changes at or after `since`, newest first; at most `limit` (100 unless given). */
+export async function recentChanges(db: Db, since: Date, options: { limit?: number } = {}): Promise<ChangeItem[]> {
+  return (await listAudit(db, since.toISOString(), options)).map(toChangeItem);
+}
+
+/** One change by id, or null when there is none. */
+export async function getChange(db: Db, id: string): Promise<ChangeItem | null> {
+  const row = await getAudit(db, id);
+  return row === null ? null : toChangeItem(row);
+}
+
+/** How many deals that are not archived each stage holds, closed stages included; a stage with none is missing. */
+export async function stageCounts(db: Db): Promise<Map<string, number>> {
+  return new Map((await countDealsByStage(db)).map((row) => [row.stage_key, row.n]));
 }
 
 export const CHANGE_LOG_DAYS = 30;

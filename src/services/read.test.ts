@@ -11,6 +11,7 @@ import { addLead } from "./leads.ts";
 import {
   contactDetail,
   type ContactSort,
+  getChange,
   getDealBrief,
   listCompanies,
   listContacts,
@@ -18,6 +19,7 @@ import {
   pipelineSummary,
   recentChanges,
   searchContacts,
+  stageCounts,
   whatsDue,
 } from "./read.ts";
 import { undoChange } from "./undo.ts";
@@ -398,4 +400,28 @@ test("recentChanges lists changes newest first with who, what and whether they w
   assert.equal(changes[1]?.actor, "ai");
   assert.equal(changes[1]?.at, "2026-11-19T17:00:00.000Z");
   assert.equal((await recentChanges(db, new Date(0))).length, 3);
+});
+
+test("getChange finds one change by id, whatever its age; an unknown id is null", async () => {
+  const db = await openTestDb();
+  const ctx: Ctx = { db, now: new Date("2020-01-01T00:00:00.000Z"), actor: "owner", tool: "add_lead" };
+  const lead = await addLead(ctx, { name: "Pat Example" });
+  const undo = await undoChange({ ...ctx, tool: "undo_change" }, lead.changeId);
+  const change = await getChange(db, lead.changeId);
+  assert.equal(change?.summary, lead.summary);
+  assert.equal(change?.actor, "owner");
+  assert.equal(change?.undone, true);
+  assert.equal(change?.undoneBy, undo.changeId);
+  assert.equal((await getChange(db, undo.changeId))?.undoOf, lead.changeId);
+  assert.equal(await getChange(db, "chg_nothing0000"), null);
+});
+
+test("stageCounts counts the deals that are not archived in every stage, closed ones included", async () => {
+  const db = await seededDb();
+  const counts = await stageCounts(db);
+  const open = (await pipelineSummary(db, NOW, TZ)).stages;
+  for (const stage of open) assert.equal(counts.get(stage.key) ?? 0, stage.count, stage.key);
+  assert.equal(counts.get("won"), 1);
+  assert.equal(counts.get("lost"), 1);
+  assert.equal(counts.get("not_now") ?? 0, 0);
 });

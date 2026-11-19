@@ -1,10 +1,10 @@
 import { type BriefItem, type BriefSection, headerDate, SECTION_TITLES } from "../../brief/compose.ts";
-import type { Db } from "../../db/db.ts";
 import { getSettings } from "../../db/queries.ts";
 import { type BriefView, latestBrief } from "../../services/read.ts";
 import { formatLocal } from "../../time.ts";
 import { type Html, html } from "../html.ts";
-import { type Look, renderPage } from "../layout.ts";
+import type { PageContext } from "../context.ts";
+import { renderPage } from "../layout.ts";
 import { empty, labelled, when } from "../parts.ts";
 
 export const briefDate = (localDate: string) => headerDate(localDate);
@@ -41,7 +41,8 @@ ${outside ? html`<p class="note">Lines marked From outside include text from a w
 ${brief.items.length === 0 ? empty("Nothing was due that day.") : sections}`;
 }
 
-export async function briefPage(db: Db, look: Look): Promise<string> {
+export async function briefPage(ctx: PageContext): Promise<string> {
+  const { db } = ctx;
   const settings = await getSettings(db);
   const brief = await latestBrief(db);
   const body =
@@ -55,7 +56,7 @@ export async function briefPage(db: Db, look: Look): Promise<string> {
     title: "Daily brief",
     description: "The latest daily brief: overdue and due-today tasks, quiet deals and new leads, and whether it was emailed.",
     current: "/brief",
-    look,
+    frame: ctx,
     body: html`<h1>Daily brief</h1>
 ${body}`,
   });
