@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { SqliteD1 } from "./db/sqlite-d1.ts";
+import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
+import { createTestDb, SqliteD1 } from "./db/sqlite-d1.ts";
 import type { Env } from "./env.ts";
 import worker from "./index.ts";
 
@@ -99,4 +100,66 @@ test("the read-only board refuses POST with 405 and an Allow header", async () =
 test("scheduled() runs without throwing", async () => {
   const controller = { cron: "0 * * * *", scheduledTime: Date.now(), noRetry() {} } as unknown as ScheduledController;
   await worker.scheduled(controller, fakeEnv(), ctx);
+});
+
+const mcpBody = JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list", params: {} });
+
+function mcpPost(env: Env, host = "localhost:4821") {
+  return worker.fetch(
+    new Request(`http://${host}/mcp`, {
+      method: "POST",
+      headers: { host, "content-type": "application/json", accept: "application/json, text/event-stream" },
+      body: mcpBody,
+    }),
+    env,
+    ctx,
+  );
+}
+
+test("/mcp without a sign-in mode answers 401 with a plain message", async () => {
+  for (const ENVIRONMENT of ["production", "development"]) {
+    const res = await mcpPost({ ...fakeEnv(), ENVIRONMENT });
+    assert.equal(res.status, 401, ENVIRONMENT);
+    assert.match(res.headers.get("Content-Type") ?? "", /^text\/plain/);
+    assert.match(await res.text(), /Sign-in for \/mcp isn't set up/);
+    assertSecurityHeaders(res);
+  }
+});
+
+test("AUTH_MODE=dev in production fails closed with 500 on every route", async () => {
+  const env: Env = { ...fakeEnv(), ENVIRONMENT: "production", AUTH_MODE: "dev" };
+  const responses = [await get("/", env), await get("/board.css", env), await get("/nope", env), await mcpPost(env)];
+  for (const res of responses) {
+    assert.equal(res.status, 500);
+    assert.match(await res.text(), /misconfigured/);
+    assertSecurityHeaders(res);
+  }
+});
+
+test("/mcp in local dev mode serves the MCP tools to an SDK client", async () => {
+  const env: Env = { ...fakeEnv(), DB: await createTestDb(), AUTH_MODE: "dev" };
+  const transport = new StreamableHTTPClientTransport(new URL("http://localhost:4821/mcp"), {
+    fetch: (input: string | URL | Request, init?: RequestInit) => {
+      const request = new Request(input, init);
+      request.headers.set("host", new URL(request.url).host);
+      return worker.fetch(request, env, ctx);
+    },
+  });
+  const client = new Client({ name: "index-test", version: "1.0.0" });
+  await client.connect(transport);
+  const { tools } = await client.listTools();
+  assert.ok(tools.some((tool) => tool.name === "pipeline_summary"));
+  const result = await client.callTool({ name: "pipeline_summary", arguments: {} });
+  assert.match(JSON.stringify(result.content), /Your pipeline is empty/);
+  await client.close();
+});
+
+test("/mcp in dev mode on a host that is not loopback fails closed", async () => {
+  const res = await mcpPost({ ...fakeEnv(), AUTH_MODE: "dev" }, "pipeline.example.com");
+  assert.equal(res.status, 500);
+});
+
+test("GET /mcp is refused: the endpoint is stateless and takes POST", async () => {
+  const res = await get("/mcp", { ...fakeEnv(), AUTH_MODE: "dev" }, { headers: { host: "localhost:4821", accept: "text/event-stream" } });
+  assert.equal(res.status, 405);
 });

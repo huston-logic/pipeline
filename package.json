@@ -11,7 +11,7 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tests/a11y",
     "types": "wrangler types src/worker-configuration.d.ts",
-    "test:worker": "node --disable-warning=ExperimentalWarning --test \"src/**/*.test.ts\" \"scripts/*.test.ts\" \"scripts/*.test.mjs\"",
+    "test:worker": "node --disable-warning=ExperimentalWarning --test \"src/**/*.test.ts\" \"scripts/*.test.ts\" \"scripts/*.test.mjs\" \"tests/e2e/*.test.ts\"",
     "test:a11y": "playwright test",
     "test:lighthouse": "lhci autorun",
     "check:config": "node scripts/check-config.mjs",
@@ -20,6 +20,7 @@
   "devDependencies": {
     "@axe-core/playwright": "4.14.0",
     "@lhci/cli": "0.16.1",
+    "@modelcontextprotocol/client": "2.4.0",
     "@playwright/test": "1.65.0",
     "@types/node": "^20",
     "eslint": "^9",
@@ -38,5 +39,10 @@
   "engines": {
     "node": ">=22.19",
     "npm": ">=10.9.2 <11"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/server": "2.4.0",
+    "agents": "0.33.0",
+    "zod": "4.6.7"
   }
 }

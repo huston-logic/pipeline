@@ -1,0 +1,153 @@
+// End-to-end harness: the real Worker under `wrangler dev --local` with a real local D1 database in a new temp
+// folder (migrations, defaults and the fake seed, set up the way `npm run dev` does it). Local only: no login, no
+// remote resources. One server per test file keeps the suite fast; always `await server.stop()` in `after()`.
+import { type ChildProcess, spawn } from "node:child_process";
+import { mkdtempSync, rmSync } from "node:fs";
+import { createServer } from "node:net";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { build } from "../../scripts/build.mjs";
+import { childEnv, setupLocalDatabase, WRANGLER, wranglerDevArgs } from "../../scripts/dev.mjs";
+
+export const ROOT = fileURLToPath(new URL("../..", import.meta.url));
+
+export interface DevServer {
+  /** http://127.0.0.1:<port> */
+  url: string;
+  /** The temp state folder (wrangler's --persist-to). */
+  stateDir: string;
+  /** Runs the Worker's scheduled() handler once through wrangler's test route. */
+  runCron(): Promise<void>;
+  /** Stops wrangler and workerd (the whole process group) and removes the temp folder. */
+  stop(): Promise<void>;
+}
+
+const HOST = "127.0.0.1";
+const START_TIMEOUT_MS = 90_000;
+const STOP_TIMEOUT_MS = 10_000;
+
+export function freePort(): Promise<number> {
+  return new Promise((resolvePort, reject) => {
+    const probe = createServer();
+    probe.unref();
+    probe.on("error", reject);
+    probe.listen(0, HOST, () => {
+      const address = probe.address();
+      const port = typeof address === "object" && address ? address.port : 0;
+      probe.close(() => (port > 0 ? resolvePort(port) : reject(new Error("No free port found."))));
+    });
+  });
+}
+
+/** A new temp state folder with the local database set up in it. */
+export function prepareState(prefix = "pipeline-e2e-"): string {
+  const stateDir = mkdtempSync(join(tmpdir(), prefix));
+  try {
+    setupLocalDatabase({ root: ROOT, stateDir, now: Date.now(), stdio: "pipe" });
+  } catch (error) {
+    rmSync(stateDir, { recursive: true, force: true });
+    throw error;
+  }
+  return stateDir;
+}
+
+const sleep = (ms: number) => new Promise((done) => setTimeout(done, ms));
+
+/** True while any process in the group is alive. */
+function groupAlive(pid: number): boolean {
+  try {
+    process.kill(-pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function killGroup(pid: number, signal: NodeJS.Signals): void {
+  try {
+    process.kill(-pid, signal);
+  } catch {
+    // Already gone.
+  }
+}
+
+async function stopGroup(child: ChildProcess): Promise<void> {
+  const pid = child.pid;
+  if (pid === undefined) return;
+  killGroup(pid, "SIGTERM");
+  const deadline = Date.now() + STOP_TIMEOUT_MS;
+  while (groupAlive(pid) && Date.now() < deadline) await sleep(100);
+  if (groupAlive(pid)) killGroup(pid, "SIGKILL");
+  while (groupAlive(pid)) await sleep(50);
+}
+
+async function waitUntilReady(url: string, child: ChildProcess, output: () => string): Promise<void> {
+  const deadline = Date.now() + START_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    if (child.exitCode !== null || child.signalCode !== null) {
+      throw new Error(`wrangler dev exited before it was ready:\n${output()}`);
+    }
+    try {
+      const res = await fetch(`${url}/robots.txt`);
+      await res.body?.cancel();
+      if (res.status === 200) return;
+    } catch {
+      // Not listening yet.
+    }
+    await sleep(250);
+  }
+  throw new Error(`wrangler dev was not ready after ${START_TIMEOUT_MS / 1000}s:\n${output()}`);
+}
+
+export async function startDevServer(): Promise<DevServer> {
+  build();
+  const stateDir = prepareState();
+  const port = await freePort();
+  const url = `http://${HOST}:${port}`;
+  // A process group of its own, so stop() reaches workerd as well as wrangler.
+  const child = spawn(WRANGLER, wranglerDevArgs({ port, stateDir, ip: HOST, testScheduled: true }), {
+    cwd: ROOT,
+    env: childEnv(process.env),
+    stdio: ["ignore", "pipe", "pipe"],
+    detached: true,
+  });
+  const lines: string[] = [];
+  const keep = (chunk: Buffer) => {
+    lines.push(chunk.toString());
+    if (lines.length > 200) lines.shift();
+  };
+  child.stdout?.on("data", keep);
+  child.stderr?.on("data", keep);
+  // If the test process ends without stop(), the server must not outlive it.
+  const onExit = () => {
+    if (child.pid !== undefined) killGroup(child.pid, "SIGKILL");
+  };
+  process.on("exit", onExit);
+
+  let stopped: Promise<void> | undefined;
+  const stop = () =>
+    (stopped ??= (async () => {
+      process.off("exit", onExit);
+      await stopGroup(child);
+      rmSync(stateDir, { recursive: true, force: true });
+    })());
+
+  try {
+    await waitUntilReady(url, child, () => lines.join(""));
+  } catch (error) {
+    await stop();
+    throw error;
+  }
+
+  return {
+    url,
+    stateDir,
+    stop,
+    async runCron() {
+      const res = await fetch(`${url}/cdn-cgi/handler/scheduled`);
+      const body = await res.text();
+      if (res.status !== 200) throw new Error(`The scheduled handler answered ${res.status}: ${body}`);
+    },
+  };
+}
