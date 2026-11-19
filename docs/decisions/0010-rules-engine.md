@@ -37,7 +37,9 @@ rebuilds the past, since the database keeps only each deal's current stage.
 - **Cut-over (`since`).** Pausing and resuming, or pointing a rule at another stage, must not make a rule fire for
   history. The services keep a `since` time in the rule's stored parameters (UTC ISO; the owner and the AI cannot set it,
   and it is left out of `add_rule` / `update_rule` input): `resume_rule` sets it to now on a `stage_followup` or
-  `on_stage_enter` rule, and `update_rule` sets it to now when it changes an `on_stage_enter` rule's stage. A stage entry
+  `on_stage_enter` rule, and `update_rule` sets it to now when it changes an `on_stage_enter` rule's stage. Undoing a
+  `pause_rule` is a resume too, so the undo sets the same cut-over (`resumedParams`, final review); without it the
+  undo brought back the old parameters and fired at once for every entry made while the rule was paused. A stage entry
   before `since` never fires, for either type. An `on_stage_enter` rule still ignores entries before its own `created_at`;
   `since` only moves that line later. Undoing the resume or the update restores the parameters, so the cut-over goes
   with it. `stage_followup` rules keep their catch-up for deals already overdue when the rule is added, but not after
@@ -48,6 +50,11 @@ rebuilds the past, since the database keeps only each deal's current stage.
   hits the UNIQUE constraint, and that firing is counted as `alreadyFired` and skipped, not an error. Other write
   failures are counted as `failed` and retried on the next run. A later re-entry into the stage has a new
   `stage_entered_at`, so it fires again.
+- **At most 25 firings per run** (`MAX_FIRINGS_PER_RUN`, final review). Each firing is one D1 batch, and a catch-up
+  (a new `stage_followup` rule over many overdue deals) could otherwise run past the free plan's per-invocation limits
+  and starve the daily brief, which runs in the same invocation. The rest are counted as `deferred` in the
+  `cron_rules_done` log line and fire on the next hourly run; their fire keys are not written, so none is lost or
+  doubled.
 - **Outside text.** A rule task whose title pulled in outside text (`{contact}` when the contact's name is in its
   `untrusted_fields`, `{deal}` when the deal's title is) is stored with `untrusted_fields: ["title"]`. Change summaries
   name the task, the deal and the contact through the safe labels (`labels.ts`).
@@ -62,6 +69,12 @@ rebuilds the past, since the database keeps only each deal's current stage.
   stage (or the current stage when the deal never moved), and the current stay starts at `stage_entered_at`. It
   returns each hit as the deal and contact ids, a safe label (outside titles and names become id labels) and
   `wouldFireAt`, plus a headline count of deals and firings.
+- **Preview lookback** (final review). The preview reads only activities from the last 30 + 365 days (the window plus
+  the longest `days` a rule may have), not the whole history. This is exact, not an estimate: a hit in the window
+  comes from a stage stay or a quiet spell that began at most 365 days before the window starts, and an older
+  activity can only move a stay's or spell's start further back, before that line, where it cannot produce a hit. A
+  bounded lookback was chosen over "since the earliest relevant stage entry" because it is one indexed condition and
+  needs no extra query. Deals are still read in full (docs/PAID-PLAN.md).
 
 ## Why
 
@@ -84,7 +97,11 @@ silently never fires or a task title with a literal `{name}` in it.
   - Stage moves made before the service layer recorded `stage_change` activities (seed data, imports) are not seen:
     such a deal looks as if it sat in its current stage since `stage_entered_at`.
   - An undone stage move removes its `stage_change` activity, so the history follows the undo.
-- A rule keeps pointing at its stage key after the stage is renamed (the description keeps the old label until the
-  rule is updated) or archived (it then never fires; `archive_stage` already refuses while open deals sit in it).
+- A rule keeps pointing at its stage key after the stage is renamed or archived (it then never fires;
+  `archive_stage` already refuses while open deals sit in it). On a rename, `update_stage` rewrites the description
+  of every rule watching the stage whose description is still the generated one for the old label (it equals
+  `describeRule` of the old label), in the same change, so undoing the rename restores both; a description the owner
+  or the AI wrote is kept (final review). Undoing an `add_stage` is refused while a rule watches the stage (decision
+  0009, addendum 4).
 - The hourly run reads every open deal and the fire keys of open deals once per hour; CPU time grows with open deals ×
   stage rules (docs/PAID-PLAN.md).

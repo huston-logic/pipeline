@@ -48,12 +48,14 @@ export interface RulePatch extends RuleSettings {
 }
 
 const MAX_TITLE = 200;
+/** The most `days` a rule may wait (stage_followup, gone_quiet). */
+const MAX_DAYS = 365;
 const MAX_DESCRIPTION = 500;
 const PLACEHOLDERS = ["deal", "contact", "stage"];
 
 const stage = z.string().trim().min(1).max(200);
 const title = z.string().trim().min(1).max(MAX_TITLE);
-const days = z.number().int().min(1).max(365);
+const days = z.number().int().min(1).max(MAX_DAYS);
 const dueInDays = z.number().int().min(0).max(365);
 
 // `since` is the cut-over the services set (decision 0010). It is read back from storage but never taken from a request:
@@ -249,6 +251,16 @@ export async function updateRule(ctx: Ctx, ref: string, patch: RulePatch): Promi
   return { ...result, ruleId: before.id };
 }
 
+/**
+ * The parameters of a rule that becomes active again (resume_rule, or an undo of pause_rule): stage entries from before
+ * `now` (made while paused, or already overdue) must not fire all at once, so stage rules get `since` = now.
+ */
+export function resumedParams(row: Pick<RuleRow, "type" | "params">, now: Date): string {
+  const stored = parseRuleParams(row);
+  if (stored === null || stored.type === "gone_quiet") return row.params;
+  return JSON.stringify({ ...stored, since: now.toISOString() });
+}
+
 async function setActive(ctx: Ctx, ref: string, active: boolean): Promise<ChangeResult & { ruleId: string }> {
   const before = await findRule(ctx.db, ref);
   if ((before.active === 1) === active) {
@@ -259,13 +271,7 @@ async function setActive(ctx: Ctx, ref: string, active: boolean): Promise<Change
     );
   }
   const patch: Partial<RuleRow> = { active: active ? 1 : 0 };
-  if (active) {
-    // Stage entries from before the resume (made while paused, or already overdue) must not fire all at once.
-    const stored = parseRuleParams(before);
-    if (stored !== null && stored.type !== "gone_quiet") {
-      patch.params = JSON.stringify({ ...stored, since: ctx.now.toISOString() });
-    }
-  }
+  if (active) patch.params = resumedParams(before, ctx.now);
   const after = updatedRow(before, patch, ctx.now);
   const result = await commitChange(ctx, {
     target: { table: "rules", id: before.id },
@@ -375,12 +381,21 @@ export type RuleRunCounts = {
   alreadyFired: number;
   /** Firings that could not be written; the next run tries them again. */
   failed: number;
+  /** Firings over MAX_FIRINGS_PER_RUN, left for the next hourly run. */
+  deferred: number;
 };
+
+/**
+ * One run writes at most this many firings (one D1 batch each), so a catch-up after a new rule stays inside the free
+ * plan's per-invocation limits and leaves room for the daily brief in the same invocation. The rest fire next hour;
+ * their fire keys are not written yet, so nothing is lost or doubled (decision 0010).
+ */
+export const MAX_FIRINGS_PER_RUN = 25;
 
 /** The hourly run: one system change per firing, each creating its task with the rule_firings row in `extra`. */
 export async function runRules(db: Db, now: Date): Promise<RuleRunCounts> {
   const rules = await activeRules(db);
-  const counts: RuleRunCounts = { rules: rules.length, fired: 0, alreadyFired: 0, failed: 0 };
+  const counts: RuleRunCounts = { rules: rules.length, fired: 0, alreadyFired: 0, failed: 0, deferred: 0 };
   const stageRules = rules.filter((rule) => rule.params.type !== "gone_quiet");
   if (stageRules.length === 0) return counts;
 
@@ -390,8 +405,10 @@ export async function runRules(db: Db, now: Date): Promise<RuleRunCounts> {
       `SELECT fire_key FROM rule_firings WHERE deal_id IN (SELECT id FROM deals WHERE status = 'open' AND archived = 0)`,
     )
     .all<{ fire_key: string }>();
-  const firings = evaluateRules({ now, rules: stageRules, deals, firedKeys: new Set(fired.results.map((r) => r.fire_key)) });
-  if (firings.length === 0) return counts;
+  const due = evaluateRules({ now, rules: stageRules, deals, firedKeys: new Set(fired.results.map((r) => r.fire_key)) });
+  if (due.length === 0) return counts;
+  const firings = due.slice(0, MAX_FIRINGS_PER_RUN);
+  counts.deferred = due.length - firings.length;
 
   const tz = await ownerTimezone(db);
   const byId = new Map(deals.map((deal) => [deal.id, deal]));
@@ -510,12 +527,15 @@ export async function previewRuleFor(db: Db, now: Date, request: PreviewRequest)
   }
 
   const tz = await ownerTimezone(db);
+  // A hit in the window comes from a stage stay or a quiet spell that started at most MAX_DAYS before the window, so
+  // older activities cannot change the answer (decision 0010) and are not read.
+  const lookback = new Date(now.getTime() - (PREVIEW_DAYS + MAX_DAYS) * DAY_MS).toISOString();
   const activities = await db
     .prepare(
       `SELECT deal_id, contact_id, type, occurred_at, data FROM activities
-       WHERE type IN (${PREVIEW_TYPES.map(() => "?").join(", ")})`,
+       WHERE type IN (${PREVIEW_TYPES.map(() => "?").join(", ")}) AND occurred_at >= ?`,
     )
-    .bind(...PREVIEW_TYPES)
+    .bind(...PREVIEW_TYPES, lookback)
     .all<{ deal_id: string | null; contact_id: string | null; type: ActivityType; occurred_at: string; data: string | null }>();
   const hits = previewRule(preview.params, {
     now,

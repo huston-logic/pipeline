@@ -28,9 +28,9 @@ test("the hourly run fires the rules and logs only a fixed event name and counts
 
   const lines = logged.mock.calls.map((call) => JSON.parse(String(call.arguments[0])) as Record<string, unknown>);
   assert.deepEqual(lines, [
-    { event: "cron_rules_done", rules: 1, fired: 1, alreadyFired: 0, failed: 0 },
+    { event: "cron_rules_done", rules: 1, fired: 1, alreadyFired: 0, failed: 0, deferred: 0 },
     { event: "cron_brief_done", composed: 1, sent: 0, failed: 0 },
-    { event: "cron_rules_done", rules: 1, fired: 0, alreadyFired: 0, failed: 0 },
+    { event: "cron_rules_done", rules: 1, fired: 0, alreadyFired: 0, failed: 0, deferred: 0 },
     { event: "cron_brief_done", composed: 0, sent: 0, failed: 0 },
   ]);
   assert.doesNotMatch(JSON.stringify(lines), /Pat|Website/);

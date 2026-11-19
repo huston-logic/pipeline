@@ -82,3 +82,23 @@ points at its deal and its rule and is never removed, so `undo_change` now refus
 a deal a rule has fired on ("this lead has rule history ...; close the deal instead") and the `add_rule` of a rule that
 has fired ("pause it with pause_rule instead"), instead of the generic "other records now depend on it" answer, which
 asks for something the owner can't do.
+
+## Addendum 4 (final review): references inside JSON columns block an undo too
+
+Foreign keys are not the only way one record points at another. A custom field's key is stored inside the `fields`
+JSON of contacts and deals, and a stage's key inside `rules.params` (`$.stage`). Before this, undoing an `add_field`
+after a deal got a Budget value removed the field and left `{"budget": 5000}` on the deal, and a later field with the
+same label reused the key `budget` and inherited the old value; undoing an `add_stage` left any rule watching it
+pointing at nothing. `undo.ts` now has a second dependents map (`JSON_DEPENDENTS`) next to the foreign-key one:
+
+- Removing a `field_defs` row is refused while any contact (contact field) or deal (deal field) has
+  `json_extract(fields, '$."<key>"') IS NOT NULL`: "Can't undo chg_x: other records now depend on it (Budget is set
+  on deal "Website refresh"). Change those first, or leave it." A value cleared to null does not count.
+- Removing a `stages` row is refused while any rule, active or paused, has `json_extract(params, '$.stage')` equal to
+  its key: "(rule ru_x watches Demo booked)". Rules are named by id, which is what `update_rule` takes.
+- Undoing an `update_field` is refused when the choices it would put back drop a choice that a record now uses: "(the
+  choice Hot of Temperature is used by deal "Website refresh")".
+
+Records are named by their safe labels (`rowLabel`; outside names and titles become id labels), at most five, then
+"and N more". Rows the same undo removes are not counted. The refusal comes before the "changed since" check, like the
+foreign-key one.

@@ -10,7 +10,7 @@ import { updateDeal } from "./deals.ts";
 import { logActivity } from "./activities.ts";
 import { addLead } from "./leads.ts";
 import { listDealsFiltered } from "./read.ts";
-import { addRule, listQuietDeals, listRules, pauseRule, previewRuleFor, resumeRule, runRules, updateRule } from "./rules.ts";
+import { addRule, listQuietDeals, listRules, MAX_FIRINGS_PER_RUN, pauseRule, previewRuleFor, resumeRule, runRules, updateRule } from "./rules.ts";
 import { archiveStage } from "./stages.ts";
 import { undoChange } from "./undo.ts";
 
@@ -137,9 +137,9 @@ test("runRules fires once per stage entry as a system change that creates the ta
   const lead = await proposal(db, NOW);
   const { ruleId } = await addRule(ctxFor(db), { type: "stage_followup", stage: "proposal_sent", days: 3 });
 
-  assert.deepEqual(await runRules(db, later(2)), { rules: 1, fired: 0, alreadyFired: 0, failed: 0 });
-  assert.deepEqual(await runRules(db, later(3)), { rules: 1, fired: 1, alreadyFired: 0, failed: 0 });
-  assert.deepEqual(await runRules(db, later(3.1)), { rules: 1, fired: 0, alreadyFired: 0, failed: 0 });
+  assert.deepEqual(await runRules(db, later(2)), { rules: 1, fired: 0, alreadyFired: 0, failed: 0, deferred: 0 });
+  assert.deepEqual(await runRules(db, later(3)), { rules: 1, fired: 1, alreadyFired: 0, failed: 0, deferred: 0 });
+  assert.deepEqual(await runRules(db, later(3.1)), { rules: 1, fired: 0, alreadyFired: 0, failed: 0, deferred: 0 });
 
   const [task, ...others] = await rows<TaskRow>(db, "SELECT * FROM tasks");
   assert.equal(others.length, 0);
@@ -181,7 +181,7 @@ test("contact logged after the stage entry stops a stage_followup; paused rules 
   const lead = await proposal(db, NOW);
   const { ruleId } = await addRule(ctxFor(db), { type: "stage_followup", stage: "proposal_sent", days: 3 });
   await pauseRule(ctxFor(db, "pause_rule"), ruleId);
-  assert.deepEqual(await runRules(db, later(4)), { rules: 0, fired: 0, alreadyFired: 0, failed: 0 });
+  assert.deepEqual(await runRules(db, later(4)), { rules: 0, fired: 0, alreadyFired: 0, failed: 0, deferred: 0 });
   await resumeRule(ctxFor(db, "resume_rule"), ruleId);
   await logActivity(ctxFor(db, "log_activity", later(1)), { dealId: lead.dealId, type: "email", summary: "They replied." });
   assert.equal((await runRules(db, later(4))).fired, 0);
@@ -222,7 +222,7 @@ test("a parallel run that fired first is skipped silently, not counted as a fail
   await proposal(db, NOW);
   await addRule(ctxFor(db), { type: "stage_followup", stage: "proposal_sent", days: 3 });
   const raced = racing(db, () => runRules(db, later(3)));
-  assert.deepEqual(await runRules(raced, later(3)), { rules: 1, fired: 0, alreadyFired: 1, failed: 0 });
+  assert.deepEqual(await runRules(raced, later(3)), { rules: 1, fired: 0, alreadyFired: 1, failed: 0, deferred: 0 });
   assert.equal(await countOf(db, "tasks"), 1);
   assert.equal(await countOf(db, "rule_firings"), 1);
 });
@@ -356,10 +356,92 @@ test("when one firing's batch fails, the firings after it in the same run still 
       return db.batch(statements);
     },
   };
-  assert.deepEqual(await runRules(flaky, later(3)), { rules: 1, fired: 1, alreadyFired: 0, failed: 1 });
+  assert.deepEqual(await runRules(flaky, later(3)), { rules: 1, fired: 1, alreadyFired: 0, failed: 1, deferred: 0 });
   assert.equal(await countOf(db, "tasks"), 1);
   assert.equal(await countOf(db, "rule_firings"), 1);
-  assert.deepEqual(await runRules(flaky, later(3.1)), { rules: 1, fired: 1, alreadyFired: 0, failed: 0 });
+  assert.deepEqual(await runRules(flaky, later(3.1)), { rules: 1, fired: 1, alreadyFired: 0, failed: 0, deferred: 0 });
   assert.equal(await countOf(db, "tasks"), 2);
   assert.equal(await countOf(db, "rule_firings"), 2);
+});
+
+test("undoing a pause cuts over like resume_rule: entries made while paused never fire", async () => {
+  const db = await openTestDb();
+  const { ruleId } = await addRule(ctxFor(db, "add_rule", NOW), { type: "on_stage_enter", stage: "proposal_sent", title: "Prepare {contact}", dueInDays: 1 });
+  const paused = await pauseRule(ctxFor(db, "pause_rule", later(1)), ruleId);
+  await proposal(db, later(2), "Paused Example");
+  await undoChange(ctxFor(db, "undo_change", later(3)), paused.changeId);
+
+  const row = await one<RuleRow>(db, "SELECT * FROM rules WHERE id = ?", ruleId);
+  assert.equal(row.active, 1);
+  assert.equal(JSON.parse(row.params).since, later(3).toISOString(), "the undo sets the same cut-over as resume_rule");
+  assert.equal((await runRules(db, later(3.5))).fired, 0, "entered while the rule was paused");
+  await proposal(db, later(4), "Resumed Example");
+  assert.equal((await runRules(db, later(4.5))).fired, 1);
+});
+
+test("undoing a gone_quiet pause re-activates it with no cut-over", async () => {
+  const db = await openTestDb();
+  const { ruleId } = await addRule(ctxFor(db, "add_rule", NOW), { type: "gone_quiet", days: 7 });
+  const paused = await pauseRule(ctxFor(db, "pause_rule", later(1)), ruleId);
+  await undoChange(ctxFor(db, "undo_change", later(2)), paused.changeId);
+  const row = await one<RuleRow>(db, "SELECT * FROM rules WHERE id = ?", ruleId);
+  assert.equal(row.active, 1);
+  assert.deepEqual(JSON.parse(row.params), { type: "gone_quiet", days: 7 });
+});
+
+test("one run writes at most 25 firings; the rest are deferred to the next hour, none lost or doubled", async () => {
+  assert.equal(MAX_FIRINGS_PER_RUN, 25);
+  const db = await openTestDb();
+  for (let i = 0; i < 30; i++) await proposal(db, NOW, `Lead ${i} Example`);
+  await addRule(ctxFor(db, "add_rule", NOW), { type: "stage_followup", stage: "Proposal sent", days: 3 });
+
+  assert.deepEqual(await runRules(db, later(3)), { rules: 1, fired: 25, alreadyFired: 0, failed: 0, deferred: 5 });
+  assert.equal(await countOf(db, "tasks"), 25);
+  assert.deepEqual(await runRules(db, later(3.04)), { rules: 1, fired: 5, alreadyFired: 0, failed: 0, deferred: 0 });
+  assert.equal(await countOf(db, "tasks"), 30);
+  assert.equal((await runRules(db, later(3.08))).fired, 0);
+  assert.equal(await countOf(db, "rule_firings"), 30);
+});
+
+/** A Db that records the occurred_at of every activity row a read returns. */
+function recordingActivities(db: Db, seen: string[]): Db {
+  const watch = (statement: D1PreparedStatement): D1PreparedStatement =>
+    new Proxy(statement, {
+      get(target, name, receiver) {
+        if (name === "bind") return (...values: unknown[]) => watch(target.bind(...values));
+        if (name === "all") {
+          return async () => {
+            const result = await target.all<{ occurred_at?: string }>();
+            for (const row of result.results) if (row.occurred_at) seen.push(row.occurred_at);
+            return result;
+          };
+        }
+        const value: unknown = Reflect.get(target, name, receiver);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+  return {
+    prepare: (sql) => (/FROM activities/.test(sql) ? watch(db.prepare(sql)) : db.prepare(sql)),
+    batch: (statements) => db.batch(statements),
+  };
+}
+
+test("preview_rule reads activities only as far back as its window needs: 30 days plus the longest rule (365 days)", async () => {
+  const db = await openTestDb();
+  await proposal(db, later(-400), "Old Example");
+  await proposal(db, later(-380), "Long Example");
+  await proposal(db, later(-10), "Recent Example");
+  const seen: string[] = [];
+
+  const preview = await previewRuleFor(recordingActivities(db, seen), NOW, { type: "stage_followup", stage: "Proposal sent", days: 365 });
+
+  const cutoff = later(-395).toISOString();
+  assert.ok(seen.length >= 2, "the recent stage moves are read");
+  assert.ok(seen.every((at) => at >= cutoff), `nothing older than ${cutoff} is read`);
+  assert.ok(!seen.includes(later(-400).toISOString()));
+  assert.deepEqual(
+    preview.hits.map((hit) => hit.wouldFireAt),
+    [later(-15).toISOString()],
+    "an entry 380 days ago still counts for a 365-day rule",
+  );
 });
