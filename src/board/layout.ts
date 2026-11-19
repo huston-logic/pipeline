@@ -42,7 +42,8 @@ function link(item: NavItem, current: string | undefined): Html {
         : item.href === sectionOf(current)
           ? html` aria-current="true"`
           : "";
-  return html`<a href="${item.href}"${state}>${icon(item.icon)}<span class="nav-label">${item.label}</span></a>`;
+  const hint = item.hint === undefined ? "" : html`<span class="visually-hidden">${item.hint}</span>`;
+  return html`<a href="${item.href}"${state}>${icon(item.icon)}<span class="nav-label">${item.label}</span>${hint}</a>`;
 }
 
 function nav(current: string | undefined): Html {

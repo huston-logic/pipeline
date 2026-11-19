@@ -6,7 +6,9 @@
 
 export type IconName = "today" | "pipeline" | "contacts" | "brief" | "more" | "rules" | "changes" | "export";
 
-export type NavItem = { href: string; label: string; icon: IconName; description: string };
+/** `hint` is read out after the label but not shown, where the label alone says too little ("More" alone fails
+ * Lighthouse's descriptive-link-text audit). */
+export type NavItem = { href: string; label: string; icon: IconName; description: string; hint?: string };
 
 export const boardRoutes: string[] = [
   "/",
@@ -27,7 +29,7 @@ export const navItems: NavItem[] = [
   { href: "/pipeline", label: "Pipeline", icon: "pipeline", description: "Open deals by stage." },
   { href: "/contacts", label: "Contacts", icon: "contacts", description: "Everyone you are talking to." },
   { href: "/brief", label: "Brief", icon: "brief", description: "The latest daily brief." },
-  { href: "/more", label: "More", icon: "more", description: "Rules, changes and export." },
+  { href: "/more", label: "More", icon: "more", description: "Rules, changes and export.", hint: " pages" },
 ];
 
 /** Under More: on the /more page on phones, listed in the side bar on wide screens. */

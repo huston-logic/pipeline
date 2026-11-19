@@ -48,6 +48,10 @@ test("the nav lists Today, Pipeline, Contacts, Brief and More, then Rules, Chang
   }
 });
 
+test("the More link says More pages to assistive technology, so its text is descriptive", () => {
+  assert.match(page("/"), /<a href="\/more"><svg [^>]*>[\s\S]*?<\/svg><span class="nav-label">More<\/span><span class="visually-hidden"> pages<\/span><\/a>/);
+});
+
 test("the current page is aria-current=page; a page inside a section marks the section with aria-current=true", () => {
   const home = page("/");
   assert.equal(home.match(/aria-current=/g)?.length, 1);

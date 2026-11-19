@@ -43,6 +43,9 @@ and Contacts show before tasks R2 and R3.
   60rem it is a sticky 16rem side bar with the same items and Rules, Changes and Export listed under More. The current
   page is `aria-current="page"`; the section of a page that is not itself a nav item is `aria-current="true"` (More for
   Rules, Changes and Export; Pipeline for a deal page).
+- **"More" link text.** Lighthouse's SEO audit fails a link whose whole text is "More", so the link carries a
+  visually hidden " pages": people see "More", assistive technology reads "More pages" (the visible label still starts
+  the name, WCAG 2.5.3).
 - **`/more`** is a real page (works without JavaScript, no popover) listing Rules, Changes and Export as link cards
   with one-line descriptions.
 - **Pages.** `/` is Today: the owner's date, a summary sentence, Overdue and Due today as cards, then the open stages

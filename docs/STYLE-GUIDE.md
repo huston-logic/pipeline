@@ -174,7 +174,8 @@ Fixed to the bottom, white, `--shadow-bar`, padded by `env(safe-area-inset-botto
 `viewport-fit=cover`). Five equal tabs: Today, Pipeline, Contacts, Brief, More. Each tab is a link at least 56px tall:
 a 24px line icon over a 13px label. Current tab: `aria-current="page"` (or `"true"` for a page inside More, or a deal
 inside Pipeline), the icon on a 56 × 30px `--accent-tint` pill and the label in `--accent` at 700. Others: `ink-2`.
-The page reserves the bar's height plus the inset at its bottom, and `scroll-padding-bottom` keeps a focused element
+The More tab's link reads "More pages" to assistive technology (a visually hidden word), because "More" alone is not
+descriptive link text. The page reserves the bar's height plus the inset at its bottom, and `scroll-padding-bottom` keeps a focused element
 above the bar (WCAG 2.4.11).
 
 ### 7.3 Side bar (60rem and up)
