@@ -6,7 +6,7 @@ AGENTS.md (imported above) is the single source of repo rules. This file only
 adds how I want you to work.
 
 If the two files conflict: CLAUDE.md wins on workflow and deployment (the gated
-pipeline: plan, branch, build, check, PR, review, merge, auto-deploy on merge).
+pipeline: plan, branch, build, check, PR, review, merge).
 AGENTS.md wins on code, content and architecture rules. If a conflict isn't
 clearly one or the other, ask me.
 
@@ -18,7 +18,8 @@ clearly one or the other, ask me.
 - Run `npm run check` before every commit. If it fails, stop and show me the
   exact error; do not commit.
 - When the work is done, open a pull request. Never merge it yourself; I merge.
-- Merging a pull request into `main` deploys the site through Cloudflare Workers Builds.
+- This repo has no production deploy of its own: merging into `main` deploys nothing.
+  Each client copy is updated by the copy update script (task 11), run by its owner.
   Never run `wrangler deploy` by hand (a hook blocks it).
 
 ## Protect main (GitHub ruleset)
@@ -52,7 +53,6 @@ These can go stale if the ruleset is changed in Settings, so re-check before rel
   `gh pr close --delete-branch`.
 - `lighthouse` sometimes fails with `NO_NAVSTART`, a Lighthouse trace-recording hiccup, not
   a site problem. Use "Re-run failed jobs" on the run.
-- After switching branches, delete `.next` before `npm run check`.
 - A lockfile written by a different npm than CI's can fail CI's `npm ci` even when a
   local `npm ci` passes. CI uses npm 10 (10.9.9 on 2026-11-13, Node 22). Generate
   lockfile changes with the same npm major as CI, and check the first CI run's Install
@@ -82,9 +82,9 @@ These can go stale if the ruleset is changed in Settings, so re-check before rel
   merge without `--auto` stay blocked. Outside an autonomous run I still do not merge.
 
 ## Decision authority (fast lane)
-- Default for every task: plan, decide and build without asking me. Make implementation, layout, naming, refactor and test-placement decisions yourself, following AGENTS.md, docs/website-plan.md and docs/STYLE-GUIDE.md.
-- Copy is verbatim from docs/website-plan.md. If copy is missing or contradictory, use a [[placeholder]] and list it in the PR description; do not ask.
-- Local checks: npm run check only. CI runs a11y, Lighthouse, dependency review and CodeQL. Run local Lighthouse only if the task changes fonts or images or adds scripts over 1 KB.
+- Default for every task: plan, decide and build without asking me. Make implementation, layout, naming, refactor and test-placement decisions yourself, following AGENTS.md, docs/SPEC.md and docs/PLAN.md.
+- Board copy is plain and short and adds no claims the spec does not make. If the spec leaves behavior open, decide, write a decision record in docs/decisions/ and list it in the PR description; do not ask.
+- Local checks: npm run check only. CI runs a11y, Lighthouse, dependency review and CodeQL. Run local a11y and Lighthouse too when the task changes board markup or `public/board.css`.
 - Ask me only before: adding or upgrading a dependency; changing required checks, lighthouserc thresholds or CI behavior; anything involving credentials, secrets, accounts, DNS, email sending or payments; deleting user data; a change to the meaning of copy.
 - Every PR description starts with a "Needs your eyes" line listing any change to AGENTS.md, CLAUDE.md, package.json or README, or "none".
 - Open the PR and stop. The owner enables auto-merge; never try to merge.
@@ -117,16 +117,21 @@ are still open and unmerged, update it only in the first PR and one closing PR s
   hand-copy commands for all proposals in one batch.
 
 ## Commands
-- `npm run dev`: dev server at http://localhost:4821 (port is fixed in package.json).
+- `npm run dev`: builds `out/`, then runs the Worker locally with `wrangler dev --local` at
+  http://localhost:4821 (port is fixed in package.json), local D1 state in `.wrangler/state`.
   If the port is busy, tell me what is using it instead of killing it.
-- `npm run check`: lint, then typecheck, then production build (static export to `out/`).
-- `npm run preview`: serves the built `out/` folder the way Cloudflare Workers will,
-  including `public/_headers`. Run `npm run build` first.
-- `npm run check:placeholders`: launch gate; failing is expected until content is final.
-- `npm run test:a11y`: Playwright + axe accessibility check against the built site (run
+- `npm run preview`: the same on port 4822 with a fresh `.wrangler/preview-<timestamp>` state
+  folder. The accessibility and Lighthouse checks start it themselves.
+- `npm run build`: writes the static files (`out/`) the Worker serves.
+- `npm run check`: `check:config`, lint, typecheck, `test:worker`, then build.
+- `npm run check:config`: fails if client data could be tracked (decision 0002).
+- `npm run types`: regenerates `src/worker-configuration.d.ts` after `wrangler.jsonc` changes.
+- `npm run test:a11y`: Playwright + axe accessibility check against `npm run preview` (run
   `npm run build` first). Installing Chromium for it is a separate approval.
-- `npm run test:lighthouse`: Lighthouse CI against the built site (run `npm run build` first).
+- `npm run test:lighthouse`: Lighthouse CI against `npm run preview` (run `npm run build` first).
   Uses the installed Google Chrome; no browser download.
+- Wrangler only through these npm scripts, only locally. Never `wrangler deploy`, `wrangler login`
+  or anything with `--remote`.
 
 ## Command style (keeps permission prompts down)
 - One plain command per Bash call. No shell variables, `$(...)`, `for` loops, functions or
@@ -140,16 +145,17 @@ are still open and unmerged, update it only in the first PR and one closing PR s
   as its own command.
 
 ## Sources of truth
-- Copy: `docs/website-plan.md` (Revision 7.1), Section B only.
-- Design: `docs/STYLE-GUIDE.md` (v3).
-  Compare builds against the style guide's first-screen spec at 1440 × 900 and 390 × 844.
+- Product: `docs/SPEC.md` (binding).
+- Tasks and progress: `docs/PLAN.md` and `docs/STATUS.md`.
+- Judgment calls: `docs/decisions/` (one file per call).
+- Board look: the palette tokens in `public/board.css`; check pages at 375 px and 1280 px wide.
 - If a source and the code disagree, or a rule isn't clearly covered by either, tell me.
 
 ## Secrets
-- No secrets in code, ever. `NEXT_PUBLIC_*` variables are public, so nothing
-  sensitive goes there either.
-- `.env` files are never committed (only `.env.example`). If a command would
+- No secrets in code, ever. Names only in `docs/SECRETS.md`.
+- `.env` and `.dev.vars` files are never committed (only `.env.example`). If a command would
   stage one, stop and tell me.
+- Nothing under `/.copies/` or `/exports/` is ever committed: they hold per-copy ids and data.
 
 ## Browser tools
 - Only open localhost addresses and our own preview URLs. Do not browse other sites
