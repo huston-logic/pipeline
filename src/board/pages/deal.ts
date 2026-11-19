@@ -1,10 +1,13 @@
-import type { Db } from "../../db/db.ts";
-import { getDeal, listFieldDefs } from "../../db/queries.ts";
+import type { StageRow } from "../../db/db.ts";
+import { getDeal, listFieldDefs, listStages } from "../../db/queries.ts";
 import { ownerTimezone } from "../../services/lookup.ts";
 import { type DealBrief, getDealBrief } from "../../services/read.ts";
 import { formatLocal } from "../../time.ts";
 import { type Html, html } from "../html.ts";
-import { type Look, renderPage } from "../layout.ts";
+import type { PageContext } from "../context.ts";
+import type { FormContext } from "../forms.ts";
+import { renderPage } from "../layout.ts";
+import { moveForm, safeDealName } from "../move.ts";
 import { contactHref, empty, formatNumber, labelled, type Pair, pairs, section, tag, when } from "../parts.ts";
 import { customRows, outsideNote, STATUS, taskCard, timelineItem } from "../records.ts";
 
@@ -32,8 +35,9 @@ ${contact.archived ? html`<p class="note">This contact is archived.</p>` : ""}
   );
 }
 
-function dealSection(brief: DealBrief, labels: Map<string, string>, tz: string): Html {
+function dealSection(brief: DealBrief, labels: Map<string, string>, tz: string, stages: StageRow[], form: FormContext): Html {
   const { deal, stage } = brief;
+  const name = safeDealName(deal.id, deal.title, deal.untrusted_fields.includes("title"));
   return section(
     "deal-heading",
     "Deal",
@@ -51,6 +55,7 @@ ${pairs([
   ...customRows(deal.fields, labels, new Set()),
 ])}
 ${deal.archived ? html`<p class="note">This deal is archived.</p>` : ""}
+<div class="card-move">${moveForm({ id: deal.id, name, stageKey: stage.key }, stages, form)}</div>
 </div>`,
   );
 }
@@ -104,7 +109,8 @@ function hasOutsideText(brief: DealBrief): boolean {
 }
 
 /** The pre-call view, or null when there is no deal with this id (the caller answers with the 404 page). */
-export async function dealPage(db: Db, id: string, now: Date, look: Look): Promise<string | null> {
+export async function dealPage(ctx: PageContext, id: string): Promise<string | null> {
+  const { db, now } = ctx;
   if ((await getDeal(db, id)) === null) return null;
   const tz = await ownerTimezone(db);
   const brief = await getDealBrief(db, id, tz, now);
@@ -120,7 +126,7 @@ export async function dealPage(db: Db, id: string, now: Date, look: Look): Promi
     title: name,
     description: `Before the call: contact, next step, open tasks and timeline for ${name}.`,
     current: `/deals/${brief.deal.id}`,
-    look,
+    frame: ctx,
     body: html`<p class="back"><a href="/pipeline">Back to the pipeline</a></p>
 <h1>${labelled(brief.deal.title, titleOutside)}</h1>
 <p class="lede deal-status">${tag(brief.stage.label)} <span>${STATUS[brief.deal.status]}</span></p>
@@ -128,7 +134,7 @@ ${note}
 <div class="deal-columns">
 <div>
 ${contactSection(brief, labelsFor("contact"))}
-${dealSection(brief, labelsFor("deal"), tz)}
+${dealSection(brief, labelsFor("deal"), tz, await listStages(db), ctx)}
 </div>
 <div>
 ${nextSection(brief)}

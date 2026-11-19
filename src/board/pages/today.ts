@@ -1,6 +1,5 @@
 // Today (/): what is overdue and due today, then the pipeline at a glance and the latest brief (style guide §5).
 import { type BriefItem, headerDate } from "../../brief/compose.ts";
-import type { Db } from "../../db/db.ts";
 import { ownerTimezone } from "../../services/lookup.ts";
 import {
   type BriefView,
@@ -14,7 +13,8 @@ import {
 } from "../../services/read.ts";
 import { localDate } from "../../time.ts";
 import { type Html, html } from "../html.ts";
-import { type Look, renderPage } from "../layout.ts";
+import type { PageContext } from "../context.ts";
+import { renderPage } from "../layout.ts";
 import { count, dealLink, empty, labelled, pairs, section, tag, when } from "../parts.ts";
 import { briefDate, briefLine, sendStatusText } from "./brief.ts";
 import { stageCountText, summaryLine } from "./pipeline.ts";
@@ -113,7 +113,8 @@ ${shown.length === 0 ? html`<p>Nothing was due that day.</p>` : html`<ul class="
   );
 }
 
-export async function todayPage(db: Db, now: Date, look: Look): Promise<string> {
+export async function todayPage(ctx: PageContext): Promise<string> {
+  const { db, now } = ctx;
   const tz = await ownerTimezone(db);
   const [summary, due, brief] = await Promise.all([pipelineSummary(db, now, tz), whatsDue(db, now, tz), latestBrief(db)]);
   const date = localDate(now, tz);
@@ -121,7 +122,7 @@ export async function todayPage(db: Db, now: Date, look: Look): Promise<string> 
     title: "Today",
     description: "What is overdue and due today, your open deals by stage and the latest daily brief.",
     current: "/",
-    look,
+    frame: ctx,
     body: html`<div class="page-head">
 <h1>Today</h1>
 <p class="page-date"><time datetime="${date}">${headerDate(date)}</time></p>

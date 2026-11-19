@@ -1,12 +1,12 @@
 import { html } from "../html.ts";
-import { type Look, renderPage } from "../layout.ts";
+import { type PageFrame, renderPage } from "../layout.ts";
 
-/** Also the static out/404.html, so it works without a look (no sign-in, no settings). */
-export function notFoundPage(look?: Look): string {
+/** Also the static out/404.html, so it works without a frame (no sign-in, no settings). */
+export function notFoundPage(frame?: PageFrame): string {
   return renderPage({
     title: "Page not found",
     description: "There is no board page at this address.",
-    look,
+    frame,
     body: html`<h1>Page not found</h1>
 <p class="lede">There is no board page at this address.</p>
 <p><a class="button" href="/">Go to Today</a></p>`,

@@ -1,9 +1,10 @@
-import type { Actor, Db, RuleType } from "../../db/db.ts";
+import type { Actor, RuleType } from "../../db/db.ts";
 import { ownerTimezone } from "../../services/lookup.ts";
 import { listRules, type RuleView } from "../../services/rules.ts";
 import { formatLocal } from "../../time.ts";
 import { type Html, html } from "../html.ts";
-import { type Look, renderPage } from "../layout.ts";
+import type { PageContext } from "../context.ts";
+import { renderPage } from "../layout.ts";
 import { count, empty, pairs, tag, when } from "../parts.ts";
 
 const TYPE: Record<RuleType, string> = {
@@ -31,14 +32,15 @@ ${pairs([
 </li>`;
 }
 
-export async function rulesPage(db: Db, look: Look): Promise<string> {
+export async function rulesPage(ctx: PageContext): Promise<string> {
+  const { db } = ctx;
   const tz = await ownerTimezone(db);
   const rules = await listRules(db);
   return renderPage({
     title: "Rules",
     description: "Your follow-up rules: what each one does, whether it is active and how often it has fired.",
     current: "/rules",
-    look,
+    frame: ctx,
     body: html`<h1>Rules</h1>
 <p class="lede">Active rules run every hour. To add, change, pause or resume one, ask your AI app.</p>
 ${

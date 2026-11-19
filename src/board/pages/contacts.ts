@@ -1,10 +1,10 @@
 // /contacts: every contact that is not archived, as cards, with a search box and a sort control that work without
 // JavaScript (a GET form). Decision 0016: search, sort, the 200-contact limit and the People/Companies switch.
-import type { Db } from "../../db/db.ts";
 import { ownerTimezone } from "../../services/lookup.ts";
 import { CONTACT_LIST_LIMIT, type ContactListItem, type ContactSort, listContacts } from "../../services/read.ts";
 import { type Html, html } from "../html.ts";
-import { type Look, renderPage } from "../layout.ts";
+import type { PageContext } from "../context.ts";
+import { renderPage } from "../layout.ts";
 import { contactLink, count, dealLink, empty, formatNumber, labelled, pairs, when } from "../parts.ts";
 
 type Dir = "asc" | "desc";
@@ -97,7 +97,8 @@ function countLine(shown: number, total: number, query: string): string {
   return `${count(total, "contact")} ${total === 1 ? "matches" : "match"} ${quoted}.`;
 }
 
-export async function contactsPage(db: Db, _now: Date, look: Look, params: URLSearchParams): Promise<string> {
+export async function contactsPage(ctx: PageContext): Promise<string> {
+  const { db, query: params } = ctx;
   const tz = await ownerTimezone(db);
   const { query, sort, dir, sortValue } = contactsQuery(params);
   const { contacts, total } = await listContacts(db, tz, { query, sort, dir, limit: CONTACT_LIST_LIMIT });
@@ -118,7 +119,7 @@ ${clear}`;
     title: "Contacts",
     description: "Everyone in your pipeline, with their company, open deals and last activity. Search and sort them.",
     current: "/contacts",
-    look,
+    frame: ctx,
     body: html`<h1>Contacts</h1>
 ${viewSwitch("/contacts")}
 ${total === 0 && query === "" ? "" : searchForm(query, sortValue)}

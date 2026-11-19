@@ -1,7 +1,8 @@
 import { EXPORT_TABLES, type ExportTable } from "../../http/export.ts";
 import { html } from "../html.ts";
 import { icon } from "../icons.ts";
-import { type Look, renderPage } from "../layout.ts";
+import type { PageContext } from "../context.ts";
+import { renderPage } from "../layout.ts";
 
 const TABLE_LABELS: Record<ExportTable, string> = {
   contacts: "Contacts",
@@ -18,7 +19,7 @@ const TABLE_LABELS: Record<ExportTable, string> = {
   briefs: "Daily briefs",
 };
 
-export function exportPage(look: Look): string {
+export async function exportPage(ctx: PageContext): Promise<string> {
   const links = EXPORT_TABLES.map(
     (table) =>
       html`<li><a class="download-row" href="/api/export/${table}.csv" download>${icon("export")}<span class="download-label">${TABLE_LABELS[table]}</span> <span class="download-file">${table}.csv</span></a></li>`,
@@ -27,7 +28,7 @@ export function exportPage(look: Look): string {
     title: "Export",
     description: "Download a full copy of your pipeline: everything as one JSON file, or one CSV file per table.",
     current: "/export",
-    look,
+    frame: ctx,
     body: html`<h1>Export</h1>
 <p class="lede">Download a copy of everything in your pipeline. Each file is made when you click, from the data as it is now.</p>
 <section aria-labelledby="json-heading">

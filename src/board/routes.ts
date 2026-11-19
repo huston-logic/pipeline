@@ -13,6 +13,7 @@ export type NavItem = { href: string; label: string; icon: IconName; description
 export const boardRoutes: string[] = [
   "/",
   "/pipeline",
+  "/pipeline?view=list",
   "/contacts",
   "/companies",
   "/brief",

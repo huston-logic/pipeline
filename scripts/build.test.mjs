@@ -3,6 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
+import { gzipSync } from "node:zlib";
 import { SECURITY_HEADERS } from "../src/security.ts";
 import { build } from "./build.mjs";
 
@@ -23,8 +24,15 @@ test("writes the five files CI checks, each non-empty", () => {
   }
 });
 
-test("copies public/ (board.css) into out/", () => {
+test("copies public/ (board.css and board.js) into out/", () => {
   assert.ok(statSync(join(outDir, "board.css")).size > 0);
+  assert.ok(statSync(join(outDir, "board.js")).size > 0);
+});
+
+test("board.js stays small and plain: under 3 KB gzipped, no eval, no third-party code (decision 0014)", () => {
+  const script = read("board.js");
+  assert.ok(gzipSync(script).length < 3 * 1024, `${gzipSync(script).length} bytes gzipped`);
+  assert.doesNotMatch(script, /\beval\(|new Function|innerHTML|import\(|https?:\/\//);
 });
 
 test("sitemap.xml is an empty <urlset> (decision 0003)", () => {
@@ -58,6 +66,7 @@ test("_headers sets exactly the Worker's security headers for static files", () 
   const expected = Object.entries(SECURITY_HEADERS).map(([name, value]) => `${name}: ${value}`);
   assert.deepEqual(lines.toSorted(), expected.toSorted());
   assert.doesNotMatch(read("_headers"), /unsafe-inline/);
+  assert.match(read("_headers"), /script-src 'self';/);
 });
 
 test("a rebuild removes files left over from an earlier build", () => {

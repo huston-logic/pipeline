@@ -197,7 +197,7 @@ test("the consent page escapes the app's name, shows where access goes, and allo
   const csp = res.headers.get("Content-Security-Policy") ?? "";
   assert.match(csp, /form-action 'self' https:\/\/example-team\.cloudflareaccess\.com https:\/\/client\.example\.com;/);
   assert.match(csp, /frame-ancestors 'none'/);
-  assert.match(csp, /script-src 'none'/);
+  assert.match(csp, /script-src 'self'/);
   assert.equal(res.headers.get("Cache-Control"), "no-store");
   assert.ok(res.headers.getSetCookie().some((c) => c.startsWith("__Host-oauth-consent-")));
 });

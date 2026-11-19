@@ -37,10 +37,8 @@ const numbers = new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 });
 /** Deal values have no currency in v1, so they are plain numbers: "1,500". */
 export const formatNumber = (n: number) => numbers.format(n);
 
-/**
- * An empty state: what is missing, then one line on how things get here. The board can't edit yet (task R3), so the
- * help line never promises a button.
- */
+/** An empty state: what is missing, then one line on how things get here. The help line never promises a button the
+ * page doesn't have. */
 export const empty = (text: string, help?: string): Html =>
   html`<div class="empty"><p class="empty-title">${text}</p>${help === undefined ? "" : html`<p>${help}</p>`}</div>`;
 

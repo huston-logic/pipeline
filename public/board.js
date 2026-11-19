@@ -1,0 +1,66 @@
+// Drag a deal card to another stage on the pipeline board (decisions 0014, 0017). Progressive enhancement only:
+// dropping a card sets that card's own "Move to" select and submits its form as a normal page load, so the server's
+// checks, the confirm step for Won, Lost and Not now, and the change banner apply exactly as they do without
+// JavaScript. Mouse and trackpad only ((pointer: fine)); on touch screens and by keyboard the Move to form is the way.
+(() => {
+  const board = document.querySelector("[data-board]");
+  if (!board || !window.matchMedia("(pointer: fine)").matches) return;
+
+  const targets = () => document.querySelectorAll("[data-drop-stage]");
+  let card = null;
+
+  for (const each of board.querySelectorAll("[data-deal]")) each.draggable = true;
+
+  const show = (target) => {
+    for (const each of targets()) each.classList.toggle("is-drop-target", each === target);
+  };
+
+  const clear = () => {
+    show(null);
+    document.body.classList.remove("is-dragging");
+    if (card) card.classList.remove("is-dragged");
+    card = null;
+  };
+
+  /** The stage under the pointer, unless it is the card's own stage. */
+  const targetOf = (event) => {
+    const found = event.target instanceof Element ? event.target.closest("[data-drop-stage]") : null;
+    return card && found && found.dataset.dropStage !== card.dataset.stage ? found : null;
+  };
+
+  document.addEventListener("dragstart", (event) => {
+    const from = event.target instanceof Element ? event.target.closest("[data-deal]") : null;
+    if (!from || !board.contains(from) || !event.dataTransfer) return;
+    card = from;
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", from.dataset.deal);
+    // The title link covers the card, so the drag often starts on it: show the whole card, not the link.
+    const box = from.getBoundingClientRect();
+    event.dataTransfer.setDragImage(from, event.clientX - box.left, event.clientY - box.top);
+    document.body.classList.add("is-dragging");
+    from.classList.add("is-dragged");
+  });
+
+  document.addEventListener("dragover", (event) => {
+    const target = targetOf(event);
+    show(target);
+    if (!target) return;
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+  });
+
+  document.addEventListener("drop", (event) => {
+    const target = targetOf(event);
+    if (!target) return;
+    event.preventDefault();
+    const select = card.querySelector("select[name=stage]");
+    const form = select ? select.form : null;
+    const stage = target.dataset.dropStage;
+    clear();
+    if (!select || !form) return;
+    select.value = stage;
+    if (select.value === stage) form.requestSubmit();
+  });
+
+  document.addEventListener("dragend", clear);
+})();

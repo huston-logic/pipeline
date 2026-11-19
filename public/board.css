@@ -730,7 +730,7 @@ ol.panel {
   text-align: right;
 }
 
-/* Pipeline: one section per stage. */
+/* Pipeline list view, and the stage sections Today links to. */
 .stage {
   margin-top: 2rem;
   scroll-margin-top: 1rem;
@@ -1016,6 +1016,329 @@ ol.panel {
   color: var(--on-accent);
 }
 
+/* ---------- Board writes (decision 0017) ---------- */
+
+/* Buttons are <button> as well as <a>: the same look, no browser chrome. */
+button.button {
+  border: 0;
+  font-family: inherit;
+  line-height: 1.2;
+  cursor: pointer;
+}
+
+.button-small {
+  min-height: 44px;
+  padding: 0 1rem;
+  font-size: 1rem;
+}
+
+/* A second action beside a primary one, or on a tinted panel: white with an ink edge. */
+.button-quiet {
+  min-height: 44px;
+  padding: 0 1.125rem;
+  background: var(--white);
+  color: var(--ink);
+  font-size: 1rem;
+  box-shadow: inset 0 0 0 1px var(--ink-2);
+}
+
+.button-quiet:hover {
+  color: var(--ink);
+  text-decoration-color: var(--rust);
+}
+
+/* The change banner: the one line a write answers with, and Undo. Text on the tint is ink (§2). */
+.banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+  max-width: 52rem;
+  margin: 0 0 1.5rem;
+  padding: 0.75rem 0.75rem 0.75rem 1rem;
+  border-radius: var(--r-card);
+  background: var(--accent-tint);
+  color: var(--ink);
+}
+
+.banner-text {
+  flex: 1 1 16rem;
+  min-width: 0;
+  margin: 0;
+  font-weight: 600;
+}
+
+.banner-note,
+.banner-form {
+  margin: 0;
+}
+
+.row-form {
+  margin: 0.625rem 0 0;
+}
+
+/* The Move to form on a deal card, a list row and the deal page. Above the card title's whole-card link. */
+.move {
+  position: relative;
+  z-index: 1;
+  margin: 0.875rem 0 0;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--divider);
+}
+
+.move-label {
+  display: block;
+  margin-bottom: 0.25rem;
+  color: var(--ink-2);
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.move-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.move select {
+  flex: 1 1 9rem;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 0.625rem;
+  border: 1px solid var(--ink-2);
+  border-radius: var(--r-field);
+  background-color: var(--white);
+  color: var(--ink);
+  font: inherit;
+  font-size: 1rem;
+}
+
+.move .button {
+  flex: none;
+}
+
+/* On cards and list rows the form sits closed under a disclosure, so a card stays short. */
+.move-details {
+  position: relative;
+  z-index: 1;
+  margin: 0.75rem 0 0;
+  border-top: 1px solid var(--divider);
+}
+
+.move-details summary {
+  display: list-item;
+  padding: 0.625rem 0 0.5rem;
+  color: var(--ink-2);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.move-details summary:hover {
+  text-decoration: underline;
+  text-decoration-color: var(--rust);
+  text-underline-offset: 0.25em;
+}
+
+.move-details .move {
+  margin: 0 0 0.25rem;
+  padding: 0;
+  border-top: 0;
+}
+
+/* Pipeline board: on phones the columns stack under a list of jump links and the closed stages follow them; from
+   40rem the columns sit side by side in a region that scrolls sideways on its own, so the page never does, and the
+   closed stages move above it. */
+.pipeline-board {
+  display: flex;
+  flex-direction: column;
+}
+
+.pipeline-board > * {
+  min-width: 0;
+}
+
+.closed {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  margin: 2rem 0 0;
+}
+
+.closed h2 {
+  margin: 0;
+  color: var(--ink-2);
+  font-family: var(--font-text);
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.closed-list,
+.stage-jump,
+.column-cards {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.closed-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.closed-stage {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 0.5rem;
+  min-height: 44px;
+  padding: 0.25rem 0.875rem;
+  border: 1px solid var(--edge);
+  border-radius: var(--r-btn);
+  background: var(--white);
+}
+
+.closed-label {
+  font-weight: 600;
+}
+
+.closed-count,
+.stage-jump-count {
+  color: var(--ink-2);
+  font-size: 0.9375rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.stage-jump {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.stage-jump a {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 44px;
+  padding: 0 0.875rem;
+  border: 1px solid var(--edge);
+  border-radius: var(--r-pill);
+  background: var(--white);
+  color: var(--ink);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.stage-jump a:hover {
+  border-color: var(--ink-2);
+}
+
+.board {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.column {
+  scroll-margin-top: 1rem;
+}
+
+.column-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0 1rem;
+  margin: 1.5rem 0 0.75rem;
+}
+
+.column-head h2 {
+  margin: 0;
+}
+
+.column-cards {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.deal-card[draggable="true"] {
+  cursor: grab;
+}
+
+/* While a card is dragged (board.js): every stage it can go to gets a dashed edge, the one under the pointer a solid
+   accent edge and the words "Drop here", so the state never rests on colour alone. */
+.is-dragging [data-drop-stage] {
+  outline: 2px dashed var(--ink-2);
+  outline-offset: 2px;
+}
+
+.is-dragging [data-drop-stage].is-drop-target {
+  outline: 3px solid var(--accent);
+  background: var(--accent-tint);
+}
+
+.is-drop-target::before {
+  content: "Drop here";
+  display: block;
+  margin-bottom: 0.25rem;
+  color: var(--ink);
+  font-size: 0.9375rem;
+  font-weight: 700;
+}
+
+.closed-stage.is-drop-target::before {
+  margin: 0;
+}
+
+.is-dragged {
+  opacity: 0.5;
+}
+
+/* Pipeline list view: one row per deal, the Move to form beside it on wide screens. */
+.deal-row {
+  position: relative; /* holds the title link's whole-row tap area */
+}
+
+.deal-row .card-title {
+  font-size: 1.0625rem;
+}
+
+/* Closing a deal asks first: the confirm page. */
+.confirm-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1.5rem;
+  margin: 1.5rem 0 0;
+}
+
+.confirm-cancel,
+.back-link a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  font-weight: 600;
+}
+
+.refusal {
+  color: var(--ink);
+}
+
+.refused-form {
+  max-width: 28rem;
+  margin: 0 0 1rem;
+}
+
+.refused-form .move {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
 /* ---------- Wider screens ---------- */
 
 @media (min-width: 40rem) {
@@ -1054,6 +1377,69 @@ ol.panel {
 
   .panel {
     padding-inline: 1.25rem;
+  }
+
+  .stage-jump {
+    display: none;
+  }
+
+  .pipeline-board .closed {
+    order: -1;
+    margin: 0 0 1.25rem;
+  }
+
+  .board {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.875rem;
+    overflow-x: auto;
+    margin: 0 -0.25rem;
+    padding: 0.25rem 0.25rem 1rem;
+  }
+
+  .column {
+    flex: 0 0 17.5rem;
+    padding: 0.875rem 0.75rem 0.75rem;
+    border-radius: var(--r-card);
+    background: var(--silver-2);
+  }
+
+  .column-head {
+    margin: 0 0.25rem 0.75rem;
+  }
+
+  .column-head h2 {
+    font-size: 1.125rem;
+  }
+
+  .column .stage-count {
+    width: 100%;
+    text-align: left;
+  }
+
+  .column .stage-empty {
+    padding: 0.5rem 0.25rem;
+    background: none;
+  }
+
+  .column .card {
+    padding: 1rem;
+  }
+
+  .column .card-title {
+    font-size: 1.0625rem;
+  }
+
+  .deal-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 19rem;
+    gap: 0 1.5rem;
+    align-items: start;
+  }
+
+  .deal-row .move-details {
+    margin-top: 0;
+    border-top: 0;
   }
 }
 
@@ -1166,6 +1552,12 @@ ol.panel {
 
   .app-footer {
     padding: 0 2.5rem 2rem;
+  }
+
+  /* The board runs into main's right padding, so a column cut at the window's edge shows there is more to scroll. */
+  .board {
+    margin-right: -2.5rem;
+    padding-right: 2.5rem;
   }
 }
 

@@ -46,6 +46,9 @@ const linkTexts = (body: string) => [...body.matchAll(/<a\b[^>]*>([\s\S]*?)<\/a>
 const mainOf = (body: string) => /<main id="main">([\s\S]*)<\/main>/.exec(body)?.[1] ?? "";
 const navOf = (body: string) => /<nav class="app-nav"[\s\S]*?<\/nav>/.exec(body)?.[0] ?? "";
 /** The card titles on a page, as markup, so an outside name is checked together with its label. */
+/** The one script the board ships (decision 0014), loaded only by the pipeline's board view. */
+const BOARD_JS = '<script src="/board.js" defer></script>';
+const scriptsOf = (body: string) => [...body.matchAll(/<script\b[^>]*>[\s\S]*?<\/script>/gi)].map((m) => m[0]);
 const cardTitles = (body: string) => [...body.matchAll(/<h2 class="card-title">([\s\S]*?)<\/h2>/g)].map((m) => m[1] ?? "");
 
 function assertPage(body: string, path: string) {
@@ -54,7 +57,7 @@ function assertPage(body: string, path: string) {
   assert.match(body, /<main id="main"/, path);
   assert.match(body, /<nav class="app-nav" aria-label="Board pages">/, path);
   assert.match(body, /<link rel="stylesheet" href="\/theme.css">/, path);
-  assert.doesNotMatch(body, /<script/i, path);
+  assert.deepEqual(scriptsOf(body), path === "/pipeline" ? [BOARD_JS] : [], `${path}: scripts`);
   assert.doesNotMatch(body, /\sstyle=/i, `${path}: no inline styles (the CSP refuses them)`);
 }
 
@@ -167,6 +170,112 @@ test("the pipeline page lists open deals by stage, each stage with its count and
   assert.match(body, /<dt>Contact<\/dt><dd>Pat Example<\/dd>/);
   assert.match(body, /<dt>Value<\/dt><dd>1,500<\/dd>/);
   assert.doesNotMatch(body, /Salon booking site/, "closed deals are not on the board's stages");
+});
+
+const moveForms = (body: string) =>
+  [...body.matchAll(/<form class="move" method="post" action="\/deals\/([^/"]+)\/move">([\s\S]*?)<\/form>/g)].map((m) => ({
+    id: m[1] ?? "",
+    inner: m[2] ?? "",
+  }));
+
+test("the pipeline board: one column per open stage in order, with its count and value, and the closed stages as a summary", async () => {
+  const db = await seededDb();
+  const { body } = await get(db, "/pipeline");
+  const main = mainOf(body);
+  assert.match(main, /<h1>Pipeline<\/h1>\n<ul class="view-switch" aria-label="Show the pipeline as">\n<li><a href="\/pipeline" aria-current="page">Board<\/a><\/li>\n<li><a href="\/pipeline\?view=list">List<\/a><\/li>\n<\/ul>/);
+  assert.match(main, /<p class="lede">6 open deals, total value 4,650\.<\/p>/);
+  assert.match(main, /<div class="board" role="region" aria-label="Open stages" tabindex="0" data-board>/);
+  const columns = [...main.matchAll(/<section class="column" aria-labelledby="(stage-\d)" data-drop-stage="([a-z_]+)">/g)].map((m) => [m[1], m[2]]);
+  assert.deepEqual(columns, [
+    ["stage-1", "new_inquiry"],
+    ["stage-2", "replied"],
+    ["stage-3", "call_booked"],
+    ["stage-4", "call_done"],
+    ["stage-5", "proposal_sent"],
+  ]);
+  assert.match(main, /<h2 id="stage-3">Call booked<\/h2>\n<p class="stage-count">1 deal, value 1,500<\/p>/);
+  assert.match(main, /<ul class="stage-jump" aria-label="Jump to a stage"><li><a href="#stage-1">New inquiry <span class="stage-jump-count">2<\/span><\/a><\/li>/);
+  const closed = [...main.matchAll(/<li class="closed-stage" data-drop-stage="([a-z_]+)"><span class="closed-label">([^<]+)<\/span> <span class="closed-count">([^<]+)<\/span><\/li>/g)].map((m) => [m[1], m[2], m[3]]);
+  assert.deepEqual(closed, [
+    ["won", "Won", "1 deal"],
+    ["lost", "Lost", "1 deal"],
+    ["not_now", "Not now", "0 deals"],
+  ]);
+  assert.doesNotMatch(main, /Salon booking site/, "closed deals are not cards");
+  assert.deepEqual(scriptsOf(body), [BOARD_JS]);
+});
+
+test("pipeline cards show title, contact, value and next date, overdue in words, and a Move to form that works without JavaScript", async () => {
+  const db = await seededDb();
+  db.exec(`UPDATE deals SET next_at = '2020-01-01T17:00:00.000Z' WHERE id = 'dl_seed03'`);
+  const main = mainOf((await get(db, "/pipeline")).body);
+  assert.match(main, /<li class="card deal-card" data-deal="dl_seed01" data-stage="call_booked">\n<div class="card-head">\n<h3 class="card-title"><a href="\/deals\/dl_seed01">Website refresh for Example Plumbing<\/a><\/h3>/);
+  assert.match(main, /data-deal="dl_seed01"[\s\S]*?<dt>Contact<\/dt><dd>Pat Example<\/dd>[\s\S]*?<dt>Value<\/dt><dd>1,500<\/dd>[\s\S]*?<dt>Next date<\/dt><dd><time datetime=/);
+  assert.match(main, /data-deal="dl_seed03"[\s\S]*?<span class="tag tag-warn">Overdue<\/span>/);
+
+  const forms = moveForms(main);
+  assert.equal(forms.length, 6, "one Move to form per open deal");
+  const pat = forms.find((form) => form.id === "dl_seed01")?.inner ?? "";
+  assert.match(pat, /<input type="hidden" name="csrf" value="[A-Za-z0-9_-]{43}"><input type="hidden" name="return_to" value="\/pipeline">/);
+  // On a card the form sits under a native disclosure (no script needed), so its label is read, not shown.
+  assert.match(main, /data-deal="dl_seed01"[\s\S]*?<details class="move-details">\n<summary>Move to another stage<span class="visually-hidden">: Website refresh for Example Plumbing<\/span><\/summary>\n<form class="move" method="post" action="\/deals\/dl_seed01\/move">/);
+  assert.match(pat, /<label class="move-label visually-hidden" for="move-dl_seed01">Move to<span class="visually-hidden"> \(Website refresh for Example Plumbing\)<\/span><\/label>/);
+  assert.match(pat, /<select id="move-dl_seed01" name="stage">/);
+  const options = [...pat.matchAll(/<option value="([a-z_]+)"( selected)?>([^<]+)<\/option>/g)].map((m) => [m[1], m[2] === " selected", m[3]]);
+  assert.deepEqual(options, [
+    ["new_inquiry", false, "New inquiry"],
+    ["replied", false, "Replied"],
+    ["call_booked", true, "Call booked (current)"],
+    ["call_done", false, "Call done"],
+    ["proposal_sent", false, "Proposal sent"],
+    ["won", false, "Won"],
+    ["lost", false, "Lost"],
+    ["not_now", false, "Not now"],
+  ]);
+  assert.match(pat, /<optgroup label="Close the deal"><option value="won">/);
+  assert.match(pat, /<button class="button button-small" type="submit">Move<span class="visually-hidden"> Website refresh for Example Plumbing<\/span><\/button>/);
+
+  const outside = forms.find((form) => form.id === "dl_seed02")?.inner ?? "";
+  assert.match(outside, /Move to<span class="visually-hidden"> \(deal dl_seed02\)<\/span>/, "an outside title never names a control");
+  assert.doesNotMatch(outside, /Bakery/);
+});
+
+test("an empty pipeline still draws every open stage as a column, and the closed stages with no deals", async () => {
+  const main = mainOf((await get(await createTestDb(), "/pipeline")).body);
+  assert.match(main, /<p class="lede">No deals yet\./);
+  assert.equal(main.match(/<section class="column"/g)?.length, 5);
+  assert.equal(main.match(/No open deals in this stage\./g)?.length, 5);
+  assert.match(main, /<span class="closed-label">Won<\/span> <span class="closed-count">0 deals<\/span>/);
+  assert.deepEqual(moveForms(main), []);
+});
+
+test("the pipeline list view: every open deal as a row under its stage, each with its Move to form, and no script", async () => {
+  const db = await seededDb();
+  const { res, body } = await get(db, "/pipeline?view=list");
+  assert.equal(res.status, 200);
+  assertPage(body, "/pipeline?view=list");
+  assert.equal(titleOf(body), "Pipeline list · Pipeline");
+  const main = mainOf(body);
+  assert.match(main, /<li><a href="\/pipeline">Board<\/a><\/li>\n<li><a href="\/pipeline\?view=list" aria-current="page">List<\/a><\/li>/);
+  assert.match(main, /<section class="stage" aria-labelledby="stage-1">\n<div class="stage-head">\n<h2 id="stage-1">New inquiry<\/h2>\n<p class="stage-count">2 deals<\/p>/);
+  assert.equal(main.match(/<li class="deal-row">/g)?.length, 6);
+  assert.match(main, /<li class="deal-row">\n<div class="deal-row-main">\n<div class="card-head">\n<h3 class="card-title"><a href="\/deals\/dl_seed01">/);
+  const forms = moveForms(main);
+  assert.equal(forms.length, 6);
+  assert.match(forms[0]?.inner ?? "", /name="return_to" value="\/pipeline\?view=list"/);
+  assert.doesNotMatch(main, /class="board"/);
+  assert.match(navOf(body), /<a href="\/pipeline" aria-current="page">/);
+});
+
+test("the deal page has a Move to form that comes back to the deal", async () => {
+  const db = await seededDb();
+  const main = mainOf((await get(db, "/deals/dl_seed01")).body);
+  const [form] = moveForms(main);
+  assert.equal(form?.id, "dl_seed01");
+  assert.match(form?.inner ?? "", /name="return_to" value="\/deals\/dl_seed01"/);
+  assert.match(form?.inner ?? "", /<option value="call_booked" selected>Call booked \(current\)<\/option>/);
+  assert.match(form?.inner ?? "", /<label class="move-label" for="move-dl_seed01">Move to<span/, "a visible label on the deal page");
+  assert.doesNotMatch(main, /move-details/);
 });
 
 test("the contacts page shows every contact that is not archived, by name, with company, open deals and last activity", async () => {
@@ -393,7 +502,7 @@ test("outside text: labelled From outside, escaped, never a link, and kept out o
 
   for (const path of ["/", "/pipeline", "/contacts", "/contacts/ct_seed02", "/companies", "/deals/dl_seed02"]) {
     const { body } = await get(db, path);
-    assert.doesNotMatch(body, /<script/i, path);
+    assert.doesNotMatch(body.replace(BOARD_JS, ""), /<script/i, path);
     assert.doesNotMatch(body, /evil\.example">/, path);
     assert.match(body, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/, path);
     for (const text of linkTexts(body)) assert.doesNotMatch(text, /script|bakery|Robin/i, `${path}: link text "${text}"`);
@@ -507,7 +616,7 @@ test("the More page links to Rules, Changes and Export, each with a one-line des
   }
 });
 
-test("the board is read-only: anything but GET or HEAD is 405", async () => {
+test("board pages answer GET and HEAD only: any other method is 405 (writes have their own paths)", async () => {
   const db = await seededDb();
   for (const path of boardRoutes) {
     for (const method of ["POST", "PUT", "DELETE", "PATCH"]) {
