@@ -63,10 +63,12 @@ and the authorization page; plus the installed `agents` 0.33.0 types in `dist/mc
   `idempotentHint` is true for the `update_*` tools, `pause_rule` and `resume_rule` (the code sets it on
   `update_contact`, `update_deal`, `update_stage`, `update_field`, `update_rule`, `update_rulebook`, `update_settings`,
   `pause_rule` and `resume_rule`). These set a record to a stated target state, so a repeat with the same arguments
-  leaves the data as it was (the service refuses it with "Nothing to change" or "already ..."). It is false for the
-  adds and `log_activity`, which add a record each time, and for the one-way actions `archive_stage`, `complete_task`,
-  `snooze_task` and `undo_change`. Those are also refused on a repeat ("already archived", "already done", "already
-  snoozed until ...", "already undone"), so they would qualify under MCP's definition, but they are kept false on
+  leaves the data as it was (the service refuses it with "Nothing to change" or "already ..."). It is false for
+  `add_lead` (a repeated email reuses the contact but adds another deal), `add_task`, `add_rule` and `log_activity`,
+  which add a record each time. It is also false for `add_stage` and `add_field` (a repeat is refused: "There's
+  already a stage called ...", "There's already a ... field called ...") and for the one-way actions `archive_stage`,
+  `complete_task`, `snooze_task` and `undo_change` (refused on a repeat: "already archived", "already done", "already
+  snoozed until ...", "already undone"). Those six would qualify under MCP's definition, but they are kept false on
   purpose because the hint only makes AI apps more careful. Final-review fix wave, 2026-11-18. Wording corrected in
   run 2 (R9), 2026-11-18.
 - **Activity types:** `log_activity` takes `email`, `call`, `meeting` or `note`; `form` only comes in through
