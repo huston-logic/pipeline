@@ -1,26 +1,19 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
-  "name": "[[Worker name]]",
-  // The contact form Worker. It runs only for /api/* (run_worker_first); every page and file is served from ./out.
-  "main": "./worker/contact.ts",
+  // Generic local-development config. It holds no client values: each client copy gets its own git-ignored config
+  // in /.copies/<name>/ from the provisioning script (decision 0002).
+  "name": "pipeline-dev",
+  "main": "src/index.ts",
   "compatibility_date": "2026-11-11",
   "assets": {
     "directory": "./out",
-    "not_found_handling": "404-page",
-    "run_worker_first": ["/api/*"]
+    "binding": "ASSETS",
+    // Every request reaches the Worker first, so the board, /mcp, /intake and /api/* share one router and every
+    // response gets the Worker's security headers. The Worker hands file requests to ASSETS.
+    "run_worker_first": true
   },
-  "vars": { "SITE_ENV": "production" },
-  // Names only. Values are set with `wrangler secret put` (README, "Contact form").
-  "secrets": {
-    "required": ["RESEND_API_KEY", "TURNSTILE_SECRET_KEY", "SHEET_WEBHOOK_URL", "SHEET_WEBHOOK_SECRET"]
-  },
-  "ratelimits": [{ "name": "CONTACT_RATE_LIMIT", "namespace_id": "[[Rate limit namespace id (production)]]", "simple": { "limit": 5, "period": 60 } }],
+  // `npm run dev` and `npm run preview` override this with --var ENVIRONMENT:development.
+  "vars": { "ENVIRONMENT": "production" },
   // Invocation logs would store request metadata; the Worker's own log lines hold no personal data.
-  "observability": { "enabled": true, "logs": { "invocation_logs": false } },
-  // Worker Previews (branch previews) do not inherit the settings above, so they are repeated here.
-  // Preview secrets are separate: `wrangler preview base-config secret put`.
-  "previews": {
-    "vars": { "SITE_ENV": "preview" },
-    "ratelimits": [{ "name": "CONTACT_RATE_LIMIT", "namespace_id": "[[Rate limit namespace id (preview)]]", "simple": { "limit": 5, "period": 60 } }]
-  }
+  "observability": { "enabled": true, "logs": { "invocation_logs": false } }
 }
