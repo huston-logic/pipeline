@@ -3,6 +3,21 @@
 Spec: `docs/SPEC.md`. Plan: `docs/PLAN.md`. Rules: CLAUDE.md, "Autonomous runs". Run 1 started 2026-11-18.
 Updated after every merge, so a fresh chat can pick up where the last one stopped.
 
+## Run 3 (2026-11-19)
+
+Short run: land run 2's last two PRs once the owner merged the CI timeout fix and the owner-only proposals
+([#26](https://github.com/huston-logic/pipeline/pull/26), run 2 STOP 1 and 2).
+
+| Task | PR | State |
+| --- | --- | --- |
+| R4 Editing, updated from main | [#22](https://github.com/huston-logic/pipeline/pull/22) | merged (squash); all checks passed, lighthouse within the new timeout |
+| R5 Phone actions, updated from main and marked ready | [#24](https://github.com/huston-logic/pipeline/pull/24) | merged (squash); reviewed (no critical or important findings), all checks passed |
+| Status | this PR | |
+
+Ruling: #24 was stacked on #22, so after #22's squash merge the update from main conflicted in five files where R5
+had edited R4's lines. R5's side was kept (it already held all of #22); the merged tree was checked to differ from
+R5's tip by exactly main's other changes (#23, #25, #26), and `npm run check` passed (735 unit, 32 e2e).
+
 ## Run 2 (2026-11-18 to 2026-11-19)
 
 The board becomes the owner's daily screen (docs/PLAN.md, "Run 2"; decision 0014). Updated in the first and the
@@ -14,13 +29,13 @@ closing PR of the run.
 | R1 | Look and navigation (0015) | [#17](https://github.com/huston-logic/pipeline/pull/17) | merged |
 | R2 | Contacts and companies, realistic seed (0016) | [#19](https://github.com/huston-logic/pipeline/pull/19) | merged |
 | R3 | Pipeline kanban and the board write path (0017) | [#20](https://github.com/huston-logic/pipeline/pull/20) | merged |
-| R4 | Editing (0018) | [#22](https://github.com/huston-logic/pipeline/pull/22) | open, reviewed, auto-merge queued; **blocked by the CI lighthouse timeout (STOP 1)** |
-| R5 | Phone actions and Ask Claude (0021) | [#24](https://github.com/huston-logic/pipeline/pull/24) | draft, stacked on #22; merge #22 first, then mark ready |
+| R4 | Editing (0018) | [#22](https://github.com/huston-logic/pipeline/pull/22) | merged in run 3 |
+| R5 | Phone actions and Ask Claude (0021) | [#24](https://github.com/huston-logic/pipeline/pull/24) | merged in run 3 |
 | R6 | Home-screen app (0019) | [#21](https://github.com/huston-logic/pipeline/pull/21) | merged |
 | R7 | CPU check (0020, docs/PAID-PLAN.md) | [#23](https://github.com/huston-logic/pipeline/pull/23) | merged |
 | R8 | Deferred minor findings | [#18](https://github.com/huston-logic/pipeline/pull/18) | merged |
 | R9 | Decision wording (0004, 0010) | [#16](https://github.com/huston-logic/pipeline/pull/16) | merged |
-| R10 | Owner-only proposals | none (files in `.owner-review/proposals/`, git-ignored) | written, waiting for the owner |
+| R10 | Owner-only proposals | [#26](https://github.com/huston-logic/pipeline/pull/26) (copied in by the owner) | merged |
 
 ### Run 2 rulings (cost if wrong)
 
@@ -48,14 +63,8 @@ None.
 
 ### STOP queue added in run 2 (needs the owner)
 
-1. **CI lighthouse timeout (urgent, owner-only file).** The `lighthouse` job audits every board page 5 times (about 1
-   minute each) and is cancelled at 15 minutes now that there are 17+ pages, so #22 and #24 cannot pass. The proposal
-   `.owner-review/proposals/.github/workflows/ci.yml.proposed` raises it to 35 minutes (plus run 1's ci.yml cleanup).
-   Copy with `bash .owner-review/proposals/copy-proposals.sh`, open and merge that PR, then "Re-run failed jobs" on #22
-   (or "Update branch" first; main merges into it cleanly, checked locally: 710 unit and 32 e2e tests pass).
-2. **Owner-only proposals.** Same script: engine versions of `.claude/agents/review-*.md`, small fixes to three skills
-   and the guard-bash deploy message. `.owner-review/proposals/README.md` explains each; one changes meaning (the
-   human-touch-design skill follows CLAUDE.md's fast lane instead of always waiting for plan approval).
+1. ~~CI lighthouse timeout~~: done in #26 (35-minute timeout); #22 and #24 then passed.
+2. ~~Owner-only proposals~~: done in #26 (reviewer agents, three skills, guard-bash message).
 3. **Access bypass for `/icons/*`, per copy (dashboard).** Phones fetch home-screen icons without cookies
    (docs/ACCESS-SETUP.md step 3, check in step 7.5).
 4. **Check on your phone at the first install:** Add to Home Screen shows the green icon; "Ask Claude" opens claude.ai
@@ -186,20 +195,22 @@ Files in `docs/decisions/`. Rulings made while running the plan:
 
 ## What's left
 
-After run 2, everything in the spec and the run 2 brief is built. Two PRs wait on the CI timeout (run 2 STOP 1). Not
-yet proven, because it needs a real account or the owner:
+After run 3, everything in the spec and the run 2 brief is built and merged. Not yet proven, because it needs a real
+account or the owner:
 
-1. Merge #22 and then #24 once the lighthouse timeout is raised (run 2 STOP 1). #24 is stacked on #22: after #22
-   merges, update #24's branch from main, mark it ready, and let the checks run.
-2. A live install on a first copy (run 1 STOP 5 and 6): Access sign-in from a real AI app, the board behind Access
+1. A live install on a first copy (run 1 STOP 5 and 6): Access sign-in from a real AI app, the board behind Access
    (including a board edit and its Undo), the first remote migration, deploy and import; the phone checks in run 2
    STOP 3 and 4.
-3. CPU on real hardware: run 2 measured on this Mac (docs/PAID-PLAN.md, "CPU check"). Confirm in the Cloudflare
+2. CPU on real hardware: run 2 measured on this Mac (docs/PAID-PLAN.md, "CPU check"). Confirm in the Cloudflare
    dashboard on the first copy, and settle the D1 statement-count question (run 2 STOP 5).
-4. Minor review findings left from run 2 (none blocks use): the `/companies` page has no row cap (it is fast at 300
+3. Minor review findings left from run 2 (none blocks use): the `/companies` page has no row cap (it is fast at 300
    companies); the Contacts search echoes the query in the page (escaped); the company sort on /contacts and the
    grouping on /companies treat tabs and accents slightly differently; the CSV export of a very large copy still needs
    `copies:export`.
+4. Minor review findings on #24 (skipped in run 3 by the owner's choice; none blocks use): `ReachContact.untrusted_fields`
+   in `src/board/reach.ts` is unused; a phone with a non-breaking space is refused with a note that doesn't say why
+   (hidden character); board.js's focus move and Copy prompt are only text-checked, with no browser test; Ask Claude's
+   "Prep me for this call" also shows on closed deals; a double tap on a Log button logs twice (0021 accepts this).
 
 ## How to resume
 
