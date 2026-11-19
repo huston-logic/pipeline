@@ -500,6 +500,19 @@ export async function listQuietDeals(db: Db, now: Date): Promise<QuietDeal[]> {
 
 const PREVIEW_TYPES: ActivityType[] = ["form", "email", "call", "meeting", "note", "stage_change"];
 
+/**
+ * How many days before the preview window an activity can still change the answer. A stage_followup hit is a stay that
+ * began at most `days` before its firing, a gone_quiet hit a quiet spell that began at most `days` before it; an older
+ * activity only moves that start further back, where it cannot produce a hit. An on_stage_enter hit is the entry
+ * itself, so it needs nothing before the window.
+ * This is exact given two invariants the services keep (decision 0020): every stage_change is at or after its deal's
+ * created_at, so a first stay rebuilt from created_at starts no later than the true one; and the last stage_change's
+ * `to` is the deal's stage_key, so the current stay is always the one starting at stage_entered_at.
+ */
+function lookbackDays(params: RuleParams): number {
+  return params.type === "on_stage_enter" ? 0 : params.days;
+}
+
 export interface RulePreview {
   /** The saved rule previewed, or null for a rule not added yet. */
   ruleId: string | null;
@@ -538,9 +551,10 @@ export async function previewRuleFor(db: Db, now: Date, request: PreviewRequest)
   }
 
   const tz = await ownerTimezone(db);
-  // A hit in the window comes from a stage stay or a quiet spell that started at most MAX_DAYS before the window, so
-  // older activities cannot change the answer (decision 0010) and are not read.
-  const lookback = new Date(now.getTime() - (PREVIEW_DAYS + MAX_DAYS) * DAY_MS).toISOString();
+  // A hit in the window comes from a stage stay or a quiet spell that started at most the rule's own `days` before the
+  // window (an on_stage_enter hit is the entry itself, inside the window), so older activities cannot change the answer
+  // and are not read (decision 0010, narrowed in run 2 R7).
+  const lookback = new Date(now.getTime() - (PREVIEW_DAYS + lookbackDays(preview.params)) * DAY_MS).toISOString();
   const activities = await db
     .prepare(
       `SELECT deal_id, contact_id, type, occurred_at, data FROM activities

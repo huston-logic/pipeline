@@ -43,6 +43,7 @@ skeleton, so the palette tokens already in `public/board.css` (decision 0001) ar
   tasks, stages, field_defs, rules, rule_firings, rulebook, settings, audit_log and briefs (`write_guard` is empty
   scratch space and is left out), read in one D1 batch so the tables come from the same moment. Rows are as stored:
   JSON columns stay JSON text, times stay UTC ISO. `/api/export/<table>.csv` gives one table; other names are 404.
+  (0020: the JSON is now streamed table by table, one row per line; the same value and the same one-batch read.)
   Both are downloads (`Content-Disposition: attachment`) named `pipeline-export-<date>.json` and
   `pipeline-<table>-<date>.csv`, with the owner's local date. An empty table's CSV still has its header row (column
   names from D1's `raw({ columnNames: true })`, checked against real local D1 in `tests/e2e/intake.test.ts`).

@@ -176,14 +176,16 @@ export interface PreviewHit {
 
 type Stay = { stageKey: string; from: number; to: number | null };
 
-function stageKeyOf(data: string | null, side: "from" | "to"): string | null {
-  if (data === null) return null;
+/** A stage_change's `data.from` and `data.to`, each null when missing or not text. */
+function stageKeysOf(data: string | null): { from: string | null; to: string | null } {
+  if (data === null) return { from: null, to: null };
   try {
     const value: unknown = JSON.parse(data);
-    const key = typeof value === "object" && value !== null ? (value as Record<string, unknown>)[side] : undefined;
-    return typeof key === "string" ? key : null;
+    const record = typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
+    const key = (side: "from" | "to") => (typeof record[side] === "string" ? (record[side] as string) : null);
+    return { from: key("from"), to: key("to") };
   } catch {
-    return null;
+    return { from: null, to: null };
   }
 }
 
@@ -194,7 +196,7 @@ function stageKeyOf(data: string | null, side: "from" | "to"): string | null {
  */
 function stageHistory(deal: EngineDeal, changes: EngineActivity[]): Stay[] {
   const moves = changes
-    .map((a) => ({ at: ms(a.occurredAt), from: stageKeyOf(a.data, "from"), to: stageKeyOf(a.data, "to") }))
+    .map((a) => ({ at: ms(a.occurredAt), ...stageKeysOf(a.data) }))
     .filter((m): m is { at: number; from: string; to: string } => m.from !== null && m.to !== null)
     .sort((a, b) => a.at - b.at);
   const stays: Stay[] = [{ stageKey: moves[0]?.from ?? deal.stageKey, from: ms(deal.createdAt), to: null }];
@@ -244,27 +246,31 @@ export function previewRule(
   }
   for (const deal of data.deals) {
     if (deal.archived) continue;
-    const mine = [...(byDeal.get(deal.id) ?? []), ...(byContact.get(deal.contact.id) ?? [])];
-    const contacts = mine
-      .filter((a) => CONTACT_TYPES.has(a.type))
-      .map((a) => ms(a.occurredAt))
-      .sort((a, b) => a - b);
+    const own = byDeal.get(deal.id) ?? [];
+    // Sorted contact times, worked out only for a deal that needs them: most deals of a stage rule never sat in its
+    // stage inside the window, and skipping them keeps the preview's CPU down on a big pipeline (docs/PAID-PLAN.md).
+    let sorted: number[] | undefined;
+    const contacts = (): number[] =>
+      (sorted ??= [...own, ...(byContact.get(deal.contact.id) ?? [])]
+        .filter((a) => CONTACT_TYPES.has(a.type))
+        .map((a) => ms(a.occurredAt))
+        .sort((a, b) => a - b));
     const hit = (at: number) =>
       hits.push({ dealId: deal.id, contactId: deal.contact.id, label: dealLabel(deal, deal.contact), wouldFireAt: iso(at) });
 
     if (params.type === "gone_quiet") {
       if (!isLive(deal)) continue;
-      const at = firstQuietAt(ms(deal.createdAt), contacts, params.days, start, end);
+      const at = firstQuietAt(ms(deal.createdAt), contacts(), params.days, start, end);
       if (at !== null) hit(at);
       continue;
     }
-    const changes = mine.filter((a) => a.dealId === deal.id && a.type === "stage_change");
+    const changes = own.filter((a) => a.type === "stage_change");
     for (const stay of stageHistory(deal, changes)) {
       if (stay.stageKey !== params.stage) continue;
       const left = stay.to ?? Number.POSITIVE_INFINITY;
       const at = params.type === "on_stage_enter" ? stay.from : stay.from + params.days * DAY_MS;
       if (at < start || at > end || at >= left) continue;
-      if (params.type === "stage_followup" && contacts.some((c) => c > stay.from && c <= at)) continue;
+      if (params.type === "stage_followup" && contacts().some((c) => c > stay.from && c <= at)) continue;
       hit(at);
     }
   }

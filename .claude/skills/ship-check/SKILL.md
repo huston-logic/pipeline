@@ -48,7 +48,8 @@ The reviewers cannot run git, so you give them the diff.
 ## 4. Check
 Run `npm run check` with a timeout of 300000 ms. Record PASS or FAIL.
 On FAIL keep the last 40 lines of its output. Continue to step 5 even if it failed.
-Do not run anything else that writes. The build writes only git-ignored `.next/` and `out/`.
+Do not run anything else that writes. The check writes only git-ignored `out/`, `.wrangler/` and temp folders (the
+e2e tests run the Worker on a temp database).
 
 ## 5. Reviewers, in parallel
 In ONE message, call the Agent tool three times: `review-code`, `review-a11y`,
@@ -75,10 +76,10 @@ UNSURE
   <each agent's UNSURE lines, verbatim, grouped by agent, or "none">
 CHECK: PASS | FAIL
   <last 40 lines, only if FAIL>
-NOT CHECKED: no axe or Lighthouse run, no visual or browser check, no mobile or
-  desktop render check, no check:placeholders launch gate, no copy-accuracy check
-  against the source doc, no review of dependency changes in package-lock.json
-  (left out of the diff). The reviewers read code only.
+NOT CHECKED: no axe or Lighthouse run, no visual or browser check, no 375 px or
+  1280 px render check, no copy check against docs/SPEC.md, no review of
+  dependency changes in package-lock.json (left out of the diff). The reviewers
+  read code only.
 ```
 
 Verdict rules:
@@ -87,6 +88,6 @@ Verdict rules:
   some, because contrast and focus need a rendered page). State how many UNSURE items there are.
 - Copy the reviewers' lines as they wrote them. Do not rewrite, merge or soften them.
 
-Add one last line only when the changed files include `src/**/*.tsx`,
-`src/app/globals.css` or `src/app/motion.css`:
+Add one last line only when the changed files include `src/board/**`,
+`public/board.css` or `public/board.js`:
 "OPTIONAL: run the human-touch-design audit (styling or markup changed)."

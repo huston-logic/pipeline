@@ -447,7 +447,32 @@ function recordingActivities(db: Db, seen: string[]): Db {
   };
 }
 
-test("preview_rule reads activities only as far back as its window needs: 30 days plus the longest rule (365 days)", async () => {
+test("preview_rule's lookback is 30 days plus the rule's own days (none for on_stage_enter), with the same hits", async () => {
+  const db = await openTestDb();
+  await proposal(db, later(-60), "Old Example");
+  await proposal(db, later(-34), "Mid Example");
+  await proposal(db, later(-20), "Recent Example");
+  await proposal(db, later(-3), "New Example");
+  const cases: [settings: Parameters<typeof previewRuleFor>[2], days: number, fires: number[]][] = [
+    [{ type: "stage_followup", stage: "Proposal sent", days: 7 }, 37, [-27, -13]],
+    [{ type: "gone_quiet", days: 10 }, 40, [-30, -24, -10]],
+    [{ type: "on_stage_enter", stage: "Proposal sent", title: "Check in", dueInDays: 1 }, 30, [-20, -3]],
+  ];
+  for (const [settings, days, fires] of cases) {
+    const seen: string[] = [];
+    const preview = await previewRuleFor(recordingActivities(db, seen), NOW, settings);
+    const cutoff = later(-days).toISOString();
+    assert.ok(seen.length > 0, `${settings.type}: recent entries are read`);
+    assert.ok(seen.every((at) => at >= cutoff), `${settings.type}: nothing older than ${days} days is read`);
+    assert.deepEqual(
+      preview.hits.map((hit) => hit.wouldFireAt),
+      fires.map((d) => later(d).toISOString()),
+      settings.type,
+    );
+  }
+});
+
+test("preview_rule for a 365-day rule reads 30 + 365 days back, and an entry 380 days ago still counts", async () => {
   const db = await openTestDb();
   await proposal(db, later(-400), "Old Example");
   await proposal(db, later(-380), "Long Example");
@@ -464,5 +489,89 @@ test("preview_rule reads activities only as far back as its window needs: 30 day
     preview.hits.map((hit) => hit.wouldFireAt),
     [later(-15).toISOString()],
     "an entry 380 days ago still counts for a 365-day rule",
+  );
+});
+
+test("preview_rule's activity read is served by the occurred_at index, not a scan of every activity", async () => {
+  const db = await openTestDb();
+  await proposal(db, later(-10));
+  let read: { sql: string; values: unknown[] } | undefined;
+  const recording: Db = {
+    prepare(sql) {
+      const statement = db.prepare(sql);
+      if (!/FROM activities\s+WHERE type IN/.test(sql)) return statement;
+      return new Proxy(statement, {
+        get(target, name, receiver) {
+          if (name === "bind") {
+            return (...values: unknown[]) => {
+              read = { sql, values };
+              return target.bind(...values);
+            };
+          }
+          const value: unknown = Reflect.get(target, name, receiver);
+          return typeof value === "function" ? value.bind(target) : value;
+        },
+      });
+    },
+    batch: (statements) => db.batch(statements),
+  };
+  await previewRuleFor(recording, NOW, { type: "stage_followup", stage: "Proposal sent", days: 3 });
+  assert.ok(read, "the preview reads activities");
+  const plan = await db.prepare(`EXPLAIN QUERY PLAN ${read.sql}`).bind(...read.values).all<{ detail: string }>();
+  const details = plan.results.map((row) => row.detail).join("; ");
+  assert.match(details, /USING INDEX activities_occurred/, details);
+  assert.doesNotMatch(details, /\bSCAN activities\b(?! USING)/, details);
+});
+
+test("preview_rule's lookback boundary: an activity at exactly 30 + days back is read, one a millisecond older is not", async () => {
+  const db = await createTestDb();
+  const days = 7;
+  const start = NOW.getTime() - 30 * DAY;
+  const line = start - days * DAY;
+  const iso = (ms: number) => new Date(ms).toISOString();
+  const created = iso(line - 10 * DAY);
+  db.exec("INSERT INTO contacts (id, name) VALUES ('ct_edge', 'Pat Example')");
+  const deal = (id: string, stage: string, status: string, entered: string, last: string | null) =>
+    db.exec(`INSERT INTO deals (id, contact_id, title, stage_key, status, stage_entered_at, last_activity_at, created_at)
+      VALUES ('${id}', 'ct_edge', 'Edge ${id}', '${stage}', '${status}', '${entered}', ${last === null ? "NULL" : `'${last}'`}, '${created}')`);
+  let n = 0;
+  const activity = (dealId: string, type: string, at: number, data: string | null = null) =>
+    db.exec(`INSERT INTO activities (id, deal_id, contact_id, type, summary, data, occurred_at, actor)
+      VALUES ('ac_edge${n++}', '${dealId}', 'ct_edge', '${type}', 'Edge', ${data === null ? "NULL" : `'${data}'`}, '${iso(at)}', 'owner')`);
+  const moved = (from: string, to: string) => JSON.stringify({ from, to });
+
+  // Stage stays in Proposal sent: one entered exactly at the line, one a millisecond before it; both left later.
+  const left = start + DAY;
+  for (const [id, entered] of [["dl_edgeat", line], ["dl_edgebefore", line - 1]] as const) {
+    deal(id, "lost", "lost", iso(left), null);
+    activity(id, "stage_change", entered, moved("new_inquiry", "proposal_sent"));
+    activity(id, "stage_change", left, moved("proposal_sent", "lost"));
+  }
+  // Open deals with contact at the line, or a millisecond before it, then again inside the window.
+  const later = start + 2 * DAY;
+  for (const [id, at] of [["dl_quietat", line], ["dl_quietbefore", line - 1]] as const) {
+    deal(id, "new_inquiry", "open", created, iso(later));
+    activity(id, "email", at);
+    activity(id, "email", later);
+  }
+
+  const seen: string[] = [];
+  const followup = await previewRuleFor(recordingActivities(db, seen), NOW, { type: "stage_followup", stage: "Proposal sent", days });
+  assert.ok(seen.includes(iso(line)), "the activity at the line is read");
+  assert.ok(!seen.includes(iso(line - 1)), "the one a millisecond older is not");
+  assert.deepEqual(
+    followup.hits.map((hit) => [hit.dealId, hit.wouldFireAt]),
+    [["dl_edgeat", iso(start)]],
+    "an entry at the line fires at the window's start; one a millisecond older would have fired before it",
+  );
+
+  const quiet = await previewRuleFor(db, NOW, { type: "gone_quiet", days });
+  assert.deepEqual(
+    quiet.hits.map((hit) => [hit.dealId, hit.wouldFireAt]),
+    [
+      ["dl_quietat", iso(start)],
+      ["dl_quietbefore", iso(start)],
+    ],
+    "contact at the line or before it: quiet from the window's start either way, so the unread one changes nothing",
   );
 });

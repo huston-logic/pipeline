@@ -79,6 +79,8 @@ rebuilds the past, since the database keeps only each deal's current stage.
   filters on `type IN (...) AND occurred_at >= ?` with no deal or contact, so SQLite scans the activities table and the
   preview reads every activity row. CPU on a large copy is measured in run 2 task R7 (docs/PAID-PLAN.md). Deals are
   still read in full (docs/PAID-PLAN.md). Wording corrected in run 2 (R9), 2026-11-18.
+- Replaced in part by 0020: the preview lookback is now 30 days plus the rule's own `days` (30 days for
+  `on_stage_enter`), read through the `activities_occurred` index of migration 0005.
 
 ## Why
 

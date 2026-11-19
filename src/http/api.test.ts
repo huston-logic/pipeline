@@ -10,7 +10,7 @@ import worker from "../index.ts";
 import { DEFAULT_TZ } from "../time.ts";
 import { handleApi } from "./api.ts";
 import { parseCsv } from "./csv.ts";
-import { EXPORT_TABLES } from "./export.ts";
+import { EXPORT_ROWS_PER_CHUNK, EXPORT_TABLES } from "./export.ts";
 
 const ctx = { waitUntil() {}, passThroughOnException() {}, props: {} } as unknown as ExecutionContext;
 // 21:00 on Nov 19 in Los Angeles is already Nov 20 in UTC, so file names must use the owner's date.
@@ -152,6 +152,39 @@ test("the API is read-only: anything but GET or HEAD is 405 JSON with an Allow h
     }
   }
   assert.equal(await count(db, "audit_log"), 0, "nothing was written");
+});
+
+test("the JSON export streams table by table from one batch read, with the same content as the tables", async () => {
+  const db = await seededDb(EVENING);
+  const values = Array.from({ length: EXPORT_ROWS_PER_CHUNK + 10 }, (_, i) => `('ct_many${String(i).padStart(3, "0")}', 'Person ${i}')`);
+  db.exec(`INSERT INTO contacts (id, name) VALUES ${values.join(", ")}`);
+  let batches = 0;
+  const counting: Db = {
+    prepare: (sql) => db.prepare(sql),
+    batch: (statements) => {
+      batches += 1;
+      return db.batch(statements);
+    },
+  };
+  const res = await handleApi(new Request("http://localhost:4821/api/export.json"), { DB: counting }, EVENING);
+  assert.equal(batches, 1, "every table comes from one batch, so they are from the same moment");
+  assert.ok(res.body instanceof ReadableStream);
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let chunks = 0;
+  let text = "";
+  for (let next = await reader.read(); !next.done; next = await reader.read()) {
+    chunks += 1;
+    text += decoder.decode(next.value, { stream: true });
+  }
+  assert.ok(chunks > EXPORT_TABLES.length + 1, `the body came in ${chunks} pieces`);
+  const body = JSON.parse(text) as { exportedAt: string; tables: Record<string, unknown[]> };
+  assert.equal(body.exportedAt, EVENING.toISOString());
+  for (const table of EXPORT_TABLES) {
+    const rows = (await db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()).results.map((row) => ({ ...row }));
+    assert.deepEqual(body.tables[table], rows, table);
+  }
+  assert.match(text, /\n {6}\{"id":"ct_many000","name":"Person 0",/, "one row per line");
 });
 
 test("the JSON export holds every listed table, each row as stored, as a download named for the owner's date", async () => {

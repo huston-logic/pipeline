@@ -1,5 +1,6 @@
 // The MCP server: an SDK v2 McpServer with every pipeline tool. createMcpHandler (src/mcp/handler.ts) builds a fresh
-// one for each request, so nothing is shared between requests (decision 0004).
+// one for each request, so nothing is shared between requests (decision 0004), except the converted JSON Schemas,
+// frozen and kept per tool name in tool.ts (decision 0020).
 import { McpServer } from "@modelcontextprotocol/server";
 import { SERVER_INSTRUCTIONS } from "./instructions.ts";
 import type { ToolDeps } from "./tool.ts";
