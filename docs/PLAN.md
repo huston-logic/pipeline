@@ -193,7 +193,7 @@ Steps:
 
 ### Task 7 (M7): Daily brief
 
-**Files:** Create `migrations/0002_briefs.sql` (`briefs(id, local_date TEXT NOT NULL UNIQUE, composed_at, text, items TEXT, sent_at, send_status)`), `src/brief/compose.ts`, `run.ts`, `send.ts`, tests; extend `migrations.test.ts` ("from the previous version": 0001 with data, then 0002).
+**Files:** Create `migrations/0003_briefs.sql` (0002 was taken by task 4's untrusted provenance) (`briefs(id, local_date TEXT NOT NULL UNIQUE, composed_at, text, items TEXT, sent_at, send_status)`), `src/brief/compose.ts`, `run.ts`, `send.ts`, tests; extend `migrations.test.ts` ("from the previous version": 0002 with data, then 0003).
 
 **Interfaces:** `composeBrief({ now, tz, tasks, quietDeals, newLeads }): { localDate: string; lines: string[]; text: string }` (pure; sections Overdue, Due today, Gone quiet, New leads; one line per item; "Nothing due today." when empty); `shouldRunBrief(now, settings, lastBriefLocalDate): boolean` (true once per local day at or after the brief hour); `runBrief(env, now)` stores the brief; `sendBrief(env, brief, settings)` posts to Resend only when `settings.brief_enabled`, `env.BRIEF_SENDING === "on"`, `env.RESEND_API_KEY`, `env.BRIEF_FROM` and `settings.brief_email` are all set; otherwise returns `{ sent: false, reason }`. Tests mock `fetch`; no real email.
 

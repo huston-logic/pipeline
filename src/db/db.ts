@@ -17,6 +17,7 @@ export const TABLE_NAMES = [
   "rulebook",
   "audit_log",
   "write_guard",
+  "briefs",
 ] as const;
 
 export type TableName = (typeof TABLE_NAMES)[number];
@@ -167,6 +168,19 @@ export type RulebookRow = {
   markdown: string;
   version: number;
   updated_at: string;
+};
+
+export type BriefRow = {
+  id: string;
+  /** The owner's local date, YYYY-MM-DD; one brief per date. */
+  local_date: string;
+  composed_at: string;
+  text: string;
+  /** JSON array of the brief's items (see src/brief/compose.ts). */
+  items: string;
+  sent_at: string | null;
+  /** Why the email did or did not go: "sent", "off: <reason>" or "failed: <HTTP status>". */
+  send_status: string | null;
 };
 
 export type AuditRow = {

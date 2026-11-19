@@ -278,3 +278,88 @@ test("list_deals' quiet filter and the gone_quiet rules agree on which deals hav
   const listed = await listDealsFiltered(db, { quiet: 5 }, NOW, DEFAULT_TZ);
   assert.deepEqual(listed.map((d) => d.id).sort(), quiet.map((q) => q.dealId).sort());
 });
+
+test("pointing an on_stage_enter rule at another stage cuts over: deals already there don't fire, later entries do", async () => {
+  const db = await openTestDb();
+  const waiting = await addLead(ctxFor(db, "add_lead", NOW), { name: "Pat Example", dealTitle: "Waiting site" });
+  await updateDeal(ctxFor(db, "update_deal", later(1)), waiting.dealId, { stage: "Call booked" });
+  const { ruleId } = await addRule(ctxFor(db, "add_rule", NOW), { type: "on_stage_enter", stage: "replied", title: "Prepare for {contact}", dueInDays: 1 });
+  await updateRule(ctxFor(db, "update_rule", later(2)), ruleId, { stage: "call_booked" });
+  const params = JSON.parse((await one<RuleRow>(db, "SELECT * FROM rules WHERE id = ?", ruleId)).params);
+  assert.deepEqual(params, { type: "on_stage_enter", stage: "call_booked", title: "Prepare for {contact}", dueInDays: 1, since: later(2).toISOString() });
+
+  assert.equal((await runRules(db, later(2.5))).fired, 0, "entered Call booked on day 1, before the rule pointed there");
+  const fresh = await addLead(ctxFor(db, "add_lead", later(3)), { name: "Robin Sample", dealTitle: "Fresh site" });
+  await updateDeal(ctxFor(db, "update_deal", later(3)), fresh.dealId, { stage: "Call booked" });
+  assert.equal((await runRules(db, later(3.5))).fired, 1);
+  assert.equal((await one<TaskRow>(db, "SELECT * FROM tasks WHERE source = ?", ruleId)).deal_id, fresh.dealId);
+
+  const view = (await listRules(db))[0];
+  assert.equal(view?.params?.type === "on_stage_enter" && view.params.since, later(2).toISOString());
+});
+
+test("changing only the title or days of a rule leaves its cut-over alone", async () => {
+  const db = await openTestDb();
+  const lead = await proposal(db, later(1));
+  const { ruleId } = await addRule(ctxFor(db, "add_rule", NOW), { type: "on_stage_enter", stage: "proposal_sent", title: "Prepare", dueInDays: 1 });
+  await updateRule(ctxFor(db, "update_rule", later(2)), ruleId, { title: "Prepare {contact}", dueInDays: 2 });
+  const params = JSON.parse((await one<RuleRow>(db, "SELECT * FROM rules WHERE id = ?", ruleId)).params);
+  assert.equal(params.since, undefined);
+  assert.equal((await runRules(db, later(2.5))).fired, 1, "the entry on day 1 is after the rule was created");
+  assert.equal((await one<TaskRow>(db, "SELECT * FROM tasks")).deal_id, lead.dealId);
+});
+
+test("resuming a rule cuts over: stage entries from before the resume never fire, later ones do", async () => {
+  const db = await openTestDb();
+  const { ruleId } = await addRule(ctxFor(db, "add_rule", NOW), { type: "on_stage_enter", stage: "proposal_sent", title: "Prepare {contact}", dueInDays: 1 });
+  await pauseRule(ctxFor(db, "pause_rule", later(1)), ruleId);
+  await proposal(db, later(2), "Paused Example");
+  const resumed = await resumeRule(ctxFor(db, "resume_rule", later(3)), ruleId);
+  assert.equal((await runRules(db, later(3.5))).fired, 0, "entered while the rule was paused");
+  await proposal(db, later(4), "Resumed Example");
+  assert.equal((await runRules(db, later(4.5))).fired, 1);
+  assert.match((await one<TaskRow>(db, "SELECT * FROM tasks")).title, /Resumed Example/);
+
+  await undoChange(ctxFor(db, "undo_change", later(5)), resumed.changeId);
+  const params = JSON.parse((await one<RuleRow>(db, "SELECT * FROM rules WHERE id = ?", ruleId)).params);
+  assert.equal(params.since, undefined, "undoing the resume restores the parameters too");
+});
+
+test("resuming a stage_followup does not catch up deals that were already waiting; gone_quiet gets no cut-over", async () => {
+  const db = await openTestDb();
+  await proposal(db, NOW);
+  const followup = await addRule(ctxFor(db, "add_rule", NOW), { type: "stage_followup", stage: "proposal_sent", days: 3 });
+  const quiet = await addRule(ctxFor(db, "add_rule", NOW), { type: "gone_quiet", days: 5 });
+  await pauseRule(ctxFor(db, "pause_rule", later(1)), followup.ruleId);
+  await pauseRule(ctxFor(db, "pause_rule", later(1)), quiet.ruleId);
+  await resumeRule(ctxFor(db, "resume_rule", later(5)), followup.ruleId);
+  await resumeRule(ctxFor(db, "resume_rule", later(5)), quiet.ruleId);
+  assert.equal((await runRules(db, later(6))).fired, 0, "overdue since day 3, but the deal entered before the resume");
+  const quietRow = await one<RuleRow>(db, "SELECT * FROM rules WHERE id = ?", quiet.ruleId);
+  assert.deepEqual(JSON.parse(quietRow.params), { type: "gone_quiet", days: 5 });
+  assert.equal((await listQuietDeals(db, later(6))).length, 1, "the gone_quiet rule still flags the deal");
+});
+
+test("when one firing's batch fails, the firings after it in the same run still commit, and the next run retries it", async () => {
+  const db = await openTestDb();
+  await proposal(db, NOW, "First Example");
+  await proposal(db, NOW, "Second Example");
+  await addRule(ctxFor(db), { type: "stage_followup", stage: "proposal_sent", days: 3 });
+  let failures = 1;
+  const flaky: Db = {
+    prepare: (sql) => db.prepare(sql),
+    async batch(statements) {
+      if (failures > 0) {
+        failures -= 1;
+        throw new Error("D1_ERROR: network connection lost");
+      }
+      return db.batch(statements);
+    },
+  };
+  assert.deepEqual(await runRules(flaky, later(3)), { rules: 1, fired: 1, alreadyFired: 0, failed: 1 });
+  assert.equal(await countOf(db, "tasks"), 1);
+  assert.equal(await countOf(db, "rule_firings"), 1);
+  assert.deepEqual(await runRules(flaky, later(3.1)), { rules: 1, fired: 1, alreadyFired: 0, failed: 0 });
+  assert.equal(await countOf(db, "tasks"), 2);
+  assert.equal(await countOf(db, "rule_firings"), 2);
+});

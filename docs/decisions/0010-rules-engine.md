@@ -13,7 +13,7 @@ rebuilds the past, since the database keeps only each deal's current stage.
 - **Shape.** `src/rules/engine.ts` is pure: `evaluateRules`, `quietDeals`, `isQuiet` and `previewRule` take plain data
   and return plain data. `src/services/rules.ts` loads the data, checks the parameters and writes the results. The
   hourly Cron Trigger (`"0 * * * *"`) calls `runScheduled` in `src/cron.ts`, which runs each job in `CRON_JOBS` in
-  order (task 7 adds the brief as one more line) and logs only `{"event":"cron_<job>_done", ...counts}` or
+  order (`rules`, then the daily brief of decision 0011) and logs only `{"event":"cron_<job>_done", ...counts}` or
   `{"event":"cron_<job>_failed"}`. The handler awaits the run instead of using `waitUntil`, so the invocation lasts
   exactly as long as the work and `wrangler dev --test-scheduled` returns after it.
 - **Parameters.** Checked with zod per type (strict, so another type's field is refused by name) and stored
@@ -34,6 +34,14 @@ rebuilds the past, since the database keeps only each deal's current stage.
   - `gone_quiet`: never creates tasks. `quietDeals` lists open deals whose last contact (or creation, with none) is at
     least N days ago, one entry per deal and rule; `list_deals`' `quiet` filter uses the same `isQuiet` test.
   - Days are 24-hour periods, not calendar days, so a due time can move by an hour across a clock change.
+- **Cut-over (`since`).** Pausing and resuming, or pointing a rule at another stage, must not make a rule fire for
+  history. The services keep a `since` time in the rule's stored parameters (UTC ISO; the owner and the AI cannot set it,
+  and it is left out of `add_rule` / `update_rule` input): `resume_rule` sets it to now on a `stage_followup` or
+  `on_stage_enter` rule, and `update_rule` sets it to now when it changes an `on_stage_enter` rule's stage. A stage entry
+  before `since` never fires, for either type. An `on_stage_enter` rule still ignores entries before its own `created_at`;
+  `since` only moves that line later. Undoing the resume or the update restores the parameters, so the cut-over goes
+  with it. `stage_followup` rules keep their catch-up for deals already overdue when the rule is added, but not after
+  a resume. `gone_quiet` has no cut-over: it only lists. The preview ignores `since`, like `created_at`.
 - **Idempotency.** The fire key is `${ruleId}:${dealId}:${stageEnteredAt}`, unique in `rule_firings`. Each firing is one
   `system` change (tool `rules`) that inserts the task (`source` = the rule id) with the `rule_firings` row in `extra`,
   so it is in the same batch but not in the snapshot. A second run skips keys already fired; a run racing another one
@@ -66,7 +74,8 @@ silently never fires or a task title with a literal `{name}` in it.
 
 - **Preview approximations.** The preview is an estimate, and its answer says nothing was changed:
   - It reports exact thresholds; the real run is hourly, so a firing happens up to an hour after `wouldFireAt`.
-  - It ignores `on_stage_enter`'s "only entries after the rule was created" (the point is what it would have caught)
+  - It ignores `on_stage_enter`'s "only entries after the rule was created" and `since` (the point is what it would
+    have caught)
     and whether a rule was paused at the time.
   - Contact is read from the activity history, while the live run reads `last_activity_at`; they agree unless rows
     were edited outside the services (seed data, SQL).

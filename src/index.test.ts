@@ -96,14 +96,15 @@ test("the read-only board refuses POST with 405 and an Allow header", async () =
   assertSecurityHeaders(res);
 });
 
-test("scheduled() runs the hourly rules against the database and logs only counts", async (t) => {
+test("scheduled() runs the hourly rules, then the brief, against the database and logs only counts", async (t) => {
   const logged = t.mock.method(console, "log", () => {});
   const failed = t.mock.method(console, "error", () => {});
-  const controller = { cron: "0 * * * *", scheduledTime: Date.now(), noRetry() {} } as unknown as ScheduledController;
+  const controller = { cron: "0 * * * *", scheduledTime: Date.parse("2026-11-19T18:00:00.000Z"), noRetry() {} } as unknown as ScheduledController;
   await worker.scheduled(controller, { ...fakeEnv(), DB: await openTestDb() }, ctx);
   assert.equal(failed.mock.callCount(), 0);
   assert.deepEqual(logged.mock.calls.map((call) => call.arguments[0]), [
     JSON.stringify({ event: "cron_rules_done", rules: 0, fired: 0, alreadyFired: 0, failed: 0 }),
+    JSON.stringify({ event: "cron_brief_done", composed: 1, sent: 0, failed: 0 }),
   ]);
 });
 
