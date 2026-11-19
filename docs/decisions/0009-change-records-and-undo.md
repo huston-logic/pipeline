@@ -74,3 +74,11 @@ Other task 5 notes: `isGuardFailure` and `isForeignKeyFailure` look through the 
 shim wrap the SQLite text; when an undo's guard fails because another undo of the same change won, the loser re-reads
 the original and says it was already undone; and a duplicate-email failure at write time (another writer got in
 between the check and the batch) becomes the plain "Another contact already uses that email" answer.
+
+## Addendum 3 (task 6): rule history blocks undoing an add
+
+The rules engine (decision 0010) writes each firing's `rule_firings` row in `extra`, as planned above. A firing row
+points at its deal and its rule and is never removed, so `undo_change` now refuses to undo the `add_lead` that created
+a deal a rule has fired on ("this lead has rule history ...; close the deal instead") and the `add_rule` of a rule that
+has fired ("pause it with pause_rule instead"), instead of the generic "other records now depend on it" answer, which
+asks for something the owner can't do.

@@ -15,8 +15,9 @@ This repo is public. It holds no client names, emails, ids or lead data; tests a
 ## What is here so far
 
 One Cloudflare Worker (`src/index.ts`) with a read-only board rendered as plain HTML (no client JavaScript;
-decision 0001), a D1 database with an audited service layer, and the MCP endpoint at `/mcp` (decision 0004). Later
-tasks add more tools, `/intake`, `/api/*`, the hourly rules run, the daily brief and production sign-in.
+decision 0001), a D1 database with an audited service layer, the MCP endpoint at `/mcp` (decision 0004) and the hourly
+rules run (a Cron Trigger, `src/cron.ts`; decision 0010). Later tasks add `/intake`, `/api/*`, the daily brief and
+production sign-in.
 
 | Route | What |
 |---|---|
@@ -118,6 +119,8 @@ Never run `wrangler deploy` by hand.
 
 ```
 src/index.ts              Worker entry: fetch router and scheduled handler
+src/cron.ts               the hourly jobs the scheduled handler runs (the rules)
+src/rules/engine.ts       the rules engine: pure functions (firing, gone quiet, preview)
 src/env.ts                Env type (bindings and vars)
 src/security.ts           security headers for every response
 src/board/                html.ts (escaping template tag), layout.ts, routes.ts, pages/*.ts
