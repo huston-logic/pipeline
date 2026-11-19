@@ -16,6 +16,7 @@
     "test:e2e": "node scripts/build.mjs && node --disable-warning=ExperimentalWarning --test --test-concurrency=1 \"tests/e2e/*.test.ts\"",
     "test:a11y": "playwright test",
     "test:lighthouse": "lhci autorun",
+    "screenshots": "playwright test -c playwright.screenshots.config.ts",
     "check:config": "node scripts/check-config.mjs",
     "copies:provision": "node scripts/copies.mjs provision",
     "copies:update": "node scripts/copies.mjs update",

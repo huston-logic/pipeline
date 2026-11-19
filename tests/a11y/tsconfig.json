@@ -16,5 +16,12 @@
     "noEmit": true,
     "skipLibCheck": true
   },
-  "include": ["./**/*.ts", "../../playwright.config.ts", "../../src/board/routes.ts"]
+  // tests/screenshots (`npm run screenshots`) is Playwright code too, so it is checked here.
+  "include": [
+    "./**/*.ts",
+    "../screenshots/**/*.ts",
+    "../../playwright.config.ts",
+    "../../playwright.screenshots.config.ts",
+    "../../src/board/routes.ts"
+  ]
 }
