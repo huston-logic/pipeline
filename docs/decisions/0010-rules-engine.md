@@ -73,8 +73,12 @@ rebuilds the past, since the database keeps only each deal's current stage.
   the longest `days` a rule may have), not the whole history. This is exact, not an estimate: a hit in the window
   comes from a stage stay or a quiet spell that began at most 365 days before the window starts, and an older
   activity can only move a stay's or spell's start further back, before that line, where it cannot produce a hit. A
-  bounded lookback was chosen over "since the earliest relevant stage entry" because it is one indexed condition and
-  needs no extra query. Deals are still read in full (docs/PAID-PLAN.md).
+  bounded lookback was chosen over "since the earliest relevant stage entry" because it is a single range condition
+  (`occurred_at >= ?`) and needs no extra query. It is not served by an index today: the only activity indexes are
+  `activities_deal (deal_id, occurred_at)` and `activities_contact (contact_id, occurred_at)`, and the preview query
+  filters on `type IN (...) AND occurred_at >= ?` with no deal or contact, so SQLite scans the activities table and the
+  preview reads every activity row. CPU on a large copy is measured in run 2 task R7 (docs/PAID-PLAN.md). Deals are
+  still read in full (docs/PAID-PLAN.md). Wording corrected in run 2 (R9), 2026-11-18.
 
 ## Why
 
