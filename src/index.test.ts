@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { SqliteD1 } from "./db/sqlite-d1.ts";
 import type { Env } from "./env.ts";
 import worker from "./index.ts";
 
@@ -8,6 +9,7 @@ type AssetCall = { url: string };
 function fakeEnv(calls: AssetCall[] = []): Env {
   return {
     ENVIRONMENT: "development",
+    DB: new SqliteD1(),
     ASSETS: {
       async fetch(request: Request) {
         calls.push({ url: request.url });

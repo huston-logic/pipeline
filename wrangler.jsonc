@@ -14,6 +14,26 @@
   },
   // `npm run dev` and `npm run preview` override this with --var ENVIRONMENT:development.
   "vars": { "ENVIRONMENT": "production" },
+  // The placeholder id is only used locally (`--local`); each copy's real ids live in its git-ignored config.
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "pipeline",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations"
+    }
+  ],
+  // Preview deployments get their own database, so they never touch production data.
+  "previews": {
+    "d1_databases": [
+      {
+        "binding": "DB",
+        "database_name": "pipeline-preview",
+        "database_id": "00000000-0000-0000-0000-000000000000",
+        "migrations_dir": "migrations"
+      }
+    ]
+  },
   // Invocation logs would store request metadata; the Worker's own log lines hold no personal data.
   "observability": { "enabled": true, "logs": { "invocation_logs": false } }
 }

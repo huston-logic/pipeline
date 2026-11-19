@@ -1,6 +1,7 @@
 {
   // The Worker and its unit tests: Workers runtime types (src/worker-configuration.d.ts, from `npm run types`) plus
-  // Node's types for node:test. No DOM types: they clash with the Workers runtime types.
+  // Node's types for node:test. No DOM types: they clash with the Workers runtime types. scripts/*.ts (seed-dev) are
+  // Node scripts checked with the same settings.
   // tests/a11y has its own tsconfig.json with DOM types for Playwright; `npm run typecheck` runs both.
   "compilerOptions": {
     "target": "ES2024",
@@ -17,5 +18,5 @@
     "noEmit": true,
     "skipLibCheck": true
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts", "scripts/**/*.ts"]
 }

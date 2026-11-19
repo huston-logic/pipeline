@@ -21,4 +21,20 @@ export default defineConfig([
       "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_" }],
     },
   },
+  {
+    // Worker code runs in the Workers runtime: no Node built-ins, and never the test-only node:sqlite D1 shim.
+    files: ["src/**/*.ts"],
+    ignores: ["src/**/*.test.ts", "src/db/sqlite-d1.ts", "src/**/*.d.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            { group: ["node:*"], message: "Worker code runs in the Workers runtime, not Node." },
+            { group: ["**/sqlite-d1.ts"], message: "sqlite-d1.ts is a test-only shim; take a Db instead." },
+          ],
+        },
+      ],
+    },
+  },
 ]);

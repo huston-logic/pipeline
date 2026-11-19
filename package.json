@@ -11,7 +11,7 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tests/a11y",
     "types": "wrangler types src/worker-configuration.d.ts",
-    "test:worker": "node --disable-warning=ExperimentalWarning --test \"src/**/*.test.ts\" \"scripts/*.test.mjs\"",
+    "test:worker": "node --disable-warning=ExperimentalWarning --test \"src/**/*.test.ts\" \"scripts/*.test.ts\" \"scripts/*.test.mjs\"",
     "test:a11y": "playwright test",
     "test:lighthouse": "lhci autorun",
     "check:config": "node scripts/check-config.mjs",
