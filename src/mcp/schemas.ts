@@ -32,3 +32,30 @@ export const FIELD_TYPES = ["text", "number", "date", "choice"] as const;
 
 /** The schema or null, described on the outside so tools/list shows the description beside the property. */
 export const orNull = <T extends z.ZodType>(schema: T) => schema.nullable().describe(schema.description ?? "");
+
+export const RULE_TYPES = ["stage_followup", "on_stage_enter", "gone_quiet"] as const;
+
+export const ruleRef = () => z.string().min(1).max(100).describe("The rule's id, ru_... (see list_rules).");
+
+/** A rule's settings. Which ones a type takes is checked by the rules service, which names the fix. */
+export const ruleSettings = {
+  stage: shortText("stage_followup and on_stage_enter: the open stage to watch, its key (proposal_sent) or label (Proposal sent).").optional(),
+  days: z
+    .number()
+    .int()
+    .min(0)
+    .max(365)
+    .optional()
+    .describe("stage_followup: days in the stage with no contact logged (1-365); gone_quiet: days with no contact (1-365)."),
+  title: shortText(
+    "The task title. on_stage_enter needs one; stage_followup's default is \"Follow up with {contact} about {deal}\". " +
+      "It may use {deal}, {contact} and {stage}.",
+  ).optional(),
+  dueInDays: z
+    .number()
+    .int()
+    .min(0)
+    .max(365)
+    .optional()
+    .describe("on_stage_enter: the task is due this many days after the deal enters the stage (0-365)."),
+};

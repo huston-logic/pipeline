@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { SqliteD1 } from "./db/sqlite-d1.ts";
+import { openTestDb, SqliteD1 } from "./db/sqlite-d1.ts";
 import type { Env } from "./env.ts";
 import worker from "./index.ts";
 
@@ -96,9 +96,15 @@ test("the read-only board refuses POST with 405 and an Allow header", async () =
   assertSecurityHeaders(res);
 });
 
-test("scheduled() runs without throwing", async () => {
+test("scheduled() runs the hourly rules against the database and logs only counts", async (t) => {
+  const logged = t.mock.method(console, "log", () => {});
+  const failed = t.mock.method(console, "error", () => {});
   const controller = { cron: "0 * * * *", scheduledTime: Date.now(), noRetry() {} } as unknown as ScheduledController;
-  await worker.scheduled(controller, fakeEnv(), ctx);
+  await worker.scheduled(controller, { ...fakeEnv(), DB: await openTestDb() }, ctx);
+  assert.equal(failed.mock.callCount(), 0);
+  assert.deepEqual(logged.mock.calls.map((call) => call.arguments[0]), [
+    JSON.stringify({ event: "cron_rules_done", rules: 0, fired: 0, alreadyFired: 0, failed: 0 }),
+  ]);
 });
 
 const mcpBody = JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list", params: {} });

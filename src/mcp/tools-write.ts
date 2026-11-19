@@ -9,6 +9,7 @@ import { updateDeal } from "../services/deals.ts";
 import { addField, updateField } from "../services/fields.ts";
 import { addLead, updateContact } from "../services/leads.ts";
 import { updateRulebook } from "../services/rulebook.ts";
+import { addRule, pauseRule, resumeRule, updateRule } from "../services/rules.ts";
 import { updateSettings } from "../services/settings.ts";
 import { addStage, archiveStage, updateStage } from "../services/stages.ts";
 import { addTask, completeTask, snoozeTask } from "../services/tasks.ts";
@@ -23,6 +24,9 @@ import {
   fieldValues,
   longText,
   orNull,
+  RULE_TYPES,
+  ruleRef,
+  ruleSettings,
   shortText,
   when,
 } from "./schemas.ts";
@@ -311,6 +315,87 @@ export function registerWriteTools(server: McpServer, deps: ToolDeps): void {
       async run({ field, ...patch }, deps) {
         const result = await updateField(aiCtx(deps, "update_field"), field, patch);
         return toolResult(result.summary, { changeId: result.changeId, fieldId: result.fieldId });
+      },
+    },
+    deps,
+  );
+
+  registerTool(
+    server,
+    {
+      name: "add_rule",
+      title: "Add a rule",
+      kind: "write",
+      description:
+        "Adds a rule the hourly run follows. stage_followup: when a deal has sat in a stage for `days` days with no " +
+        "contact logged, add a follow-up task. on_stage_enter: when a deal enters a stage, add a task (`title`, due " +
+        "`dueInDays` after). gone_quiet: flag open deals with no contact for `days` days in the daily brief. Show the " +
+        "owner preview_rule first. The description is written for you unless you give one.",
+      input: z.strictObject({
+        type: z.enum(RULE_TYPES).describe("stage_followup, on_stage_enter or gone_quiet."),
+        ...ruleSettings,
+        description: shortText("What the rule does, in plain English; written from the settings when left out.").optional(),
+      }),
+      async run(args, deps) {
+        const result = await addRule(aiCtx(deps, "add_rule"), args);
+        return toolResult(result.summary, { changeId: result.changeId, ruleId: result.ruleId });
+      },
+    },
+    deps,
+  );
+
+  registerTool(
+    server,
+    {
+      name: "update_rule",
+      title: "Update a rule",
+      kind: "write",
+      idempotent: true,
+      description:
+        "Changes a rule's settings or description (its type stays). Give only what changes. When the settings change " +
+        "and no description is given, the description is rewritten to match.",
+      input: z.strictObject({
+        rule: ruleRef(),
+        ...ruleSettings,
+        description: shortText("A new plain-English description.").optional(),
+      }),
+      async run({ rule, ...patch }, deps) {
+        const result = await updateRule(aiCtx(deps, "update_rule"), rule, patch);
+        return toolResult(result.summary, { changeId: result.changeId, ruleId: result.ruleId });
+      },
+    },
+    deps,
+  );
+
+  registerTool(
+    server,
+    {
+      name: "pause_rule",
+      title: "Pause a rule",
+      kind: "write",
+      idempotent: true,
+      description: "Stops a rule from firing (and a gone_quiet rule from flagging deals) until resume_rule. Rules are never deleted.",
+      input: z.strictObject({ rule: ruleRef() }),
+      async run({ rule }, deps) {
+        const result = await pauseRule(aiCtx(deps, "pause_rule"), rule);
+        return toolResult(result.summary, { changeId: result.changeId, ruleId: result.ruleId });
+      },
+    },
+    deps,
+  );
+
+  registerTool(
+    server,
+    {
+      name: "resume_rule",
+      title: "Resume a rule",
+      kind: "write",
+      idempotent: true,
+      description: "Turns a paused rule back on. It catches up on the next hourly run.",
+      input: z.strictObject({ rule: ruleRef() }),
+      async run({ rule }, deps) {
+        const result = await resumeRule(aiCtx(deps, "resume_rule"), rule);
+        return toolResult(result.summary, { changeId: result.changeId, ruleId: result.ruleId });
       },
     },
     deps,

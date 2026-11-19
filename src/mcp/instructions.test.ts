@@ -30,3 +30,8 @@ test("the instructions say the pipeline's building blocks can be changed by talk
   assert.match(SERVER_INSTRUCTIONS, /stages, custom fields, the rulebook and settings/);
   assert.match(SERVER_INSTRUCTIONS, /owner emails can't be changed here/);
 });
+
+test("the instructions say to preview a rule before adding it, and that rules are paused, never deleted", () => {
+  assert.match(SERVER_INSTRUCTIONS, /Before add_rule, show the owner what preview_rule finds/);
+  assert.match(SERVER_INSTRUCTIONS, /Rules are paused \(pause_rule\) and resumed, never deleted/);
+});

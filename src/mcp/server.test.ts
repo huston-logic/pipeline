@@ -9,15 +9,17 @@ import { createMcpServer } from "./server.ts";
 
 const NOW = new Date("2026-11-19T18:00:00.000Z");
 
-// The spec's tool lists, minus the tools of later plan tasks (6: rules). That task adds its names here.
+// The spec's tool lists (docs/SPEC.md, "MCP tools").
 const READ_TOOLS = [
   "get_deal",
   "get_rulebook",
   "get_settings",
   "list_deals",
   "list_fields",
+  "list_rules",
   "list_stages",
   "pipeline_summary",
+  "preview_rule",
   "recent_changes",
   "search_contacts",
   "whats_due",
@@ -25,16 +27,20 @@ const READ_TOOLS = [
 const WRITE_TOOLS = [
   "add_field",
   "add_lead",
+  "add_rule",
   "add_stage",
   "add_task",
   "archive_stage",
   "complete_task",
   "log_activity",
+  "pause_rule",
+  "resume_rule",
   "snooze_task",
   "undo_change",
   "update_contact",
   "update_deal",
   "update_field",
+  "update_rule",
   "update_rulebook",
   "update_settings",
   "update_stage",
@@ -44,7 +50,7 @@ async function client(db?: Db) {
   return connectInMemory(createMcpServer({ db: db ?? (await openTestDb()), now: () => NOW }));
 }
 
-test("the server offers exactly the tools built so far", async () => {
+test("the server offers exactly the spec's tools", async () => {
   const { tools } = await (await client()).listTools();
   assert.deepEqual(tools.map((t) => t.name).sort(), [...READ_TOOLS, ...WRITE_TOOLS].sort());
 });

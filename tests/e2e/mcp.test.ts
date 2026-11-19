@@ -24,6 +24,7 @@ test("lists the tools over Streamable HTTP, with the server instructions", async
   assert.deepEqual(tools.map((t) => t.name).sort(), [
     "add_field",
     "add_lead",
+    "add_rule",
     "add_stage",
     "add_task",
     "archive_stage",
@@ -33,16 +34,21 @@ test("lists the tools over Streamable HTTP, with the server instructions", async
     "get_settings",
     "list_deals",
     "list_fields",
+    "list_rules",
     "list_stages",
     "log_activity",
+    "pause_rule",
     "pipeline_summary",
+    "preview_rule",
     "recent_changes",
+    "resume_rule",
     "search_contacts",
     "snooze_task",
     "undo_change",
     "update_contact",
     "update_deal",
     "update_field",
+    "update_rule",
     "update_rulebook",
     "update_settings",
     "update_stage",
@@ -82,6 +88,29 @@ test("bad input gets a plain-English answer naming the field", async () => {
 
 test("the scheduled handler runs through wrangler's test route", async () => {
   await server.runCron();
+});
+
+test("a rule added over MCP fires once from the cron trigger, and a second trigger adds nothing", async () => {
+  const added = await ok(client, "add_rule", { type: "stage_followup", stage: "Proposal sent", days: 3 });
+  assert.match(added.headline, CHANGE_LINE);
+  const { ruleId } = added.data as { ruleId: string };
+  const ruleTasks = async () => {
+    const brief = (await ok(client, "get_deal", { deal: "dl_seed05" })).data as { openTasks: { source: string }[] };
+    return brief.openTasks.filter((task) => task.source === ruleId);
+  };
+  const timesFired = async () => {
+    const { rules } = (await ok(client, "list_rules")).data as { rules: { id: string; timesFired: number }[] };
+    return rules.find((rule) => rule.id === ruleId)?.timesFired;
+  };
+  assert.equal((await ruleTasks()).length, 0);
+
+  await server.runCron();
+  assert.equal((await ruleTasks()).length, 1);
+  assert.equal(await timesFired(), 1);
+
+  await server.runCron();
+  assert.equal((await ruleTasks()).length, 1);
+  assert.equal(await timesFired(), 1);
 });
 
 test("/mcp answers with the Worker's security headers, and GET is refused (stateless, POST only)", async () => {
