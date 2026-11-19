@@ -401,6 +401,19 @@ test("export --local reads the local dev database and needs no account", async (
   assert.throws(() => parseArgs(["export", "--local", "--copy", "acme"]), /--local/);
 });
 
+test("a second export on the same day goes to a new folder (-2, -3, ...) and never overwrites the first", async (t) => {
+  const h = harness(t);
+  await exportData(parseArgs(["export", "--local"]), h.deps);
+  const first = join(h.exportsDir, "local-2026-11-19");
+  writeFileSync(join(first, "all.json"), "the first export\n");
+  await exportData(parseArgs(["export", "--local"]), h.deps);
+  await exportData(parseArgs(["export", "--local"]), h.deps);
+  assert.equal(readFileSync(join(first, "all.json"), "utf8"), "the first export\n");
+  assert.deepEqual(readdirSync(h.exportsDir).sort(), ["local-2026-11-19", "local-2026-11-19-2", "local-2026-11-19-3"]);
+  assert.ok(existsSync(join(h.exportsDir, "local-2026-11-19-3", "all.json")));
+  assert.match(h.lines.filter((line) => line.startsWith("Exported")).at(-1), /local-2026-11-19-3/);
+});
+
 test("the template holds placeholders only and keeps the shared settings in step with wrangler.jsonc", () => {
   const text = readFileSync(TEMPLATE, "utf8");
   assert.deepEqual(checkWranglerConfig(text), []);

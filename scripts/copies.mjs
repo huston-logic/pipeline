@@ -10,7 +10,7 @@ import { dirname, join, relative, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { pathToFileURL } from "node:url";
 import { toCsv } from "../src/http/csv.ts";
-import { EXPORT_TABLES } from "../src/http/export.ts";
+import { EXPORT_TABLES, safeFileName } from "../src/http/export.ts";
 import { sqlLiteral } from "../src/import/sql.ts";
 import { DEFAULT_TZ, localDate } from "../src/time.ts";
 import { formatCommand, parseJsonOutput, ROOT, run as defaultRun } from "./wrangler-run.mjs";
@@ -694,6 +694,25 @@ export function query(runner, target, sql) {
   return first.results;
 }
 
+/**
+ * Makes and returns exports/<base>, or <base>-2, <base>-3, ... when an earlier export took the name (a second export
+ * on the same day), so an export never overwrites another. mkdir without `recursive` fails on an existing folder, so
+ * the check and the claim are one step.
+ */
+function newExportFolder(exportsDir, base) {
+  mkdirSync(exportsDir, { recursive: true });
+  for (let n = 1; n <= 999; n++) {
+    const dir = join(exportsDir, n === 1 ? base : `${base}-${n}`);
+    try {
+      mkdirSync(dir);
+      return dir;
+    } catch (error) {
+      if (error?.code !== "EEXIST") throw error;
+    }
+  }
+  throw new Error(`exports/ already holds 999 exports named ${base}. Move some of them elsewhere, then try again.`);
+}
+
 /** Every table as JSON and CSV, plus all.json in the board's /api/export.json shape (decision 0013). */
 export async function exportData(options, deps) {
   const { root = ROOT, now = () => new Date(), exportsDir = join(root, "exports") } = deps;
@@ -712,11 +731,10 @@ export async function exportData(options, deps) {
   }
   const at = now();
   const timezone = typeof tables.settings?.[0]?.timezone === "string" ? tables.settings[0].timezone : DEFAULT_TZ;
-  const dir = join(exportsDir, `${target.label}-${localDate(at, timezone)}`);
-  mkdirSync(dir, { recursive: true });
+  const dir = newExportFolder(exportsDir, safeFileName(`${target.label}-${localDate(at, timezone)}`));
   for (const table of EXPORT_TABLES) {
-    writeFileSync(join(dir, `${table}.json`), `${JSON.stringify(tables[table], null, 2)}\n`);
-    writeFileSync(join(dir, `${table}.csv`), toCsv(tables[table], columns[table]));
+    writeFileSync(join(dir, safeFileName(`${table}.json`)), `${JSON.stringify(tables[table], null, 2)}\n`);
+    writeFileSync(join(dir, safeFileName(`${table}.csv`)), toCsv(tables[table], columns[table]));
   }
   writeFileSync(join(dir, "all.json"), `${JSON.stringify({ exportedAt: at.toISOString(), tables }, null, 2)}\n`);
   deps.log(`Exported ${EXPORT_TABLES.length} tables to ${relative(root, dir)} (JSON and CSV per table, plus all.json).`);
