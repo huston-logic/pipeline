@@ -362,6 +362,12 @@ export function registerWriteTools(server: McpServer, deps: ToolDeps): void {
       input: z.strictObject({
         rule: ruleRef(),
         ...ruleSettings,
+        title: orNull(
+          shortText(
+            "The new task title, or null to go back to stage_followup's default (\"Follow up with {contact} about " +
+              "{deal}\"). It may use {deal}, {contact} and {stage}.",
+          ),
+        ).optional(),
         description: shortText("A new plain-English description.").optional(),
       }),
       async run({ rule, ...patch }, deps) {

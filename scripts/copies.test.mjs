@@ -239,6 +239,26 @@ test("missing answers are asked for, and bad ones are refused with how to fix th
   await assert.rejects(provision(parseArgs(["provision", "--copy", "acme2", ...badAud]), h.deps), /--access-aud/);
 });
 
+test("arguments: --flag=value works; a missing value, a repeat or a value on a switch is refused in plain English", () => {
+  assert.equal(parseArgs(["update", "--copy=acme"]).copy, "acme");
+  assert.equal(parseArgs(["export", "--local", "--persist-to=.wrangler/other"]).persistTo, ".wrangler/other");
+  assert.deepEqual(parseArgs(["provision", "--copy", "acme", "--owner-email", "a@example.com", "--owner-email=b@example.com"]).ownerEmails, [
+    "a@example.com",
+    "b@example.com",
+  ]);
+  const refuse = (argv, pattern) => assert.throws(() => parseArgs(argv), { message: pattern }, argv.join(" "));
+  refuse(["update", "--copy"], /^--copy needs a value, like --copy acme\.$/);
+  refuse(["update", "--copy="], /^--copy needs a value/);
+  refuse(["update", "--copy", "--dry-run"], /^--copy needs a value/);
+  refuse(["export", "--local", "--persist-to", "--dry-run"], /^--persist-to needs a value/);
+  refuse(["update", "--copy", "acme", "--copy", "other"], /^--copy is given twice\. Give it once\.$/);
+  refuse(["update", "--copy=acme", "--copy", "acme"], /^--copy is given twice/);
+  refuse(["update", "--dry-run", "--dry-run"], /^--dry-run is given twice/);
+  refuse(["update", "--dry-run=yes"], /^--dry-run takes no value\. Use --dry-run on its own\.$/);
+  refuse(["update", "--remote"], /^Unknown option "--remote"\./);
+  refuse(["update", "acme"], /^Unknown option "acme"\./);
+});
+
 test("a provision dry run prints the commands and runs and writes nothing", async (t) => {
   const h = harness(t);
   assert.equal(await provision(parseArgs(["provision", "--copy", "acme", ...ANSWERS, "--dry-run"]), h.deps), 0);
@@ -399,6 +419,19 @@ test("export --local reads the local dev database and needs no account", async (
   assert.ok(existsSync(join(h.exportsDir, "local-2026-11-19", "all.json")));
   assert.throws(() => parseArgs(["export"]), /--copy <name>, or the local dev database with --local/);
   assert.throws(() => parseArgs(["export", "--local", "--copy", "acme"]), /--local/);
+});
+
+test("a second export on the same day goes to a new folder (-2, -3, ...) and never overwrites the first", async (t) => {
+  const h = harness(t);
+  await exportData(parseArgs(["export", "--local"]), h.deps);
+  const first = join(h.exportsDir, "local-2026-11-19");
+  writeFileSync(join(first, "all.json"), "the first export\n");
+  await exportData(parseArgs(["export", "--local"]), h.deps);
+  await exportData(parseArgs(["export", "--local"]), h.deps);
+  assert.equal(readFileSync(join(first, "all.json"), "utf8"), "the first export\n");
+  assert.deepEqual(readdirSync(h.exportsDir).sort(), ["local-2026-11-19", "local-2026-11-19-2", "local-2026-11-19-3"]);
+  assert.ok(existsSync(join(h.exportsDir, "local-2026-11-19-3", "all.json")));
+  assert.match(h.lines.filter((line) => line.startsWith("Exported")).at(-1), /local-2026-11-19-3/);
 });
 
 test("the template holds placeholders only and keeps the shared settings in step with wrangler.jsonc", () => {

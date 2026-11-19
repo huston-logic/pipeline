@@ -43,7 +43,9 @@ export interface RuleInput extends RuleSettings {
   description?: string;
 }
 
-export interface RulePatch extends RuleSettings {
+export interface RulePatch extends Omit<RuleSettings, "title"> {
+  /** null puts back stage_followup's default title. */
+  title?: string | null;
   description?: string;
 }
 
@@ -223,8 +225,17 @@ export async function updateRule(ctx: Ctx, ref: string, patch: RulePatch): Promi
   const before = await findRule(db, ref);
   const stored = parseRuleParams(before);
   if (stored === null) throw new Error(`Rule ${before.id} has unreadable parameters.`);
-  const { description: given, ...settings } = patch;
-  const merged: RuleSettings = { ...stored, ...defined({ ...settings }) };
+  const { description: given, title: newTitle, ...settings } = patch;
+  const merged: RuleSettings = { ...stored, ...defined({ ...settings, title: newTitle ?? undefined }) };
+  if (newTitle === null) {
+    if (stored.type === "gone_quiet") {
+      throw new UserError(`Fix the rule: A gone_quiet rule doesn't take "title". A gone_quiet rule takes ${TAKES.gone_quiet}.`);
+    }
+    if (stored.type === "on_stage_enter") {
+      throw new UserError("An on_stage_enter rule needs a title, so it can't go back to a default. Give the new title instead.");
+    }
+    delete merged.title;
+  }
   const { params, stageLabel } = await checkParams(db, stored.type, merged);
   const description = cleanDescription(given);
 

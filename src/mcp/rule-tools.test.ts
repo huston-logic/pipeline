@@ -67,6 +67,14 @@ test("update_rule, pause_rule and resume_rule answer one line with the change id
   assert.equal(rules.find((r) => r.id === "ru_seed02")?.active, true);
 });
 
+test("update_rule takes title null to put back stage_followup's default title", async () => {
+  const { c } = await setup(false);
+  const added = await ok(c, "add_rule", { type: "stage_followup", stage: "Replied", days: 2, title: "Nudge {contact}" });
+  const { ruleId } = added.data as { ruleId: string };
+  const reset = await ok(c, "update_rule", { rule: ruleId, title: null });
+  assert.match(reset.headline, new RegExp(`^Updated rule ${ruleId}: title; now: When a deal has sat in Replied for 2 days with no contact logged, add a follow-up task\\.`));
+});
+
 test("rule tools refuse bad input in plain English", async () => {
   const { c } = await setup();
   assert.match(await fails(c, "add_rule", { type: "sometimes", days: 3 }), /"type" must be one of: stage_followup, on_stage_enter, gone_quiet/);

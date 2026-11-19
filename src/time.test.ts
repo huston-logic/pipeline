@@ -87,8 +87,47 @@ test("parseWhen accepts a date, a local date-time, or an ISO time with offset", 
   assert.equal(parseWhen("2026-11-19T14:00:00-08:00", LA).toISOString(), "2026-11-19T22:00:00.000Z");
 });
 
+test("parseWhen reads a UTC offset, including half- and quarter-hour ones, whatever the owner's timezone", () => {
+  for (const tz of [LA, "Asia/Kolkata", "Australia/Adelaide", "Asia/Kathmandu"]) {
+    assert.equal(parseWhen("2026-11-19T14:00-08:00", tz).toISOString(), "2026-11-19T22:00:00.000Z", tz);
+    assert.equal(parseWhen("2026-11-19T14:00+05:30", tz).toISOString(), "2026-11-19T08:30:00.000Z", tz);
+    assert.equal(parseWhen("2026-11-19T14:00:00+05:45", tz).toISOString(), "2026-11-19T08:15:00.000Z", tz);
+    assert.equal(parseWhen("2026-11-19T14:00Z", tz).toISOString(), "2026-11-19T14:00:00.000Z", tz);
+    // An offset that crosses midnight lands on the UTC day it names.
+    assert.equal(parseWhen("2026-11-19T01:00+14:00", tz).toISOString(), "2026-11-18T11:00:00.000Z", tz);
+  }
+});
+
+test("timezones with half- and quarter-hour offsets: wall time, day bounds and the hour", () => {
+  assert.equal(zonedToUtc("2026-11-19T14:00", "Asia/Kathmandu").toISOString(), "2026-11-19T08:15:00.000Z");
+  assert.equal(zonedToUtc("2026-11-19T14:00", "Australia/Adelaide").toISOString(), "2026-11-19T03:30:00.000Z");
+  assert.equal(parseWhen("2026-11-19", "Asia/Kolkata").toISOString(), "2026-11-18T18:30:00.000Z");
+
+  const kolkata = dayBoundsUtc("2026-11-19", "Asia/Kolkata");
+  assert.deepEqual([kolkata.start.toISOString(), kolkata.end.toISOString()], ["2026-11-18T18:30:00.000Z", "2026-11-19T18:30:00.000Z"]);
+  // Adelaide (+9:30/+10:30) changes its clocks by an hour; Lord Howe (+10:30/+11) by only 30 minutes.
+  const adelaideSpring = dayBoundsUtc("2026-10-04", "Australia/Adelaide");
+  assert.equal(adelaideSpring.end.getTime() - adelaideSpring.start.getTime(), 23 * HOUR);
+  const adelaideFall = dayBoundsUtc("2026-04-05", "Australia/Adelaide");
+  assert.equal(adelaideFall.end.getTime() - adelaideFall.start.getTime(), 25 * HOUR);
+  const lordHowe = dayBoundsUtc("2026-10-04", "Australia/Lord_Howe");
+  assert.equal(lordHowe.end.getTime() - lordHowe.start.getTime(), 23.5 * HOUR);
+  // A skipped time moves forward by the skipped amount; a repeated one is the first.
+  assert.equal(zonedToUtc("2026-10-04T02:30", "Australia/Adelaide").toISOString(), "2026-10-03T17:00:00.000Z");
+  assert.equal(zonedToUtc("2026-04-05T02:30", "Australia/Adelaide").toISOString(), "2026-04-04T16:00:00.000Z");
+  assert.equal(zonedToUtc("2026-10-04T02:15", "Australia/Lord_Howe").toISOString(), "2026-10-03T15:45:00.000Z");
+  // A day whose midnight is skipped (Chile) starts at 01:00.
+  assert.equal(dayBoundsUtc("2026-09-06", "America/Santiago").start.toISOString(), "2026-09-06T04:00:00.000Z");
+
+  // The hourly run fires on the UTC hour, which is :30 or :45 past in these zones; localHour reports the hour shown.
+  assert.equal(localHour(new Date("2026-11-19T03:00:00Z"), "Asia/Kolkata"), 8);
+  assert.equal(localHour(new Date("2026-11-19T03:00:00Z"), "Asia/Kathmandu"), 8);
+  assert.equal(localHour(new Date("2026-11-19T02:00:00Z"), "Asia/Kathmandu"), 7);
+  assert.equal(localHour(new Date("2026-11-19T03:00:00Z"), "Australia/Adelaide"), 13);
+});
+
 test("parseWhen refuses anything else with a UserError naming the accepted formats", () => {
-  for (const input of ["next tuesday", "", "2026-02-30", "2026-11-19T25:00", "11/19/2026", "2026-11-19T14:00+99:00"]) {
+  for (const input of ["next tuesday", "", "2026-02-30", "2026-11-19T25:00", "11/19/2026", "2026-11-19T14:00+99:00", "2026-11-19T14:00+0530", "2026-02-30T14:00Z", "2026-11-19T24:00Z"]) {
     assert.throws(
       () => parseWhen(input, LA),
       (error: unknown) => {

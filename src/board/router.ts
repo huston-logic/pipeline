@@ -4,6 +4,7 @@ import type { Db } from "../db/db.ts";
 import { briefPage } from "./pages/brief.ts";
 import { changesPage } from "./pages/changes.ts";
 import { dealPage } from "./pages/deal.ts";
+import { isDealId } from "../ids.ts";
 import { exportPage } from "./pages/export.ts";
 import { homePage } from "./pages/home.ts";
 import { notFoundPage } from "./pages/not-found.ts";
@@ -22,14 +23,14 @@ const PAGES = new Map<string, BoardPage>([
   ["/export", async () => ok(exportPage())],
 ]);
 
-/** Ids are `<prefix>_<base32>`; anything else can't be a deal, so it gets the plain 404 without a lookup. */
-const DEAL_PATH = /^\/deals\/([a-z]+_[a-z0-9]+)$/;
+/** Anything isDealId refuses can't be a deal, so it gets the plain 404 without a lookup. */
+const DEAL_PATH = /^\/deals\/([^/]+)$/;
 
 export function matchBoardPage(pathname: string): BoardPage | null {
   const page = PAGES.get(pathname);
   if (page) return page;
   const id = DEAL_PATH.exec(pathname)?.[1];
-  if (id === undefined) return null;
+  if (id === undefined || !isDealId(id)) return null;
   return async (db, now) => {
     const body = await dealPage(db, id, now);
     return body === null ? { status: 404, body: notFoundPage() } : ok(body);

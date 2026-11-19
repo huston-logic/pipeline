@@ -49,7 +49,21 @@ export async function exportTableCsv(db: Db, table: ExportTable): Promise<string
   return toCsv(rows, columns);
 }
 
-/** "pipeline-contacts-2026-11-19.csv"; `localDate` is the owner's date. */
-export const csvFilename = (table: ExportTable, localDate: string) => `pipeline-${table}-${localDate}.csv`;
+const SAFE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,199}$/;
 
-export const jsonFilename = (localDate: string) => `pipeline-export-${localDate}.json`;
+/**
+ * The name unchanged, or an error when it could break out of a Content-Disposition header or a folder: only letters,
+ * digits, ".", "-" and "_", no "..", and no leading dot or dash. Every part is already checked where it comes from
+ * (fixed table names, the owner's date, a checked copy name); this keeps it so if one of them ever changes.
+ */
+export function safeFileName(name: string): string {
+  if (!SAFE_NAME.test(name) || name.includes("..")) {
+    throw new Error(`${JSON.stringify(name)} isn't a safe file name.`);
+  }
+  return name;
+}
+
+/** "pipeline-contacts-2026-11-19.csv"; `localDate` is the owner's date. */
+export const csvFilename = (table: ExportTable, localDate: string) => safeFileName(`pipeline-${table}-${localDate}.csv`);
+
+export const jsonFilename = (localDate: string) => safeFileName(`pipeline-export-${localDate}.json`);

@@ -128,7 +128,8 @@ npm run copies:export -- --copy <name>
 ```
 
 It writes every table as JSON and CSV, plus `all.json` (the same shape as the board's export download), into
-`exports/<name>-<date>/`. The files hold the client's data: keep them private. `exports/` is git-ignored. The board's
+`exports/<name>-<date>/` (a second export on the same day goes to `exports/<name>-<date>-2/`, and so on, so an
+earlier export is never overwritten). The files hold the client's data: keep them private. `exports/` is git-ignored. The board's
 Export page offers the same download to the client.
 
 ## Removing someone's access

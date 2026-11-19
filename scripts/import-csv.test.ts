@@ -112,6 +112,18 @@ test("--local reads and writes the local dev database", async (t) => {
   assert.ok(h.sqlFiles[0]?.startsWith(join(ROOT, ".wrangler")), "the local SQL file goes in the git-ignored .wrangler/");
 });
 
+test("arguments: --flag=value works; a missing value, a repeat or a value on a switch is refused in plain English", () => {
+  assert.deepEqual(parseImportArgs(["--file=x.csv", "--copy=acme", "--apply"]), { file: "x.csv", copy: "acme", local: false, apply: true });
+  const refuse = (argv: string[], pattern: RegExp) => assert.throws(() => parseImportArgs(argv), { message: pattern }, argv.join(" "));
+  refuse(["--copy", "acme", "--file"], /^--file needs a value, like --file contacts\.csv\.$/);
+  refuse(["--copy", "acme", "--file", "--apply"], /^--file needs a value/);
+  refuse(["--file", "x.csv", "--copy="], /^--copy needs a value/);
+  refuse(["--file", "a.csv", "--file", "b.csv", "--local"], /^--file is given twice\. Give it once\.$/);
+  refuse(["--file", "x.csv", "--local", "--apply", "--apply"], /^--apply is given twice/);
+  refuse(["--file", "x.csv", "--local", "--apply=no"], /^--apply takes no value\. Use --apply on its own\.$/);
+  refuse(["--file", "x.csv", "--local", "--remote"], /^Unknown option "--remote"\./);
+});
+
 test("nothing to import writes nothing, and bad arguments say how to fix them", async (t) => {
   const h = await harness(t, "name,email\r\nPat,pat@example.com\r\n");
   assert.equal(await importContacts(parseImportArgs(["--file", h.file, "--copy", "acme", "--apply"]), h.deps), 0);

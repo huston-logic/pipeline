@@ -7,6 +7,12 @@ export type IdPrefix = (typeof ID_PREFIXES)[number];
 
 const ALPHABET = "abcdefghijklmnopqrstuvwxyz234567";
 
+/**
+ * Whether text can be a deal id: newId's "dl_" + 12 base32 characters, or the fake dev seed's "dl_seed01" (lowercase
+ * letters and digits). The board's /deals/<id> and the API's /api/deals/<id> both use it.
+ */
+export const isDealId = (id: string): boolean => /^dl_[a-z0-9]{1,32}$/.test(id);
+
 export function newId(prefix: IdPrefix): string {
   const bytes = crypto.getRandomValues(new Uint8Array(12));
   // 256 is a multiple of 32, so the low 5 bits of a random byte are uniform.

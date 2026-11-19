@@ -9,6 +9,7 @@ import { pathToFileURL } from "node:url";
 import type { ContactRow } from "../src/db/db.ts";
 import { importChange, renderImport } from "../src/import/change.ts";
 import { type ImportPlan, planImport } from "../src/import/plan.ts";
+import { parseFlags, UsageError } from "./cli-args.mjs";
 import { copyNameProblem, copyPaths, databaseTarget, isCopyName, makeRunner, query } from "./copies.mjs";
 import { ROOT, run as defaultRun, type RunOptions, type RunResult } from "./wrangler-run.mjs";
 
@@ -28,23 +29,25 @@ export interface ImportDeps {
   now?: () => Date;
 }
 
-class UsageError extends Error {}
-
 const SHOWN = 20;
 
+const FLAGS = {
+  values: {
+    "--file": { key: "file", example: "contacts.csv" },
+    "--copy": { key: "copy", example: "acme" },
+    "--persist-to": { key: "persistTo", example: ".wrangler/state" },
+  },
+  switches: { "--apply": "apply", "--local": "local" },
+};
+
+const text = (value: unknown) => (typeof value === "string" ? value : undefined);
+
 export function parseImportArgs(argv: string[]): ImportOptions {
-  const options: Partial<ImportOptions> = { local: false, apply: false };
-  for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i];
-    if (arg === "--apply") options.apply = true;
-    else if (arg === "--local") options.local = true;
-    else if (arg === "--file" || arg === "--copy" || arg === "--persist-to") {
-      const value = argv[++i];
-      if (value === undefined) throw new UsageError(`${arg} needs a value.`);
-      if (arg === "--file") options.file = value;
-      else if (arg === "--copy") options.copy = value;
-      else options.persistTo = value;
-    } else throw new UsageError(`Unknown option "${arg}". Use --file, --copy or --local, and --apply to write.`);
+  const flags = parseFlags(argv, FLAGS, "Use --file, --copy or --local, and --apply to write.");
+  const options: Partial<ImportOptions> = { local: flags.local === true, apply: flags.apply === true };
+  for (const key of ["file", "copy", "persistTo"] as const) {
+    const value = text(flags[key]);
+    if (value !== undefined) options[key] = value;
   }
   if (options.file === undefined) throw new UsageError("Name the CSV file: --file <path>.");
   if (options.copy !== undefined && !isCopyName(options.copy)) throw new UsageError(copyNameProblem(options.copy));
