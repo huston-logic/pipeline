@@ -12,6 +12,7 @@ import { pathToFileURL } from "node:url";
 import { toCsv } from "../src/http/csv.ts";
 import { EXPORT_TABLES, safeFileName } from "../src/http/export.ts";
 import { sqlLiteral } from "../src/import/sql.ts";
+import { parseFlags, UsageError } from "./cli-args.mjs";
 import { DEFAULT_TZ, localDate } from "../src/time.ts";
 import { formatCommand, parseJsonOutput, ROOT, run as defaultRun } from "./wrangler-run.mjs";
 
@@ -51,24 +52,21 @@ export const PROVISION_STEPS = [
 /** What `copies:update` needs done before it will touch a copy: everything but the (skippable) secrets. */
 const REQUIRED_FOR_UPDATE = PROVISION_STEPS.filter((step) => step !== "secrets");
 
-class UsageError extends Error {}
-
 // ---------------------------------------------------------------------------------------------------------- arguments
 
-const VALUE_FLAGS = {
-  "--copy": "copy",
-  "--account-id": "accountId",
-  "--access-team-domain": "accessTeamDomain",
-  "--access-aud": "accessAud",
-  "--host": "host",
-  "--brief-from": "briefFrom",
-  "--persist-to": "persistTo",
-};
-const BOOLEAN_FLAGS = {
-  "--resume": "resume",
-  "--dry-run": "dryRun",
-  "--local": "local",
-  "--skip-secrets": "skipSecrets",
+const FLAGS = {
+  values: {
+    "--copy": { key: "copy", example: "acme" },
+    "--account-id": { key: "accountId", example: "<the 32-character account id>" },
+    "--access-team-domain": { key: "accessTeamDomain", example: "example-team.cloudflareaccess.com" },
+    "--access-aud": { key: "accessAud", example: "<the AUD tag>" },
+    "--host": { key: "host", example: "pipeline.example.com" },
+    // An empty --brief-from "" means "no brief address", so it is allowed.
+    "--brief-from": { key: "briefFrom", example: "brief@example.com", allowEmpty: true },
+    "--persist-to": { key: "persistTo", example: ".wrangler/state" },
+  },
+  switches: { "--resume": "resume", "--dry-run": "dryRun", "--local": "local", "--skip-secrets": "skipSecrets" },
+  lists: { "--owner-email": { key: "ownerEmails", example: "owner@example.com" } },
 };
 
 export function parseArgs(argv) {
@@ -76,18 +74,8 @@ export function parseArgs(argv) {
   if (!["provision", "update", "export"].includes(command ?? "")) {
     throw new UsageError("Say what to do: provision, update or export (for example: npm run copies:update -- --dry-run).");
   }
-  const options = { command, ownerEmails: [] };
-  for (let i = 0; i < rest.length; i++) {
-    const arg = rest[i] ?? "";
-    const [name, inline] = arg.includes("=") ? [arg.slice(0, arg.indexOf("=")), arg.slice(arg.indexOf("=") + 1)] : [arg];
-    if (name in BOOLEAN_FLAGS && inline === undefined) options[BOOLEAN_FLAGS[name]] = true;
-    else if (name in VALUE_FLAGS || name === "--owner-email") {
-      const value = inline ?? rest[++i];
-      if (value === undefined) throw new UsageError(`${name} needs a value.`);
-      if (name === "--owner-email") options.ownerEmails.push(...splitList(value));
-      else options[VALUE_FLAGS[name]] = value;
-    } else throw new UsageError(`Unknown option "${arg}". See the top of scripts/copies.mjs for the options.`);
-  }
+  const flags = parseFlags(rest, FLAGS, "See the top of scripts/copies.mjs for the options.");
+  const options = { command, ...flags, ownerEmails: (flags.ownerEmails ?? []).flatMap(splitList) };
   if (options.copy !== undefined && !isCopyName(options.copy)) throw new UsageError(copyNameProblem(options.copy));
   if (command === "provision" && options.copy === undefined) throw new UsageError("Name the copy: --copy <name>.");
   if (command === "export" && (options.copy === undefined) === !options.local) {

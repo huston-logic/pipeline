@@ -239,6 +239,26 @@ test("missing answers are asked for, and bad ones are refused with how to fix th
   await assert.rejects(provision(parseArgs(["provision", "--copy", "acme2", ...badAud]), h.deps), /--access-aud/);
 });
 
+test("arguments: --flag=value works; a missing value, a repeat or a value on a switch is refused in plain English", () => {
+  assert.equal(parseArgs(["update", "--copy=acme"]).copy, "acme");
+  assert.equal(parseArgs(["export", "--local", "--persist-to=.wrangler/other"]).persistTo, ".wrangler/other");
+  assert.deepEqual(parseArgs(["provision", "--copy", "acme", "--owner-email", "a@example.com", "--owner-email=b@example.com"]).ownerEmails, [
+    "a@example.com",
+    "b@example.com",
+  ]);
+  const refuse = (argv, pattern) => assert.throws(() => parseArgs(argv), { message: pattern }, argv.join(" "));
+  refuse(["update", "--copy"], /^--copy needs a value, like --copy acme\.$/);
+  refuse(["update", "--copy="], /^--copy needs a value/);
+  refuse(["update", "--copy", "--dry-run"], /^--copy needs a value/);
+  refuse(["export", "--local", "--persist-to", "--dry-run"], /^--persist-to needs a value/);
+  refuse(["update", "--copy", "acme", "--copy", "other"], /^--copy is given twice\. Give it once\.$/);
+  refuse(["update", "--copy=acme", "--copy", "acme"], /^--copy is given twice/);
+  refuse(["update", "--dry-run", "--dry-run"], /^--dry-run is given twice/);
+  refuse(["update", "--dry-run=yes"], /^--dry-run takes no value\. Use --dry-run on its own\.$/);
+  refuse(["update", "--remote"], /^Unknown option "--remote"\./);
+  refuse(["update", "acme"], /^Unknown option "acme"\./);
+});
+
 test("a provision dry run prints the commands and runs and writes nothing", async (t) => {
   const h = harness(t);
   assert.equal(await provision(parseArgs(["provision", "--copy", "acme", ...ANSWERS, "--dry-run"]), h.deps), 0);
