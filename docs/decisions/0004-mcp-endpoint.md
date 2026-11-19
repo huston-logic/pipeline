@@ -60,9 +60,15 @@ and the authorization page; plus the installed `agents` 0.33.0 types in `dist/mc
   `destructiveHint` is true on the tools that overwrite values or close things (`update_contact`, `update_deal`,
   `update_stage`, `archive_stage`, `update_field`, `update_rule`, `update_rulebook`, `update_settings`) and on
   `undo_change` (undoing an add removes records): undo exists, but clients use the hint to ask the owner first.
-  `idempotentHint` is true for the `update_*` tools, `pause_rule` and `resume_rule` (repeating the call changes nothing
-  more) and false for the adds, `log_activity`, `archive_stage`, `complete_task`, `snooze_task` and `undo_change` (a
-  repeat is refused or changes something again). Final-review fix wave, 2026-11-18.
+  `idempotentHint` is true for the `update_*` tools, `pause_rule` and `resume_rule` (the code sets it on
+  `update_contact`, `update_deal`, `update_stage`, `update_field`, `update_rule`, `update_rulebook`, `update_settings`,
+  `pause_rule` and `resume_rule`). These set a record to a stated target state, so a repeat with the same arguments
+  leaves the data as it was (the service refuses it with "Nothing to change" or "already ..."). It is false for the
+  adds and `log_activity`, which add a record each time, and for the one-way actions `archive_stage`, `complete_task`,
+  `snooze_task` and `undo_change`. Those are also refused on a repeat ("already archived", "already done", "already
+  snoozed until ...", "already undone"), so they would qualify under MCP's definition, but they are kept false on
+  purpose because the hint only makes AI apps more careful. Final-review fix wave, 2026-11-18. Wording corrected in
+  run 2 (R9), 2026-11-18.
 - **Activity types:** `log_activity` takes `email`, `call`, `meeting` or `note`; `form` only comes in through
   `/intake`.
 - **End-to-end:** `tests/e2e/harness.ts` runs `wrangler dev --local --test-scheduled` on a free port with a new temp
