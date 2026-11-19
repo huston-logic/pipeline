@@ -1,0 +1,186 @@
+/* Board styles. The palette is copied from the website template's design tokens (decision 0001). System fonts only. */
+:root {
+  --silver: #f5f5f4;
+  --silver-2: #e7e5e4;
+  --white: #ffffff;
+  --ink: #1c1917;
+  --ink-2: #44403c;
+  --green: #1e4fa3;
+  --green-deep: #173b7a;
+  --green-edge: #5b85c9;
+  --tint: #e8eefa;
+  --glow: #c3d4f0;
+  --mint: #d5e1f5;
+  --rust: #9a3412;
+  --line: #d6d3d1;
+
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --radius: 12px;
+  --wrap: 72rem;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--silver);
+  color: var(--ink);
+  font-family: var(--font);
+  font-size: 1.0625rem;
+  line-height: 1.6;
+}
+
+h1,
+h2,
+h3 {
+  line-height: 1.15;
+  letter-spacing: -0.015em;
+  text-wrap: balance;
+}
+
+h1 {
+  font-size: clamp(2rem, 4vw, 2.75rem);
+  margin: 0 0 1rem;
+}
+
+p,
+li {
+  text-wrap: pretty;
+}
+
+a {
+  color: var(--green);
+  text-underline-offset: 0.15em;
+}
+
+a:hover {
+  color: var(--green-deep);
+}
+
+:focus-visible {
+  outline: 2px solid var(--rust);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+::selection {
+  background: var(--mint);
+  color: var(--ink);
+}
+
+.wrap {
+  max-width: var(--wrap);
+  margin: 0 auto;
+  padding: 0 1rem;
+}
+
+.skip-link {
+  position: absolute;
+  left: 1rem;
+  top: -10rem;
+  z-index: 10;
+  padding: 0.75rem 1rem;
+  background: var(--white);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.skip-link:focus {
+  top: 1rem;
+}
+
+.site-header {
+  background: var(--white);
+  border-bottom: 1px solid var(--line);
+}
+
+.site-header .wrap {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1.5rem;
+  min-height: 4rem;
+}
+
+.brand {
+  margin: 0;
+  font-weight: 700;
+  font-size: 1.125rem;
+}
+
+.site-header nav ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.site-header nav a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 0.75rem;
+  border-radius: var(--radius);
+  color: var(--ink-2);
+  text-decoration: none;
+}
+
+.site-header nav a:hover {
+  background: var(--tint);
+  color: var(--ink);
+}
+
+.site-header nav a[aria-current="page"] {
+  background: var(--tint);
+  color: var(--green-deep);
+  font-weight: 600;
+}
+
+main {
+  padding-top: 2.5rem;
+  padding-bottom: 3rem;
+  min-height: 60vh;
+}
+
+main p {
+  max-width: 40rem;
+  color: var(--ink-2);
+}
+
+main a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+}
+
+.site-footer {
+  border-top: 1px solid var(--line);
+  color: var(--ink-2);
+  font-size: 0.9375rem;
+}
+
+.site-footer p {
+  margin: 0;
+  padding: 1.25rem 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}

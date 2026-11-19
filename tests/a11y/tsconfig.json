@@ -1,0 +1,20 @@
+{
+  // Playwright files run in Node but their page callbacks touch `window`, so they need DOM types, which the Worker's
+  // tsconfig cannot have. `npm run typecheck` runs `tsc -p tests/a11y` after the root config.
+  "compilerOptions": {
+    "target": "ES2024",
+    "lib": ["ES2024", "DOM", "DOM.Iterable"],
+    "types": ["node"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "erasableSyntaxOnly": true,
+    "isolatedModules": true,
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noEmit": true,
+    "skipLibCheck": true
+  },
+  "include": ["./**/*.ts", "../../playwright.config.ts", "../../src/board/routes.ts"]
+}

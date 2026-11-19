@@ -1,0 +1,3 @@
+# The board sits behind Cloudflare Access, so crawlers never reach it. Crawling is allowed on purpose (decision 0003).
+User-agent: *
+Allow: /

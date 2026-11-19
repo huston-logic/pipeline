@@ -1,8 +1,8 @@
 import { existsSync } from "node:fs";
 import { defineConfig } from "@playwright/test";
 
-// The accessibility check scans the exported site in ./out, served by scripts/preview.mjs
-// (clean URLs, 404.html and the site-wide headers from public/_headers, including the CSP).
+// The accessibility check scans the board as the Worker draws it: `npm run preview` runs `wrangler dev --local` on
+// port 4822 with a fresh local state folder, serving out/ through the ASSETS binding.
 if (!existsSync("out/index.html")) {
   throw new Error("No build found. Run `npm run build` before `npm run test:a11y`.");
 }
@@ -18,7 +18,6 @@ export default defineConfig({
   reporter: process.env.CI ? [["list"], ["html", { open: "never" }]] : [["list"]],
   use: {
     baseURL,
-    // Animations end in the static design under reduced motion, so scans never catch a half-faded colour.
     reducedMotion: "reduce",
   },
   projects: [
@@ -29,7 +28,8 @@ export default defineConfig({
     command: "npm run preview",
     url: baseURL,
     reuseExistingServer: !process.env.CI,
-    timeout: 30_000,
+    // wrangler dev needs a few seconds to start workerd, longer on a cold CI runner.
+    timeout: 60_000,
     stderr: "pipe",
   },
 });
