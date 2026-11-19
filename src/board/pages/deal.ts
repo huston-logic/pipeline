@@ -10,11 +10,13 @@ import { renderPage } from "../layout.ts";
 import { moveForm, safeDealName } from "../move.ts";
 import { contactHref, empty, formatNumber, labelled, type Pair, pairs, section, tag, when } from "../parts.ts";
 import { logForm } from "../log-form.ts";
+import { askSection } from "../ask-claude.ts";
+import { reachActions } from "../reach.ts";
 import { customRows, outsideNote, STATUS, taskCard, timelineItem } from "../records.ts";
 import { addTaskForm, type Subject } from "../task-forms.ts";
 import { dealEditPath } from "./deal-edit.ts";
 
-function contactSection(brief: DealBrief, labels: Map<string, string>): Html {
+function contactSection(brief: DealBrief, labels: Map<string, string>, form: FormContext, subject: Subject): Html {
   const { contact } = brief;
   const outside = new Set(contact.untrusted_fields);
   const text = (name: string, key: string, value: string | null): Pair | null =>
@@ -33,6 +35,7 @@ ${pairs([
   ...customRows(contact.fields, labels, outside),
 ])}
 ${contact.archived ? html`<p class="note">This contact is archived.</p>` : ""}
+${reachActions(contact, subject, form)}
 <p class="card-actions"><a href="${contactHref(contact.id)}">Open the contact page</a></p>
 </div>`,
   );
@@ -141,17 +144,19 @@ export async function dealPage(ctx: PageContext, id: string): Promise<string | n
     description: `Before the call: contact, next step, open tasks and timeline for ${name}.`,
     current: `/deals/${brief.deal.id}`,
     frame: ctx,
+    script: true,
     body: html`<p class="back"><a href="/pipeline">Back to the pipeline</a></p>
 <h1>${labelled(brief.deal.title, titleOutside)}</h1>
 <p class="lede deal-status">${tag(brief.stage.label)} <span>${STATUS[brief.deal.status]}</span></p>
 ${note}
 <div class="deal-columns">
 <div>
-${contactSection(brief, labelsFor("contact"))}
+${contactSection(brief, labelsFor("contact"), ctx, subject)}
 ${dealSection(brief, labelsFor("deal"), tz, await listStages(db), ctx)}
 </div>
 <div>
 ${nextSection(brief)}
+${askSection(brief.deal.id)}
 ${tasksSection(brief, now, tz, ctx, subject)}
 ${timelineSection(brief, ctx, subject)}
 </div>

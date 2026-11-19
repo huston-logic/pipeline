@@ -1601,6 +1601,155 @@ button.button {
   margin-top: 0;
 }
 
+/* ---------- Phone actions and Ask Claude (decision 0021) ---------- */
+
+/* The browser's own rule, kept when a class sets display (a Copy prompt button waits hidden for the script). */
+[hidden] {
+  display: none !important;
+}
+
+/* Call, Text, Email: a thumb-sized action bar at the foot of the contact card on a phone. */
+.reach {
+  margin: 1rem 0 0;
+  padding-top: 1rem;
+  border-top: 1px solid var(--divider);
+}
+
+.reach-buttons {
+  display: grid;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
+  gap: 0.5rem;
+}
+
+.reach-button {
+  justify-content: center;
+  min-height: 3.5rem;
+  padding: 0 0.75rem;
+}
+
+.reach-log {
+  margin: 1rem 0 0;
+}
+
+.reach-log-hint,
+.reach-note {
+  margin: 0 0 0.5rem;
+  color: var(--ink-2);
+  font-size: 0.9375rem;
+}
+
+.reach-note {
+  margin: 0.75rem 0 0;
+}
+
+.reach-log-buttons {
+  display: grid;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
+  gap: 0.5rem;
+}
+
+.reach-log-form {
+  margin: 0;
+}
+
+.reach-log-button {
+  justify-content: center;
+  width: 100%;
+  min-height: 3.5rem;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.9375rem;
+  text-align: center;
+}
+
+/* After Call, Text or Email, the matching Log button becomes the filled one: the next tap logs it. */
+.reach-log-button.is-next {
+  background: var(--accent);
+  color: var(--on-accent);
+  box-shadow: none;
+}
+
+.reach-log-button.is-next:hover {
+  color: var(--on-accent);
+  text-decoration-color: var(--on-accent);
+}
+
+/* Ask Claude: one row per prompt on a white panel: the link, Copy prompt beside it when there is room, the prompt. */
+.ask > li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.ask-open {
+  flex: 1 1 100%;
+  justify-content: center;
+}
+
+.ask-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+}
+
+.copy-status {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: 0.9375rem;
+}
+
+.ask-details {
+  flex: 1 1 100%;
+}
+
+.ask-details summary {
+  display: list-item;
+  min-height: 44px;
+  padding: 0.625rem 0 0;
+  color: var(--ink-2);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ask-details summary:hover {
+  text-decoration: underline;
+  text-decoration-color: var(--rust);
+  text-underline-offset: 0.25em;
+}
+
+.ask-details .field {
+  margin: 0.5rem 0 0;
+}
+
+/* Wide screens are rarely phones: Call, Text and Email step down to quiet buttons; the link sits at its own width. */
+@media (min-width: 60rem) {
+  .reach-button {
+    min-height: 44px;
+    padding: 0 1.125rem;
+    background: var(--white);
+    color: var(--ink);
+    font-size: 1rem;
+    box-shadow: inset 0 0 0 1px var(--ink-2);
+  }
+
+  .reach-button:hover {
+    color: var(--ink);
+    text-decoration-color: var(--rust);
+  }
+
+  .reach-log-button {
+    min-height: 3rem;
+  }
+
+  .ask-open {
+    flex: 0 0 auto;
+  }
+}
+
 /* ---------- Wider screens ---------- */
 
 @media (min-width: 40rem) {

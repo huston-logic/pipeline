@@ -31,7 +31,8 @@ skeleton, so the palette tokens already in `public/board.css` (decision 0001) ar
   came from a form is linked as "Deal dl_…" with the labelled title beside the link, and an email address is plain
   text. It never goes in `<title>` or the meta description, where a label can't be shown. A deal page with any outside
   text says once what the label means. An activity written by the system (not the owner or the AI) has its summary
-  labelled too, because the read service lists it in `untrusted_fields`.
+  labelled too, because the read service lists it in `untrusted_fields`. (Amended by 0021: a contact's phone and email
+  may be the target of a `tel:`, `sms:` or `mailto:` link with fixed text, after a strict check; nothing else.)
 - **API.** `/api/pipeline`, `/api/due`, `/api/deals/<id>`, `/api/rules` (`{ rules }`), `/api/changes`
   (`{ since, changes, truncated }`), `/api/brief` (`{ brief }`, null before the first one) return the read services'
   shapes, so their outside-text labels come along. The brief comes as its subject plus labelled `items`; its stored

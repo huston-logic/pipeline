@@ -10,12 +10,13 @@ import { renderPage } from "../layout.ts";
 import { dealLink, empty, formatNumber, labelled, type Pair, pairs, section, tag, when } from "../parts.ts";
 import type { FormContext } from "../forms.ts";
 import { logForm } from "../log-form.ts";
+import { reachActions } from "../reach.ts";
 import { customRows, outsideNote, STATUS, taskCard, timelineItem } from "../records.ts";
 import { addTaskForm, type Subject } from "../task-forms.ts";
 import { contactEditPath } from "./contact-edit.ts";
 import { newDealPath } from "./deal-new.ts";
 
-function detailsSection(detail: ContactDetail, labels: Map<string, string>, tz: string): Html {
+function detailsSection(detail: ContactDetail, labels: Map<string, string>, tz: string, form: FormContext, subject: Subject): Html {
   const { contact } = detail;
   const outside = new Set(contact.untrusted_fields);
   const text = (name: string, key: string, value: string | null): Pair | null =>
@@ -34,6 +35,7 @@ ${pairs([
   { name: "Added", value: when(contact.createdAt, formatLocal(contact.createdAt, tz)) },
 ])}
 ${contact.archived ? html`<p class="note">This contact is archived.</p>` : ""}
+${reachActions(contact, subject, form)}
 <p class="card-actions"><a href="${contactEditPath(contact.id)}">Edit details</a></p>
 </div>`,
   );
@@ -139,13 +141,14 @@ export async function contactPage(ctx: PageContext, id: string): Promise<string 
     description: `Details, deals, open tasks and timeline for ${name}.`,
     current: `/contacts/${contact.id}`,
     frame: ctx,
+    script: true,
     body: html`<p class="back"><a href="/contacts">Back to contacts</a></p>
 <h1>${labelled(contact.name, outside.has("name"))}</h1>
 ${company}
 ${hasOutsideText(detail) ? outsideNote() : ""}
 <div class="detail-columns">
 <div>
-${detailsSection(detail, labels, tz)}
+${detailsSection(detail, labels, tz, ctx, subject)}
 ${dealsSection(detail)}
 </div>
 <div>
