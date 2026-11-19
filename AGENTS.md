@@ -31,16 +31,22 @@ this file before changing the repo, and update it when a rule changes.
   brief). `run_worker_first: true`, so every request reaches the Worker; it hands file requests
   (a path ending in `name.ext`) to `env.ASSETS` and renders its own 404 page when the file is missing.
 - **The board is HTML rendered by the Worker** (decision 0001): no client JavaScript, no React, no framework. Pages
-  are modules in `src/board/pages/` that return `renderPage({ title, description, body, current })` from
-  `src/board/layout.ts`. Every board path is listed in `src/board/routes.ts` (import-free; the accessibility test and
-  `lighthouserc.cjs` read it). The board is read-only: GET and HEAD only, `Cache-Control: no-store`.
+  are modules in `src/board/pages/` that return `renderPage({ title, description, body, current, look })` from
+  `src/board/layout.ts` (the layout appends " · <business name>" to the title). Every board path is listed in
+  `src/board/routes.ts` (import-free; the accessibility test, `npm run screenshots` and `lighthouserc.cjs` read it),
+  with the nav (`navItems`: Today, Pipeline, Contacts, Brief, More; `moreItems`: Rules, Changes, Export). The board is read-only: GET and HEAD only, `Cache-Control: no-store`.
 - **Markup goes through the `html` tag** (`src/board/html.ts`), which escapes every interpolation. `raw()` is only for
   markup written in this repo, never for data. No other way of building HTML.
 - **Static files:** `npm run build` (`scripts/build.mjs`) copies `public/` (`board.css`, `robots.txt`, `_headers`) into
   `out/` and writes `index.html` (a notice for when the Worker is not running), `404.html` and an empty `sitemap.xml`.
-- **Styles:** one stylesheet, `public/board.css`. Colors are the `:root` tokens there (`--silver`, `--ink`, `--ink-2`,
-  `--green`, `--rust`, `--tint`, `--line`, ...); never hard-code a color elsewhere. System fonts only; no web fonts and
-  no third-party script, style or font.
+- **Styles:** one stylesheet, `public/board.css`, following `docs/STYLE-GUIDE.md` (Huston Logic v3 adapted to the
+  board, decision 0015). Colors are the `:root` tokens there (`--silver`, `--ink`, `--ink-2`, `--green`, `--rust`,
+  `--tint`, `--line`, `--accent`, ...); never hard-code a color elsewhere. Components use `--accent` for brand accents
+  (current tab, buttons, links). The owner's accent colour (a setting) reaches the page as `/theme.css`, which the
+  Worker writes (`src/board/theme.ts`, behind the board sign-in) and the layout links after `/board.css`; it is checked
+  again before output (`src/services/accent.ts`). System fonts only; no web fonts and no third-party script, style or
+  font. `npm run screenshots` saves every board route at 375 and 1280 px to `.owner-review/screenshots/` with an axe
+  scan (installed Google Chrome; needs `npm run build`).
 - **MCP** (decision 0004): `src/index.ts` loads `src/mcp/handler.ts` with a dynamic `import()` (so the board and its
   unit tests never load the SDK); the handler serves an MCP SDK v2 server (`@modelcontextprotocol/server`) built
   fresh per request by `createMcpServer` (`server.ts`); stateless, no Durable Object. Tools live in `tools-read.ts`
