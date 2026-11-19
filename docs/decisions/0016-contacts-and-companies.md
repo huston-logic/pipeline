@@ -83,6 +83,7 @@ the two views share one tab, and how seeded `audit_log` rows stay safe to undo.
 - `LIKE` ignores case for ASCII only: "élan" does not find "ÉLAN". Revisit if a copy has many non-English names.
 - A website form can name an existing company; that contact joins the company's card, labelled From outside.
 - The Companies page has no limit; with thousands of contacts it is long. Revisit with the CPU measurement task.
+  (Revisited in 0020: still no limit; about 5 ms of CPU at 300 companies once the sort shares one collator.)
 - Tests that need fixed data must use the fixture; changing the demo seed only touches the seed's own tests, the e2e
   tests and docs/ACCEPTANCE.md.
 

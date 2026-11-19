@@ -14,6 +14,24 @@ import { count, dealLink, empty, formatNumber, labelled, newLeadButton, pairs, t
 
 type View = "board" | "list";
 
+/**
+ * A board column and a list section show the deals longest in their stage, at most this many, and link to the stage's
+ * own list, which shows at most STAGE_LIST_LIMIT (decision 0020): on a big copy, drawing every open deal took the page
+ * to the free plan's 10 ms CPU limit.
+ */
+export const STAGE_CARD_LIMIT = 50;
+export const STAGE_LIST_LIMIT = 200;
+
+const stageListHref = (key: string) => `/pipeline?view=list&stage=${encodeURIComponent(key)}`;
+
+/** "Showing 50 of 60, longest in this stage first." and, from the board and the full list, a link to all of them. */
+function moreNote(stage: StageSummary, limit: number, link: boolean): Html | "" {
+  if (stage.deals.length <= limit) return "";
+  const total = formatNumber(stage.deals.length);
+  const all = link ? html` <a href="${stageListHref(stage.key)}">Show all ${total} in ${stage.label}</a>` : "";
+  return html`<p class="stage-more">Showing ${formatNumber(limit)} of ${total}, longest in this stage first.${all}</p>`;
+}
+
 const has = (fields: readonly string[], key: string) => fields.includes(key);
 
 /** "2 deals", "1 deal, value 1,500". */
@@ -82,7 +100,8 @@ function column(stage: StageSummary, index: number, stages: StageRow[], form: Fo
 <h2 id="${id}">${stage.label}</h2>
 <p class="stage-count">${stageCountText(stage)}</p>
 </div>
-${stage.deals.length === 0 ? noDeals : html`<ul class="column-cards">${stage.deals.map((deal) => dealCard(deal, stages, form))}</ul>`}
+${stage.deals.length === 0 ? noDeals : html`<ul class="column-cards">${stage.deals.slice(0, STAGE_CARD_LIMIT).map((deal) => dealCard(deal, stages, form))}</ul>`}
+${moreNote(stage, STAGE_CARD_LIMIT, true)}
 </section>`;
 }
 
@@ -131,17 +150,26 @@ ${move(deal, stages, form)}
 </li>`;
 }
 
-function listView(summary: PipelineSummary, stages: StageRow[], counts: Map<string, number>, form: FormContext): Html {
-  return html`${summary.stages.map(
-  (stage, i) => html`<section class="stage" aria-labelledby="${stageId(i)}">
+function stageSection(stage: StageSummary, index: number, stages: StageRow[], form: FormContext, limit: number, link: boolean): Html {
+  return html`<section class="stage" aria-labelledby="${stageId(index)}">
 <div class="stage-head">
-<h2 id="${stageId(i)}">${stage.label}</h2>
+<h2 id="${stageId(index)}">${stage.label}</h2>
 <p class="stage-count">${stageCountText(stage)}</p>
 </div>
-${stage.deals.length === 0 ? noDeals : html`<ul class="panel rows deal-rows">${stage.deals.map((deal) => dealRow(deal, stages, form))}</ul>`}
-</section>`,
-)}
+${stage.deals.length === 0 ? noDeals : html`<ul class="panel rows deal-rows">${stage.deals.slice(0, limit).map((deal) => dealRow(deal, stages, form))}</ul>`}
+${moreNote(stage, limit, link)}
+</section>`;
+}
+
+function listView(summary: PipelineSummary, stages: StageRow[], counts: Map<string, number>, form: FormContext): Html {
+  return html`${summary.stages.map((stage, i) => stageSection(stage, i, stages, form, STAGE_CARD_LIMIT, true))}
 ${closedStages(stages, counts)}`;
+}
+
+/** /pipeline?view=list&stage=<key>: one open stage's deals, longest in the stage first. */
+function stageListView(summary: PipelineSummary, stage: StageSummary, stages: StageRow[], form: FormContext): Html {
+  return html`<p class="search-clear"><a href="/pipeline?view=list">Show every stage</a></p>
+${stageSection(stage, summary.stages.indexOf(stage), stages, form, STAGE_LIST_LIMIT, false)}`;
 }
 
 export async function pipelinePage(ctx: PageContext): Promise<string> {
@@ -149,18 +177,24 @@ export async function pipelinePage(ctx: PageContext): Promise<string> {
   const view: View = ctx.query.get("view") === "list" ? "list" : "board";
   const tz = await ownerTimezone(db);
   const [summary, stages, counts] = await Promise.all([pipelineSummary(db, now, tz), listStages(db), stageCounts(db)]);
+  // An unknown or closed stage, or one given to the board view, is ignored.
+  const only = view === "list" ? summary.stages.find((stage) => stage.key === ctx.query.get("stage")) : undefined;
   const body =
     summary.stages.length === 0
       ? empty("There are no open stages.", "Ask your AI app to add one.")
-      : view === "list"
-        ? listView(summary, stages, counts, ctx)
-        : boardView(summary, stages, counts, ctx);
+      : only !== undefined
+        ? stageListView(summary, only, stages, ctx)
+        : view === "list"
+          ? listView(summary, stages, counts, ctx)
+          : boardView(summary, stages, counts, ctx);
   return renderPage({
-    title: view === "list" ? "Pipeline list" : "Pipeline",
+    title: only !== undefined ? `${only.label} deals` : view === "list" ? "Pipeline list" : "Pipeline",
     description:
-      view === "list"
-        ? "Every open deal as a list grouped by stage, with a Move to control on each."
-        : "Your open deals as a board, one column per stage, with each deal's contact, value and next date.",
+      only !== undefined
+        ? `Every open deal in ${only.label}, longest in the stage first, with a Move to control on each.`
+        : view === "list"
+          ? "Every open deal as a list grouped by stage, with a Move to control on each."
+          : "Your open deals as a board, one column per stage, with each deal's contact, value and next date.",
     current: "/pipeline",
     frame: ctx,
     script: view === "board",

@@ -8,11 +8,12 @@ metadata:
 ---
 
 > **Local rules (this repo).** Source: addyosmani/web-quality-skills @ afa8da9 (MIT).
-> - Copy rule: alt text, aria-labels, "(opens in new tab)" hints, error messages and every other string shown or announced come from `src/content/` or are visible `[[placeholders]]`. Examples in this skill are illustrations; never copy them into code. Wording ideas go in plans only, labeled COPY IDEA (not for code).
+> - This repo is the pipeline engine: the board is HTML rendered by the Worker (`src/board/`, the `html` tag), one stylesheet (`public/board.css`) and one small progressive-enhancement script (`public/board.js`, decision 0014). React, JSX and framework examples in this skill do not apply; use the plain-HTML form of each pattern.
+> - Copy: board copy is plain and short, sentence case, no emoji, and adds no claims the spec does not make (CLAUDE.md). Examples in this skill are illustrations; never copy their wording into code. Changing the meaning of existing copy needs the owner.
 > - CLAUDE.md wins on any conflict (workflow, installs, browser use); AGENTS.md wins on code, content and architecture.
-> - Tokens only: no hex, rgba, px or ms values from examples. Existing repo patterns win: the skip link in `layout.tsx`, `sr-only`, 44px minimum targets, the token-based focus outline.
-> - No form or submit-handler patterns until a form provider is chosen (AGENTS.md).
-> - Installing tools (axe, Lighthouse) is a separate approval; run them only on localhost and our own preview URLs.
+> - Tokens only: no hex, rgba, px or ms values from examples; colours are the `:root` tokens in `public/board.css`. Existing repo patterns win: the skip link and landmarks in `src/board/layout.ts`, 44px minimum targets, the rust `:focus-visible` ring.
+> - Board forms are allowed (decision 0014): every field has a visible label, related controls sit in a `fieldset` with a `legend`, field errors are linked with `aria-describedby` and `aria-invalid`, and every action works as a plain form without JavaScript. Dragging always has a "Move to" form as the non-drag alternative.
+> - Installing tools (axe, Lighthouse, Playwright browsers) is a separate approval; run them only on localhost and our own preview URLs. The repo's own checks are `npm run test:a11y` (Playwright + axe) and `npm run test:lighthouse`, both against `npm run preview`.
 
 # Accessibility (a11y)
 

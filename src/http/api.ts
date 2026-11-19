@@ -9,7 +9,7 @@ import { changeLog, getDealBrief, latestBrief, pipelineSummary, whatsDue } from 
 import { listRules } from "../services/rules.ts";
 import { withSecurityHeaders } from "../security.ts";
 import { localDate } from "../time.ts";
-import { csvFilename, exportAll, exportTableCsv, isExportTable, jsonFilename } from "./export.ts";
+import { csvFilename, exportAll, exportJsonStream, exportTableCsv, isExportTable, jsonFilename } from "./export.ts";
 
 export const API_PREFIX = "/api/";
 
@@ -59,7 +59,16 @@ export async function handleApi(request: Request, env: Pick<Env, "DB">, now: Dat
       return json({ brief: await latestBrief(db) });
     case "/api/export.json": {
       const tz = await ownerTimezone(db);
-      return json(await exportAll(db, now), 200, attachment(jsonFilename(localDate(now, tz))));
+      const full = await exportAll(db, now);
+      return withSecurityHeaders(
+        new Response(exportJsonStream(full), {
+          headers: {
+            "Cache-Control": "no-store",
+            "Content-Type": "application/json; charset=utf-8",
+            ...attachment(jsonFilename(localDate(now, tz))),
+          },
+        }),
+      );
     }
   }
 

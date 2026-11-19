@@ -15,7 +15,8 @@
 //     merge until the ruleset's required checks pass. --admin, a merge without --auto,
 //     --rebase, --delete-branch and any other option stay blocked.
 //   - wrangler deploy / publish (also via npx, or an npm script that runs them):
-//     deploys happen only by merging to main
+//     merging to main deploys nothing; the owner updates each client copy with
+//     `npm run copies:update` and their own wrangler login (decision 0007)
 //   - rm -r / rm -rf unless every target is a scratch folder or a build folder
 //   - curl or wget piped into a shell or interpreter (runs unread code)
 //   - git add of secret files (.env, .dev.vars, secrets/) and Bash commands that
@@ -268,11 +269,12 @@ guard("guard-bash", (input) => {
       }
     }
 
-    // 6. Deploys happen only by merging to main.
+    // 6. No deploys from Claude: the owner updates each client copy with `npm run copies:update` (decision 0007).
     if (runsWrangler([c.prog, ...c.args]) || deploysViaScript(c, pkg, new Set(), 0)) {
       block(
-        "Blocked: a wrangler deploy or publish (directly or through an npm script). Deploys happen only by merging to main. " +
-          "Do this instead: open a PR and let the owner merge it.",
+        "Blocked: a wrangler deploy or publish (directly or through an npm script). Merging to main deploys nothing; " +
+          "the repo owner updates each client copy with `npm run copies:update` and their own wrangler login. " +
+          "Do this instead: open a PR and stop; to preview the update commands, run `npm run copies:update -- --dry-run`.",
       );
     }
 
