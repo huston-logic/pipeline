@@ -1,37 +1,12 @@
-import type { ActivityType, Actor, Db, DealStatus } from "../../db/db.ts";
+import type { Db } from "../../db/db.ts";
 import { getDeal, listFieldDefs } from "../../db/queries.ts";
 import { ownerTimezone } from "../../services/lookup.ts";
-import { type DealBrief, getDealBrief, type TaskItem, type TimelineItem } from "../../services/read.ts";
+import { type DealBrief, getDealBrief } from "../../services/read.ts";
 import { formatLocal } from "../../time.ts";
 import { type Html, html } from "../html.ts";
 import { type Look, renderPage } from "../layout.ts";
-import { empty, formatNumber, labelled, OUTSIDE_LABEL, outsideLabel, type Pair, pairs, section, tag, when } from "../parts.ts";
-
-const STATUS: Record<DealStatus, string> = { open: "Open", won: "Won", lost: "Lost", not_now: "Not now" };
-
-const ACTIVITY: Record<ActivityType, string> = {
-  form: "Form",
-  email: "Email",
-  call: "Call",
-  meeting: "Meeting",
-  note: "Note",
-  stage_change: "Stage change",
-  system: "System",
-};
-
-const ACTOR: Record<Actor, string> = { owner: "you", ai: "your AI app", system: "the system" };
-
-function fieldValue(value: unknown): string {
-  return typeof value === "string" ? value : JSON.stringify(value);
-}
-
-/** Custom field values with their labels; a value is outside text when its key is listed in `outside`. */
-function customRows(fields: Record<string, unknown>, labels: Map<string, string>, outside: Set<string>): Pair[] {
-  return Object.entries(fields).map(([key, value]) => ({
-    name: labels.get(key) ?? key,
-    value: labelled(fieldValue(value), outside.has(key) || outside.has(`fields.${key}`)),
-  }));
-}
+import { contactHref, empty, formatNumber, labelled, type Pair, pairs, section, tag, when } from "../parts.ts";
+import { customRows, outsideNote, STATUS, taskCard, timelineItem } from "../records.ts";
 
 function contactSection(brief: DealBrief, labels: Map<string, string>): Html {
   const { contact } = brief;
@@ -52,6 +27,7 @@ ${pairs([
   ...customRows(contact.fields, labels, outside),
 ])}
 ${contact.archived ? html`<p class="note">This contact is archived.</p>` : ""}
+<p class="card-actions"><a href="${contactHref(contact.id)}">Open the contact page</a></p>
 </div>`,
   );
 }
@@ -97,21 +73,6 @@ ${pairs([
   return section("next-heading", "Next step", body);
 }
 
-function taskCard(task: TaskItem, now: Date, tz: string): Html {
-  const snoozed = task.snoozedUntil !== null && task.snoozedUntil > now.toISOString() ? task.snoozedUntil : null;
-  return html`<li class="card">
-<div class="card-head">
-<h3 class="card-title">${labelled(task.title, task.untrusted_fields.includes("title"))}</h3>
-${snoozed !== null ? tag("Snoozed") : ""}
-</div>
-${pairs([
-  { name: "Due", value: task.dueAt !== null && task.dueAtLocal !== null ? when(task.dueAt, task.dueAtLocal) : "No due date" },
-  snoozed !== null && { name: "Snoozed until", value: when(snoozed, formatLocal(snoozed, tz)) },
-  task.source !== "owner" && { name: "Added by", value: `rule ${task.source}` },
-])}
-</li>`;
-}
-
 function tasksSection(brief: DealBrief, now: Date, tz: string): Html {
   return section(
     "tasks-heading",
@@ -122,18 +83,6 @@ function tasksSection(brief: DealBrief, now: Date, tz: string): Html {
   );
 }
 
-function timelineItem(item: TimelineItem): Html {
-  return html`<li>
-<p class="row-head">${tag(ACTIVITY[item.type])} ${when(item.occurredAt, item.occurredAtLocal)} <span class="row-by">Logged by ${ACTOR[item.actor]}</span></p>
-<p class="row-text">${labelled(item.summary, item.untrusted_fields.includes("summary"))}</p>
-${
-  item.untrusted_text === null
-    ? ""
-    : html`<div class="outside-block"><p class="outside-head">${outsideLabel()} Message as received</p><p class="outside-text">${item.untrusted_text}</p></div>`
-}
-</li>`;
-}
-
 function timelineSection(brief: DealBrief): Html {
   return section(
     "timeline-heading",
@@ -141,7 +90,7 @@ function timelineSection(brief: DealBrief): Html {
     brief.timeline.length === 0
       ? empty("Nothing logged yet.", "Calls, emails and notes you log through your AI app show up here.")
       : html`<p class="section-note">Newest first.</p>
-<ol class="panel rows timeline">${brief.timeline.map(timelineItem)}</ol>`,
+<ol class="panel rows timeline">${brief.timeline.map((item) => timelineItem(item))}</ol>`,
   );
 }
 
@@ -166,9 +115,7 @@ export async function dealPage(db: Db, id: string, now: Date, look: Look): Promi
   const titleOutside = brief.deal.untrusted_fields.includes("title");
   // The <title> and meta description can't show the label, so outside text never goes there.
   const name = titleOutside ? `Deal ${brief.deal.id}` : brief.deal.title;
-  const note = hasOutsideText(brief)
-    ? html`<p class="note">Text marked ${OUTSIDE_LABEL} came from a website form or an import, not from you or your AI app. It is shown exactly as received.</p>`
-    : "";
+  const note = hasOutsideText(brief) ? outsideNote() : "";
   return renderPage({
     title: name,
     description: `Before the call: contact, next step, open tasks and timeline for ${name}.`,

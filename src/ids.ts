@@ -13,6 +13,9 @@ const ALPHABET = "abcdefghijklmnopqrstuvwxyz234567";
  */
 export const isDealId = (id: string): boolean => /^dl_[a-z0-9]{1,32}$/.test(id);
 
+/** The same check for a contact id ("ct_" ...), used by the board's /contacts/<id>. */
+export const isContactId = (id: string): boolean => /^ct_[a-z0-9]{1,32}$/.test(id);
+
 export function newId(prefix: IdPrefix): string {
   const bytes = crypto.getRandomValues(new Uint8Array(12));
   // 256 is a multiple of 32, so the low 5 bits of a random byte are uniform.

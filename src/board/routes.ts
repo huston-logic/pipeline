@@ -1,8 +1,8 @@
 // Every board page path, and the board's navigation. The accessibility test, `npm run screenshots` and
 // lighthouserc.cjs read `boardRoutes`, and lighthouserc.cjs loads it with require(), so keep this file free of imports
 // and of TypeScript-only syntax beyond type annotations.
-// The two deal pages are fixed ids from the fake seed (scripts/seed-dev.ts): dl_seed02 came in through the website
-// form, so its page shows outside text.
+// The two deal pages and the contact page are fixed ids from the fake seed (scripts/seed-dev.ts): dl_seed02 came in
+// through the website form, so its page shows outside text; ct_seed07 has an open and a won deal.
 
 export type IconName = "today" | "pipeline" | "contacts" | "brief" | "more" | "rules" | "changes" | "export";
 
@@ -14,6 +14,7 @@ export const boardRoutes: string[] = [
   "/",
   "/pipeline",
   "/contacts",
+  "/companies",
   "/brief",
   "/more",
   "/rules",
@@ -21,6 +22,7 @@ export const boardRoutes: string[] = [
   "/export",
   "/deals/dl_seed01",
   "/deals/dl_seed02",
+  "/contacts/ct_seed07",
 ];
 
 /** The phone tab bar and the top of the side bar, in this order. */

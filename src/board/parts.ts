@@ -19,6 +19,14 @@ export function dealLink(id: string, title: string, outside: boolean): Html {
   return html`<a href="${dealHref(id)}">Deal ${id}</a> ${outsideLabel()} <span class="outside-value">${title}</span>`;
 }
 
+export const contactHref = (id: string) => `/contacts/${encodeURIComponent(id)}`;
+
+/** A link to the contact page. Its text is the name only when the name did not come from outside. */
+export function contactLink(id: string, name: string, outside: boolean): Html {
+  if (!outside) return html`<a href="${contactHref(id)}">${name}</a>`;
+  return html`<a href="${contactHref(id)}">Contact ${id}</a> ${outsideLabel()} <span class="outside-value">${name}</span>`;
+}
+
 export const when = (iso: string, local: string): Html => html`<time datetime="${iso}">${local}</time>`;
 
 /** "1 deal", "3 deals". */
