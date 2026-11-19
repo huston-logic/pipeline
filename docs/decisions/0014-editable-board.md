@@ -30,6 +30,10 @@ are refused, what JavaScript may do, and how a closing move (Won, Lost, Not now)
      `SameSite=Strict`, `Path=/`), set on board pages when missing, and the same value in a hidden `csrf` field in
      every form, compared in constant time. Local dev over `http://localhost` uses the name `pipeline-csrf` without
      `Secure`, because `__Host-` cookies need HTTPS; that name is accepted only in the dev sign-in mode.
+  Details: a page that finds no cookie generates one value and puts it in both its `Set-Cookie` and its hidden
+  fields; a POST with no cookie is refused (the page must be loaded first). `Origin: null` (sandboxed or redirected
+  requests) is refused, not treated as a missing header. A script that posts with `fetch` reads the token from the
+  page's hidden field, because the cookie is `HttpOnly`.
   The sign-in checks from run 1 stay in front of both: Cloudflare Access's token and the owner-email list in
   production, the loopback-only dev mode locally.
 - **JavaScript.** One first-party file, `/board.js` (from `public/`), loaded with `defer`. The CSP changes from
@@ -40,8 +44,12 @@ are refused, what JavaScript may do, and how a closing move (Won, Lost, Not now)
   change lands with the first PR that ships the file.
 - **Closing a deal asks first.** Moving a deal to a Won, Lost or Not now stage shows a confirmation step ("Mark … as
   Won?") unless the form already carries the confirmation, the same rule the AI follows (server instructions).
-  The confirmation is a server-rendered page or panel, so it works without JavaScript; dragging a card to a closed
-  stage goes through the same step.
+  The confirmation is a server-rendered page or panel whose form carries a hidden `confirm=yes` field and the CSRF
+  token like any other board form, so it works without JavaScript; dragging a card to a closed stage goes through the
+  same step.
+- **Static files stay first-party.** `script-src 'self'` lets any same-origin file run as script, so `public/` holds
+  only scripts written in this repo. The web app manifest (task R6) is fetched by browsers without credentials unless
+  its `<link>` says `crossorigin="use-credentials"`; behind Access it must say so.
 
 ## Why
 
@@ -54,8 +62,8 @@ are refused, what JavaScript may do, and how a closing move (Won, Lost, Not now)
 
 ## Consequences
 
-- The board is no longer read-only: `methodNotAllowed` stays for unknown POST paths and for `/api/*`, which stays
-  read-only JSON.
+- The board is no longer read-only. `/api/*` stays read-only JSON (405 for other methods); a POST to a path that is
+  not a board write route keeps today's 405 answer.
 - `docs/SPEC.md` no longer lists "editing data from the board" as out of scope.
 - Every board form must render the hidden `csrf` field; a test checks each POST route refuses a missing or wrong
   token and a cross-site `Origin`.

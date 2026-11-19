@@ -207,11 +207,11 @@ Steps:
 
 - [ ] Tests: wrong/missing secret 401, oversize 413, rate limit 429, bad email 400, match by email, dedupe (Review Focus 2), injection text changes nothing but its own lead (audit log has exactly one new change); `npm run check`, commit, PR.
 
-### Task 9 (M9): Board — read-only views and export
+### Task 9 (M9): Board — read-only views and export (run 1; run 2 makes the board editable)
 
 **Files:** Create `src/board/pages/{home,deal,rules,changes,brief,export}.ts`, `src/http/api.ts`, `src/http/export.ts`, `src/http/csv.ts`, tests. Modify `src/board/routes.ts` (seed deal path), `public/board.css`, `tests/a11y/*`.
 
-**Interfaces:** pages render with `renderPage`; routes `/` (deals by stage, due today, latest brief excerpt), `/deals/:id`, `/rules`, `/changes`, `/brief`, `/export`; API `/api/pipeline`, `/api/due`, `/api/deals/:id`, `/api/rules`, `/api/changes`, `/api/brief`, `/api/export.json`, `/api/export/:table.csv` (tables: contacts, deals, activities, tasks, stages, field_defs, rules, rule_firings, rulebook, settings, audit_log, briefs). `toCsv(rows): string` (RFC 4180, CRLF, quotes doubled, formula guard: prefix `'` when a cell starts with `=`, `+`, `-`, `@`). Untrusted text shown with a visible "From outside" label. All board GETs are read-only.
+**Interfaces:** pages render with `renderPage`; routes `/` (deals by stage, due today, latest brief excerpt), `/deals/:id`, `/rules`, `/changes`, `/brief`, `/export`; API `/api/pipeline`, `/api/due`, `/api/deals/:id`, `/api/rules`, `/api/changes`, `/api/brief`, `/api/export.json`, `/api/export/:table.csv` (tables: contacts, deals, activities, tasks, stages, field_defs, rules, rule_firings, rulebook, settings, audit_log, briefs). `toCsv(rows): string` (RFC 4180, CRLF, quotes doubled, formula guard: prefix `'` when a cell starts with `=`, `+`, `-`, `@`). Untrusted text shown with a visible "From outside" label. All board GETs are read-only (run 1; see Run 2 at the end).
 
 - [ ] Use the `human-touch-design` and `accessibility` skills; reuse the palette tokens from `docs/STYLE-GUIDE.md`. Tests: each page 200 with seed data and with an empty database; CSV round-trip (Review Focus 4); export contains every table. `npm run build`, `npm run test:a11y`, `npm run test:lighthouse` pass locally; `npm run check`, commit, PR.
 
