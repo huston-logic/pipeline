@@ -295,6 +295,16 @@ test("listCompanies shows a company typed only by outside forms with the label, 
   );
 });
 
+test("listCompanies sorts by name ignoring case and accents, the way localeCompare in English does", async () => {
+  const db = await createTestDb();
+  const names = ["Zinc Works", "éclair bakery", "apple farm", "Banana Co", "Eagle Roofing", "ÁBACO"];
+  for (const [i, business] of names.entries()) await addContact(db, `ct_s${i}`, { name: `Person ${i}`, business });
+  const { companies } = await listCompanies(db, NOW, TZ);
+  const expected = [...names].sort((a, b) => a.localeCompare(b, "en", { sensitivity: "base" }));
+  assert.deepEqual(companies.map((c) => c.name), expected);
+  assert.deepEqual(expected, ["ÁBACO", "apple farm", "Banana Co", "Eagle Roofing", "éclair bakery", "Zinc Works"]);
+});
+
 test("contactDetail: the contact, every deal they have, open tasks and one timeline newest first", async () => {
   const db = await seededDb();
   assert.equal(await contactDetail(db, "ct_nothing", TZ, NOW), null);

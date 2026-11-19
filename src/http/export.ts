@@ -42,6 +42,42 @@ export async function exportAll(db: Db, now: Date): Promise<FullExport> {
   return { exportedAt: now.toISOString(), tables: tables as FullExport["tables"] };
 }
 
+/** Rows per piece of the streamed JSON export. */
+export const EXPORT_ROWS_PER_CHUNK = 250;
+
+/**
+ * The JSON export as text pieces, table by table and a few hundred rows at a time, so the Worker never holds the
+ * whole file as one string (decision 0020). Joined, the pieces are `{ exportedAt, tables }` with one row per line.
+ */
+export function* exportJsonChunks(full: FullExport): Generator<string> {
+  yield `{\n  "exportedAt": ${JSON.stringify(full.exportedAt)},\n  "tables": {`;
+  for (const [t, table] of EXPORT_TABLES.entries()) {
+    const rows = full.tables[table];
+    yield `${t === 0 ? "" : ","}\n    ${JSON.stringify(table)}: [`;
+    for (let i = 0; i < rows.length; i += EXPORT_ROWS_PER_CHUNK) {
+      yield rows
+        .slice(i, i + EXPORT_ROWS_PER_CHUNK)
+        .map((row, j) => `${i + j === 0 ? "" : ","}\n      ${JSON.stringify(row)}`)
+        .join("");
+    }
+    yield rows.length === 0 ? "]" : "\n    ]";
+  }
+  yield "\n  }\n}\n";
+}
+
+/** The pieces as a byte stream for a Response body, made one piece at a time as the client reads. */
+export function exportJsonStream(full: FullExport): ReadableStream<Uint8Array> {
+  const pieces = exportJsonChunks(full);
+  const encoder = new TextEncoder();
+  return new ReadableStream<Uint8Array>({
+    pull(controller) {
+      const next = pieces.next();
+      if (next.done) controller.close();
+      else controller.enqueue(encoder.encode(next.value));
+    },
+  });
+}
+
 /** One table as CSV, with its header row even when the table is empty. */
 export async function exportTableCsv(db: Db, table: ExportTable): Promise<string> {
   const [columns = [], ...values] = await db.prepare(selectAll(table)).raw<unknown[]>({ columnNames: true });

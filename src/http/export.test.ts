@@ -1,6 +1,15 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { csvFilename, EXPORT_TABLES, type ExportTable, jsonFilename, safeFileName } from "./export.ts";
+import {
+  csvFilename,
+  EXPORT_ROWS_PER_CHUNK,
+  EXPORT_TABLES,
+  exportJsonChunks,
+  type ExportTable,
+  type FullExport,
+  jsonFilename,
+  safeFileName,
+} from "./export.ts";
 
 const UNSAFE_PARTS = ['2026"-11-19', "2026-11-19\r\nSet-Cookie: x=1", "../2026-11-19", "2026/11/19", "2026\\11\\19", "2026 11 19", "2026;11"];
 
@@ -23,4 +32,20 @@ test("the refusal never repeats a line break from the name", () => {
     () => safeFileName("a\r\nb"),
     (error: unknown) => error instanceof Error && !/[\r\n]/.test(error.message),
   );
+});
+
+test("the JSON export's pieces join into the export, one row per line, empty tables as []", () => {
+  const tables = Object.fromEntries(EXPORT_TABLES.map((table) => [table, []])) as unknown as FullExport["tables"];
+  tables.contacts = Array.from({ length: EXPORT_ROWS_PER_CHUNK * 2 + 1 }, (_, i) => ({ id: `ct_${i}`, name: `Line "${i}"\n` }));
+  const full: FullExport = { exportedAt: "2026-11-19T18:00:00.000Z", tables };
+  const pieces = [...exportJsonChunks(full)];
+  const text = pieces.join("");
+  assert.deepEqual(JSON.parse(text), full);
+  assert.ok(
+    text.startsWith('{\n  "exportedAt": "2026-11-19T18:00:00.000Z",\n  "tables": {\n    "contacts": [\n      {"id":"ct_0","name":"Line \\"0\\"\\n"},\n'),
+  );
+  assert.match(text, /\n {4}"deals": \[\],\n/);
+  assert.ok(text.endsWith('\n    "briefs": []\n  }\n}\n'));
+  // The header, each table's opening and closing, the contacts' rows in three pieces, and the end.
+  assert.equal(pieces.length, 1 + EXPORT_TABLES.length * 2 + 3 + 1);
 });

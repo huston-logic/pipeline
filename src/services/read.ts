@@ -512,6 +512,12 @@ export interface CompanyList {
 /** The company a contact's `business` names: trimmed, inner spaces collapsed, ignoring case; "" for none. */
 export const companyKey = (business: string | null): string => (business ?? "").trim().replace(/\s+/g, " ").toLowerCase();
 
+/**
+ * Company names in order, ignoring case and accents. One collator for every comparison: `localeCompare` with a locale
+ * or options builds a new one per call, which cost about 4 ms of CPU per 300 companies (docs/PAID-PLAN.md, CPU check).
+ */
+const COMPANY_ORDER = new Intl.Collator("en", { sensitivity: "base" });
+
 /** Contacts that are not archived, grouped by company (their `business`), each with its open deals. */
 export async function listCompanies(db: Db, now: Date, tz: string): Promise<CompanyList> {
   const contacts = await rows<ContactRow>(
@@ -562,7 +568,7 @@ export async function listCompanies(db: Db, now: Date, tz: string): Promise<Comp
   for (const group of done) group.openDeals.sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
   const companies = done
     .filter((group) => group.name !== null)
-    .sort((a, b) => (a.name ?? "").localeCompare(b.name ?? "", "en", { sensitivity: "base" }));
+    .sort((a, b) => COMPANY_ORDER.compare(a.name ?? "", b.name ?? ""));
   return { companies, noCompany: done.find((group) => group.name === null) ?? null };
 }
 
