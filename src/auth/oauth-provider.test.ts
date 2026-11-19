@@ -418,3 +418,71 @@ test("a custom domain answers only when MCP_ALLOWED_HOSTNAMES lists it", async (
   assert.equal(((await listed.json()) as { issuer: string }).issuer, "https://pipeline.example.com");
   assert.equal((await s.send("/.well-known/oauth-authorization-server")).status, 403, "only the listed hosts");
 });
+
+/** A Rate Limiting binding that allows `allowed` calls per key, recording each key. */
+function limiter(allowed: number) {
+  const keys: string[] = [];
+  const counts = new Map<string, number>();
+  return {
+    keys,
+    binding: {
+      async limit({ key }: { key: string }) {
+        keys.push(key);
+        const n = (counts.get(key) ?? 0) + 1;
+        counts.set(key, n);
+        return { success: n <= allowed };
+      },
+    },
+  };
+}
+
+test("/register and /authorize are rate limited per client IP with a plain 429; /token and /mcp are not", async (t) => {
+  const s = await setup(t);
+  const { keys, binding } = limiter(1);
+  s.env.OAUTH_RATE_LIMIT = binding;
+  const ip = (address: string) => ({ "CF-Connecting-IP": address });
+  const register = (address: string) =>
+    s.send("/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...ip(address) },
+      body: JSON.stringify({ redirect_uris: [CLIENT_REDIRECT], client_name: "Another App", token_endpoint_auth_method: "none" }),
+    });
+
+  assert.equal((await register("192.0.2.1")).status, 201);
+  const limited = await register("192.0.2.1");
+  assert.equal(limited.status, 429);
+  assert.equal(limited.headers.get("Retry-After"), "60");
+  assert.match(limited.headers.get("Content-Type") ?? "", /^text\/plain/);
+  assert.match(await limited.text(), /Too many requests/);
+  assert.match(limited.headers.get("Content-Security-Policy") ?? "", /default-src 'self'/);
+  assert.equal((await register("192.0.2.2")).status, 201, "another IP has its own count");
+
+  const url = await authorizeUrl(s.clientId);
+  assert.equal((await s.send(url, { headers: ip("192.0.2.3") })).status, 200);
+  assert.equal((await s.send(url, { headers: ip("192.0.2.3") })).status, 429);
+
+  const before = keys.length;
+  await s.send("/token", { method: "POST", headers: ip("192.0.2.1"), body: "grant_type=authorization_code" });
+  await s.send("/mcp", { method: "POST", headers: ip("192.0.2.1"), body: "{}" });
+  await s.send("/.well-known/oauth-authorization-server", { headers: ip("192.0.2.1") });
+  assert.equal(keys.length, before, "only /register and /authorize count");
+});
+
+test("without the rate limit binding the sign-in still works and a fixed log line says so", async (t) => {
+  const s = await setup(t);
+  assert.equal((await s.send(await authorizeUrl(s.clientId))).status, 200);
+  assert.ok(s.logs.some((line) => line === JSON.stringify({ event: "oauth_rate_limit_missing" })));
+});
+
+test("HEAD /authorize checks the request but starts no consent: no cookie and nothing written to KV", async (t) => {
+  const s = await setup(t);
+  const stored = s.kv.entries.size;
+  const res = await s.send(await authorizeUrl(s.clientId), { method: "HEAD" });
+  assert.equal(res.status, 200);
+  assert.deepEqual(res.headers.getSetCookie(), []);
+  assert.equal(s.kv.entries.size, stored);
+  assert.equal(await res.text(), "");
+
+  const bad = await s.send("/authorize?client_id=nope&response_type=code", { method: "HEAD" });
+  assert.equal(bad.status, 400);
+});
