@@ -1643,9 +1643,10 @@ button.button {
 .reach-log-button {
   justify-content: center;
   width: 100%;
-  min-height: 3rem;
-  padding: 0 0.5rem;
+  min-height: 3.5rem;
+  padding: 0.25rem 0.5rem;
   font-size: 0.9375rem;
+  text-align: center;
 }
 
 /* After Call, Text or Email, the matching Log button becomes the filled one: the next tap logs it. */
@@ -1660,16 +1661,17 @@ button.button {
   text-decoration-color: var(--on-accent);
 }
 
-/* Ask Claude: one row per prompt on a white panel. */
+/* Ask Claude: one row per prompt on a white panel: the link, Copy prompt beside it when there is room, the prompt. */
 .ask > li {
-  display: grid;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   gap: 0.75rem;
-  justify-items: start;
 }
 
 .ask-open {
+  flex: 1 1 100%;
   justify-content: center;
-  width: 100%;
 }
 
 .ask-tools {
@@ -1677,7 +1679,6 @@ button.button {
   flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem 1rem;
-  width: 100%;
 }
 
 .copy-status {
@@ -1687,7 +1688,7 @@ button.button {
 }
 
 .ask-details {
-  width: 100%;
+  flex: 1 1 100%;
 }
 
 .ask-details summary {
@@ -1710,14 +1711,8 @@ button.button {
   margin: 0.5rem 0 0;
 }
 
-/* Wide screens are rarely phones: the action bar steps down to quiet buttons at their own width. */
+/* Wide screens are rarely phones: Call, Text and Email step down to quiet buttons; the link sits at its own width. */
 @media (min-width: 60rem) {
-  .reach-buttons,
-  .reach-log-buttons {
-    display: flex;
-    flex-wrap: wrap;
-  }
-
   .reach-button {
     min-height: 44px;
     padding: 0 1.125rem;
@@ -1733,13 +1728,11 @@ button.button {
   }
 
   .reach-log-button {
-    width: auto;
-    min-height: 44px;
-    padding: 0 1rem;
+    min-height: 3rem;
   }
 
   .ask-open {
-    width: auto;
+    flex: 0 0 auto;
   }
 }
 
