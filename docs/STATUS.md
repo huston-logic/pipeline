@@ -18,7 +18,7 @@ Updated after every merge, so a fresh chat can pick up where the last one stoppe
 | 8 | M8 `/intake` | [#9](https://github.com/huston-logic/pipeline/pull/9) | merged |
 | 9 | M9 board | [#10](https://github.com/huston-logic/pipeline/pull/10) | merged |
 | 10 | M10 production auth | [#11](https://github.com/huston-logic/pipeline/pull/11) | open, auto-merge queued |
-| 11 | M11 many copies | | not started |
+| 11 | M11 many copies | | built on `feat/many-copies`, PR not opened yet |
 | 12 | M12 acceptance | | not started |
 
 ## Decisions
@@ -56,6 +56,11 @@ Files in `docs/decisions/`. Rulings made while running the plan:
   domain must set `MCP_ALLOWED_HOSTNAMES`, or `/mcp` answers 403.
 - The intake rate limit is 30 per minute, because it counts the website server's requests, not visitors'.
 - End-to-end test files run one at a time after a single build (they raced when run in parallel).
+- Client copies are updated by one command, `npm run copies:update`, run by the repo owner with their own wrangler
+  login after each client invites them into their Cloudflare account; no client token or id is stored in the repo or
+  CI (decision 0007). Provisioning, the CSV import (dry run first, then one undoable change) and the export script are
+  in the same decision. `/register` and `/authorize` are rate limited (20 per minute per IP) so a flood can't use up
+  the free plan's KV writes (decision 0006).
 
 ## Dependencies added
 

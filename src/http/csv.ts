@@ -30,13 +30,26 @@ export function toCsv(rows: readonly Record<string, unknown>[], columns?: readon
 
 /** Records as arrays of fields. Accepts CRLF, LF or CR line ends and one byte order mark at the start of the file. */
 export function parseCsv(input: string): string[][] {
-  const text = input.startsWith("﻿") ? input.slice(1) : input;
-  const records: string[][] = [];
+  return parseCsvRecords(input).map((record) => record.fields);
+}
+
+export interface CsvRecord {
+  /** The 1-based line of the file the record starts on (a quoted field can span lines). */
+  line: number;
+  fields: string[];
+}
+
+/** parseCsv, with the line each record starts on, so an import can say which line it skipped. */
+export function parseCsvRecords(input: string): CsvRecord[] {
+  const text = input.startsWith("\uFEFF") ? input.slice(1) : input;
+  const records: CsvRecord[] = [];
   let record: string[] = [];
   let field = "";
   let quoted = false;
   // Something was read since the last record ended, so a last line without a line end still counts.
   let open = false;
+  let line = 1;
+  let startLine = 1;
   let i = 0;
   const endField = () => {
     record.push(field);
@@ -44,12 +57,18 @@ export function parseCsv(input: string): string[][] {
   };
   const endRecord = () => {
     endField();
-    records.push(record);
+    records.push({ line: startLine, fields: record });
     record = [];
     open = false;
   };
+  /** Counts a line break at i (CRLF as one) and returns its length. */
+  const lineBreak = (ch: string) => {
+    line += 1;
+    return ch === "\r" && text[i + 1] === "\n" ? 2 : 1;
+  };
   while (i < text.length) {
     const ch = text[i] as string;
+    if (!open) startLine = line;
     open = true;
     if (quoted) {
       if (ch === '"' && text[i + 1] === '"') {
@@ -57,16 +76,25 @@ export function parseCsv(input: string): string[][] {
         i += 2;
         continue;
       }
-      if (ch === '"') quoted = false;
-      else field += ch;
-      i += 1;
+      if (ch === '"') {
+        quoted = false;
+        i += 1;
+      } else if (ch === "\r" || ch === "\n") {
+        const size = lineBreak(ch);
+        field += text.slice(i, i + size);
+        i += size;
+      } else {
+        field += ch;
+        i += 1;
+      }
       continue;
     }
     if (ch === '"' && field === "") quoted = true;
     else if (ch === ",") endField();
     else if (ch === "\r" || ch === "\n") {
       endRecord();
-      if (ch === "\r" && text[i + 1] === "\n") i += 1;
+      i += lineBreak(ch);
+      continue;
     } else field += ch;
     i += 1;
   }

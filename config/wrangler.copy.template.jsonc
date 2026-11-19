@@ -1,0 +1,64 @@
+{
+  // Template for one client copy's wrangler config. `npm run copies:provision` fills every [[...]] value and writes
+  // the result to the git-ignored /.copies/<name>/wrangler.jsonc (decision 0002). Never put real values here.
+  // Paths are written relative to /.copies/<name>/. A test keeps the shared settings in step with ./wrangler.jsonc.
+  "$schema": "[[SCHEMA]]",
+  "name": "[[WORKER_NAME]]",
+  "account_id": "[[ACCOUNT_ID]]",
+  "main": "[[MAIN]]",
+  "compatibility_date": "2026-11-11",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "assets": { "directory": "[[ASSETS_DIR]]", "binding": "ASSETS", "run_worker_first": true },
+  // On a custom domain: [{ "pattern": "<host>", "custom_domain": true }]. Left out for workers.dev.
+  "routes": "[[ROUTES]]",
+  // MCP_ALLOWED_HOSTNAMES only on a custom domain, BRIEF_FROM only when given; both are left out otherwise.
+  // Owner emails live in the database (settings.owner_emails, decision 0005), so OWNER_EMAILS is not set here.
+  "vars": {
+    "ENVIRONMENT": "production",
+    "ACCESS_TEAM_DOMAIN": "[[ACCESS_TEAM_DOMAIN]]",
+    "ACCESS_AUD": "[[ACCESS_AUD]]",
+    "MCP_ALLOWED_HOSTNAMES": "[[MCP_ALLOWED_HOSTNAMES]]",
+    "BRIEF_FROM": "[[BRIEF_FROM]]"
+  },
+  // preview_database_id is what `wrangler d1 ... --preview` uses, so migrations and the seed reach the preview database.
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "[[DB_NAME]]",
+      "database_id": "[[DB_ID]]",
+      "preview_database_id": "[[PREVIEW_DB_ID]]",
+      "migrations_dir": "[[MIGRATIONS_DIR]]"
+    }
+  ],
+  "kv_namespaces": [{ "binding": "OAUTH_KV", "id": "[[KV_ID]]" }],
+  "ratelimits": [
+    { "name": "INTAKE_RATE_LIMIT", "namespace_id": "[[INTAKE_RATE_LIMIT_ID]]", "simple": { "limit": 30, "period": 60 } },
+    { "name": "OAUTH_RATE_LIMIT", "namespace_id": "[[OAUTH_RATE_LIMIT_ID]]", "simple": { "limit": 20, "period": 60 } }
+  ],
+  // Preview deployments get their own database, OAuth KV and rate-limit counters (spec non-negotiable 7).
+  "previews": {
+    "ratelimits": [
+      {
+        "name": "INTAKE_RATE_LIMIT",
+        "namespace_id": "[[PREVIEW_INTAKE_RATE_LIMIT_ID]]",
+        "simple": { "limit": 30, "period": 60 }
+      },
+      {
+        "name": "OAUTH_RATE_LIMIT",
+        "namespace_id": "[[PREVIEW_OAUTH_RATE_LIMIT_ID]]",
+        "simple": { "limit": 20, "period": 60 }
+      }
+    ],
+    "kv_namespaces": [{ "binding": "OAUTH_KV", "id": "[[PREVIEW_KV_ID]]" }],
+    "d1_databases": [
+      {
+        "binding": "DB",
+        "database_name": "[[PREVIEW_DB_NAME]]",
+        "database_id": "[[PREVIEW_DB_ID]]",
+        "migrations_dir": "[[MIGRATIONS_DIR]]"
+      }
+    ]
+  },
+  "triggers": { "crons": ["0 * * * *"] },
+  "observability": { "enabled": true, "logs": { "invocation_logs": false } }
+}

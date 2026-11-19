@@ -1,7 +1,7 @@
 // `npm run check:config`: fails if client data could be tracked in git (decision 0002). It checks that
 //   - no tracked file holds an email address outside the example domains (fake people only),
-//   - wrangler.jsonc has no real database_id, account_id or KV namespace id (real ids live in /.copies/<name>/,
-//     git-ignored),
+//   - wrangler.jsonc and the copy template (config/wrangler.copy.template.jsonc) have no real database_id,
+//     account_id or KV namespace id (real ids live in /.copies/<name>/, git-ignored),
 //   - .gitignore keeps /.copies/ and /exports/ out of git, and nothing under them is tracked.
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
@@ -15,6 +15,8 @@ const EXAMPLE_DOMAINS = ["example.com", "example.test", "example.org", "example.
 const ALLOWED_ADDRESSES = ["noreply@anthropic.com"];
 const ALLOWED_DOMAINS = ["users.noreply.github.com"];
 const PRIVATE_FOLDERS = [".copies", "exports"];
+// The per-copy config template (scripts/copies.mjs fills it into /.copies/<name>/): placeholders only.
+const COPY_TEMPLATE = "config/wrangler.copy.template.jsonc";
 // Written by npm from registry metadata (for example a package's deprecation notice), never from client data.
 const EMAIL_SCAN_SKIP = ["package-lock.json"];
 
@@ -65,12 +67,12 @@ export function isPlaceholderId(value) {
   );
 }
 
-export function checkWranglerConfig(text) {
+export function checkWranglerConfig(text, file = "wrangler.jsonc") {
   const problems = [];
   for (const [, key, value] of text.matchAll(WRANGLER_ID)) {
     if (!isPlaceholderId(value)) {
       problems.push(
-        `wrangler.jsonc has a real ${key} ("${value}"). Use a placeholder such as "[[...]]" or ` +
+        `${file} has a real ${key} ("${value}"). Use a placeholder such as "[[...]]" or ` +
           `"00000000-0000-0000-0000-000000000000"; real ids belong in the git-ignored /.copies/<name>/ config.`,
       );
     }
@@ -107,6 +109,7 @@ function main() {
   const problems = [
     ...checkTrackedFiles(files),
     ...checkWranglerConfig(readFileSync(join(ROOT, "wrangler.jsonc"), "utf8")),
+    ...checkWranglerConfig(readFileSync(join(ROOT, COPY_TEMPLATE), "utf8"), COPY_TEMPLATE),
     ...checkGitignore(readFileSync(join(ROOT, ".gitignore"), "utf8")),
   ];
   if (problems.length > 0) {
