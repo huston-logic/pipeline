@@ -207,11 +207,11 @@ Steps:
 
 - [ ] Tests: wrong/missing secret 401, oversize 413, rate limit 429, bad email 400, match by email, dedupe (Review Focus 2), injection text changes nothing but its own lead (audit log has exactly one new change); `npm run check`, commit, PR.
 
-### Task 9 (M9): Board — read-only views and export
+### Task 9 (M9): Board — read-only views and export (run 1; run 2 makes the board editable)
 
 **Files:** Create `src/board/pages/{home,deal,rules,changes,brief,export}.ts`, `src/http/api.ts`, `src/http/export.ts`, `src/http/csv.ts`, tests. Modify `src/board/routes.ts` (seed deal path), `public/board.css`, `tests/a11y/*`.
 
-**Interfaces:** pages render with `renderPage`; routes `/` (deals by stage, due today, latest brief excerpt), `/deals/:id`, `/rules`, `/changes`, `/brief`, `/export`; API `/api/pipeline`, `/api/due`, `/api/deals/:id`, `/api/rules`, `/api/changes`, `/api/brief`, `/api/export.json`, `/api/export/:table.csv` (tables: contacts, deals, activities, tasks, stages, field_defs, rules, rule_firings, rulebook, settings, audit_log, briefs). `toCsv(rows): string` (RFC 4180, CRLF, quotes doubled, formula guard: prefix `'` when a cell starts with `=`, `+`, `-`, `@`). Untrusted text shown with a visible "From outside" label. All board GETs are read-only.
+**Interfaces:** pages render with `renderPage`; routes `/` (deals by stage, due today, latest brief excerpt), `/deals/:id`, `/rules`, `/changes`, `/brief`, `/export`; API `/api/pipeline`, `/api/due`, `/api/deals/:id`, `/api/rules`, `/api/changes`, `/api/brief`, `/api/export.json`, `/api/export/:table.csv` (tables: contacts, deals, activities, tasks, stages, field_defs, rules, rule_firings, rulebook, settings, audit_log, briefs). `toCsv(rows): string` (RFC 4180, CRLF, quotes doubled, formula guard: prefix `'` when a cell starts with `=`, `+`, `-`, `@`). Untrusted text shown with a visible "From outside" label. All board GETs are read-only (run 1; see Run 2 at the end).
 
 - [ ] Use the `human-touch-design` and `accessibility` skills; reuse the palette tokens from `docs/STYLE-GUIDE.md`. Tests: each page 200 with seed data and with an empty database; CSV round-trip (Review Focus 4); export contains every table. `npm run build`, `npm run test:a11y`, `npm run test:lighthouse` pass locally; `npm run check`, commit, PR.
 
@@ -237,3 +237,27 @@ Steps:
 
 - [ ] One test per spec sentence (1–12) against `startDevServer()`, through MCP tools only (plus `/intake` for 12 and the cron trigger where rules matter). Sentence 7 reads the rulebook and logs an `email` activity. Sentence 10 calls `preview_rule` before `add_rule`. Sentence 12 posts the injection text, then asserts one new contact, deal and activity, an unchanged count of every other row, and the audit log holding only the intake change.
 - [ ] `npm run check`, commit, PR. Final STATUS update.
+
+---
+
+## Run 2: the board becomes the daily screen (2026-11-18)
+
+Spec change recorded first in decision 0014 (editable board, a little first-party JavaScript as progressive
+enhancement, cross-site post protection). Board work comes first: if the run stops early, the board is what matters.
+One branch and PR per task, each from a fresh `main`. Look: the Huston Logic v3 tokens adapted for the board
+(`docs/STYLE-GUIDE.md`), business name and accent colour from settings.
+
+| # | Task | Done when |
+| --- | --- | --- |
+| R1 | Look and navigation | Whole board restyled, phone-first; bottom tab bar on phones, side bar on wide screens: Today, Pipeline, Contacts, Brief, with Rules, Changes and Export under More; business name and accent colour are settings (migration, `update_settings`) |
+| R2 | Contacts and companies | Contacts tab (search, sort by name, company, open deals, last activity), contact page (details, deals, tasks, timeline), Companies view grouped by the contact's `business` field; a realistic fake engineering-firm seed with 15 to 25 deals |
+| R3 | Pipeline as a kanban | One column per open stage with count and value; cards with contact, value, next date; drag to move (JS) plus a "Move to" form on every card; list view; Won, Lost and Not now confirm first; the board write path (POST, origin check, CSRF token, undo banner) |
+| R4 | Editing | Add and edit contacts, deals and tasks; complete or snooze a task; log a note; Undo after every edit; e2e test: a board edit appears in recent changes and can be undone |
+| R5 | Phone actions | tel:, sms:, mailto: links plus one tap to log the call, text or email; "Ask Claude" prompt links and "Copy prompt" on a deal; no AI calls in the product |
+| R6 | Home-screen app | Web app manifest and icons; no service worker |
+| R7 | CPU check | Local measurements on a 2,000-deal, 20,000-activity seed recorded in `docs/PAID-PLAN.md`; anything near 10 ms fixed |
+| R8 | Deferred minor findings | Cheap run-1 review findings fixed (timezone offsets, `update_rule` title, attachment filename, API deal-id pattern, CLI nits, same-day export overwrite, seed-id test dependence, seed audit rows) |
+| R9 | Decision wording | 0010's "indexed" claim and 0004's idempotency reason corrected |
+| R10 | Owner-only proposals | `.proposed` engine reviewers for `.claude/agents/review-*.md` and anything else owner-only, with one hand-copy script, in `.owner-review/proposals/` |
+
+Screenshots of each main page at 375 px and 1280 px go in `.owner-review/screenshots/` (git-ignored).

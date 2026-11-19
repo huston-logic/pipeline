@@ -14,7 +14,7 @@ This repo is public. It holds no client names, emails, ids or lead data; tests a
 
 ## What is here so far
 
-One Cloudflare Worker (`src/index.ts`) with a read-only board rendered as plain HTML (no client JavaScript;
+One Cloudflare Worker (`src/index.ts`) with a board rendered as plain HTML (editable from run 2, decision 0014;
 decision 0001), a D1 database with an audited service layer, the MCP endpoint at `/mcp` (decision 0004) and the hourly
 rules run (a Cron Trigger, `src/cron.ts`; decision 0010), the daily brief and `POST /intake` for website forms
 (decision 0012), the board's JSON API and export (decision 0013), and production sign-in (decision 0006).
@@ -131,7 +131,7 @@ reasoning.
 
 ## Security headers
 
-The Worker sets one policy on every response (`src/security.ts`): a CSP of `default-src 'self'; script-src 'none'`
+The Worker sets one policy on every response (`src/security.ts`): a CSP of `default-src 'self'; script-src 'none'` (`'self'` once the first board script ships, decision 0014)
 with `style-src 'self'`, `img-src 'self' data:`, `base-uri 'none'`, `form-action 'self'`, `frame-ancestors 'none'`, plus
 `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`, HSTS and COOP/CORP. Board pages
 also send `Cache-Control: no-store`. `public/_headers` repeats the same headers for static files; a test fails if the

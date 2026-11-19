@@ -1,5 +1,9 @@
 # 0013: The board pages, its JSON API and the export
 
+Replaced in part by 0014 (run 2): the board is now editable through the audited services, may load one first-party
+script (`script-src 'self'` once it ships) and has more pages. The outside-text, API, export and CSV rules below
+still stand.
+
 ## Context
 
 The spec asks for a read-only board (deals by stage, due today, deal detail with timeline, rules, change log, latest
