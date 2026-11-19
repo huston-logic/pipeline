@@ -42,14 +42,37 @@ export function annotationsFor(def: Pick<ToolDef<z.ZodObject>, "title" | "kind" 
   };
 }
 
+type JsonSchemaConverter = StandardSchemaWithJSON<unknown, unknown>["~standard"]["jsonSchema"];
+type JsonSchemaOptions = Parameters<JsonSchemaConverter["input"]>[0];
+
+/**
+ * JSON Schemas already worked out, by tool name, side and target. Every request builds its server and tools again
+ * (decision 0004), but a tool's schema is the same code every time, so converting it once per isolate is enough: it
+ * was about 40% of a tools/list request's CPU (docs/PAID-PLAN.md, CPU check). Tool names are unique per server.
+ */
+const converted = new Map<string, Record<string, unknown>>();
+
+function cachedConverter(name: string, jsonSchema: JsonSchemaConverter): JsonSchemaConverter {
+  const once = (side: "input" | "output") => (options: JsonSchemaOptions) => {
+    const key = `${name}\u0000${side}\u0000${options.target}`;
+    let schema = converted.get(key);
+    if (schema === undefined) {
+      schema = jsonSchema[side](options);
+      converted.set(key, schema);
+    }
+    return schema;
+  };
+  return { input: once("input"), output: once("output") };
+}
+
 /** The schema's JSON Schema for tools/list, with a validator that lets every value through to `registerTool` below. */
-function advertised(schema: z.ZodObject): StandardSchemaWithJSON<unknown, unknown> {
+export function advertised(name: string, schema: z.ZodObject): StandardSchemaWithJSON<unknown, unknown> {
   return {
     "~standard": {
       version: 1,
       vendor: "pipeline",
       validate: (value: unknown) => ({ value }),
-      jsonSchema: schema["~standard"].jsonSchema,
+      jsonSchema: cachedConverter(name, schema["~standard"].jsonSchema),
     },
   };
 }
@@ -60,7 +83,7 @@ export function registerTool<S extends z.ZodObject>(server: McpServer, def: Tool
     {
       title: def.title,
       description: def.description,
-      inputSchema: advertised(def.input),
+      inputSchema: advertised(def.name, def.input),
       annotations: annotationsFor(def),
     },
     async (args: unknown): Promise<CallToolResult> => {
