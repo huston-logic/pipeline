@@ -762,6 +762,20 @@ ol.panel {
   font-size: 0.9375rem;
 }
 
+/* Under a stage that shows only its first deals (decision 0020). */
+.stage-more {
+  margin: 0.5rem 0 0;
+  color: var(--ink-2);
+  font-size: 0.9375rem;
+}
+
+.stage-more a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  font-weight: 600;
+}
+
 /* Deal page. */
 .deal-status {
   display: flex;

@@ -14,6 +14,7 @@ export const boardRoutes: string[] = [
   "/",
   "/pipeline",
   "/pipeline?view=list",
+  "/pipeline?view=list&stage=new_inquiry",
   "/contacts",
   "/companies",
   "/brief",
