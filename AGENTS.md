@@ -53,12 +53,18 @@ this file before changing the repo, and update it when a rule changes.
   markup written in this repo, never for data. No other way of building HTML.
 - **Static files:** `npm run build` (`scripts/build.mjs`) copies `public/` (`board.css`, `board.js`, `robots.txt`,
   `_headers`) into `out/` and writes `index.html` (a notice for when the Worker is not running), `404.html` and an empty `sitemap.xml`.
+- **Home screen** (decision 0019): the Worker writes `/manifest.webmanifest` from the settings (`src/board/manifest.ts`,
+  behind the board sign-in, `JSON.stringify` only); signed-in pages link it with `crossorigin="use-credentials"`. The
+  icons in `public/icons/` are generic (never a company's logo) and come from `node scripts/make-icons.mjs`: change the
+  script, rerun it and commit the PNGs (a test fails if they differ). No service worker (a test checks).
 - **Styles:** one stylesheet, `public/board.css`, following `docs/STYLE-GUIDE.md` (Huston Logic v3 adapted to the
   board, decision 0015). Colors are the `:root` tokens there (`--silver`, `--ink`, `--ink-2`, `--green`, `--rust`,
   `--tint`, `--line`, `--accent`, ...); never hard-code a color elsewhere. Components use `--accent` for brand accents
   (current tab, buttons, links). The owner's accent colour (a setting) reaches the page as `/theme.css`, which the
   Worker writes (`src/board/theme.ts`, behind the board sign-in) and the layout links after `/board.css`; it is checked
-  again before output (`src/services/accent.ts`). System fonts only; no web fonts and no third-party script, style or
+  again before output (`src/services/accent.ts`). The only copies of token values outside `board.css` are the ones
+  that cannot read CSS (`PAGE_SILVER`, `DEFAULT_THEME_COLOR`, the icon generator's `GREEN`), each kept in step by a
+  test. System fonts only; no web fonts and no third-party script, style or
   font. `npm run screenshots` saves every board route at 375 and 1280 px to `.owner-review/screenshots/` with an axe
   scan (installed Google Chrome; needs `npm run build`).
 - **MCP** (decision 0004): `src/index.ts` loads `src/mcp/handler.ts` with a dynamic `import()` (so the board and its
