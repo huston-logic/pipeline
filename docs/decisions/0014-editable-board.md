@@ -27,9 +27,13 @@ are refused, what JavaScript may do, and how a closing move (Won, Lost, Not now)
   1. Same origin: the `Origin` header must equal the request's own origin; when a browser sends no `Origin`,
      `Sec-Fetch-Site` must be `same-origin`. Otherwise 403.
   2. CSRF token (double submit): a random 32-byte value in a cookie (`__Host-pipeline-csrf`: `Secure`, `HttpOnly`,
-     `SameSite=Strict`, `Path=/`), set on board pages when missing, and the same value in a hidden `csrf` field in
+     `SameSite=Lax`, `Path=/`), set on board pages when missing, and the same value in a hidden `csrf` field in
      every form, compared in constant time. Local dev over `http://localhost` uses the name `pipeline-csrf` without
      `Secure`, because `__Host-` cookies need HTTPS; that name is accepted only in the dev sign-in mode.
+     *Amended in R3 (2026-11-19, decision 0017): `SameSite=Lax` for both names, was `Strict`.* With Strict, a board
+     page reached from another site (the return from the Access sign-in, a link in an email or the AI app) arrives
+     without the cookie, makes a new token and breaks every other open board tab. Lax still withholds the cookie on
+     cross-site posts, and the same-origin check runs in front of the token anyway.
   Details: a page that finds no cookie generates one value and puts it in both its `Set-Cookie` and its hidden
   fields; a POST with no cookie is refused (the page must be loaded first). `Origin: null` (sandboxed or redirected
   requests) is refused, not treated as a missing header. A script that posts with `fetch` reads the token from the

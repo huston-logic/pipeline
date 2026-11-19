@@ -22,10 +22,15 @@ export function newCsrfToken(): string {
   return btoa(text).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
 }
 
-/** The Set-Cookie value. A session cookie: a page loaded after the browser restarts sets a new one. */
+/**
+ * The Set-Cookie value. A session cookie: a page loaded after the browser restarts sets a new one. SameSite=Lax, not
+ * Strict (decision 0014, amended in R3): Strict drops the cookie when the owner arrives from another site (the Access
+ * sign-in, an email link, the AI app), so that page would mint a new token and break every other open tab. Lax still
+ * withholds the cookie on cross-site posts, and the same-origin check runs before the token anyway.
+ */
 export function csrfCookie(token: string, mode: CsrfMode): string {
   const secure = mode === "dev" ? "" : " Secure;";
-  return `${csrfCookieName(mode)}=${token}; Path=/;${secure} HttpOnly; SameSite=Strict`;
+  return `${csrfCookieName(mode)}=${token}; Path=/;${secure} HttpOnly; SameSite=Lax`;
 }
 
 /** The token in the request's cookie for this sign-in mode, or null when it is missing or not a token. */

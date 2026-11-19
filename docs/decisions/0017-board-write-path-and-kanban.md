@@ -26,7 +26,7 @@ stages are reached when they are not columns. Task R4 adds more edits on the sam
   never sees them. A missing cookie or a token that doesn't match gets the 403 page "This page is out of date. Reload
   it and try again." with a link back. The body limit and the constant-time compare moved to `src/http/limits.ts`,
   shared with `/intake`.
-- **The cookie.** `__Host-pipeline-csrf` (Secure, HttpOnly, SameSite=Strict, Path=/), or `pipeline-csrf` without Secure
+- **The cookie.** `__Host-pipeline-csrf` (Secure, HttpOnly, SameSite=Lax, Path=/), or `pipeline-csrf` without Secure
   in the dev sign-in mode only; each mode reads only its own name. 32 random bytes as base64url (43 characters); a
   cookie of any other shape counts as missing. It is a session cookie: a board page that finds none (or a malformed
   one) makes one token and uses it in both its `Set-Cookie` and every form on the page.
@@ -96,11 +96,12 @@ stages are reached when they are not columns. Task R4 adds more edits on the sam
   each state. It writes only in the desktop drag test, and undoes it.
 - The undo service's messages mention `recent_changes` (an MCP tool name); the board shows them as they are.
 - A tab left open after the browser restarts has no cookie: its next post gets the out-of-date page.
-- `SameSite=Strict` (decision 0014) means a board page opened from another site (a link in an email or the AI app, or
-  the return from the Access sign-in) arrives without the cookie, so it sets a new token, and other board tabs that
-  were already open get the out-of-date page on their next post. Reloading fixes it. `SameSite=Lax` would avoid this
-  and stay safe (browsers still withhold it on cross-site posts, and the origin check runs first); it is left for the
-  owner to decide, because 0014 names Strict.
+- The cookie is `SameSite=Lax`, not the `Strict` 0014 first named (0014 is amended). With Strict, a board page
+  opened from another site (a link in an email or the AI app, or the return from the Access sign-in) arrived without
+  the cookie, set a new token, and other board tabs already open got the out-of-date page on their next post. Lax
+  sends the cookie on those top-level visits, so the page keeps the token it finds; browsers still withhold it on
+  cross-site posts, and the same-origin check runs before the token. A new token is made only when the request has
+  no valid cookie.
 
 ## "AI defaults" (human-touch-design), flagged for the owner
 

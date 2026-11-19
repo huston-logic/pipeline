@@ -76,7 +76,7 @@ const changeIdOf = (location: string | null) => /[?&]change=(chg_[a-z0-9]+)/.exe
 test("a board page sets the CSRF cookie once and puts the same token in every form", async () => {
   const env = devEnv(await seededDb());
   const first = await load(env);
-  assert.match(first.setCookie ?? "", /^pipeline-csrf=[A-Za-z0-9_-]{43}; Path=\/; HttpOnly; SameSite=Strict$/);
+  assert.match(first.setCookie ?? "", /^pipeline-csrf=[A-Za-z0-9_-]{43}; Path=\/; HttpOnly; SameSite=Lax$/);
   const token = /^pipeline-csrf=([^;]+)/.exec(first.setCookie ?? "")?.[1];
   assert.ok(first.tokens.length >= 6, "a Move form on every card");
   assert.deepEqual(new Set(first.tokens), new Set([token]));
@@ -329,7 +329,7 @@ test("in production a signed-in owner's page sets the __Host- cookie, and a post
     const jwt = await signJwt(key, { iss: `https://${team}`, aud: ["board-aud"], email: "owner@example.com", exp: Date.now() / 1000 + 300 });
     const page = await worker.fetch(new Request("https://board.example.com/pipeline", { headers: { "Cf-Access-Jwt-Assertion": jwt } }), env, ctx);
     const setCookie = page.headers.get("Set-Cookie") ?? "";
-    assert.match(setCookie, /^__Host-pipeline-csrf=[A-Za-z0-9_-]{43}; Path=\/; Secure; HttpOnly; SameSite=Strict$/);
+    assert.match(setCookie, /^__Host-pipeline-csrf=[A-Za-z0-9_-]{43}; Path=\/; Secure; HttpOnly; SameSite=Lax$/);
     const token = /=([^;]+)/.exec(setCookie)?.[1] ?? "";
     const res = await worker.fetch(
       new Request("https://board.example.com/deals/dl_seed01/move", {

@@ -13,12 +13,12 @@ test("a token is 32 random bytes as base64url: 43 characters, different every ti
   for (const bad of ["", "short", `${a}x`, `${a.slice(0, 42)}=`, `${a.slice(0, 42)}/`]) assert.equal(isCsrfToken(bad), false, bad);
 });
 
-test("production uses the __Host- cookie (Secure, HttpOnly, SameSite=Strict, Path=/); dev uses pipeline-csrf without Secure", () => {
+test("production uses the __Host- cookie (Secure, HttpOnly, SameSite=Lax, Path=/); dev uses pipeline-csrf without Secure", () => {
   const token = newCsrfToken();
   assert.equal(csrfCookieName("production"), "__Host-pipeline-csrf");
-  assert.equal(csrfCookie(token, "production"), `__Host-pipeline-csrf=${token}; Path=/; Secure; HttpOnly; SameSite=Strict`);
+  assert.equal(csrfCookie(token, "production"), `__Host-pipeline-csrf=${token}; Path=/; Secure; HttpOnly; SameSite=Lax`);
   assert.equal(csrfCookieName("dev"), "pipeline-csrf");
-  assert.equal(csrfCookie(token, "dev"), `pipeline-csrf=${token}; Path=/; HttpOnly; SameSite=Strict`);
+  assert.equal(csrfCookie(token, "dev"), `pipeline-csrf=${token}; Path=/; HttpOnly; SameSite=Lax`);
 });
 
 test("the token is read only from the cookie name of the sign-in mode, and only when it has the right shape", () => {
