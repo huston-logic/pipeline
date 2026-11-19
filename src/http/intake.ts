@@ -73,11 +73,12 @@ async function secretMatches(given: string, expected: string): Promise<boolean> 
 
 type Fields = Record<string, unknown>;
 
-function parseBody(contentType: string, text: string): Fields {
+export function parseBody(contentType: string, text: string): Fields {
   const type = contentType.split(";")[0]?.trim().toLowerCase();
   if (type === "application/x-www-form-urlencoded") {
-    const fields: Fields = {};
-    for (const [key, value] of new URLSearchParams(text)) if (!(key in fields)) fields[key] = value;
+    // A null-prototype object, so a field named "__proto__" or "constructor" is just a field.
+    const fields: Fields = Object.create(null);
+    for (const [key, value] of new URLSearchParams(text)) if (!Object.hasOwn(fields, key)) fields[key] = value;
     return fields;
   }
   if (type === "application/json") {
@@ -100,7 +101,7 @@ const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE = /^[0-9 +().-]+$/;
 
 function text(fields: Fields, key: string): string | null {
-  const value = fields[key];
+  const value = Object.hasOwn(fields, key) ? fields[key] : undefined;
   if (value === undefined || value === null) return null;
   if (typeof value !== "string") throw new Reject(400, `"${key}" must be text.`);
   return value;
