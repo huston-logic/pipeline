@@ -328,6 +328,24 @@ test("contactDetail: the contact, every deal they have, open tasks and one timel
   assert.equal(again?.timeline[0]?.dealId, null);
 });
 
+test("contactDetail names the deal of every timeline entry, archived deals included", async () => {
+  const db = await seededDb();
+  await db.prepare("UPDATE deals SET archived = 1 WHERE id = 'dl_seed01'").run();
+  const pat = await contactDetail(db, "ct_seed01", TZ, NOW);
+  assert.deepEqual(ids(pat?.deals ?? []), [], "archived deals are not listed as deals");
+  assert.equal(pat?.timeline.length, 4);
+  for (const item of pat?.timeline ?? []) {
+    assert.deepEqual(item.deal, { id: "dl_seed01", title: "Website refresh for Example Plumbing", untrusted_fields: [], archived: true }, item.id);
+  }
+  const robin = await contactDetail(db, "ct_seed02", TZ, NOW);
+  assert.deepEqual(robin?.timeline[0]?.deal, { id: "dl_seed02", title: "New website for Sample Bakery", untrusted_fields: ["title"], archived: false });
+  await db
+    .prepare("INSERT INTO activities (id, contact_id, type, summary, occurred_at, actor) VALUES ('ac_own', 'ct_seed01', 'note', 'Own note', ?, 'owner')")
+    .bind("2026-11-19T17:00:00.000Z")
+    .run();
+  assert.equal((await contactDetail(db, "ct_seed01", TZ, NOW))?.timeline[0]?.deal, null, "a note on the contact alone");
+});
+
 test("contactDetail keeps the newest 50 timeline entries and says there are more", async () => {
   const db = await seededDb();
   for (let i = 0; i < 55; i++) {

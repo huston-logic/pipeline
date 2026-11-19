@@ -76,18 +76,20 @@ function tasksSection(detail: ContactDetail, now: Date, tz: string): Html {
 }
 
 function timelineSection(detail: ContactDetail): Html {
-  const deals = new Map(detail.deals.map((deal) => [deal.id, deal]));
-  const onDeal = (dealId: string | null) => {
-    const deal = dealId === null ? undefined : deals.get(dealId);
-    return deal === undefined ? undefined : { id: deal.id, title: deal.title, outside: deal.untrusted_fields.includes("title") };
-  };
   return section(
     "timeline-heading",
     "Timeline",
     detail.timeline.length === 0
       ? empty("Nothing logged yet.", "Calls, emails and notes you log through your AI app show up here.")
       : html`<p class="section-note">${detail.timelineMore ? `Newest first. Showing the latest ${detail.timeline.length}.` : "Newest first."}</p>
-<ol class="panel rows timeline">${detail.timeline.map((item) => timelineItem(item, onDeal(item.dealId)))}</ol>`,
+<ol class="panel rows timeline">${detail.timeline.map((item) =>
+          timelineItem(
+            item,
+            item.deal === null
+              ? undefined
+              : { id: item.deal.id, title: item.deal.title, outside: item.deal.untrusted_fields.includes("title"), archived: item.deal.archived },
+          ),
+        )}</ol>`,
   );
 }
 

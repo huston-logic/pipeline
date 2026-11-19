@@ -519,6 +519,13 @@ export async function listCompanies(db: Db, now: Date, tz: string): Promise<Comp
     [],
   );
   const deals = await dealItems(db, ["d.status = 'open'"], [], now, tz);
+  // Grouped once, so the loop below is linear in contacts plus deals.
+  const dealsOf = new Map<string, DealItem[]>();
+  for (const deal of deals) {
+    const list = dealsOf.get(deal.contactId);
+    if (list) list.push(deal);
+    else dealsOf.set(deal.contactId, [deal]);
+  }
   const groups = new Map<string, CompanyGroup>();
   /** When each company's shown spelling was written: the earliest trusted one wins. */
   const since = new Map<string, string>();
@@ -538,7 +545,7 @@ export async function listCompanies(db: Db, now: Date, tz: string): Promise<Comp
       group.nameOutside = false;
       since.set(key, contact.created_at);
     }
-    const own = deals.filter((deal) => deal.contactId === contact.id);
+    const own = dealsOf.get(contact.id) ?? [];
     group.contacts.push({
       id: contact.id,
       name: contact.name,
@@ -561,6 +568,8 @@ export async function listCompanies(db: Db, now: Date, tz: string): Promise<Comp
 export interface ContactTimelineItem extends TimelineItem {
   /** The deal the entry is on, or null for one on the contact alone. */
   dealId: string | null;
+  /** That deal, archived ones included, so an entry on a deal is never shown as one on the contact alone. */
+  deal: { id: string; title: string; untrusted_fields: "title"[]; archived: boolean } | null;
 }
 
 export interface ContactDetail {
@@ -589,10 +598,14 @@ export async function contactDetail(db: Db, id: string, tz: string, now: Date): 
      ORDER BY t.due_at IS NULL, t.due_at, t.created_at, t.id`,
     [id, id],
   );
-  const timeline = await rows<ActivityRow>(
+  const timeline = await rows<
+    ActivityRow & { deal_title: string | null; deal_untrusted: string | null; deal_archived: number | null }
+  >(
     db,
-    `SELECT * FROM activities WHERE contact_id = ? OR deal_id IN ${theirs}
-     ORDER BY occurred_at DESC, rowid DESC LIMIT ?`,
+    `SELECT a.*, d.title AS deal_title, d.untrusted_fields AS deal_untrusted, d.archived AS deal_archived
+     FROM activities a LEFT JOIN deals d ON d.id = a.deal_id
+     WHERE a.contact_id = ? OR a.deal_id IN ${theirs}
+     ORDER BY a.occurred_at DESC, a.rowid DESC LIMIT ?`,
     [id, id, CONTACT_TIMELINE_LIMIT + 1],
   );
   return {
@@ -601,7 +614,19 @@ export async function contactDetail(db: Db, id: string, tz: string, now: Date): 
     openTasks: tasks.map((task) => toTaskItem(task, tz)),
     timeline: timeline
       .slice(0, CONTACT_TIMELINE_LIMIT)
-      .map((activity) => ({ ...toTimelineItem(activity, tz), dealId: activity.deal_id })),
+      .map(({ deal_title, deal_untrusted, deal_archived, ...activity }) => ({
+        ...toTimelineItem(activity, tz),
+        dealId: activity.deal_id,
+        deal:
+          activity.deal_id === null || deal_title === null
+            ? null
+            : {
+                id: activity.deal_id,
+                title: deal_title,
+                untrusted_fields: outsideKeys<"title">([["title", deal_untrusted, "title"]]),
+                archived: deal_archived === 1,
+              },
+      })),
     timelineMore: timeline.length > CONTACT_TIMELINE_LIMIT,
   };
 }

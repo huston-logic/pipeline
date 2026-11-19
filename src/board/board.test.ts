@@ -323,6 +323,18 @@ test("an unknown contact, or a path that can't be a contact id, gets the 404 pag
   assert.equal((await get(await createTestDb(), "/contacts/ct_seed01")).res.status, 404);
 });
 
+test("a contact page's timeline still says which deal an entry is on when that deal is archived", async () => {
+  const db = await seededDb();
+  db.exec("UPDATE deals SET archived = 1 WHERE id = 'dl_seed01'");
+  const main = mainOf((await get(db, "/contacts/ct_seed01")).body);
+  assert.match(main, /<p class="empty-title">No deals yet\.<\/p>/);
+  assert.equal(
+    main.match(/<p class="row-deal">On <a href="\/deals\/dl_seed01">Website refresh for Example Plumbing<\/a> <span class="tag">Archived<\/span><\/p>/g)?.length,
+    4,
+    "every entry on the archived deal",
+  );
+});
+
 test("the deal page links to its contact's page", async () => {
   const db = await seededDb();
   assert.match(mainOf((await get(db, "/deals/dl_seed01")).body), /<a href="\/contacts\/ct_seed01">Open the contact page<\/a>/);
