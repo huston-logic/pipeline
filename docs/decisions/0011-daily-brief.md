@@ -14,7 +14,8 @@ clocks change.
 - **Compose always, send only when everything is on.** The brief is composed and stored once per owner-local day, at or
   after `settings.brief_hour`, whatever `brief_enabled` says (so the board always has a latest brief). It is *emailed*
   only when all of these hold: `settings.brief_enabled = 1`, `env.BRIEF_SENDING === "on"`, `env.RESEND_API_KEY`,
-  `env.BRIEF_FROM` and `settings.brief_email`. Otherwise `briefs.send_status` records the first missing one, for example
+  `env.BRIEF_FROM` and `settings.brief_email`, and that address is an owner email at send time (decision 0005,
+  addendum; final review). Otherwise `briefs.send_status` records the first missing one, for example
   `off: brief_enabled is off`. `BRIEF_SENDING` and `BRIEF_FROM` are plain vars and `RESEND_API_KEY` is a secret, all
   optional in `Env` and documented in docs/SECRETS.md. Unset means off.
 - **An append-only system log, not owner data.** `briefs(id, local_date UNIQUE, composed_at, text, items, sent_at,
@@ -59,5 +60,10 @@ Comparing local hours with `>=` and local dates with `UNIQUE` makes the clock-ch
 - The first brief after a long outage lists leads from the whole gap, because the window starts at the previous
   brief; the very first one only looks back 24 hours.
 - Changing the brief hour or timezone to an earlier time after the brief ran does not compose a second one that day.
-- `settings.last_brief_at` is unused; remove it in a later migration if it stays unused.
+- `settings.last_brief_at` is unused; remove it in a later migration if it stays unused. `get_settings` reports
+  `lastBriefAt` (the latest brief's `composed_at`) and `lastBriefSentAt` (the latest `sent_at`) from `briefs` instead
+  (final review).
+- The emailed text has no way to label outside text, so each line whose item is `untrusted` starts with
+  "- [from outside] " there. The stored `items` (and so the board, which labels them itself) are unchanged (final
+  review).
 - The export (task 9) includes `briefs`.

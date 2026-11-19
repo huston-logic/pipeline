@@ -207,3 +207,59 @@ test("adding and updating a field are each undoable", async () => {
   assert.match(undoneAdd.summary, /^Undid chg_[a-z2-7]{12}: Removed field Referrer/);
   assert.equal((await listFieldDefs(db, { includeArchived: true })).length, 1);
 });
+
+test("undo of add_field is refused while a record holds a value for it, and allowed once the value is cleared", async () => {
+  const db = await openTestDb();
+  const field = await addField(ctxFor(db, "add_field"), { entity: "deal", label: "Budget", type: "number" });
+  const lead = await addLead(ctxFor(db, "add_lead"), { name: "Pat Example", dealTitle: "Website refresh" });
+  await updateDeal(ctxFor(db, "update_deal"), lead.dealId, { fields: { budget: 5000 } });
+
+  assert.equal(
+    await refusal(undoChange(ctxFor(db, "undo_change", LATER), field.changeId)),
+    `Can't undo ${field.changeId}: other records now depend on it (Budget is set on deal "Website refresh"). ` +
+      "Change those first, or leave it.",
+  );
+  assert.equal((await listFieldDefs(db)).length, 1, "the field stays");
+  const stored = await db.prepare("SELECT fields FROM deals WHERE id = ?").bind(lead.dealId).first<{ fields: string }>();
+  assert.deepEqual(JSON.parse(stored?.fields ?? ""), { budget: 5000 });
+
+  await updateDeal(ctxFor(db, "update_deal"), lead.dealId, { fields: { budget: null } });
+  const undone = await undoChange(ctxFor(db, "undo_change", LATER), field.changeId);
+  assert.match(undone.summary, /Removed field Budget/);
+  const again = await addField(ctxFor(db, "add_field"), { entity: "deal", label: "Budget", type: "choice", choices: ["Low", "High"] });
+  assert.equal(again.key, "budget", "no record holds an old Budget value, so the key can be reused");
+});
+
+test("undo of add_field names outside values by safe label and counts past five", async () => {
+  const db = await openTestDb();
+  const field = await addField(ctxFor(db, "add_field"), { entity: "contact", label: "Referrer", type: "text" });
+  const names = ["Pat Example", "Robin Sample", "Sam Sample", "Jo Example", "Lee Example", "Taylor Testcase"];
+  for (const [i, name] of names.entries()) {
+    await addLead(ctxFor(db, "add_lead", new Date(NOW.getTime() + i * 1000)), { name, contactFields: { referrer: "A friend" } });
+  }
+  await db.prepare(`UPDATE contacts SET untrusted_fields = '["name"]' WHERE name = 'Pat Example'`).run();
+  const pat = await db.prepare("SELECT id FROM contacts WHERE name = 'Pat Example'").first<{ id: string }>();
+
+  const message = await refusal(undoChange(ctxFor(db, "undo_change", LATER), field.changeId));
+  assert.match(message, new RegExp(`\\(Referrer is set on contact ${pat?.id}, contact Robin Sample, `));
+  assert.match(message, / and 1 more\)\. Change those first, or leave it\.$/);
+  assert.doesNotMatch(message, /Pat Example/);
+});
+
+test("undo of an update_field that added a choice is refused while a record uses that choice", async () => {
+  const db = await openTestDb();
+  const field = await addField(ctxFor(db, "add_field"), { entity: "deal", label: "Temperature", type: "choice", choices: ["Cold"] });
+  const grown = await updateField(ctxFor(db, "update_field"), field.fieldId, { choices: ["Cold", "Hot"] });
+  const lead = await addLead(ctxFor(db, "add_lead"), { name: "Pat Example", dealTitle: "Website refresh", fields: { temperature: "Hot" } });
+
+  assert.equal(
+    await refusal(undoChange(ctxFor(db, "undo_change", LATER), grown.changeId)),
+    `Can't undo ${grown.changeId}: other records now depend on it (the choice Hot of Temperature is used by deal ` +
+      `"Website refresh"). Change those first, or leave it.`,
+  );
+  assert.equal((await listFieldDefs(db))[0]?.choices, '["Cold","Hot"]');
+
+  await updateDeal(ctxFor(db, "update_deal"), lead.dealId, { fields: { temperature: "Cold" } });
+  await undoChange(ctxFor(db, "undo_change", LATER), grown.changeId);
+  assert.equal((await listFieldDefs(db))[0]?.choices, '["Cold"]');
+});

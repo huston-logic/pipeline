@@ -1,7 +1,8 @@
 // undo_change: reverses exactly one change by writing its `before` snapshot back, as a new audited change. It
 // refuses when the change is unknown, already undone, itself an undo, when a row it would delete now has other
-// records pointing at it, or when any row it touched is no longer exactly as the change left it. Decision 0009.
-import type { AuditRow } from "../db/db.ts";
+// records pointing at it (by foreign key or by key inside a JSON column), when putting back a field's choices would
+// drop one records use, or when any row it touched is no longer exactly as the change left it. Decision 0009.
+import type { AuditRow, RuleType } from "../db/db.ts";
 import { newId } from "../ids.ts";
 import {
   type ChangeResult,
@@ -17,9 +18,10 @@ import {
   rowKey,
   StaleWriteError,
 } from "./change.ts";
-import { capitalize, columnLabel, dealTitleOf, joinAnd, rowLabel } from "./describe.ts";
+import { capitalize, columnLabel, dealTitleOf, joinAnd, rowLabel, short } from "./describe.ts";
 import { UserError } from "./errors.ts";
-import { stageLabels } from "./lookup.ts";
+import { parseStringArray, stageLabels } from "./lookup.ts";
+import { resumedParams } from "./rules.ts";
 
 type Entry = { table: ChangeTable; id: string; before: Row | null; after: Row | null };
 
@@ -38,6 +40,49 @@ const DEPENDENTS: Partial<Record<ChangeTable, { table: ChangeTable; column: stri
   stages: [{ table: "deals", column: "stage_key", one: "deal", many: "deals" }],
   rules: [{ table: "rule_firings", column: "rule_id", one: "rule firing", many: "rule firings" }],
 };
+
+/**
+ * Rows that name a row inside a JSON column rather than through a foreign key: a custom field's key in the `fields` of
+ * contacts or deals, a stage's key in `rules.params`. Removing the row would leave them pointing at nothing (or, for a
+ * field, let a later field reuse the key and inherit the old values). `equals` absent means "any value at that path".
+ */
+type JsonRef = {
+  table: "contacts" | "deals" | "rules";
+  column: string;
+  path: string;
+  equals?: string;
+  what: (labels: string, n: number) => string;
+};
+
+const JSON_DEPENDENTS: Partial<Record<ChangeTable, (row: Row) => JsonRef[]>> = {
+  field_defs: (row) => [
+    {
+      table: row.entity === "contact" ? "contacts" : "deals",
+      column: "fields",
+      path: `$."${String(row.key)}"`,
+      what: (labels) => `${short(String(row.label), 60)} is set on ${labels}`,
+    },
+  ],
+  stages: (row) => [
+    {
+      table: "rules",
+      column: "params",
+      path: "$.stage",
+      equals: String(row.key),
+      what: (labels, n) => `${labels} ${n === 1 ? "watches" : "watch"} ${short(String(row.label), 60)}`,
+    },
+  ],
+};
+
+const SHOWN_LABELS = 5;
+
+/** A rule by id (its id is what update_rule takes); other rows by their safe label. */
+const refLabel = (table: JsonRef["table"], row: Row) => (table === "rules" ? `rule ${String(row.id)}` : rowLabel(table, row));
+
+function labelList(labels: string[]): string {
+  if (labels.length <= SHOWN_LABELS) return joinAnd(labels);
+  return `${labels.slice(0, SHOWN_LABELS).join(", ")} and ${labels.length - SHOWN_LABELS} more`;
+}
 
 /** Columns that change as a side effect of the ones the owner set; an undo summary doesn't list them. */
 const BOOKKEEPING = new Set([
@@ -96,7 +141,8 @@ function ruleHistoryMessage(changeId: string, entry: Entry): string {
   );
 }
 
-async function dependents(ctx: Ctx, changeId: string, deleting: Entry[]): Promise<string | null> {
+async function dependents(ctx: Ctx, changeId: string, entries: Entry[]): Promise<string | null> {
+  const deleting = entries.filter((entry) => entry.before === null);
   const removed = new Set(deleting.map((entry) => rowKey(entry.table, entry.id)));
   const counts = new Map<string, { n: number; one: string; many: string }>();
   for (const entry of deleting) {
@@ -119,8 +165,50 @@ async function dependents(ctx: Ctx, changeId: string, deleting: Entry[]): Promis
       }
     }
   }
-  if (counts.size === 0) return null;
-  return joinAnd([...counts.values()].map((t) => `${t.n} ${t.n === 1 ? t.one : t.many}`));
+  const tallies = [...counts.values()].map((t) => `${t.n} ${t.n === 1 ? t.one : t.many}`);
+  const parts = tallies.length === 0 ? [] : [joinAnd(tallies)];
+  for (const entry of deleting) {
+    if (entry.after === null) continue;
+    for (const ref of JSON_DEPENDENTS[entry.table]?.(entry.after) ?? []) {
+      const found = await jsonReferrers(ctx, ref, removed);
+      if (found.length > 0) parts.push(ref.what(labelList(found.map((row) => refLabel(ref.table, row))), found.length));
+    }
+  }
+  parts.push(...(await choicesInUse(ctx, removed, updatesOf(entries))));
+  return parts.length === 0 ? null : parts.join("; ");
+}
+
+/** Rows of `ref.table` (other than ones this undo removes) whose JSON column holds the reference. */
+async function jsonReferrers(ctx: Ctx, ref: JsonRef, removed: Set<string>): Promise<Row[]> {
+  const test = ref.equals === undefined ? "IS NOT NULL" : "= ?";
+  const params = ref.equals === undefined ? [ref.path] : [ref.path, ref.equals];
+  const rows = await ctx.db
+    .prepare(`SELECT * FROM ${ref.table} WHERE json_extract(${ref.column}, ?) ${test} ORDER BY created_at, id`)
+    .bind(...params)
+    .all<Row>();
+  return rows.results.filter((row) => !removed.has(rowKey(ref.table, String(row.id))));
+}
+
+const updatesOf = (entries: Entry[]) => entries.filter((entry) => entry.before !== null && entry.after !== null);
+
+const choiceList = (row: Row): string[] => (typeof row.choices === "string" ? parseStringArray(row.choices) : []);
+
+/** Putting back a field's earlier choices would drop a choice records now use (an undo of update_field). */
+async function choicesInUse(ctx: Ctx, removed: Set<string>, updates: Entry[]): Promise<string[]> {
+  const parts: string[] = [];
+  for (const { table, before, after } of updates) {
+    if (table !== "field_defs" || before === null || after === null) continue;
+    const restored = new Set(choiceList(before));
+    const [ref] = JSON_DEPENDENTS.field_defs?.(after) ?? [];
+    if (!ref) continue;
+    for (const choice of choiceList(after).filter((c) => !restored.has(c))) {
+      const users = await jsonReferrers(ctx, { ...ref, equals: choice }, removed);
+      if (users.length === 0) continue;
+      const labels = labelList(users.map((row) => refLabel(ref.table, row)));
+      parts.push(`the choice ${choice} of ${short(String(after.label), 60)} is used by ${labels}`);
+    }
+  }
+  return parts;
 }
 
 /** "Moved "Website refresh" back to Replied", "Removed contact Pat Example and deal "Website refresh"", ... */
@@ -168,8 +256,7 @@ export async function undoChange(ctx: Ctx, changeId: string): Promise<ChangeResu
     );
   }
 
-  const deleting = entries.filter((entry) => entry.before === null);
-  const blockers = await dependents(ctx, id, deleting);
+  const blockers = await dependents(ctx, id, entries);
   if (blockers !== null) throw new UserError(dependsMessage(id, blockers));
   const moved = entries.find((entry) => !sameRow(current.get(entry) ?? null, entry.after));
   if (moved) {
@@ -184,6 +271,10 @@ export async function undoChange(ctx: Ctx, changeId: string): Promise<ChangeResu
       restored = { ...restored };
       if (typeof now.version === "number") restored.version = now.version + 1;
       if ("updated_at" in restored) restored.updated_at = ctx.now.toISOString();
+      if (entry.table === "rules" && restored.active === 1 && now.active === 0) {
+        // An undone pause is a resume, with the same cut-over (decision 0010).
+        restored.params = resumedParams({ type: restored.type as RuleType, params: String(restored.params) }, ctx.now);
+      }
     }
     return { table: entry.table, id: entry.id, before: now, after: restored };
   });

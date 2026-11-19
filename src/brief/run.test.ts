@@ -155,7 +155,7 @@ test("outside text is marked untrusted on its item, and message bodies never app
 test("with every switch on, the brief is emailed once and the status says so", async (t) => {
   const calls = mockFetch(t);
   const db = await openTestDb();
-  await db.prepare("UPDATE settings SET brief_enabled = 1, brief_email = 'owner@example.test'").run();
+  await db.prepare(`UPDATE settings SET brief_enabled = 1, brief_email = 'owner@example.test', owner_emails = '["owner@example.test"]'`).run();
   const env = envFor(db, READY);
   assert.deepEqual(await runBrief(env, SEVEN), { composed: 1, sent: 1, failed: 0 });
   await runBrief(env, new Date(SEVEN.getTime() + HOUR));
@@ -172,7 +172,7 @@ test("with every switch on, the brief is emailed once and the status says so", a
 test("a failed send is recorded as failed with the HTTP status and is not retried the same day", async (t) => {
   const calls = mockFetch(t, 500);
   const db = await openTestDb();
-  await db.prepare("UPDATE settings SET brief_enabled = 1, brief_email = 'owner@example.test'").run();
+  await db.prepare(`UPDATE settings SET brief_enabled = 1, brief_email = 'owner@example.test', owner_emails = '["owner@example.test"]'`).run();
   const env = envFor(db, READY);
   assert.deepEqual(await runBrief(env, SEVEN), { composed: 1, sent: 0, failed: 1 });
   await runBrief(env, new Date(SEVEN.getTime() + HOUR));
@@ -186,7 +186,7 @@ test("a failed send is recorded as failed with the HTTP status and is not retrie
 test("sending stays off, with the reason recorded, when a secret or the address is missing", async (t) => {
   const calls = mockFetch(t);
   const db = await openTestDb();
-  await db.prepare("UPDATE settings SET brief_enabled = 1, brief_email = 'owner@example.test'").run();
+  await db.prepare(`UPDATE settings SET brief_enabled = 1, brief_email = 'owner@example.test', owner_emails = '["owner@example.test"]'`).run();
   await runBrief(envFor(db, { ...READY, RESEND_API_KEY: undefined }), SEVEN);
   assert.equal((await briefs(db))[0]?.send_status, "off: RESEND_API_KEY is not set");
   assert.equal(calls.length, 0);
@@ -195,9 +195,22 @@ test("sending stays off, with the reason recorded, when a secret or the address 
 test("two overlapping runs make one brief and one email: the duplicate insert is skipped, not an error", async (t) => {
   const calls = mockFetch(t);
   const db = await openTestDb();
-  await db.prepare("UPDATE settings SET brief_enabled = 1, brief_email = 'owner@example.test'").run();
+  await db.prepare(`UPDATE settings SET brief_enabled = 1, brief_email = 'owner@example.test', owner_emails = '["owner@example.test"]'`).run();
   const raced = racing(db, () => runBrief(envFor(db, READY), SEVEN));
   assert.deepEqual(await runBrief(envFor(raced, READY), SEVEN), { composed: 0, sent: 0, failed: 0 });
   assert.equal((await briefs(db)).length, 1);
   assert.equal(calls.length, 1);
+});
+
+test("a brief address that is no longer an owner email stops the send, with the reason recorded", async (t) => {
+  const calls = mockFetch(t);
+  const db = await openTestDb();
+  await db
+    .prepare("UPDATE settings SET brief_enabled = 1, brief_email = 'old-address@example.test', owner_emails = '[\"owner@example.test\"]'")
+    .run();
+  assert.deepEqual(await runBrief(envFor(db, READY), SEVEN), { composed: 1, sent: 0, failed: 0 });
+  const [row] = await briefs(db);
+  assert.equal(row?.send_status, "off: brief address isn't an owner email");
+  assert.equal(row?.sent_at, null);
+  assert.equal(calls.length, 0, "fetch is never called");
 });

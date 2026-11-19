@@ -2,6 +2,7 @@
 // the service's one-line summary, which ends with "(change chg_...)", then the new ids as JSON.
 import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
+import { parseOwnerEmailsVar } from "../auth/owners.ts";
 import { CONTACT_TYPES } from "../services/activities.ts";
 import { logActivity } from "../services/activities.ts";
 import type { Ctx } from "../services/change.ts";
@@ -76,6 +77,7 @@ export function registerWriteTools(server: McpServer, deps: ToolDeps): void {
       name: "update_contact",
       title: "Update a contact",
       kind: "write",
+      destructive: true,
       idempotent: true,
       description:
         "Changes a contact's details. Give only what changes; null clears an optional value. Every value you set " +
@@ -104,6 +106,7 @@ export function registerWriteTools(server: McpServer, deps: ToolDeps): void {
       name: "update_deal",
       title: "Update a deal",
       kind: "write",
+      destructive: true,
       idempotent: true,
       description:
         "Moves a deal to another stage or changes its title, value, next step, next date or custom fields. A won, lost " +
@@ -178,7 +181,6 @@ export function registerWriteTools(server: McpServer, deps: ToolDeps): void {
       name: "complete_task",
       title: "Complete a task",
       kind: "write",
-      idempotent: true,
       description: "Marks a task done. Find the task id with whats_due or get_deal. Undo it with undo_change.",
       input: z.strictObject({ task: z.string().min(1).max(100).describe("The task's id, tk_...") }),
       async run({ task }, deps) {
@@ -195,7 +197,6 @@ export function registerWriteTools(server: McpServer, deps: ToolDeps): void {
       name: "snooze_task",
       title: "Snooze a task",
       kind: "write",
-      idempotent: true,
       description: "Hides an open task from whats_due until a later time, when it comes back.",
       input: z.strictObject({
         task: z.string().min(1).max(100).describe("The task's id, tk_..."),
@@ -237,6 +238,7 @@ export function registerWriteTools(server: McpServer, deps: ToolDeps): void {
       name: "update_stage",
       title: "Rename or move a stage",
       kind: "write",
+      destructive: true,
       idempotent: true,
       description:
         "Renames a stage (its key stays the same, so deals and rules keep working) and/or moves it to a position. " +
@@ -260,6 +262,7 @@ export function registerWriteTools(server: McpServer, deps: ToolDeps): void {
       name: "archive_stage",
       title: "Archive a stage",
       kind: "write",
+      destructive: true,
       description:
         "Retires a stage: it leaves the board and the stage list. Refused while open deals sit in it (the answer says " +
         "which and where to move them) and for the last stage of a kind. Undo it with undo_change.",
@@ -301,6 +304,7 @@ export function registerWriteTools(server: McpServer, deps: ToolDeps): void {
       name: "update_field",
       title: "Update a custom field",
       kind: "write",
+      destructive: true,
       idempotent: true,
       description:
         "Renames a custom field (its key stays), adds choices to a choice field, or archives or restores it. A choice " +
@@ -350,6 +354,7 @@ export function registerWriteTools(server: McpServer, deps: ToolDeps): void {
       name: "update_rule",
       title: "Update a rule",
       kind: "write",
+      destructive: true,
       idempotent: true,
       description:
         "Changes a rule's settings or description (its type stays). Give only what changes. When the settings change " +
@@ -407,6 +412,7 @@ export function registerWriteTools(server: McpServer, deps: ToolDeps): void {
       name: "update_rulebook",
       title: "Update the rulebook",
       kind: "write",
+      destructive: true,
       idempotent: true,
       description:
         "Creates or replaces one rulebook document (voice, pipeline, guardrails, or a new name). Send the whole new text: " +
@@ -429,18 +435,21 @@ export function registerWriteTools(server: McpServer, deps: ToolDeps): void {
       name: "update_settings",
       title: "Update the settings",
       kind: "write",
+      destructive: true,
       idempotent: true,
       description:
-        "Changes the owner's timezone, the daily brief's hour, address or on/off switch. Give only what changes. Owner " +
-        "emails can't be changed here.",
+        "Changes the owner's timezone, the daily brief's hour, address or on/off switch. Give only what changes. The " +
+        "brief address must be one of the owner emails (see get_settings); owner emails can't be changed here.",
       input: z.strictObject({
         timezone: shortText("An IANA timezone name, for example America/Los_Angeles or Europe/London.").optional(),
         briefHour: z.number().int().min(0).max(23).optional().describe("The hour the daily brief goes out, 0 to 23 in the owner's timezone."),
-        briefEmail: orNull(shortText("The address the brief is sent to, or null to clear it.")).optional(),
+        briefEmail: orNull(shortText("The address the brief is sent to (one of the owner emails), or null to clear it.")).optional(),
         briefEnabled: z.boolean().optional().describe("true to send the daily brief, false to stop."),
       }),
       async run(args, deps) {
-        const result = await updateSettings(aiCtx(deps, "update_settings"), args);
+        const result = await updateSettings(aiCtx(deps, "update_settings"), args, {
+          extraOwnerEmails: parseOwnerEmailsVar(deps.ownerEmailsVar),
+        });
         return toolResult(result.summary, { changeId: result.changeId });
       },
     },
@@ -454,7 +463,6 @@ export function registerWriteTools(server: McpServer, deps: ToolDeps): void {
       title: "Undo a change",
       kind: "write",
       destructive: true,
-      idempotent: true,
       description:
         "Reverses exactly one change by its id (from a write's answer or recent_changes), as a new change. Undoing an " +
         "add removes what it added. Refuses if the change was already undone or a record it touched changed since.",

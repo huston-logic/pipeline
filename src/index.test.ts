@@ -127,7 +127,7 @@ test("scheduled() runs the hourly rules, then the brief, against the database an
   await worker.scheduled(controller, { ...fakeEnv(), DB: await openTestDb() }, ctx);
   assert.equal(failed.mock.callCount(), 0);
   assert.deepEqual(logged.mock.calls.map((call) => call.arguments[0]), [
-    JSON.stringify({ event: "cron_rules_done", rules: 0, fired: 0, alreadyFired: 0, failed: 0 }),
+    JSON.stringify({ event: "cron_rules_done", rules: 0, fired: 0, alreadyFired: 0, failed: 0, deferred: 0 }),
     JSON.stringify({ event: "cron_brief_done", composed: 1, sent: 0, failed: 0 }),
   ]);
 });

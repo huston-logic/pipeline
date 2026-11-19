@@ -7,6 +7,7 @@ import type { Ctx } from "./change.ts";
 import { updateDeal } from "./deals.ts";
 import { UserError } from "./errors.ts";
 import { addLead } from "./leads.ts";
+import { addRule, pauseRule } from "./rules.ts";
 import { addStage, archiveStage, stageOverview, updateStage } from "./stages.ts";
 import { undoChange } from "./undo.ts";
 
@@ -197,4 +198,48 @@ test("every stage change is undoable", async () => {
   const archived = await archiveStage(ctxFor(db, "archive_stage"), "Proposal sent");
   await undoChange(ctxFor(db, "undo_change", LATER), archived.changeId);
   assert.equal((await stage(db, "proposal_sent"))?.archived, 0);
+});
+
+test("undo of add_stage is refused while a rule watches the stage", async () => {
+  const db = await openTestDb();
+  const added = await addStage(ctxFor(db, "add_stage"), { label: "Demo booked" });
+  const rule = await addRule(ctxFor(db, "add_rule"), { type: "stage_followup", stage: "Demo booked", days: 2 });
+  await pauseRule(ctxFor(db, "pause_rule"), rule.ruleId);
+
+  assert.equal(
+    await refusal(undoChange(ctxFor(db, "undo_change", LATER), added.changeId)),
+    `Can't undo ${added.changeId}: other records now depend on it (rule ${rule.ruleId} watches Demo booked). ` +
+      "Change those first, or leave it.",
+  );
+  assert.equal((await stage(db, "demo_booked"))?.label, "Demo booked", "the stage stays");
+});
+
+test("renaming a stage rewrites the generated descriptions of rules that watch it, in the same change", async () => {
+  const db = await openTestDb();
+  const generated = await addRule(ctxFor(db, "add_rule"), { type: "stage_followup", stage: "Proposal sent", days: 3 });
+  const custom = await addRule(ctxFor(db, "add_rule"), {
+    type: "on_stage_enter",
+    stage: "Proposal sent",
+    title: "Prepare",
+    dueInDays: 1,
+    description: "My own words.",
+  });
+  const elsewhere = await addRule(ctxFor(db, "add_rule"), { type: "stage_followup", stage: "Replied", days: 2 });
+  const description = async (id: string) =>
+    (await db.prepare("SELECT description FROM rules WHERE id = ?").bind(id).first<{ description: string }>())?.description;
+
+  const renamed = await updateStage(ctxFor(db, "update_stage"), "Proposal sent", { label: "Quote sent" });
+
+  assert.equal(
+    renamed.summary,
+    `Renamed stage Proposal sent to Quote sent; updated the description of rule ${generated.ruleId} to match ` +
+      `(change ${renamed.changeId})`,
+  );
+  assert.equal(await description(generated.ruleId), "When a deal has sat in Quote sent for 3 days with no contact logged, add a follow-up task.");
+  assert.equal(await description(custom.ruleId), "My own words.", "a description the owner or the AI wrote is kept");
+  assert.match((await description(elsewhere.ruleId)) ?? "", /sat in Replied/);
+
+  await undoChange(ctxFor(db, "undo_change", LATER), renamed.changeId);
+  assert.equal((await stage(db, "proposal_sent"))?.label, "Proposal sent");
+  assert.equal(await description(generated.ruleId), "When a deal has sat in Proposal sent for 3 days with no contact logged, add a follow-up task.");
 });

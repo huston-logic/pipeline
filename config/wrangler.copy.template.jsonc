@@ -11,6 +11,9 @@
   "assets": { "directory": "[[ASSETS_DIR]]", "binding": "ASSETS", "run_worker_first": true },
   // On a custom domain: [{ "pattern": "<host>", "custom_domain": true }]. Left out for workers.dev.
   "routes": "[[ROUTES]]",
+  // Version preview URLs run a new version on this config's production bindings (the database, KV and secrets);
+  // the "previews" block below only applies to Worker Previews. Off, so no preview link can reach production data.
+  "preview_urls": false,
   // MCP_ALLOWED_HOSTNAMES only on a custom domain, BRIEF_FROM only when given; both are left out otherwise.
   // Owner emails live in the database (settings.owner_emails, decision 0005), so OWNER_EMAILS is not set here.
   "vars": {

@@ -27,3 +27,15 @@ Keeping the list out of reach of every tool means no prompt can widen access, wh
 - `update_settings` changes are undoable like every other write; an undo restores the whole settings row as it was, so
   it never touches the owner emails unless the SQL edit happened in between (then the undo refuses: "the settings
   changed since").
+
+## Addendum (final review): the brief address must be an owner email
+
+Once sending is on, `brief_email` decides who receives a daily summary of the whole pipeline, so it is as sensitive
+as the owner list. An AI talked into "send the brief to me@elsewhere" by text in a form or an imported row would move
+data out. `update_settings` now accepts a brief email only when it is one of the owner emails (`settings.owner_emails`
+plus the `OWNER_EMAILS` var), compared trimmed and lowercased; otherwise a plain error: "The brief can only go to an
+owner email (owner@example.com), and x@example.test isn't one. Use an owner email, or null to clear it." With no owner
+emails set, no brief email can be set. Clearing it (null) is always allowed. The send path checks again at send time
+(`sendBlocker` in `src/brief/send.ts`), because an `undo_change` can put back an earlier address that was an owner
+email when it was set but is not one now (or the owner list changed by SQL): such a brief is stored with
+`send_status` "off: brief address isn't an owner email" and never emailed.

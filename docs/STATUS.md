@@ -19,7 +19,11 @@ Updated after every merge, so a fresh chat can pick up where the last one stoppe
 | 9 | M9 board | [#10](https://github.com/huston-logic/pipeline/pull/10) | merged |
 | 10 | M10 production auth | [#11](https://github.com/huston-logic/pipeline/pull/11) | merged |
 | 11 | M11 many copies | [#12](https://github.com/huston-logic/pipeline/pull/12) | merged |
-| 12 | M12 acceptance | [#13](https://github.com/huston-logic/pipeline/pull/13) | open, auto-merge queued |
+| 12 | M12 acceptance | [#13](https://github.com/huston-logic/pipeline/pull/13) | merged |
+| - | Whole-run review fixes | [#14](https://github.com/huston-logic/pipeline/pull/14) | open, auto-merge queued |
+
+Run 1 finished on 2026-11-18: every milestone in the spec is built, reviewed and merged. What is left needs a real
+Cloudflare account or the owner (see "STOP queue" and "What's left").
 
 ## Decisions
 
@@ -63,6 +67,11 @@ Files in `docs/decisions/`. Rulings made while running the plan:
 - A CSV import is one audited, undoable change; it only fills empty fields on existing contacts and marks imported text
   as outside text. Very large CSVs are refused with "split the CSV" (D1 statement size limit).
 - An update never deploys a copy whose migrations did not apply (for example if the confirm prompt is answered no).
+- Whole-run review fixes (PR #14): undo refuses to remove a field whose values are in use, a choice that is in use, or
+  a stage a rule watches; the brief address must be an owner email (checked on save and again before sending); the
+  server instructions say configuration (rulebook, settings, rules, stages, fields) changes only when the owner asks
+  in the conversation; one hourly run creates at most 25 rule tasks (the rest follow next hour); update tools are
+  marked destructive so AI apps ask before using them; version preview URLs are off for copies.
 
 ## Dependencies added
 
@@ -71,6 +80,8 @@ Files in `docs/decisions/`. Rulings made while running the plan:
   `@types/react`, `@types/react-dom`. PR #2.
 - `agents` 0.33.0, `@modelcontextprotocol/server` 2.4.0, `zod` 4.6.7 (runtime, exact); `@modelcontextprotocol/client`
   2.4.0 (dev, exact; also a peer of `agents`). PR #5. Worker bundle about 0.24 MB gzip (free plan limit 3 MB).
+- `@cloudflare/workers-oauth-provider` 1.2.4 (runtime, exact; no runtime dependencies of its own). PR #11.
+- Every version was at least 7 days old; lockfiles written with npm 10.9.9 and `--before=2026-11-11T23:59:59Z`.
 
 ## STOP queue (needs the owner)
 
@@ -85,7 +96,8 @@ Files in `docs/decisions/`. Rulings made while running the plan:
    "Sending access" for that domain only; then, with that copy's wrangler config, run
    `npx wrangler secret put RESEND_API_KEY -c .copies/<copy>/wrangler.jsonc`, set the vars `BRIEF_SENDING = "on"` and
    `BRIEF_FROM = "Pipeline <brief@<your domain>>"` in that copy's generated config, and ask the AI to
-   `update_settings` with the brief address and brief on. Details: docs/SECRETS.md.
+   `update_settings` with the brief address (it must be one of the owner emails) and brief on. Details:
+   docs/SECRETS.md.
 4. **Intake secret, per copy, when you connect a website form.** Generate a long random value (for example
    `openssl rand -hex 32`), then `npx wrangler secret put INTAKE_SECRET -c .copies/<copy>/wrangler.jsonc`, and put the
    same value in the website's server-side form handler as the `X-Intake-Secret` header. Until it is set, `/intake`
@@ -106,8 +118,23 @@ Files in `docs/decisions/`. Rulings made while running the plan:
 7. **One leftover temp folder** from a manual test (harmless, nothing secret; the hook stops me deleting outside the
    repo): `rm -r /var/folders/xf/zt8g4lzn0211myfvc6kzmt0r0000gn/T/pipeline-e2e-p134is`
 
+## What's left
+
+Nothing in the spec is unbuilt. Not yet proven, because it needs a real account or the owner:
+
+1. A live install on a first copy (STOP 5 and 6): Access for SaaS sign-in from a real AI app, the board behind Access,
+   the first remote migration, deploy and import.
+2. CPU time on the free plan's 10 ms limit for `tools/list`, an hourly run with many firings, and `/api/export.json`
+   on a large copy (docs/PAID-PLAN.md). Measure on the first copy before telling a client the free plan is enough.
+   Also confirm in Cloudflare's limits page whether a D1 batch counts as one query or one per statement toward the
+   free plan's per-invocation limit (the 25-firing cap assumes one per batch).
+3. Deferred minor findings from the reviews (none blocks real use): see "Minor findings left" in the run-1 summary,
+   or ask a new run to re-triage them from the code.
+4. Owner-only follow-ups: the `ci.yml` cleanup (STOP 1); the `.claude/agents/review-*.md` reviewers still describe the
+   old website and could be rewritten for the engine.
+
 ## How to resume
 
 1. `git switch main && git pull --ff-only`
-2. Read `docs/SPEC.md`, `docs/PLAN.md` and this file. Start at the first task not marked merged.
-3. The run's working ledger is `.superpowers/sdd/PLAN/progress.md` (git-ignored, on this Mac only).
+2. Read `docs/SPEC.md`, `docs/PLAN.md` and this file. Every plan task is merged; start from "What's left".
+3. The run's working ledger was `.superpowers/sdd/PLAN/progress.md` (git-ignored, this Mac only; may be deleted).

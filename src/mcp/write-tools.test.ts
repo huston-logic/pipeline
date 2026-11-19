@@ -250,11 +250,13 @@ test("settings tools: get shows the owner emails, update changes the rest and re
     briefEmail: null,
     briefEnabled: false,
     ownerEmails: ["owner@example.com"],
-    lastBriefAt: null,
+    lastBriefAt: "2026-11-18T17:30:00.000Z",
+    lastBriefSentAt: null,
   });
 
-  const changed = await ok(c, "update_settings", { timezone: "Europe/London", briefHour: 8, briefEmail: "me@example.com", briefEnabled: true });
-  assert.match(changed.headline, /^Updated settings: timezone to Europe\/London, brief hour to 8:00, brief email to me@example\.com and the daily brief on \(change chg_[a-z0-9]{12}\)$/);
+  const changed = await ok(c, "update_settings", { timezone: "Europe/London", briefHour: 8, briefEmail: "owner@example.com", briefEnabled: true });
+  assert.match(changed.headline, /^Updated settings: timezone to Europe\/London, brief hour to 8:00, brief email to owner@example\.com and the daily brief on \(change chg_[a-z0-9]{12}\)$/);
+  assert.match(await fails(c, "update_settings", { briefEmail: "me@example.com" }), /The brief can only go to an owner email \(owner@example\.com\)/);
   assert.match(await fails(c, "update_settings", { timezone: "Mars/Base" }), /isn't a timezone I know/);
   assert.match(await fails(c, "update_settings", { briefHour: 25 }), /"briefHour" must be at most 23/);
   const refused = await fails(c, "update_settings", { ownerEmails: ["intruder@example.com"] });
@@ -264,4 +266,12 @@ test("settings tools: get shows the owner emails, update changes the rest and re
   assert.match(cleared.headline, /brief email cleared/);
   const undone = await ok(c, "undo_change", { changeId: dataOf<{ changeId: string }>(cleared).changeId });
   assert.match(undone.headline, /^Undid chg_[a-z0-9]{12}: Put back the earlier brief email on the settings/);
+});
+
+test("update_settings accepts a brief email from the OWNER_EMAILS var too", async () => {
+  const db = await createTestDb();
+  db.exec(buildDevSeed(NOW, DEFAULT_TZ));
+  const c = await connectInMemory(createMcpServer({ db, now: () => NOW, ownerEmailsVar: "a@example.test, Var@Example.test" }));
+  const changed = await ok(c, "update_settings", { briefEmail: "var@example.test" });
+  assert.match(changed.headline, /brief email to var@example\.test/);
 });

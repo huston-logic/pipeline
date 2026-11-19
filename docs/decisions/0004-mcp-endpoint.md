@@ -57,9 +57,12 @@ and the authorization page; plus the installed `agents` 0.33.0 types in `dist/mc
   `UserError` comes back as its message; anything else is "Something went wrong on the server. Nothing was changed."
   and logs only `{"event":"mcp_tool_failed","tool":"<name>"}`.
 - **Annotations:** every read tool `readOnlyHint: true`; every write `readOnlyHint: false`, `openWorldHint: false`.
-  `destructiveHint` is false except on `undo_change` (undoing an add removes records). `idempotentHint` is true for
-  `update_contact`, `update_deal` and `undo_change` (repeating the call changes nothing more; it is refused) and false
-  for the adds and `log_activity`.
+  `destructiveHint` is true on the tools that overwrite values or close things (`update_contact`, `update_deal`,
+  `update_stage`, `archive_stage`, `update_field`, `update_rule`, `update_rulebook`, `update_settings`) and on
+  `undo_change` (undoing an add removes records): undo exists, but clients use the hint to ask the owner first.
+  `idempotentHint` is true for the `update_*` tools, `pause_rule` and `resume_rule` (repeating the call changes nothing
+  more) and false for the adds, `log_activity`, `archive_stage`, `complete_task`, `snooze_task` and `undo_change` (a
+  repeat is refused or changes something again). Final-review fix wave, 2026-11-18.
 - **Activity types:** `log_activity` takes `email`, `call`, `meeting` or `note`; `form` only comes in through
   `/intake`.
 - **End-to-end:** `tests/e2e/harness.ts` runs `wrangler dev --local --test-scheduled` on a free port with a new temp

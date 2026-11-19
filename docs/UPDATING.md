@@ -28,6 +28,12 @@ What it does, in order:
 It never changes a copy's `wrangler.jsonc`. If a release note says the config template gained a setting, add it to
 each copy's config by hand.
 
+The template sets `"preview_urls": false`. A version preview URL runs the new version on the copy's production
+bindings (its database, KV and secrets); the `previews` block only covers Worker Previews, so a version preview link
+could read and change real client data. Copies provisioned before this setting existed need it added by hand: put
+`"preview_urls": false,` in `.copies/<name>/wrangler.jsonc` before the next `npm run copies:update`. To try a release
+safely, use the copy's preview database as described below, never a version preview URL.
+
 ## Before a release that has a new migration
 
 Migrations only go forward: there is no "undo" for a database change. Try a release on a copy's preview database

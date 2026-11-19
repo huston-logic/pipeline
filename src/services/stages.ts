@@ -1,13 +1,14 @@
 // add_stage, update_stage and archive_stage. A stage's key is the slug of its first label and never changes, so
-// renaming a stage leaves its deals, rules and history pointing at it. Positions are always renumbered 1..n inside the
-// change that moves a stage: active stages first, archived ones after them.
-import type { Db, StageKind, StageRow } from "../db/db.ts";
+// renaming a stage leaves its deals, rules and history pointing at it (and rewrites generated rule descriptions).
+// Positions are always renumbered 1..n inside the change that moves a stage: active stages first, archived ones after.
+import type { Db, RuleRow, StageKind, StageRow } from "../db/db.ts";
 import { listStages } from "../db/queries.ts";
 import { type ChangeResult, commitChange, type Ctx, type RowChange, updatedRow } from "./change.ts";
 import { joinAnd } from "./describe.ts";
 import { UserError } from "./errors.ts";
 import { clean } from "./input.ts";
 import { dealLabel } from "./labels.ts";
+import { describeRule, parseRuleParams } from "./rules.ts";
 import { slugOf, uniqueKey } from "./slug.ts";
 
 const MAX_LABEL = 60;
@@ -98,6 +99,23 @@ export async function addStage(ctx: Ctx, input: StageInput): Promise<ChangeResul
   return { ...result, key };
 }
 
+/**
+ * Rules watching the stage whose description is still the generated one for its old label, rewritten for the new
+ * label. A description the owner or the AI wrote is left alone. Part of the rename's change, so undo restores both.
+ */
+async function redescribedRules(db: Db, stage: StageRow, label: string, now: Date): Promise<RowChange[]> {
+  const watching = await db
+    .prepare("SELECT * FROM rules WHERE json_extract(params, '$.stage') = ? ORDER BY created_at, id")
+    .bind(stage.key)
+    .all<RuleRow>();
+  return watching.results.flatMap((rule) => {
+    const params = parseRuleParams(rule);
+    if (params === null || rule.description !== describeRule(params, stage.label)) return [];
+    const after = updatedRow(rule, { description: describeRule(params, label) }, now);
+    return [{ table: "rules", id: rule.id, before: rule, after }];
+  });
+}
+
 export async function updateStage(ctx: Ctx, ref: string, patch: StagePatch): Promise<ChangeResult & { key: string }> {
   const { db } = ctx;
   const all = await listStages(db, { includeArchived: true });
@@ -130,6 +148,15 @@ export async function updateStage(ctx: Ctx, ref: string, patch: StagePatch): Pro
   const changes = renumber(withArchivedLast(ordered, all), ctx.now, edited);
   if (changes.length === 0) {
     throw new UserError(`Nothing to change on ${stage.label}: give a new label or a different position.`);
+  }
+  const label = edited.get(stage.key)?.label;
+  if (label !== undefined) {
+    const described = await redescribedRules(db, stage, label, ctx.now);
+    changes.push(...described);
+    if (described.length > 0) {
+      const ids = joinAnd(described.map((change) => change.id));
+      parts.push(`updated the description of ${described.length === 1 ? "rule" : "rules"} ${ids} to match`);
+    }
   }
   const result = await commitChange(ctx, {
     target: { table: "stages", id: stage.key },

@@ -30,11 +30,13 @@ test("getSettings shows the settings with the owner emails as a list", async () 
     briefEnabled: false,
     ownerEmails: ["owner@example.com"],
     lastBriefAt: null,
+    lastBriefSentAt: null,
   });
 });
 
 test("updateSettings changes only what is given, in one audited change", async () => {
   const db = await openTestDb();
+  await db.prepare("UPDATE settings SET owner_emails = ? WHERE id = 1").bind('["me@example.com"]').run();
   const result = await updateSettings(ctxFor(db), {
     timezone: "Europe/London",
     briefHour: 8,
@@ -51,8 +53,9 @@ test("updateSettings changes only what is given, in one audited change", async (
     briefHour: 8,
     briefEmail: "me@example.com",
     briefEnabled: true,
-    ownerEmails: [],
+    ownerEmails: ["me@example.com"],
     lastBriefAt: null,
+    lastBriefSentAt: null,
   });
   const row = await db.prepare("SELECT version, updated_at FROM settings").first<{ version: number; updated_at: string }>();
   assert.deepEqual(row, { version: 2, updated_at: NOW.toISOString() });
@@ -94,4 +97,38 @@ test("a settings change is undoable", async () => {
   assert.match(undone.summary, /^Undid chg_[a-z2-7]{12}: Put back the earlier timezone and brief hour on the settings/);
   assert.equal((await getSettings(db)).timezone, "America/Los_Angeles");
   assert.equal((await getSettings(db)).briefHour, 7);
+});
+
+test("the brief email must be one of the owner emails, in the settings or the OWNER_EMAILS var, ignoring case", async () => {
+  const db = await openTestDb();
+  await db.prepare("UPDATE settings SET owner_emails = ? WHERE id = 1").bind('["Owner@Example.com"]').run();
+  assert.equal(
+    await refusal(updateSettings(ctxFor(db), { briefEmail: "someone@example.test" })),
+    "The brief can only go to an owner email (owner@example.com), and someone@example.test isn't one. Use an owner " +
+      "email, or null to clear it.",
+  );
+  assert.equal((await getSettings(db)).briefEmail, null);
+
+  const ok = await updateSettings(ctxFor(db), { briefEmail: "owner@EXAMPLE.com" });
+  assert.match(ok.summary, /brief email to owner@EXAMPLE\.com/);
+  const fromVar = await updateSettings(ctxFor(db), { briefEmail: "second@example.com" }, { extraOwnerEmails: ["Second@example.com"] });
+  assert.match(fromVar.summary, /brief email to second@example\.com/);
+});
+
+test("with no owner emails at all, a brief email is refused", async () => {
+  const db = await openTestDb();
+  assert.match(
+    await refusal(updateSettings(ctxFor(db), { briefEmail: "me@example.com" })),
+    /^The brief can only go to an owner email \(none are set yet\), and me@example\.com isn't one\./,
+  );
+});
+
+test("getSettings takes the last brief times from the briefs log", async () => {
+  const db = await openTestDb();
+  const insert = "INSERT INTO briefs (id, local_date, composed_at, text, sent_at, send_status) VALUES (?, ?, ?, '', ?, ?)";
+  await db.prepare(insert).bind("br_a", "2026-11-17", "2026-11-17T15:00:00.000Z", "2026-11-17T15:00:01.000Z", "sent").run();
+  await db.prepare(insert).bind("br_b", "2026-11-18", "2026-11-18T15:00:00.000Z", null, "off: brief_enabled is off").run();
+  const settings = await getSettings(db);
+  assert.equal(settings.lastBriefAt, "2026-11-18T15:00:00.000Z", "the latest brief composed");
+  assert.equal(settings.lastBriefSentAt, "2026-11-17T15:00:01.000Z", "the latest brief emailed");
 });

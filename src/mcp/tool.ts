@@ -9,6 +9,8 @@ import { inputErrorMessage, toolError } from "./format.ts";
 export interface ToolDeps {
   db: Db;
   now: () => Date;
+  /** The OWNER_EMAILS var ("a@example.com, b@example.com"): owner emails on top of settings.owner_emails. */
+  ownerEmailsVar?: string;
 }
 
 export type ToolKind = "read" | "write";
@@ -19,7 +21,10 @@ export interface ToolDef<S extends z.ZodObject> {
   description: string;
   input: S;
   kind: ToolKind;
-  /** Write tools only: true when the tool can remove records (undo of an add does). */
+  /**
+   * Write tools only: true when the tool overwrites values, closes or archives something, or removes records (undo of
+   * an add does). Undo exists, but clients use the hint to ask the owner before calling.
+   */
   destructive?: boolean;
   /** Write tools only: true when repeating the same call changes nothing more. */
   idempotent?: boolean;

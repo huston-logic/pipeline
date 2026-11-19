@@ -8,7 +8,7 @@ import { createMcpServer } from "./server.ts";
 
 export function handleMcp(request: Request, env: Env, ctx: ExecutionContext, email: string): Promise<Response> {
   const hosts = allowedHostnames(env.MCP_ALLOWED_HOSTNAMES);
-  const handler = createMcpHandler(() => createMcpServer({ db: env.DB, now: () => new Date() }), {
+  const handler = createMcpHandler(() => createMcpServer({ db: env.DB, now: () => new Date(), ownerEmailsVar: env.OWNER_EMAILS }), {
     route: MCP_ROUTE,
     authContext: { props: { email } },
     ...(hosts ? { allowedHostnames: hosts } : {}),
