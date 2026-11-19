@@ -3,6 +3,7 @@ import { authMode } from "./auth/dev.ts";
 import { isOAuthPath } from "./auth/oauth-routes.ts";
 import { notFoundPage, serverErrorPage } from "./board/pages/not-found.ts";
 import { matchBoardPage } from "./board/router.ts";
+import { THEME_PATH, themeStylesheet } from "./board/theme.ts";
 import { runScheduled } from "./cron.ts";
 import type { Env } from "./env.ts";
 import { apiMethodNotAllowed, handleApi, isApiPath, json } from "./http/api.ts";
@@ -23,6 +24,12 @@ function htmlResponse(body: string, status: number): Response {
       status,
       headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" },
     }),
+  );
+}
+
+function cssResponse(body: string): Response {
+  return withSecurityHeaders(
+    new Response(body, { headers: { "Content-Type": "text/css; charset=utf-8", "Cache-Control": "no-store" } }),
   );
 }
 
@@ -93,6 +100,18 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
   }
 
   if (!isRead(request)) return methodNotAllowed();
+
+  // Before the static-file branch: it looks like a file, but the Worker writes it from the settings.
+  if (pathname === THEME_PATH) {
+    try {
+      const auth = await signIn();
+      if (!auth.ok) return textResponse(auth.message, auth.status);
+      return cssResponse(await themeStylesheet(env.DB));
+    } catch {
+      console.error(JSON.stringify({ event: "theme_failed" }));
+      return textResponse(SERVER_ERROR, 500);
+    }
+  }
 
   const page = matchBoardPage(pathname);
   if (page) {

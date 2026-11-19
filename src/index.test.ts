@@ -113,6 +113,25 @@ test("a missing static file gets the HTML 404 page", async () => {
   assert.match(await res.text(), /<h1[\s>]/);
 });
 
+test("/theme.css comes from the settings: text/css, not cached, security headers, never from ASSETS", async () => {
+  const calls: AssetCall[] = [];
+  const env = await devEnv(calls);
+  const unset = await get("/theme.css", env);
+  assert.equal(unset.status, 200);
+  assert.equal(unset.headers.get("Content-Type"), "text/css; charset=utf-8");
+  assert.equal(unset.headers.get("Cache-Control"), "no-store");
+  assertSecurityHeaders(unset);
+  assert.equal(await unset.text(), "/* No accent colour is set, so the board uses its default. */\n");
+
+  await env.DB.prepare("UPDATE settings SET accent_color = '#1e4a3d'").run();
+  assert.equal(await (await get("/theme.css", env)).text(), ":root{--accent:#1e4a3d;}\n");
+  // Too light for white text: written straight into the database, so only the check at output time stops it.
+  await env.DB.prepare("UPDATE settings SET accent_color = '#d0e8dc'").run();
+  assert.doesNotMatch(await (await get("/theme.css", env)).text(), /d0e8dc/);
+  assert.deepEqual(calls, []);
+  assert.equal((await get("/theme.css", env, { method: "POST" })).status, 405);
+});
+
 test("the read-only board refuses POST with 405 and an Allow header", async () => {
   const res = await get("/", fakeEnv(), { method: "POST", body: "x" });
   assert.equal(res.status, 405);
@@ -178,7 +197,7 @@ test("AUTH_MODE=dev in production fails closed with 500 on every route", async (
   }
 });
 
-const BOARD_PATHS = ["/", "/rules", "/deals/dl_seed01", "/export"];
+const BOARD_PATHS = ["/", "/rules", "/deals/dl_seed01", "/export", "/theme.css"];
 const API_PATHS = ["/api/pipeline", "/api/export.json", "/api/export/contacts.csv"];
 
 test("in production without Access settings the board and /api fail closed with 500; static files and the 404 page still work", async () => {
