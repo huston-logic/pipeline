@@ -287,9 +287,10 @@ New lead, a new deal, Edit contact and Edit deal are pages: a "Back to …" link
 one white card (two cards under h2s, Contact and Deal, on New lead), then the primary button ("Add the lead", "Save
 changes") and a Cancel link side by side, 44px or more. Each field: a visible label (600), "(required)" in words in
 `ink-2` 500, an optional hint (§7.14), the control (48px, 1px `ink-2` edge, `--r-field`; textareas 7rem, resizable).
-A value that came from outside has the "From outside" pill under its label, at its own width. A date is a group: a
-legend, then Date and Time side by side (wrapping on a phone), the time optional. A refused form: an error summary at
-the top (white, 2px rust edge, `--r-card`, an h2 such as "2 things to fix", each message a rust link to its field), and
+A value that came from outside has the "From outside" pill under its label, at its own width, read with the control
+(`aria-describedby`). A date is a group: a legend, then Date and Time side by side (wrapping on a phone), the time
+optional. Forms are `novalidate`: the server checks and answers. A refused form: an error summary at the top, focused
+on load (white, 2px rust edge, `--r-card`, an h2 such as "2 things to fix", each message a rust link to its field), and
 above each wrong control its message in rust 600, with the control's edge 2px rust. The words carry the state, never
 colour alone.
 

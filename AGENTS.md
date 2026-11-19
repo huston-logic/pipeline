@@ -39,7 +39,7 @@ this file before changing the repo, and update it when a rule changes.
   GET and HEAD with `Cache-Control: no-store`; a page that finds no CSRF cookie sets one.
 - **Board edits** (decisions 0014, 0017): every board write path is in the route table in `src/board/actions.ts`; a
   POST to any other path is 405. `src/board/post.ts` checks, in order, the sign-in, the same origin, a form body
-  (`application/x-www-form-urlencoded`, at most 16 KB) and the CSRF token (hidden `csrf` field matching the cookie),
+  (`application/x-www-form-urlencoded`, at most 16 KB, or 128 KB on a route marked `big`: record forms and Log) and the CSRF token (hidden `csrf` field matching the cookie),
   before the handler. A handler calls the same service function as the matching MCP tool (actor `owner`, tool = that
   tool's name), never SQL of its own, so every edit is audited and undoable; it answers 303 to the form's `return_to`
   (checked by `src/board/return-to.ts`) with `?change=<id>`, which the page shows in the change banner with an Undo
@@ -49,10 +49,11 @@ this file before changing the repo, and update it when a rule changes.
   shared handler pieces are in `src/board/action-kit.ts`. Record forms are built from specs (`src/board/record-form.ts`)
   and drawn with `src/board/inputs.ts` (visible label, "(required)" in words, `aria-describedby`/`aria-invalid` errors,
   an error summary, the "From outside" label beside the field's label). An edit sends only the fields the owner
-  changed: each field carries a fingerprint of the value it was drawn with (`was.<name>`), and a field still matching
-  it is never written, because `update_contact` marks every field it sets as the owner's. Never build an edit patch
-  from every posted field. A refused form is a 422 with the values kept. Dates are a date plus an optional time, read
-  in the owner's timezone.
+  changed: each field carries a fingerprint of what its control sends back untouched (`was.<name>`), and a field is
+  written only when that fingerprint differs and its value, read the way the service stores it, differs from the
+  stored one, because `update_contact` marks every field it sets as the owner's. Never build an edit patch from every
+  posted field. Record forms are `novalidate` (the server checks; outside data can break the browser's rules). A
+  refused form is a 422 with the values kept. Dates are a date plus an optional time, read in the owner's timezone.
 - **Browser JavaScript** (decision 0014): only first-party files from `public/`, loaded with `defer`, as progressive
   enhancement, and only on pages that pass `script: true` to `renderPage`. Every action must also work as a plain form
   with JavaScript off. No framework, no build step, no third-party code, no eval, at most 3 KB gzipped (a test checks).
