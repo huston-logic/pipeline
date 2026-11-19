@@ -252,9 +252,22 @@ test("0004 from the previous version: settings keep their values and get no busi
   applySqlFile(db, "seed/defaults.sql");
   db.exec("UPDATE settings SET timezone = 'Europe/London', brief_hour = 9, version = 4");
 
-  assert.deepEqual(await applyMigrations(db), ["0004_settings_look.sql"]);
+  assert.deepEqual(await applyMigrations(db, 4), ["0004_settings_look.sql"]);
   const row = await db.prepare("SELECT timezone, brief_hour, version, business_name, accent_color FROM settings").first();
   assert.deepEqual({ ...row }, { timezone: "Europe/London", brief_hour: 9, version: 4, business_name: null, accent_color: null });
+});
+
+test("0005 from the previous version: activities get an index on occurred_at and keep their rows", async () => {
+  const db = new SqliteD1();
+  await applyMigrations(db, 4);
+  applySqlFile(db, "seed/defaults.sql");
+  const indexes = async () =>
+    (await db.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'activities' ORDER BY name").all<{ name: string }>())
+      .results.map((r) => r.name);
+  assert.deepEqual(await indexes(), ["activities_contact", "activities_deal", "sqlite_autoindex_activities_1"]);
+
+  assert.deepEqual(await applyMigrations(db, 5), ["0005_activities_occurred_at.sql"]);
+  assert.deepEqual(await indexes(), ["activities_contact", "activities_deal", "activities_occurred", "sqlite_autoindex_activities_1"]);
 });
 
 test("settings: the business name is 1 to 60 characters and the accent colour is #rrggbb in lower case", async () => {

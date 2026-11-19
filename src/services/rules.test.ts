@@ -447,7 +447,32 @@ function recordingActivities(db: Db, seen: string[]): Db {
   };
 }
 
-test("preview_rule reads activities only as far back as its window needs: 30 days plus the longest rule (365 days)", async () => {
+test("preview_rule's lookback is 30 days plus the rule's own days (none for on_stage_enter), with the same hits", async () => {
+  const db = await openTestDb();
+  await proposal(db, later(-60), "Old Example");
+  await proposal(db, later(-34), "Mid Example");
+  await proposal(db, later(-20), "Recent Example");
+  await proposal(db, later(-3), "New Example");
+  const cases: [settings: Parameters<typeof previewRuleFor>[2], days: number, fires: number[]][] = [
+    [{ type: "stage_followup", stage: "Proposal sent", days: 7 }, 37, [-27, -13]],
+    [{ type: "gone_quiet", days: 10 }, 40, [-30, -24, -10]],
+    [{ type: "on_stage_enter", stage: "Proposal sent", title: "Check in", dueInDays: 1 }, 30, [-20, -3]],
+  ];
+  for (const [settings, days, fires] of cases) {
+    const seen: string[] = [];
+    const preview = await previewRuleFor(recordingActivities(db, seen), NOW, settings);
+    const cutoff = later(-days).toISOString();
+    assert.ok(seen.length > 0, `${settings.type}: recent entries are read`);
+    assert.ok(seen.every((at) => at >= cutoff), `${settings.type}: nothing older than ${days} days is read`);
+    assert.deepEqual(
+      preview.hits.map((hit) => hit.wouldFireAt),
+      fires.map((d) => later(d).toISOString()),
+      settings.type,
+    );
+  }
+});
+
+test("preview_rule for a 365-day rule reads 30 + 365 days back, and an entry 380 days ago still counts", async () => {
   const db = await openTestDb();
   await proposal(db, later(-400), "Old Example");
   await proposal(db, later(-380), "Long Example");
@@ -465,4 +490,35 @@ test("preview_rule reads activities only as far back as its window needs: 30 day
     [later(-15).toISOString()],
     "an entry 380 days ago still counts for a 365-day rule",
   );
+});
+
+test("preview_rule's activity read is served by the occurred_at index, not a scan of every activity", async () => {
+  const db = await openTestDb();
+  await proposal(db, later(-10));
+  let read: { sql: string; values: unknown[] } | undefined;
+  const recording: Db = {
+    prepare(sql) {
+      const statement = db.prepare(sql);
+      if (!/FROM activities\s+WHERE type IN/.test(sql)) return statement;
+      return new Proxy(statement, {
+        get(target, name, receiver) {
+          if (name === "bind") {
+            return (...values: unknown[]) => {
+              read = { sql, values };
+              return target.bind(...values);
+            };
+          }
+          const value: unknown = Reflect.get(target, name, receiver);
+          return typeof value === "function" ? value.bind(target) : value;
+        },
+      });
+    },
+    batch: (statements) => db.batch(statements),
+  };
+  await previewRuleFor(recording, NOW, { type: "stage_followup", stage: "Proposal sent", days: 3 });
+  assert.ok(read, "the preview reads activities");
+  const plan = await db.prepare(`EXPLAIN QUERY PLAN ${read.sql}`).bind(...read.values).all<{ detail: string }>();
+  const details = plan.results.map((row) => row.detail).join("; ");
+  assert.match(details, /USING INDEX activities_occurred/, details);
+  assert.doesNotMatch(details, /\bSCAN activities\b(?! USING)/, details);
 });

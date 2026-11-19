@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { before, test } from "node:test";
 import { createTestDb, type SqliteD1 } from "../src/db/sqlite-d1.ts";
-import { MAX_FIRINGS_PER_RUN, previewRuleFor, runRules } from "../src/services/rules.ts";
+import type { Db } from "../src/db/db.ts";
+import { MAX_FIRINGS_PER_RUN, type PreviewRequest, previewRuleFor, runRules } from "../src/services/rules.ts";
 import { buildScaleSeed, DUE_FIRINGS, parseScaleArgs, SCALE, scaleSeed } from "./seed-scale.ts";
 
 const NOW = new Date("2026-11-19T18:00:00.000Z");
@@ -72,6 +73,45 @@ test("the next hourly run has 50 firings due: it writes MAX_FIRINGS_PER_RUN and 
 test("preview_rule on the Replied follow-up finds deals on the scaled copy", async () => {
   const preview = await previewRuleFor(db, NOW, { rule: "ru_scale02" });
   assert.ok(preview.dealCount >= DUE_FIRINGS.replied, `found ${preview.dealCount}`);
+});
+
+/** The same database, but the preview's activity read gets every activity, whatever lookback it binds. */
+function readEverything(db: Db): Db {
+  return {
+    prepare(sql) {
+      const statement = db.prepare(sql);
+      if (!/FROM activities\s+WHERE type IN/.test(sql)) return statement;
+      return new Proxy(statement, {
+        get(target, name, receiver) {
+          if (name === "bind") return (...values: unknown[]) => target.bind(...values.slice(0, -1), "");
+          const value: unknown = Reflect.get(target, name, receiver);
+          return typeof value === "function" ? value.bind(target) : value;
+        },
+      });
+    },
+    batch: (statements) => db.batch(statements),
+  };
+}
+
+test("on the scaled copy, preview_rule's shorter lookback gives exactly the hits a read of every activity gives", async () => {
+  const settings: PreviewRequest[] = [
+    { rule: "ru_scale01" },
+    { rule: "ru_scale02" },
+    { rule: "ru_scale03" },
+    { rule: "ru_scale04" },
+    { rule: "ru_scale05" },
+    { type: "stage_followup", stage: "Call booked", days: 1 },
+    { type: "stage_followup", stage: "Proposal sent", days: 60 },
+    { type: "gone_quiet", days: 3 },
+    { type: "gone_quiet", days: 45 },
+    { type: "on_stage_enter", stage: "Call done", title: "Send notes", dueInDays: 0 },
+  ];
+  for (const request of settings) {
+    const short = await previewRuleFor(db, NOW, request);
+    const full = await previewRuleFor(readEverything(db), NOW, request);
+    assert.ok(full.hits.length > 0, `${JSON.stringify(request)} catches something`);
+    assert.deepEqual(short.hits, full.hits, JSON.stringify(request));
+  }
 });
 
 test("the same moment gives the same seed", () => {
