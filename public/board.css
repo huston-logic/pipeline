@@ -79,7 +79,7 @@ a:hover {
 .wrap {
   max-width: var(--wrap);
   margin: 0 auto;
-  padding: 0 1rem;
+  padding-inline: 1rem;
 }
 
 .skip-link {
@@ -163,6 +163,229 @@ main a {
   display: inline-flex;
   align-items: center;
   min-height: 44px;
+}
+
+/* Page content. Long values (a 10,000-character note, a pasted URL) wrap instead of widening the page. */
+main {
+  overflow-wrap: anywhere;
+}
+
+h2 {
+  font-size: 1.375rem;
+  margin: 2.5rem 0 0.75rem;
+}
+
+h3 {
+  font-size: 1.0625rem;
+  margin: 1.25rem 0 0.25rem;
+}
+
+main .lede {
+  max-width: 44rem;
+  font-size: 1.125rem;
+  margin: 0 0 1.5rem;
+}
+
+main .back {
+  margin: -1.25rem 0 0.25rem;
+}
+
+main .note {
+  max-width: 44rem;
+  padding: 0.75rem 1rem;
+  background: var(--tint);
+  border-radius: var(--radius);
+  color: var(--ink);
+}
+
+main .empty,
+main .section-note {
+  color: var(--ink-2);
+  margin: 0.5rem 0;
+}
+
+/* Lists of deals, tasks, rules and changes: one row per item, a rule between rows. */
+.items {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.items > li {
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.items.compact > li {
+  padding: 0.5rem 0;
+}
+
+main .item-title {
+  max-width: none;
+  margin: 0;
+  color: var(--ink);
+  font-weight: 600;
+}
+
+main .meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 1.25rem;
+  max-width: none;
+  margin: 0.125rem 0 0;
+  font-size: 0.9375rem;
+}
+
+.fact-name {
+  font-weight: 600;
+}
+
+/* A link inside a meta line wraps with its text; the padding keeps the tap area about 44px tall. */
+main .meta a {
+  display: inline;
+  padding-block: 0.625rem;
+}
+
+.flag {
+  color: var(--rust);
+  font-weight: 600;
+}
+
+/* Text from a form or an import: a text label, never color alone. */
+.outside {
+  display: inline-block;
+  padding: 0 0.5rem;
+  border: 1px solid var(--rust);
+  border-radius: var(--radius);
+  background: var(--white);
+  color: var(--rust);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  line-height: 1.5;
+  vertical-align: 0.15em;
+  white-space: nowrap;
+}
+
+.outside-block {
+  margin-top: 0.5rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--rust);
+  border-radius: var(--radius);
+  background: var(--white);
+}
+
+main .outside-head {
+  margin: 0;
+  font-size: 0.9375rem;
+}
+
+main .outside-text {
+  margin: 0.375rem 0 0;
+  color: var(--ink);
+  white-space: pre-wrap;
+}
+
+/* Home: what is due sits on its own panel at the top; stages and the brief share the row below on wide screens. */
+.due {
+  padding: 0.25rem 1.25rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--white);
+}
+
+.due h2 {
+  margin-top: 1rem;
+}
+
+.due .items:last-child > li:last-child {
+  border-bottom: 0;
+}
+
+.stage {
+  margin-top: 1.75rem;
+}
+
+.stage:first-of-type {
+  margin-top: 0.5rem;
+}
+
+.stage-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0 1rem;
+  border-bottom: 2px solid var(--green-edge);
+}
+
+.stage-head h3 {
+  margin: 0;
+}
+
+main .stage-count {
+  margin: 0;
+  font-size: 0.9375rem;
+}
+
+/* Deal page: who and what on one side, what happens next and the history on the other. */
+.facts {
+  margin: 0;
+}
+
+.facts > div {
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.facts dt {
+  color: var(--ink-2);
+  font-size: 0.9375rem;
+}
+
+.facts dd {
+  margin: 0;
+}
+
+.downloads {
+  max-width: 40rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.downloads li {
+  border-bottom: 1px solid var(--line);
+}
+
+@media (min-width: 30rem) {
+  .facts > div {
+    display: grid;
+    grid-template-columns: 9.5rem minmax(0, 1fr);
+    gap: 1rem;
+  }
+}
+
+@media (min-width: 60rem) {
+  .home-columns {
+    display: grid;
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+    gap: 3rem;
+    align-items: start;
+  }
+
+  .deal-columns {
+    display: grid;
+    grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+    gap: 3rem;
+    align-items: start;
+  }
+
+  .deal-columns > div > section:first-child h2 {
+    margin-top: 0.5rem;
+  }
 }
 
 .site-footer {

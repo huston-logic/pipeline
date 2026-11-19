@@ -2,7 +2,19 @@
 // never write. Item fields are camelCase, except `untrusted_fields` and `untrusted_text`, which keep the names the
 // spec uses to label outside text: every item that carries text from outside lists those keys in `untrusted_fields`
 // ([] when there are none). An empty database gives empty lists and zero counts.
-import type { ActivityRow, ActivityType, Actor, ContactRow, Db, DealRow, DealStatus, StageKind, TaskRow } from "../db/db.ts";
+import type { BriefItem } from "../brief/compose.ts";
+import type {
+  ActivityRow,
+  ActivityType,
+  Actor,
+  BriefRow,
+  ContactRow,
+  Db,
+  DealRow,
+  DealStatus,
+  StageKind,
+  TaskRow,
+} from "../db/db.ts";
 import { listAudit, listStages, searchContacts as searchContactRows } from "../db/queries.ts";
 import { isQuiet } from "../rules/engine.ts";
 import { addDays, dayBoundsUtc, formatLocal, localDate } from "../time.ts";
@@ -418,9 +430,9 @@ export interface ChangeItem {
   undoOf: string | null;
 }
 
-/** Changes at or after `since`, newest first. */
-export async function recentChanges(db: Db, since: Date): Promise<ChangeItem[]> {
-  return (await listAudit(db, since.toISOString())).map((row) => ({
+/** Changes at or after `since`, newest first; at most `limit` (100 unless given). */
+export async function recentChanges(db: Db, since: Date, options: { limit?: number } = {}): Promise<ChangeItem[]> {
+  return (await listAudit(db, since.toISOString(), options)).map((row) => ({
     changeId: row.id,
     at: row.at,
     actor: row.actor,
@@ -433,4 +445,80 @@ export async function recentChanges(db: Db, since: Date): Promise<ChangeItem[]> 
     undoneBy: row.undone_by,
     undoOf: row.undo_of,
   }));
+}
+
+export const CHANGE_LOG_DAYS = 30;
+const CHANGE_LOG_LIMIT = 200;
+
+export interface ChangeLog {
+  /** UTC ISO start of the window. */
+  since: string;
+  changes: ChangeItem[];
+  /** More changes happened in the window than the newest CHANGE_LOG_LIMIT shown. */
+  truncated: boolean;
+}
+
+/** The board's change log: the last 30 days, newest first. */
+export async function changeLog(db: Db, now: Date): Promise<ChangeLog> {
+  const since = new Date(now.getTime() - CHANGE_LOG_DAYS * 86_400_000);
+  const changes = await recentChanges(db, since, { limit: CHANGE_LOG_LIMIT + 1 });
+  return {
+    since: since.toISOString(),
+    changes: changes.slice(0, CHANGE_LOG_LIMIT),
+    truncated: changes.length > CHANGE_LOG_LIMIT,
+  };
+}
+
+export interface BriefView {
+  id: string;
+  /** The owner's local date the brief is for, YYYY-MM-DD. */
+  localDate: string;
+  composedAt: string;
+  /** The first line, also the email subject. The rest of the stored text is left out: it holds outside text
+   * without labels, and `items` carries the same lines with them. */
+  subject: string;
+  /** One per line, in order; `untrusted: true` when the line includes outside text. */
+  items: BriefItem[];
+  sentAt: string | null;
+  /** "sent", "pending", "off: <reason>" or "failed: <HTTP status>" (decision 0011). */
+  sendStatus: string | null;
+}
+
+const BRIEF_SECTIONS = new Set<string>(["overdue", "due_today", "gone_quiet", "new_lead"]);
+
+function isBriefItem(value: unknown): value is BriefItem {
+  if (typeof value !== "object" || value === null) return false;
+  const item = value as Record<string, unknown>;
+  return (
+    typeof item.section === "string" &&
+    BRIEF_SECTIONS.has(item.section) &&
+    typeof item.id === "string" &&
+    typeof item.line === "string" &&
+    typeof item.untrusted === "boolean"
+  );
+}
+
+/** Stored items that can't be read are left out (and an unreadable list is empty), never guessed. */
+function parseBriefItems(json: string): BriefItem[] {
+  try {
+    const value: unknown = JSON.parse(json);
+    return Array.isArray(value) ? value.filter(isBriefItem) : [];
+  } catch {
+    return [];
+  }
+}
+
+/** The newest brief, or null before the first one is composed. */
+export async function latestBrief(db: Db): Promise<BriefView | null> {
+  const row = await db.prepare("SELECT * FROM briefs ORDER BY local_date DESC LIMIT 1").first<BriefRow>();
+  if (!row) return null;
+  return {
+    id: row.id,
+    localDate: row.local_date,
+    composedAt: row.composed_at,
+    subject: row.text.split("\n", 1)[0] ?? "",
+    items: parseBriefItems(row.items),
+    sentAt: row.sent_at,
+    sendStatus: row.send_status,
+  };
 }

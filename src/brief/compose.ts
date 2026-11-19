@@ -63,7 +63,7 @@ const flat = (text: string) => text.replace(/\s+/g, " ").trim();
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 /** "Thursday Nov 19" for a YYYY-MM-DD date. Reads the date as a calendar date, so no clock change can move it. */
-function headerDate(date: string): string {
+export function headerDate(date: string): string {
   const [year = 0, month = 1, day = 1] = date.split("-").map(Number);
   const parts: Record<string, string> = {};
   const format = new Intl.DateTimeFormat("en-US", { timeZone: "UTC", weekday: "long", month: "short", day: "numeric" });
@@ -71,7 +71,7 @@ function headerDate(date: string): string {
   return `${parts.weekday} ${parts.month} ${parts.day}`;
 }
 
-const SECTION_TITLES: Record<BriefSection, string> = {
+export const SECTION_TITLES: Record<BriefSection, string> = {
   overdue: "Overdue",
   due_today: "Due today",
   gone_quiet: "Gone quiet",

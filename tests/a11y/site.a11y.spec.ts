@@ -72,6 +72,16 @@ for (const path of pages) {
     await page.goto(path, { waitUntil: "networkidle" });
     await expectNoViolations(page, `${path} (scrolled to the bottom)`, { scrolled: true });
   });
+
+  // WCAG 1.4.10 Reflow: at phone width the page scrolls only up and down.
+  test(`${path} has no horizontal scroll`, async ({ page }) => {
+    await page.goto(path, { waitUntil: "networkidle" });
+    const { scrollWidth, clientWidth } = await page.evaluate(() => ({
+      scrollWidth: document.documentElement.scrollWidth,
+      clientWidth: document.documentElement.clientWidth,
+    }));
+    expect(scrollWidth, `${path} is wider than the viewport`).toBeLessThanOrEqual(clientWidth);
+  });
 }
 
 test("known issues are still needed", async ({ page }, testInfo) => {

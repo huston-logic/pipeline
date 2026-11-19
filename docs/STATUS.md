@@ -15,8 +15,8 @@ Updated after every merge, so a fresh chat can pick up where the last one stoppe
 | 5 | M5 building blocks | [#6](https://github.com/huston-logic/pipeline/pull/6) | merged (a11y needed one re-run: CI runner apt mirror glitch) |
 | 6 | M6 rules engine | [#7](https://github.com/huston-logic/pipeline/pull/7) | merged |
 | 7 | M7 daily brief | [#8](https://github.com/huston-logic/pipeline/pull/8) | merged |
-| 8 | M8 `/intake` | [#9](https://github.com/huston-logic/pipeline/pull/9) | open, auto-merge queued |
-| 9 | M9 board | | not started |
+| 8 | M8 `/intake` | [#9](https://github.com/huston-logic/pipeline/pull/9) | merged |
+| 9 | M9 board | [#10](https://github.com/huston-logic/pipeline/pull/10) | open, auto-merge queued |
 | 10 | M10 production auth | | not started |
 | 11 | M11 many copies | | not started |
 | 12 | M12 acceptance | | not started |
@@ -47,6 +47,9 @@ Files in `docs/decisions/`. Rulings made while running the plan:
 - `/intake` is server-to-server only (no CORS; the secret must never be in browser code). A form never overwrites an
   existing contact's details; it adds a new deal and a form activity. Repeats within 10 minutes are ignored
   (decision 0012).
+- The board is server-rendered with no client JavaScript; outside text shows a "From outside" label. CSV export
+  guards spreadsheet formulas by prefixing `'` (decision 0013, which also lists three design defaults for you to
+  look at).
 
 ## Dependencies added
 
