@@ -65,6 +65,7 @@ const COLUMN_LABELS: Record<string, string> = {
   due_at: "due date",
   done_at: "done date",
   snoozed_until: "snooze",
+  accent_color: "accent colour",
 };
 
 export const columnLabel = (column: string) => COLUMN_LABELS[column] ?? column.replaceAll("_", " ");

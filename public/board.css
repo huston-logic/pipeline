@@ -1,6 +1,6 @@
 /* Board styles. The palette is copied from the website template's design tokens (decision 0001). System fonts only. */
 :root {
-  --silver: #f5f5f4;
+  --silver: #f3f5f4;
   --silver-2: #e7e5e4;
   --white: #ffffff;
   --ink: #1c1917;

@@ -42,6 +42,10 @@ export type SettingsRow = {
   last_brief_at: string | null;
   version: number;
   updated_at: string;
+  /** Shown in the board's app bar and page titles; null shows "Pipeline" (migration 0004). */
+  business_name: string | null;
+  /** The board's accent, "#rrggbb" in lower case; null uses the default green (migration 0004). */
+  accent_color: string | null;
 };
 
 export type StageRow = {

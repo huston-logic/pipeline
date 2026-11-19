@@ -236,7 +236,7 @@ test("0003 from the previous version: existing data is untouched and briefs star
   await addDeal(db, "dl_a", "ct_a");
   await db.prepare("INSERT INTO tasks (id, deal_id, title, untrusted_fields) VALUES ('tk_a', 'dl_a', 'Call back', '[\"title\"]')").run();
 
-  assert.deepEqual(await applyMigrations(db), ["0003_briefs.sql"]);
+  assert.deepEqual(await applyMigrations(db, 3), ["0003_briefs.sql"]);
   assert.equal(await count(db, "briefs"), 0);
   const deal = await db.prepare("SELECT title, untrusted_fields FROM deals WHERE id = 'dl_a'").first();
   assert.deepEqual({ ...deal }, { title: "Example website", untrusted_fields: "[]" });
@@ -244,6 +244,28 @@ test("0003 from the previous version: existing data is untouched and briefs star
   assert.deepEqual({ ...task }, { title: "Call back", untrusted_fields: '["title"]' });
   assert.equal(await db.prepare("SELECT brief_hour FROM settings").first("brief_hour"), 7);
   assert.deepEqual((await db.prepare("PRAGMA foreign_key_check").all()).results, []);
+});
+
+test("0004 from the previous version: settings keep their values and get no business name or accent colour", async () => {
+  const db = new SqliteD1();
+  await applyMigrations(db, 3);
+  applySqlFile(db, "seed/defaults.sql");
+  db.exec("UPDATE settings SET timezone = 'Europe/London', brief_hour = 9, version = 4");
+
+  assert.deepEqual(await applyMigrations(db), ["0004_settings_look.sql"]);
+  const row = await db.prepare("SELECT timezone, brief_hour, version, business_name, accent_color FROM settings").first();
+  assert.deepEqual({ ...row }, { timezone: "Europe/London", brief_hour: 9, version: 4, business_name: null, accent_color: null });
+});
+
+test("settings: the business name is 1 to 60 characters and the accent colour is #rrggbb in lower case", async () => {
+  const db = await createTestDb();
+  const set = (column: string, value: string) => db.prepare(`UPDATE settings SET ${column} = ?`).bind(value).run();
+  await set("business_name", "Fernwood Engineering");
+  await set("accent_color", "#1e4a3d");
+  await assert.rejects(set("business_name", ""), /CHECK/);
+  await assert.rejects(set("business_name", "x".repeat(61)), /CHECK/);
+  for (const bad of ["#1E4A3D", "#1e4a3", "1e4a3d0", "#1e4a3g", "red"]) await assert.rejects(set("accent_color", bad), /CHECK/, bad);
+  await db.prepare("UPDATE settings SET business_name = NULL, accent_color = NULL").run();
 });
 
 test("briefs: one per local date, items must be a JSON array", async () => {

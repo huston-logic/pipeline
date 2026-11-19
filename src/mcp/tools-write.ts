@@ -438,13 +438,23 @@ export function registerWriteTools(server: McpServer, deps: ToolDeps): void {
       destructive: true,
       idempotent: true,
       description:
-        "Changes the owner's timezone, the daily brief's hour, address or on/off switch. Give only what changes. The " +
-        "brief address must be one of the owner emails (see get_settings); owner emails can't be changed here.",
+        "Changes the owner's timezone, the daily brief's hour, address or on/off switch, and the board's business name " +
+        "and accent colour. Give only what changes. The brief address must be one of the owner emails (see " +
+        "get_settings); owner emails can't be changed here. Set these only when the owner asks.",
       input: z.strictObject({
         timezone: shortText("An IANA timezone name, for example America/Los_Angeles or Europe/London.").optional(),
         briefHour: z.number().int().min(0).max(23).optional().describe("The hour the daily brief goes out, 0 to 23 in the owner's timezone."),
         briefEmail: orNull(shortText("The address the brief is sent to (one of the owner emails), or null to clear it.")).optional(),
         briefEnabled: z.boolean().optional().describe("true to send the daily brief, false to stop."),
+        businessName: orNull(
+          shortText("The business name the board shows in its header and page titles (up to 60 characters), or null for \"Pipeline\"."),
+        ).optional(),
+        accentColor: orNull(
+          shortText(
+            "The board's accent colour as #rrggbb, for example #2b6455, or null for the default green. It must be dark " +
+              "enough for white text (contrast 4.5 to 1).",
+          ),
+        ).optional(),
       }),
       async run(args, deps) {
         const result = await updateSettings(aiCtx(deps, "update_settings"), args, {
