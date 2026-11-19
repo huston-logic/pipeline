@@ -3,6 +3,7 @@
 import type { ContactRow, Db, DealRow, FieldEntity, StageKind, StageRow } from "../db/db.ts";
 import { getContact, getDeal, getSettings, listStages } from "../db/queries.ts";
 import { UserError } from "./errors.ts";
+import { contactName, contactRef, dealTitle, isTrusted } from "./labels.ts";
 
 export type FieldValue = string | number | boolean | null;
 export type FieldValues = Record<string, FieldValue>;
@@ -33,7 +34,7 @@ export async function findContact(db: Db, ref: string): Promise<ContactRow> {
   const [only, ...others] = matches;
   if (!only) throw new UserError(`No contact matches "${text}". Use search_contacts to find the contact's id.`);
   if (others.length === 0) return only;
-  const list = matches.map((c) => `${c.name} (${c.id}${c.email ? `, ${c.email}` : ""})`).join("; ");
+  const list = matches.map(contactRef).join("; ");
   throw new UserError(`"${text}" matches more than one contact: ${list}. Use the contact id instead.`);
 }
 
@@ -59,14 +60,28 @@ export async function findDeal(db: Db, ref: string): Promise<DealRow> {
     throw new UserError(`No deal matches "${text}". Use list_deals or search_contacts to find the deal's id.`);
   }
   if (others.length === 0) return only;
-  const details = await rows<{ id: string; title: string; contact: string; stage: string }>(
+  const details = await rows<{
+    id: string;
+    title: string;
+    untrusted_fields: string;
+    contact_id: string;
+    contact: string;
+    contact_untrusted: string;
+    stage: string;
+  }>(
     db,
-    `SELECT d.id, d.title, c.name AS contact, s.label AS stage FROM deals d
+    `SELECT d.id, d.title, d.untrusted_fields, c.id AS contact_id, c.name AS contact,
+       c.untrusted_fields AS contact_untrusted, s.label AS stage FROM deals d
      JOIN contacts c ON c.id = d.contact_id JOIN stages s ON s.key = d.stage_key
      WHERE d.id IN (${matches.map(() => "?").join(", ")}) ORDER BY d.created_at, d.id`,
     ...matches.map((d) => d.id),
   );
-  const list = details.map((d) => `"${d.title}" (${d.id}, ${d.contact}, ${d.stage})`).join("; ");
+  const list = details
+    .map((d) => {
+      const who = contactName({ id: d.contact_id, name: d.contact, untrusted_fields: d.contact_untrusted });
+      return isTrusted(d, "title") ? `${dealTitle(d)} (${d.id}, ${who}, ${d.stage})` : `${dealTitle(d)} (${who}, ${d.stage})`;
+    })
+    .join("; ");
   throw new UserError(`"${text}" matches ${matches.length} deals: ${list}. Use the deal id instead.`);
 }
 
@@ -142,7 +157,8 @@ export async function findSubject(
   if (!owner) throw new Error(`Deal ${deal.id} points at a missing contact.`);
   if (named && named.id !== owner.id) {
     throw new UserError(
-      `"${deal.title}" belongs to ${owner.name}, not ${named.name}. Give just the deal, or the deal's own contact.`,
+      `${dealTitle(deal)} belongs to ${contactName(owner)}, not ${contactName(named)}. ` +
+        "Give just the deal, or the deal's own contact.",
     );
   }
   return { deal, contact: owner };

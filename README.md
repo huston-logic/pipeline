@@ -15,12 +15,13 @@ This repo is public. It holds no client names, emails, ids or lead data; tests a
 ## What is here so far
 
 One Cloudflare Worker (`src/index.ts`) with a read-only board rendered as plain HTML (no client JavaScript;
-decision 0001). Later tasks add the D1 database, the MCP endpoint at `/mcp`, `/intake`, `/api/*`, the hourly rules
-run and the daily brief.
+decision 0001), a D1 database with an audited service layer, and the MCP endpoint at `/mcp` (decision 0004). Later
+tasks add more tools, `/intake`, `/api/*`, the hourly rules run, the daily brief and production sign-in.
 
 | Route | What |
 |---|---|
 | `/` | The board (for now a page saying it fills in once the database is set up) |
+| `/mcp` | The MCP endpoint (Streamable HTTP, POST). Locally `npm run dev` signs you in as a fake owner; elsewhere it answers 401 until production sign-in exists (task 10) |
 | `/board.css`, `/robots.txt`, `/sitemap.xml` | Static files from `out/`, served through the `ASSETS` binding |
 | anything else | A 404 page |
 
@@ -33,6 +34,9 @@ is 11, put `npx --yes npm@10.9.9` in front of `install` and `ci`, because a lock
 npx --yes npm@10.9.9 ci
 npm run dev        # http://localhost:4821
 ```
+
+To try the MCP tools locally, point an MCP client (for example the MCP Inspector) at `http://localhost:4821/mcp`
+while `npm run dev` runs.
 
 `npm run dev` builds `out/`, applies any local D1 migrations, then runs `wrangler dev --local` in development mode
 (`ENVIRONMENT=development`, `AUTH_MODE=dev`). Its local database lives in `.wrangler/state`. Nothing touches a
@@ -47,7 +51,7 @@ Cloudflare account: there is no login, no remote resource and no deploy.
 | `npm run check:config` | Fails if client data could be tracked (decision 0002) |
 | `npm run lint` | ESLint with `typescript-eslint` |
 | `npm run typecheck` | `tsc` for the Worker, then for `tests/a11y` (which needs DOM types) |
-| `npm run test:worker` | Unit tests: `src/**/*.test.ts` and `scripts/*.test.mjs`, Node's built-in runner, no network |
+| `npm run test:worker` | Unit tests (`src/**/*.test.ts`, `scripts/*.test.mjs`) and the end-to-end tests (`tests/e2e/*.test.ts`: the Worker under `wrangler dev --local` on a temp database), Node's built-in runner, no network beyond localhost |
 | `npm run check` | `check:config`, lint, typecheck, `test:worker`, build, in that order |
 | `npm run test:a11y` | Playwright + axe against `npm run preview` (run `npm run build` first) |
 | `npm run test:lighthouse` | Lighthouse CI against `npm run preview` (run `npm run build` first) |

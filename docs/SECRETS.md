@@ -9,7 +9,8 @@ and this repo never see them, and nothing here should be pasted into chat, a pul
 | Name | Values | Where it is set |
 |---|---|---|
 | `ENVIRONMENT` | `production` (default) or `development` | `vars` in `wrangler.jsonc`; `npm run dev` and `npm run preview` pass `--var ENVIRONMENT:development` |
-| `AUTH_MODE` | `dev`, or unset | Only `npm run dev` and `npm run preview` set it (`--var AUTH_MODE:dev`). Dev auth works only in local development; production refuses it (task 4). |
+| `AUTH_MODE` | `dev`, or unset | Only `npm run dev`, `npm run preview` and the e2e tests set it (`--var AUTH_MODE:dev`). It works only with `ENVIRONMENT=development` on localhost; anywhere else every route answers 500. Unset, `/mcp` answers 401 until task 10 (decision 0004). |
+| `MCP_ALLOWED_HOSTNAMES` | Comma-separated hostnames, or unset | A copy on a custom domain sets it (for example `pipeline.example.com`) so `/mcp` refuses other Host headers. Unset, localhost and `*.workers.dev` are checked automatically (decision 0004). |
 
 ## Secrets
 

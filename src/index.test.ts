@@ -100,3 +100,43 @@ test("scheduled() runs without throwing", async () => {
   const controller = { cron: "0 * * * *", scheduledTime: Date.now(), noRetry() {} } as unknown as ScheduledController;
   await worker.scheduled(controller, fakeEnv(), ctx);
 });
+
+const mcpBody = JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list", params: {} });
+
+function mcpPost(env: Env, host = "localhost:4821") {
+  return worker.fetch(
+    new Request(`http://${host}/mcp`, {
+      method: "POST",
+      headers: { host, "content-type": "application/json", accept: "application/json, text/event-stream" },
+      body: mcpBody,
+    }),
+    env,
+    ctx,
+  );
+}
+
+// /mcp itself (the MCP SDK behind the dynamic import) is tested in tests/e2e/mcp.test.ts; these tests stop before it.
+test("/mcp without a sign-in mode answers 401 with a plain message", async () => {
+  for (const ENVIRONMENT of ["production", "development"]) {
+    const res = await mcpPost({ ...fakeEnv(), ENVIRONMENT });
+    assert.equal(res.status, 401, ENVIRONMENT);
+    assert.match(res.headers.get("Content-Type") ?? "", /^text\/plain/);
+    assert.match(await res.text(), /Sign-in for \/mcp isn't set up/);
+    assertSecurityHeaders(res);
+  }
+});
+
+test("AUTH_MODE=dev in production fails closed with 500 on every route", async () => {
+  const env: Env = { ...fakeEnv(), ENVIRONMENT: "production", AUTH_MODE: "dev" };
+  const responses = [await get("/", env), await get("/board.css", env), await get("/nope", env), await mcpPost(env)];
+  for (const res of responses) {
+    assert.equal(res.status, 500);
+    assert.match(await res.text(), /misconfigured/);
+    assertSecurityHeaders(res);
+  }
+});
+
+test("/mcp in dev mode on a host that is not loopback fails closed", async () => {
+  const res = await mcpPost({ ...fakeEnv(), AUTH_MODE: "dev" }, "pipeline.example.com");
+  assert.equal(res.status, 500);
+});

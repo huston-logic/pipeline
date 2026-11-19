@@ -5,6 +5,8 @@
   "name": "pipeline-dev",
   "main": "src/index.ts",
   "compatibility_date": "2026-11-11",
+  // The MCP handler (`agents/mcp/server`) imports node:async_hooks and the MCP SDK imports node:process (decision 0004).
+  "compatibility_flags": ["nodejs_compat"],
   "assets": {
     "directory": "./out",
     "binding": "ASSETS",

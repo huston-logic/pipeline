@@ -199,3 +199,31 @@ test("rule firings: one per fire key, and the task link clears if the task goes"
   await db.prepare("DELETE FROM tasks WHERE id = 'tk_a'").run();
   assert.equal(await db.prepare("SELECT task_id FROM rule_firings WHERE id = 'rf_a'").first("task_id"), null);
 });
+
+test("0002 from the previous version: deals and tasks keep their data and get untrusted_fields '[]'", async () => {
+  const db = new SqliteD1();
+  assert.deepEqual(await applyMigrations(db, 1), ["0001_init.sql"]);
+  applySqlFile(db, "seed/defaults.sql");
+  await addContact(db, "ct_a", "pat@example.com");
+  await addDeal(db, "dl_a", "ct_a");
+  await db.prepare("INSERT INTO tasks (id, deal_id, title) VALUES ('tk_a', 'dl_a', 'Call back')").run();
+
+  assert.deepEqual(await applyMigrations(db), ["0002_untrusted_provenance.sql"]);
+  const deal = await db.prepare("SELECT title, contact_id, untrusted_fields FROM deals WHERE id = 'dl_a'").first();
+  assert.deepEqual({ ...deal }, { title: "Example website", contact_id: "ct_a", untrusted_fields: "[]" });
+  const task = await db.prepare("SELECT title, deal_id, untrusted_fields FROM tasks WHERE id = 'tk_a'").first();
+  assert.deepEqual({ ...task }, { title: "Call back", deal_id: "dl_a", untrusted_fields: "[]" });
+  assert.equal(await db.prepare("SELECT email FROM contacts WHERE id = 'ct_a'").first("email"), "pat@example.com");
+  const fkProblems = await db.prepare("PRAGMA foreign_key_check").all();
+  assert.deepEqual(fkProblems.results, []);
+});
+
+test("untrusted_fields on deals and tasks must be a JSON array", async () => {
+  const db = await createTestDb();
+  await addContact(db, "ct_a");
+  await addDeal(db, "dl_a", "ct_a");
+  await db.prepare("INSERT INTO tasks (id, deal_id, title) VALUES ('tk_a', 'dl_a', 'Call back')").run();
+  await db.prepare(`UPDATE deals SET untrusted_fields = '["title"]'`).run();
+  await assert.rejects(db.prepare("UPDATE deals SET untrusted_fields = 'title'").run(), /CHECK/);
+  await assert.rejects(db.prepare("UPDATE tasks SET untrusted_fields = '{}'").run(), /CHECK/);
+});

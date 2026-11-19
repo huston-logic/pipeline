@@ -10,6 +10,11 @@ export type Env = {
   DB: Db;
   /** "production" from wrangler.jsonc; `npm run dev` and `npm run preview` set "development". */
   ENVIRONMENT: string;
-  /** "dev" only in local development (scripts/dev.mjs). */
+  /** "dev" only in local development (scripts/dev.mjs). Anywhere else the Worker refuses every request. */
   AUTH_MODE?: string;
+  /**
+   * Comma-separated hostnames /mcp answers on, for a copy on a custom domain (for example "pipeline.example.com").
+   * Unset, localhost and *.workers.dev hosts are checked and other hosts rely on Cloudflare routing (decision 0004).
+   */
+  MCP_ALLOWED_HOSTNAMES?: string;
 };

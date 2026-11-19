@@ -10,6 +10,7 @@ import {
   parseDevArgs,
   prepareDevSeed,
   setupCommands,
+  setupLocalDatabase,
   wranglerDevArgs,
 } from "./dev.mjs";
 
@@ -106,5 +107,62 @@ test("the fake seed is written for a new state folder only, so restarts do not r
     assert.ok(prepareDevSeed(root, "other", now).file, "another state folder gets its own seed");
   } finally {
     rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("the e2e options bind to 127.0.0.1 and turn on the test cron route", () => {
+  const args = wranglerDevArgs({ port: 4900, stateDir: "/tmp/e2e-state", ip: "127.0.0.1", testScheduled: true });
+  assert.deepEqual(args.slice(args.indexOf("--ip"), args.indexOf("--ip") + 2), ["--ip", "127.0.0.1"]);
+  assert.ok(args.includes("--test-scheduled"));
+  assert.ok(args.includes("--local"));
+  const plain = wranglerDevArgs({ port: 4821, stateDir: ".wrangler/state" });
+  assert.ok(!plain.includes("--ip") && !plain.includes("--test-scheduled"));
+});
+
+test("an absolute state folder (the e2e temp folder) is used as is", () => {
+  const root = mkdtempSync(join(tmpdir(), "dev-root-"));
+  const state = mkdtempSync(join(tmpdir(), "dev-state-"));
+  try {
+    const seed = prepareDevSeed(root, state, Date.parse("2026-11-19T18:00:00.000Z"));
+    assert.equal(seed.file, join(state, "dev-seed.sql"));
+    assert.match(readFileSync(seed.file, "utf8"), /INSERT OR IGNORE INTO contacts/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+    rmSync(state, { recursive: true, force: true });
+  }
+});
+
+test("setupLocalDatabase runs each setup command in order and stops at the first failure", () => {
+  const state = mkdtempSync(join(tmpdir(), "dev-state-"));
+  try {
+    const ran = [];
+    const run = (args) => {
+      ran.push(args);
+      return { status: 0 };
+    };
+    setupLocalDatabase({ root: state, stateDir: state, now: Date.parse("2026-11-19T18:00:00.000Z"), run });
+    assert.equal(ran.length, 3);
+    assert.deepEqual(ran[0], migrationArgs(state));
+    assert.equal(prepareDevSeed(state, state, 0).file, null, "the seed is marked loaded");
+
+    const other = join(state, "other");
+    const failing = [];
+    assert.throws(
+      () =>
+        setupLocalDatabase({
+          root: state,
+          stateDir: other,
+          now: 0,
+          run: (args) => {
+            failing.push(args);
+            return { status: 1 };
+          },
+        }),
+      /Setting up the local database failed/,
+    );
+    assert.equal(failing.length, 1);
+    assert.ok(prepareDevSeed(state, other, 0).file, "a failed setup leaves the seed unmarked");
+  } finally {
+    rmSync(state, { recursive: true, force: true });
   }
 });

@@ -6,6 +6,7 @@ import { type ChangeResult, commitChange, type Ctx, type RowChange, updatedRow }
 import { short, withArticle } from "./describe.ts";
 import { UserError } from "./errors.ts";
 import { clean } from "./input.ts";
+import { contactName, dealLabel } from "./labels.ts";
 import { findSubject, ownerTimezone } from "./lookup.ts";
 
 /** The activity types that count as contact: they move the deal's last_activity_at. */
@@ -66,7 +67,7 @@ export async function logActivity(ctx: Ctx, input: ActivityInput): Promise<Chang
     });
   }
 
-  const where = deal ? `on "${deal.title}" (${contact.name})` : `with ${contact.name}`;
+  const where = deal ? `on ${dealLabel(deal, contact)}` : `with ${contactName(contact)}`;
   const summary = `Logged ${withArticle(input.type)} ${where}: ${short(text)}`;
   const result = await commitChange(ctx, { target: { table: "activities", id: activity.id }, summary, changes });
   return { ...result, activityId: activity.id };

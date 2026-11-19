@@ -5,6 +5,7 @@ import { formatLocal } from "../time.ts";
 import { type ChangeResult, commitChange, type Ctx } from "./change.ts";
 import { UserError } from "./errors.ts";
 import { clean, whenOrNull } from "./input.ts";
+import { contactName, dealLabel } from "./labels.ts";
 import { findSubject, ownerTimezone } from "./lookup.ts";
 
 export interface TaskInput {
@@ -34,11 +35,12 @@ export async function addTask(ctx: Ctx, input: TaskInput): Promise<ChangeResult 
     done_at: null,
     snoozed_until: null,
     source: "owner",
+    untrusted_fields: "[]",
     version: 1,
     created_at: now,
     updated_at: now,
   };
-  const forWhom = deal ? `"${deal.title}" (${contact.name})` : contact.name;
+  const forWhom = deal ? dealLabel(deal, contact) : contactName(contact);
   const due = dueAt === null ? "" : `, due ${formatLocal(dueAt, tz)}`;
   const result = await commitChange(ctx, {
     target: { table: "tasks", id: task.id },

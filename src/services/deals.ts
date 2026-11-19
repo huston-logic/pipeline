@@ -7,6 +7,7 @@ import { type ChangeResult, changedColumns, commitChange, type Ctx, type RowChan
 import { columnLabel, fieldsLabel, joinAnd, nextPart, withArticle } from "./describe.ts";
 import { UserError } from "./errors.ts";
 import { checkValue, clean, whenOrNull, withoutNulls } from "./input.ts";
+import { dealLabel, dealTitle, withoutUntrusted } from "./labels.ts";
 import {
   checkFieldKeys,
   type FieldValues,
@@ -50,7 +51,7 @@ async function targetStage(ctx: Ctx, deal: DealRow, patch: DealPatch): Promise<S
     const first = await firstStageOfKind(db, "open");
     const example = first ? ` (for example ${first.key})` : "";
     throw new UserError(
-      `Say which open stage to move "${deal.title}" back to${example}; the status follows the stage.`,
+      `Say which open stage to move ${dealTitle(deal)} back to${example}; the status follows the stage.`,
     );
   }
   const stage = await firstStageOfKind(db, patch.status);
@@ -82,6 +83,8 @@ export async function updateDeal(ctx: Ctx, dealRef: string, patch: DealPatch): P
     const title = clean(patch.title);
     if (title === null) throw new UserError("A deal's title can't be blank. Give the new title.");
     set.title = title;
+    // The owner or the AI set it, so it is no longer outside text.
+    set.untrusted_fields = withoutUntrusted(before, ["title"]);
   }
   if (patch.value !== undefined) set.value = patch.value === null ? null : checkValue(patch.value);
   if (patch.nextStep !== undefined) set.next_step = clean(patch.nextStep);
@@ -94,7 +97,7 @@ export async function updateDeal(ctx: Ctx, dealRef: string, patch: DealPatch): P
   const after = updatedRow(before, set, ctx.now);
   const changed = changedColumns(before, after).filter((c) => c !== "version" && c !== "updated_at");
   if (changed.length === 0) {
-    throw new UserError(`Nothing to change on "${before.title}": every value you gave is already set.`);
+    throw new UserError(`Nothing to change on ${dealTitle(before)}: every value you gave is already set.`);
   }
 
   const changes: RowChange[] = [{ table: "deals", id: before.id, before, after }];
@@ -116,7 +119,7 @@ export async function updateDeal(ctx: Ctx, dealRef: string, patch: DealPatch): P
     changes.push({ table: "activities", id: activity.id, before: null, after: activity });
   }
 
-  const who = `"${after.title}" (${contact.name})`;
+  const who = dealLabel(after, contact);
   const parts: string[] = [];
   if (changed.includes("next_step") || changed.includes("next_at")) {
     parts.push(nextPart(after.next_step, after.next_at, tz).replace(/^; /, "") || "next step cleared");
@@ -127,7 +130,7 @@ export async function updateDeal(ctx: Ctx, dealRef: string, patch: DealPatch): P
   if (others.length > 0) parts.push(`changed ${joinAnd(others)}`);
   const summary = moved
     ? [`Moved ${who} to ${stage.label}`, ...parts].join("; ")
-    : `Updated ${who}: ${parts.join("; ") || `set the status to ${STATUS_WORDS[after.status]}`}`;
+    : `Updated ${who}: ${parts.join("; ") || (changed.includes("untrusted_fields") ? "confirmed the title" : `set the status to ${STATUS_WORDS[after.status]}`)}`;
 
   const result = await commitChange(ctx, { target: { table: "deals", id: before.id }, summary, changes });
   return { ...result, dealId: before.id };

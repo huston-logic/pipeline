@@ -1,6 +1,8 @@
+import { devAuth } from "./auth/dev.ts";
 import { homePage } from "./board/pages/home.ts";
 import { notFoundPage } from "./board/pages/not-found.ts";
 import type { Env } from "./env.ts";
+import { MCP_ROUTE } from "./mcp/route.ts";
 import { withSecurityHeaders } from "./security.ts";
 
 const pages = new Map<string, () => string>([["/", homePage]]);
@@ -17,6 +19,15 @@ function htmlResponse(body: string, status: number): Response {
   );
 }
 
+function textResponse(body: string, status: number): Response {
+  return withSecurityHeaders(
+    new Response(`${body}\n`, {
+      status,
+      headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" },
+    }),
+  );
+}
+
 function methodNotAllowed(): Response {
   return withSecurityHeaders(
     new Response("The board is read-only. Send a GET request instead.\n", {
@@ -26,10 +37,21 @@ function methodNotAllowed(): Response {
   );
 }
 
-async function handleFetch(request: Request, env: Env): Promise<Response> {
-  if (request.method !== "GET" && request.method !== "HEAD") return methodNotAllowed();
+async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  // Checked first so a misconfigured sign-in mode refuses every route, not only /mcp.
+  const auth = devAuth(request, env);
+  if (!auth.ok && auth.status === 500) return textResponse(auth.message, 500);
 
   const { pathname } = new URL(request.url);
+  if (pathname === MCP_ROUTE) {
+    if (!auth.ok) return textResponse(auth.message, auth.status);
+    // Loaded only for a signed-in /mcp request, so the board (and the Node unit tests) never load the MCP SDK.
+    const { handleMcp } = await import("./mcp/handler.ts");
+    return withSecurityHeaders(await handleMcp(request, env, ctx, auth.email));
+  }
+
+  if (request.method !== "GET" && request.method !== "HEAD") return methodNotAllowed();
+
   const page = pages.get(pathname);
   if (page) return htmlResponse(page(), 200);
 
@@ -41,8 +63,8 @@ async function handleFetch(request: Request, env: Env): Promise<Response> {
 }
 
 export default {
-  fetch(request: Request, env: Env, _ctx: ExecutionContext): Promise<Response> {
-    return handleFetch(request, env);
+  fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    return handleFetch(request, env, ctx);
   },
 
   // The hourly rules run and the daily brief are added here in later tasks; no cron is configured yet.

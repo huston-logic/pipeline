@@ -1,0 +1,163 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import { buildDevSeed } from "../../scripts/seed-dev.ts";
+import { connectInMemory, fails, ok } from "../../tests/helpers/mcp-client.ts";
+import { createTestDb, openTestDb } from "../db/sqlite-d1.ts";
+import { DEFAULT_TZ } from "../time.ts";
+import { createMcpServer } from "./server.ts";
+
+const NOW = new Date("2026-11-19T18:00:00.000Z");
+const ROBIN_FORM = "This is a fake test message from Robin Sample";
+
+async function emptyClient() {
+  return connectInMemory(createMcpServer({ db: await openTestDb(), now: () => NOW }));
+}
+
+async function seededClient() {
+  const db = await createTestDb();
+  db.exec(buildDevSeed(NOW, DEFAULT_TZ));
+  return connectInMemory(createMcpServer({ db, now: () => NOW }));
+}
+
+type Deal = { id: string; stageKey: string; status: string };
+
+test("empty database: every read tool says there is nothing yet instead of failing", async () => {
+  const c = await emptyClient();
+  assert.match((await ok(c, "pipeline_summary")).headline, /^Your pipeline is empty/);
+  assert.match((await ok(c, "list_deals")).headline, /^Your pipeline is empty/);
+  assert.match((await ok(c, "list_deals", { status: "won" })).headline, /^No deals match those filters\.$/);
+  assert.match((await ok(c, "search_contacts", { query: "" })).headline, /^There are no contacts yet/);
+  assert.match((await ok(c, "search_contacts", { query: "pat" })).headline, /^No contacts match that search\.$/);
+  assert.equal((await ok(c, "whats_due")).headline, "Nothing is due today (2026-11-19) and nothing is overdue.");
+  assert.match((await ok(c, "recent_changes")).headline, /^No changes since Thu Nov 12, 10:00 AM\.$/);
+  assert.match((await ok(c, "get_rulebook")).headline, /^Rulebook: 3 documents \(voice, pipeline, guardrails\)\.$/);
+  assert.match(await fails(c, "get_deal", { deal: "Pat Example" }), /^No deal matches "Pat Example"\. Use list_deals/);
+});
+
+test("pipeline_summary counts open deals by stage and the closed ones", async () => {
+  const answer = await ok(await seededClient(), "pipeline_summary");
+  assert.equal(answer.headline, "6 open deals (total value 4650) across 5 open stages; 1 won, 1 lost, 0 not now.");
+  const data = answer.data as { stages: { key: string; count: number }[] };
+  assert.deepEqual(
+    data.stages.map((s) => [s.key, s.count]),
+    [["new_inquiry", 2], ["replied", 1], ["call_booked", 1], ["call_done", 1], ["proposal_sent", 1]],
+  );
+});
+
+test("list_deals filters by stage, status, due and quiet", async () => {
+  const c = await seededClient();
+  const deals = async (args: Record<string, unknown>) => ((await ok(c, "list_deals", args)).data as { deals: Deal[] }).deals;
+  assert.equal((await deals({})).length, 8);
+  assert.deepEqual((await deals({ stage: "Call booked" })).map((d) => d.id), ["dl_seed01"]);
+  assert.deepEqual((await deals({ status: "won" })).map((d) => d.id), ["dl_seed07"]);
+  assert.deepEqual((await deals({ due: "week" })).map((d) => d.id).sort(), ["dl_seed01", "dl_seed04"]);
+  assert.deepEqual((await deals({ quiet: 10 })).map((d) => d.id), ["dl_seed06"]);
+  assert.equal((await ok(c, "list_deals", { stage: "replied" })).headline, "1 deal found.");
+  assert.match(await fails(c, "list_deals", { stage: "Nope" }), /^There's no stage "Nope"\. Stages: New inquiry \(new_inquiry\)/);
+  assert.match(await fails(c, "list_deals", { quiet: "a week" }), /"quiet" must be a whole number|"quiet" must be a number/);
+  assert.match(await fails(c, "list_deals", { due: "tomorrow" }), /"due" must be one of: overdue, today, week/);
+});
+
+test("get_deal returns the brief with outside text labelled, and keeps it out of the headline", async () => {
+  const answer = await ok(await seededClient(), "get_deal", { deal: "dl_seed02" });
+  assert.equal(answer.headline, "Deal dl_seed02 is in New inquiry: 1 timeline entry, 0 open tasks, no next step yet.");
+  assert.doesNotMatch(answer.headline, /Robin|Sample|fake test message/);
+  const brief = answer.data as {
+    contact: { name: string; untrusted_fields: string[] };
+    timeline: { type: string; untrusted_text: string | null }[];
+  };
+  assert.deepEqual(brief.contact.untrusted_fields, ["name", "email", "business"]);
+  assert.equal(brief.timeline[0]?.type, "form");
+  assert.match(brief.timeline[0]?.untrusted_text ?? "", new RegExp(ROBIN_FORM));
+  const text = JSON.stringify(brief);
+  assert.equal(text.split(ROBIN_FORM).length, 2, "the outside text appears once, in untrusted_text");
+});
+
+test("get_deal finds a deal by its contact's name and refuses unknown or ambiguous names", async () => {
+  const c = await seededClient();
+  assert.match((await ok(c, "get_deal", { deal: "pat example" })).headline, /^Deal dl_seed01 is in Call booked: 4 timeline entries, 1 open task, a next step is set\.$/);
+  assert.match(await fails(c, "get_deal", { deal: "Nobody" }), /^No deal matches "Nobody"/);
+  assert.match(await fails(c, "get_deal", {}), /"deal" is missing; it needs text \(the deal: its id/);
+});
+
+test("search_contacts returns contacts with their deals and untrusted_fields", async () => {
+  const answer = await ok(await seededClient(), "search_contacts", { query: "sample" });
+  assert.equal(answer.headline, "2 contacts found.");
+  const { contacts } = answer.data as { contacts: { id: string; untrusted_fields: string[]; deals: unknown[] }[] };
+  assert.deepEqual(contacts.map((c) => c.id), ["ct_seed07", "ct_seed02"]);
+  assert.deepEqual(contacts[1]?.untrusted_fields, ["name", "email", "business"]);
+  assert.deepEqual(contacts[0]?.untrusted_fields, []);
+  assert.equal(contacts[1]?.deals.length, 1);
+});
+
+test("whats_due counts overdue and today's tasks and deals in the owner's timezone", async () => {
+  const answer = await ok(await seededClient(), "whats_due");
+  assert.equal(
+    answer.headline,
+    "Due by the end of today (2026-11-19): 1 overdue task, 1 task due today, 0 overdue deals, 0 deals with a next step today.",
+  );
+  const due = answer.data as { overdueTasks: { id: string }[]; todayTasks: { id: string }[] };
+  assert.deepEqual(due.overdueTasks.map((t) => t.id), ["tk_seed02"]);
+  assert.deepEqual(due.todayTasks.map((t) => t.id), ["tk_seed01"]);
+});
+
+test("recent_changes takes an optional since date and explains a bad one", async () => {
+  const c = await seededClient();
+  await ok(c, "add_lead", { name: "Lee Example" });
+  const week = await ok(c, "recent_changes");
+  assert.equal(week.headline, "1 change since Thu Nov 12, 10:00 AM, newest first.");
+  const later = await ok(c, "recent_changes", { since: "2026-11-20" });
+  assert.equal(later.headline, "No changes since Fri Nov 20, 12:00 AM.");
+  assert.equal((later.data as { since: string }).since, "2026-11-20T08:00:00.000Z");
+  assert.match(await fails(c, "recent_changes", { since: "last week" }), /^"last week" isn't a date I can read\. Use YYYY-MM-DD/);
+});
+
+test("get_rulebook returns every document or one by name", async () => {
+  const c = await emptyClient();
+  const all = (await ok(c, "get_rulebook")).data as { documents: { name: string; markdown: string }[] };
+  assert.deepEqual(all.documents.map((d) => d.name), ["voice", "pipeline", "guardrails"]);
+  assert.ok(all.documents.every((d) => d.markdown.length > 0));
+  assert.equal((await ok(c, "get_rulebook", { name: "voice" })).headline, "Rulebook: 1 document (voice).");
+  assert.match(await fails(c, "get_rulebook", { name: "tone" }), /^There's no rulebook document "tone"\. Documents: voice, pipeline, guardrails\./);
+});
+
+test("read tools refuse unknown arguments by name", async () => {
+  const message = await fails(await emptyClient(), "pipeline_summary", { verbose: true });
+  assert.match(message, /^Fix the pipeline_summary request: Unknown field "verbose"\. This tool takes no arguments\.$/);
+});
+
+test("every deal, task, timeline and contact-deal item lists its outside values in untrusted_fields", async () => {
+  const db = await createTestDb();
+  db.exec(buildDevSeed(NOW, DEFAULT_TZ));
+  db.exec(`INSERT INTO tasks (id, deal_id, title, due_at, untrusted_fields)
+    VALUES ('tk_outside', 'dl_seed02', 'Follow up with Robin Sample', '2026-11-19T19:00:00.000Z', '["title"]')`);
+  const c = await connectInMemory(createMcpServer({ db, now: () => NOW }));
+
+  const { stages } = (await ok(c, "pipeline_summary")).data as { stages: { deals: (Deal & { untrusted_fields: string[] })[] }[] };
+  const deals = new Map(stages.flatMap((s) => s.deals).map((d) => [d.id, d.untrusted_fields]));
+  assert.deepEqual(deals.get("dl_seed02"), ["title", "contactName"]);
+  assert.deepEqual(deals.get("dl_seed01"), []);
+  assert.equal(deals.size, 6);
+  assert.ok([...deals.values()].every(Array.isArray));
+
+  const due = (await ok(c, "whats_due")).data as { todayTasks: { id: string; untrusted_fields: string[] }[] };
+  const labels = new Map(due.todayTasks.map((t) => [t.id, t.untrusted_fields]));
+  assert.deepEqual(labels.get("tk_outside"), ["title", "dealTitle", "contactName"]);
+  assert.deepEqual(labels.get("tk_seed01"), []);
+
+  const brief = (await ok(c, "get_deal", { deal: "dl_seed02" })).data as {
+    deal: { untrusted_fields: string[] };
+    timeline: { actor: string; untrusted_fields: string[] }[];
+    openTasks: { untrusted_fields: string[] }[];
+  };
+  assert.deepEqual(brief.deal.untrusted_fields, ["title", "contactName"]);
+  assert.deepEqual(brief.timeline[0]?.untrusted_fields, ["summary"], "the form activity was written by the system");
+  assert.deepEqual(brief.openTasks[0]?.untrusted_fields, ["title", "dealTitle", "contactName"]);
+  const pat = (await ok(c, "get_deal", { deal: "dl_seed01" })).data as { timeline: { untrusted_fields: string[] }[] };
+  assert.ok(pat.timeline.every((item) => item.untrusted_fields.length === 0));
+
+  const { contacts } = (await ok(c, "search_contacts", { query: "Robin" })).data as {
+    contacts: { deals: { untrusted_fields: string[] }[] }[];
+  };
+  assert.deepEqual(contacts[0]?.deals[0]?.untrusted_fields, ["title"]);
+});

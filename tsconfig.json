@@ -2,6 +2,7 @@
   // The Worker and its unit tests: Workers runtime types (src/worker-configuration.d.ts, from `npm run types`) plus
   // Node's types for node:test. No DOM types: they clash with the Workers runtime types. scripts/*.ts (seed-dev) are
   // Node scripts checked with the same settings.
+  // tests/e2e (the MCP end-to-end test against `wrangler dev`) and tests/helpers are Node test code checked here too.
   // tests/a11y has its own tsconfig.json with DOM types for Playwright; `npm run typecheck` runs both.
   "compilerOptions": {
     "target": "ES2024",
@@ -16,7 +17,9 @@
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "noEmit": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    // tests/e2e imports scripts/dev.mjs and scripts/build.mjs; their types are inferred, not checked.
+    "allowJs": true
   },
-  "include": ["src/**/*.ts", "scripts/**/*.ts"]
+  "include": ["src/**/*.ts", "scripts/**/*.ts", "tests/e2e/**/*.ts", "tests/helpers/**/*.ts"]
 }

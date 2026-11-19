@@ -9,9 +9,9 @@ Updated after every merge, so a fresh chat can pick up where the last one stoppe
 | --- | --- | --- | --- |
 | 0 | Spec, plan, status | [#1](https://github.com/huston-logic/pipeline/pull/1) | merged |
 | 1 | M1 repo identity and engine skeleton | [#2](https://github.com/huston-logic/pipeline/pull/2) | merged |
-| 2 | M2 D1 schema, migrations, seed, data access | [#3](https://github.com/huston-logic/pipeline/pull/3) | open, auto-merge queued |
-| 3 | M3 service layer, audit, undo | | not started |
-| 4 | M4 MCP endpoint | | not started |
+| 2 | M2 D1 schema, migrations, seed, data access | [#3](https://github.com/huston-logic/pipeline/pull/3) | merged |
+| 3 | M3 service layer, audit, undo | [#4](https://github.com/huston-logic/pipeline/pull/4) | merged |
+| 4 | M4 MCP endpoint | [#5](https://github.com/huston-logic/pipeline/pull/5) | open, auto-merge queued |
 | 5 | M5 building blocks | | not started |
 | 6 | M6 rules engine | | not started |
 | 7 | M7 daily brief | | not started |
@@ -29,13 +29,21 @@ Files in `docs/decisions/`. Rulings made while running the plan:
 - Task 4 will use the MCP SDK v2 packages (`@modelcontextprotocol/server` 2.4.0) instead of `@modelcontextprotocol/sdk`
   1.x: the current Cloudflare docs say `createMcpHandler` (`agents/mcp/server`) serves an SDK v2 server built by a
   factory per request, and `agents` 0.33.0 requires server 2.4.0 exactly.
-- Decision numbers 0004–0007 are reserved for tasks 4, 5, 10 and 11 (see PLAN.md); task 2 used 0008.
+- Decision numbers 0004–0007 are reserved for tasks 4, 5, 10 and 11 (see PLAN.md); task 2 used 0008, task 3 0009.
+- Outside text never reaches a summary, headline or error message: records whose text came from outside are named by
+  id ("contact ct_…"). Deals and tasks gained `untrusted_fields` (migration 0002) so this works for every record, not
+  only contacts. Plan task 7's briefs migration becomes 0003.
+- Unit tests never load the `agents` package; the Worker loads the MCP handler lazily. `/mcp` is tested end to end
+  against `wrangler dev --local`.
+- Undo of a lead is refused once a rule has fired on its deal (rule firings are kept so the rule does not fire twice).
 
 ## Dependencies added
 
 - `typescript-eslint` 8.72.2 (dev, exact; replaces `eslint-config-next`). PR #2.
 - Removed: `next`, `react`, `react-dom`, `tailwindcss`, `@tailwindcss/turbopack`, `eslint-config-next`,
   `@types/react`, `@types/react-dom`. PR #2.
+- `agents` 0.33.0, `@modelcontextprotocol/server` 2.4.0, `zod` 4.6.7 (runtime, exact); `@modelcontextprotocol/client`
+  2.4.0 (dev, exact; also a peer of `agents`). PR #5. Worker bundle about 0.24 MB gzip (free plan limit 3 MB).
 
 ## STOP queue (needs the owner)
 
@@ -45,6 +53,8 @@ Files in `docs/decisions/`. Rulings made while running the plan:
 2. **Local Playwright browser is one revision behind.** This Mac has Chromium revision 1248; `@playwright/test`
    1.65.0 needs 1254, so `npm run test:a11y` fails locally at browser launch (CI installs its own and is fine). To fix,
    run `npx playwright install chromium` in your own terminal (installing a browser needs your approval).
+3. **One leftover temp folder** from a manual test (harmless, nothing secret; the hook stops me deleting outside the
+   repo): `rm -r /var/folders/xf/zt8g4lzn0211myfvc6kzmt0r0000gn/T/pipeline-e2e-p134is`
 
 ## How to resume
 
