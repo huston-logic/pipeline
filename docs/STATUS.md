@@ -3,24 +3,71 @@
 Spec: `docs/SPEC.md`. Plan: `docs/PLAN.md`. Rules: CLAUDE.md, "Autonomous runs". Run 1 started 2026-11-18.
 Updated after every merge, so a fresh chat can pick up where the last one stopped.
 
-## Run 2 (started 2026-11-18)
+## Run 2 (2026-11-18 to 2026-11-19)
 
 The board becomes the owner's daily screen (docs/PLAN.md, "Run 2"; decision 0014). Updated in the first and the
 closing PR of the run.
 
 | # | Task | PR | State |
 | --- | --- | --- | --- |
-| 0 | Spec change: editable board (decision 0014) | this PR | open |
-| R1 | Look and navigation | | |
-| R2 | Contacts and companies | | |
-| R3 | Pipeline as a kanban | | |
-| R4 | Editing | | |
-| R5 | Phone actions | | |
-| R6 | Home-screen app | | |
-| R7 | CPU check | | |
-| R8 | Deferred minor findings | | |
-| R9 | Decision wording | | |
-| R10 | Owner-only proposals | | |
+| 0 | Spec change: editable board (decision 0014) | [#15](https://github.com/huston-logic/pipeline/pull/15) | merged |
+| R1 | Look and navigation (0015) | [#17](https://github.com/huston-logic/pipeline/pull/17) | merged |
+| R2 | Contacts and companies, realistic seed (0016) | [#19](https://github.com/huston-logic/pipeline/pull/19) | merged |
+| R3 | Pipeline kanban and the board write path (0017) | [#20](https://github.com/huston-logic/pipeline/pull/20) | merged |
+| R4 | Editing (0018) | [#22](https://github.com/huston-logic/pipeline/pull/22) | open, reviewed, auto-merge queued; **blocked by the CI lighthouse timeout (STOP 1)** |
+| R5 | Phone actions and Ask Claude (0021) | [#24](https://github.com/huston-logic/pipeline/pull/24) | draft, stacked on #22; merge #22 first, then mark ready |
+| R6 | Home-screen app (0019) | [#21](https://github.com/huston-logic/pipeline/pull/21) | merged |
+| R7 | CPU check (0020, docs/PAID-PLAN.md) | [#23](https://github.com/huston-logic/pipeline/pull/23) | merged |
+| R8 | Deferred minor findings | [#18](https://github.com/huston-logic/pipeline/pull/18) | merged |
+| R9 | Decision wording (0004, 0010) | [#16](https://github.com/huston-logic/pipeline/pull/16) | merged |
+| R10 | Owner-only proposals | none (files in `.owner-review/proposals/`, git-ignored) | written, waiting for the owner |
+
+### Run 2 rulings (cost if wrong)
+
+- Huston Logic v3 is the board's design system (docs/STYLE-GUIDE.md), with system fonts instead of v3's web fonts
+  because AGENTS.md allows no web fonts (0015). Cost: headings look less like the website.
+- Business name and accent colour are settings (migration 0004); an accent is refused unless it keeps 4.5:1 on white,
+  silver and the page glow; served as `/theme.css` from the Worker (0015).
+- CSRF cookie is `SameSite=Lax`, not Strict as 0014 first said: Strict broke open tabs after every Access sign-in.
+  The origin check and token still stop cross-site posts (0014, 0017).
+- An undo that would remove records (an intake lead, an import, a new lead) asks first; value-restoring undos stay one
+  click (0017). MCP `undo_change` is unchanged.
+- Edits send only the fields the owner changed, so re-saving a form never turns outside text into the owner's (0018).
+  Record forms read up to 128 KB; other posts 16 KB (0014, 0018).
+- `add_lead` takes an optional existing `contact`, and `name` is optional when it is given (0018).
+- `tel:`, `sms:` and `mailto:` may use outside phone numbers and emails after strict normalisation, a narrow exception
+  to 0013; a text is logged as a note (0021). Ask Claude prompts carry only the deal id.
+- The kanban shows the 50 deals longest in each stage, with "Show all N" (0020). The full JSON export stays over the
+  free plan's CPU on a large copy; `npm run copies:export` is the free route (0020, docs/PAID-PLAN.md).
+- The seed is a fake engineering firm ("Fernbrook Engineering (demo)", 18 contacts, 20 deals) with 13 change-log rows;
+  unit tests use the old seed copied to `tests/helpers/fixture-seed.ts` (0016).
+
+### Dependencies added in run 2
+
+None.
+
+### STOP queue added in run 2 (needs the owner)
+
+1. **CI lighthouse timeout (urgent, owner-only file).** The `lighthouse` job audits every board page 5 times (about 1
+   minute each) and is cancelled at 15 minutes now that there are 17+ pages, so #22 and #24 cannot pass. The proposal
+   `.owner-review/proposals/.github/workflows/ci.yml.proposed` raises it to 35 minutes (plus run 1's ci.yml cleanup).
+   Copy with `bash .owner-review/proposals/copy-proposals.sh`, open and merge that PR, then "Re-run failed jobs" on #22
+   (or "Update branch" first; main merges into it cleanly, checked locally: 710 unit and 32 e2e tests pass).
+2. **Owner-only proposals.** Same script: engine versions of `.claude/agents/review-*.md`, small fixes to three skills
+   and the guard-bash deploy message. `.owner-review/proposals/README.md` explains each; one changes meaning (the
+   human-touch-design skill follows CLAUDE.md's fast lane instead of always waiting for plan approval).
+3. **Access bypass for `/icons/*`, per copy (dashboard).** Phones fetch home-screen icons without cookies
+   (docs/ACCESS-SETUP.md step 3, check in step 7.5).
+4. **Check on your phone at the first install:** Add to Home Screen shows the green icon; "Ask Claude" opens claude.ai
+   with the prompt filled in (`claude.ai/new?q=` is how claude.ai behaves today, not a documented API; 0021).
+5. **D1 statement count per invocation** (from run 1, still open): the hourly run on the brief's hour makes 37 D1 calls
+   holding 112 statements. If the free plan counts statements, lower `MAX_FIRINGS_PER_RUN` to about 8 or use Workers
+   Paid (docs/PAID-PLAN.md).
+6. **Local Playwright Chromium** (run 1 STOP 2, still open): `npm run test:a11y` does not run on this Mac. The new
+   `npm run screenshots` runs axe with the installed Google Chrome meanwhile.
+
+Screenshots of every board page at 375 and 1280 px: `.owner-review/screenshots/` (git-ignored, this Mac only;
+`npm run build` then `npm run screenshots` to refresh).
 
 ## Run 1 tasks
 
@@ -139,21 +186,24 @@ Files in `docs/decisions/`. Rulings made while running the plan:
 
 ## What's left
 
-Nothing in the spec is unbuilt. Not yet proven, because it needs a real account or the owner:
+After run 2, everything in the spec and the run 2 brief is built. Two PRs wait on the CI timeout (run 2 STOP 1). Not
+yet proven, because it needs a real account or the owner:
 
-1. A live install on a first copy (STOP 5 and 6): Access for SaaS sign-in from a real AI app, the board behind Access,
-   the first remote migration, deploy and import.
-2. CPU time on the free plan's 10 ms limit for `tools/list`, an hourly run with many firings, and `/api/export.json`
-   on a large copy (docs/PAID-PLAN.md). Measure on the first copy before telling a client the free plan is enough.
-   Also confirm in Cloudflare's limits page whether a D1 batch counts as one query or one per statement toward the
-   free plan's per-invocation limit (the 25-firing cap assumes one per batch).
-3. Deferred minor findings from the reviews (none blocks real use): see "Minor findings left" in the run-1 summary,
-   or ask a new run to re-triage them from the code.
-4. Owner-only follow-ups: the `ci.yml` cleanup (STOP 1); the `.claude/agents/review-*.md` reviewers still describe the
-   old website and could be rewritten for the engine.
+1. Merge #22 and then #24 once the lighthouse timeout is raised (run 2 STOP 1). #24 is stacked on #22: after #22
+   merges, update #24's branch from main, mark it ready, and let the checks run.
+2. A live install on a first copy (run 1 STOP 5 and 6): Access sign-in from a real AI app, the board behind Access
+   (including a board edit and its Undo), the first remote migration, deploy and import; the phone checks in run 2
+   STOP 3 and 4.
+3. CPU on real hardware: run 2 measured on this Mac (docs/PAID-PLAN.md, "CPU check"). Confirm in the Cloudflare
+   dashboard on the first copy, and settle the D1 statement-count question (run 2 STOP 5).
+4. Minor review findings left from run 2 (none blocks use): the `/companies` page has no row cap (it is fast at 300
+   companies); the Contacts search echoes the query in the page (escaped); the company sort on /contacts and the
+   grouping on /companies treat tabs and accents slightly differently; the CSV export of a very large copy still needs
+   `copies:export`.
 
 ## How to resume
 
 1. `git switch main && git pull --ff-only`
-2. Read `docs/SPEC.md`, `docs/PLAN.md` and this file. Every plan task is merged; start from "What's left".
-3. The run's working ledger was `.superpowers/sdd/PLAN/progress.md` (git-ignored, this Mac only; may be deleted).
+2. Read `docs/SPEC.md`, `docs/PLAN.md` (the "Run 2" table at the end) and this file; start from "What's left".
+3. Run 2's shared brief for implementers and the owner's proposals and screenshots are in `.owner-review/`
+   (git-ignored, this Mac only).
