@@ -68,10 +68,11 @@ This puts the board and its JSON (`/api/...`) behind the one-time code.
 The Worker checks Access's sign-in token itself as well, against the application's AUD tag (step 4 below) and your
 owner emails, so the board stays closed even if a request reaches the Worker some other way.
 
-## 3. Let the sign-in paths and `/intake` through (Bypass)
+## 3. Let the sign-in paths, `/intake` and the icons through (Bypass)
 
 Access must not stand in front of the paths your AI app and your website talk to directly. The pipeline protects
 them itself: `/intake` with its secret, `/mcp` with OAuth tokens, and the sign-in paths are the steps that issue them.
+The icons hold nothing private.
 
 The paths:
 
@@ -84,13 +85,19 @@ The paths:
 | `token` | Your AI app, to get and renew its token |
 | `register` | Your AI app, the first time it connects |
 | `.well-known` | Your AI app, to find the sign-in addresses (`/.well-known/oauth-authorization-server` and `/.well-known/oauth-protected-resource/mcp`) |
+| `icons` | Your phone, for the home-screen icons and the favicon (`/icons/*.png`, decision 0019) |
+
+The `icons` path is there because iPhone and Android fetch home-screen icons without the page's cookies, so behind
+Access they would get the sign-in page instead of a PNG. The icons are the same generic green tile for every copy, so
+nothing private is exposed. This can only be checked on a real phone: at the first install, the home-screen icon must
+be the green board tile, not a blank or a screenshot.
 
 For each path, create one more self-hosted application:
 
 1. **Create new application** > **Self-hosted**.
 2. Name it after the path, for example `Pipeline bypass: intake`.
 3. Add `<copy host>` as the domain, and the path in the **Path** box next to it (`intake`, `mcp`, `authorize`,
-   `callback`, `token`, `register` or `.well-known`).
+   `callback`, `token`, `register`, `.well-known` or `icons`).
 4. Add a policy: Action **Bypass**, **Include** > **Everyone**.
 5. Save.
 
@@ -98,8 +105,9 @@ Access uses the application with the most specific match, so these paths skip th
 host keeps it. **Check in the dashboard:**
 
 - whether one application can hold several hostname-and-path entries. If it can, one application named
-  `Pipeline bypass` with all seven paths and the same Bypass policy does the same job as seven applications;
-- that a path entry also covers what is below it (`.well-known` must cover `.well-known/oauth-protected-resource/mcp`);
+  `Pipeline bypass` with all eight paths and the same Bypass policy does the same job as eight applications;
+- that a path entry also covers what is below it (`.well-known` must cover `.well-known/oauth-protected-resource/mcp`,
+  and `icons` must cover `icons/apple-touch-icon.png`);
 - that a path is entered without the leading `/` (the dashboard shows the `/` between host and path).
 
 ## 4. Find the team domain and the AUD tag
@@ -157,6 +165,9 @@ change them). An `OWNER_EMAILS` var, if you add one, also lets its emails in. Ne
    opens a page "Allow <app name> to use your pipeline?". Check that it names your AI app and the place the access goes,
    then select **Allow**. Access asks for your email and code, and you're sent back to the app, connected.
 4. If your website's form posts to `/intake`, send a test enquiry: it should arrive as a new lead.
+5. `https://<copy host>/icons/icon-192.png` shows the green board tile in a private window, without asking you to
+   sign in. Then add the board to your phone's home screen (README, "Install on your phone"): the icon must be the
+   green tile. This is the only way to check it; it cannot be tested locally.
 
 ### If "Allow" seems to do nothing
 

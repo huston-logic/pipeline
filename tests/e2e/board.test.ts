@@ -31,6 +31,27 @@ test("every board page answers 200 with one <h1>, and an unknown deal is 404", a
   await missing.body?.cancel();
 });
 
+test("the home-screen manifest is served signed in, and every icon it or the layout names is a PNG (decision 0019)", async () => {
+  const res = await fetch(`${server.url}/manifest.webmanifest`);
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get("Content-Type"), "application/manifest+json");
+  const manifest = (await res.json()) as { start_url: string; icons: { src: string; sizes: string }[] };
+  assert.equal(manifest.start_url, "/");
+
+  const page = await (await fetch(`${server.url}/`)).text();
+  const linked = [...page.matchAll(/<link rel="(?:icon|apple-touch-icon)" href="([^"]+)"/g)].map((m) => m[1] ?? "");
+  assert.equal(linked.length, 2, "the favicon and the apple-touch icon");
+  assert.match(page, /<link rel="manifest" href="\/manifest.webmanifest" crossorigin="use-credentials">/);
+
+  for (const src of [...manifest.icons.map((icon) => icon.src), ...linked]) {
+    const icon = await fetch(`${server.url}${src}`);
+    assert.equal(icon.status, 200, src);
+    assert.equal(icon.headers.get("Content-Type"), "image/png", src);
+    const bytes = new Uint8Array(await icon.arrayBuffer());
+    assert.deepEqual([...bytes.subarray(0, 4)], [0x89, 0x50, 0x4e, 0x47], src);
+  }
+});
+
 test("the JSON export holds every table, and an empty table's CSV still has its header", async () => {
   const res = await fetch(`${server.url}/api/export.json`);
   assert.equal(res.status, 200);

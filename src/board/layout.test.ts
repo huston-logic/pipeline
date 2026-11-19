@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { html } from "./html.ts";
-import { lookOf, renderPage } from "./layout.ts";
+import { DEFAULT_THEME_COLOR, type Look, lookOf, renderPage, shortNameOf } from "./layout.ts";
 import { moreItems, navItems } from "./routes.ts";
 
-const page = (current?: string, look?: { name: string }) =>
+const page = (current?: string, look?: Look) =>
   renderPage({
     title: `Deals & "notes"`,
     description: "A <fake> description",
@@ -78,8 +78,50 @@ test("without a look the page says Pipeline and links no theme; with one it show
 });
 
 test("lookOf uses the business name, or Pipeline when none is set", () => {
-  assert.deepEqual(lookOf({ business_name: "Fernwood Engineering" }), { name: "Fernwood Engineering" });
-  assert.deepEqual(lookOf({ business_name: null }), { name: "Pipeline" });
+  assert.deepEqual(lookOf({ business_name: "Fernwood Engineering", accent_color: null }), { name: "Fernwood Engineering", themeColor: "#2b6455" });
+  assert.deepEqual(lookOf({ business_name: null, accent_color: null }), { name: "Pipeline", themeColor: "#2b6455" });
+});
+
+test("lookOf's theme colour is a usable accent, or the default green when the stored value fails the checks", () => {
+  assert.equal(lookOf({ business_name: null, accent_color: "#1e4a3d" }).themeColor, "#1e4a3d");
+  for (const bad of ["#d0e8dc", "#1E4A3D", `#1e4a3d" onload="x`]) {
+    assert.equal(lookOf({ business_name: null, accent_color: bad }).themeColor, DEFAULT_THEME_COLOR, bad);
+  }
+});
+
+test("shortNameOf keeps a name of 12 characters or fewer and gives Pipeline for a longer one", () => {
+  assert.equal(shortNameOf("Abcdefghijkl"), "Abcdefghijkl");
+  assert.equal(shortNameOf("Abcdefghijklm"), "Pipeline");
+  assert.equal(shortNameOf("Café & Co ☕"), "Café & Co ☕", "counts characters, not UTF-16 units");
+});
+
+test("every page links the PNG favicon, not a data: placeholder", () => {
+  for (const out of [page("/"), page("/", { name: "Fernwood" })]) {
+    assert.match(out, /<link rel="icon" href="\/icons\/favicon-32.png" type="image\/png" sizes="32x32">/);
+    assert.doesNotMatch(out, /href="data:/);
+  }
+});
+
+test("signed-in pages link the manifest with credentials, the theme colour, the apple-touch icon and the app title", () => {
+  const named = renderPage({
+    title: "Today",
+    description: "x",
+    body: html`<h1>Today</h1>`,
+    frame: { look: { name: `Fern & <Co>`, themeColor: "#1e4a3d" } },
+  });
+  assert.match(named, /<link rel="manifest" href="\/manifest.webmanifest" crossorigin="use-credentials">/);
+  assert.match(named, /<meta name="theme-color" content="#1e4a3d">/);
+  assert.match(named, /<link rel="apple-touch-icon" href="\/icons\/apple-touch-icon.png">/);
+  assert.match(named, /<meta name="apple-mobile-web-app-title" content="Fern &amp; &lt;Co&gt;">/);
+
+  const long = page("/", { name: "Fernwood Engineering" });
+  assert.match(long, /<meta name="apple-mobile-web-app-title" content="Pipeline">/);
+  assert.match(long, /<meta name="theme-color" content="#2b6455">/, "a look without a colour gets the default");
+});
+
+test("pages drawn without a sign-in link no manifest and no apple-touch icon", () => {
+  const plain = page("/");
+  assert.doesNotMatch(plain, /manifest|apple-touch-icon|apple-mobile-web-app-title|theme-color/);
 });
 
 test("a change banner from the frame sits right after the page's h1, so it is the first thing read after the heading", () => {
