@@ -38,11 +38,12 @@ jobs:
       - name: Type check
         run: npm run typecheck
 
-      # Contact form Worker tests (worker/*.test.ts): Node's built-in test runner, fetch mocked, no network.
+      # Unit tests (src/**/*.test.ts, scripts/*.test.*) and e2e tests (tests/e2e/*.test.ts, the real Worker under
+      # wrangler dev --local on a temp database): Node's built-in test runner, fetch mocked, no network.
       - name: Worker tests
         run: npm run test:worker
 
-      - name: Build static export
+      - name: Build static files
         run: npm run build
 
       - name: Verify deploy artifacts
@@ -51,12 +52,9 @@ jobs:
             test -s "$f" || { echo "Missing build artifact: $f"; exit 1; }
           done
 
-      - name: Report unresolved placeholders (informational until launch)
-        run: npm run check:placeholders
-        continue-on-error: true
-
-  # Accessibility scan (Playwright + axe) of the built site. A required check in the "Protect main" ruleset
-  # (see docs/ruleset-protect-main.json), so a red result blocks merge. No `paths:` filter and no `if:`:
+  # Accessibility scan (Playwright + axe) of the board as the Worker draws it (`npm run preview`). A required check
+  # in the "Protect main" ruleset (see docs/ruleset-protect-main.json), so a red result blocks merge. No `paths:`
+  # filter and no `if:`:
   # a skipped required check would block merging, so this job must always run.
   a11y:
     runs-on: ubuntu-latest
@@ -74,7 +72,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build static export
+      - name: Build static files
         run: npm run build
 
       - name: Install Chromium
@@ -92,13 +90,15 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
-  # Lighthouse CI audit of the built site (served by scripts/preview.mjs so public/_headers applies). A required
-  # check in the "Protect main" ruleset (see docs/ruleset-protect-main.json), so a red result blocks merge.
+  # Lighthouse CI audit of the board (served by `npm run preview`, wrangler dev --local, so the Worker's own security
+  # headers from src/security.ts apply). A required check in the "Protect main" ruleset (see
+  # docs/ruleset-protect-main.json), so a red result blocks merge.
   # No `paths:` filter and no `if:` on the job: a skipped required check would block merging.
   # The `if:` on the two report steps below keeps the reports on failure too.
   lighthouse:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Every board page x 5 runs, about 1 minute per page (17+ pages in run 2): 15 minutes no longer fits.
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -112,7 +112,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build static export
+      - name: Build static files
         run: npm run build
 
       # Uses the Google Chrome preinstalled on ubuntu-latest; no browser is downloaded.
