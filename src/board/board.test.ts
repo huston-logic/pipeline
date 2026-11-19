@@ -47,8 +47,9 @@ const mainOf = (body: string) => /<main id="main">([\s\S]*)<\/main>/.exec(body)?
 const navOf = (body: string) => /<nav class="app-nav"[\s\S]*?<\/nav>/.exec(body)?.[0] ?? "";
 /** The card titles on a page, as markup, so an outside name is checked together with its label. */
 /** The one script the board ships (decision 0014), loaded only by the pipeline's board view. */
-const BOARD_JS = '<script src="/board.js" defer></script>';
-const scriptsOf = (body: string) => [...body.matchAll(/<script\b[^>]*>[\s\S]*?<\/script>/gi)].map((m) => m[0]);
+// Opening tags only: any extra or inline script still shows up as another (or a different) opening tag.
+const BOARD_JS = '<script src="/board.js" defer>';
+const scriptsOf = (body: string) => [...body.matchAll(/<script\b[^>]*>/gi)].map((m) => m[0]);
 const cardTitles = (body: string) => [...body.matchAll(/<h2 class="card-title">([\s\S]*?)<\/h2>/g)].map((m) => m[1] ?? "");
 
 function assertPage(body: string, path: string) {
