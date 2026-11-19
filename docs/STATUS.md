@@ -13,8 +13,8 @@ Updated after every merge, so a fresh chat can pick up where the last one stoppe
 | 3 | M3 service layer, audit, undo | [#4](https://github.com/huston-logic/pipeline/pull/4) | merged |
 | 4 | M4 MCP endpoint | [#5](https://github.com/huston-logic/pipeline/pull/5) | merged |
 | 5 | M5 building blocks | [#6](https://github.com/huston-logic/pipeline/pull/6) | merged (a11y needed one re-run: CI runner apt mirror glitch) |
-| 6 | M6 rules engine | [#7](https://github.com/huston-logic/pipeline/pull/7) | open, auto-merge queued |
-| 7 | M7 daily brief | | not started |
+| 6 | M6 rules engine | [#7](https://github.com/huston-logic/pipeline/pull/7) | merged |
+| 7 | M7 daily brief | [#8](https://github.com/huston-logic/pipeline/pull/8) | open, auto-merge queued |
 | 8 | M8 `/intake` | | not started |
 | 9 | M9 board | | not started |
 | 10 | M10 production auth | | not started |
@@ -40,7 +40,10 @@ Files in `docs/decisions/`. Rulings made while running the plan:
 - A call or email logged against just a contact counts as activity on all of that contact's open deals.
 - The last stage of each kind (open, won, lost, not now) cannot be archived, so a deal can always be closed.
 - Rules count "N days" as 24-hour periods from the moment a deal entered its stage (decision 0010). Rules on closed
-  stages (Won, Lost, Not now) are refused because they could never fire.
+  stages (Won, Lost, Not now) are refused because they could never fire. A resumed or retargeted rule does not catch
+  up on stage entries from before it was resumed or retargeted.
+- The daily brief is composed and stored every day, whatever the "brief on/off" setting says; that setting (plus a
+  deploy flag and secrets) only controls emailing it (decision 0011). Briefs are a system log, not audited or undoable.
 
 ## Dependencies added
 
@@ -58,7 +61,13 @@ Files in `docs/decisions/`. Rulings made while running the plan:
 2. **Local Playwright browser is one revision behind.** This Mac has Chromium revision 1248; `@playwright/test`
    1.65.0 needs 1254, so `npm run test:a11y` fails locally at browser launch (CI installs its own and is fine). To fix,
    run `npx playwright install chromium` in your own terminal (installing a browser needs your approval).
-3. **One leftover temp folder** from a manual test (harmless, nothing secret; the hook stops me deleting outside the
+3. **Brief emails (Resend), per copy, only when you want sending on.** Sending is off by default and nothing in the
+   repo sends email. To turn it on for one copy: in Resend, verify the sending domain and create an API key with
+   "Sending access" for that domain only; then, with that copy's wrangler config, run
+   `npx wrangler secret put RESEND_API_KEY -c .copies/<copy>/wrangler.jsonc`, set the vars `BRIEF_SENDING = "on"` and
+   `BRIEF_FROM = "Pipeline <brief@<your domain>>"` in that copy's generated config, and ask the AI to
+   `update_settings` with the brief address and brief on. Details: docs/SECRETS.md.
+4. **One leftover temp folder** from a manual test (harmless, nothing secret; the hook stops me deleting outside the
    repo): `rm -r /var/folders/xf/zt8g4lzn0211myfvc6kzmt0r0000gn/T/pipeline-e2e-p134is`
 
 ## How to resume
