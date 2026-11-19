@@ -1,6 +1,7 @@
 // The daily brief's text, composed from plain data. Pure: no database, no clock, no network. run.ts loads the data and
 // stores the result; send.ts emails it. Decision 0011. The brief is for the owner, so lines use real names; an item
-// whose text includes outside text carries `untrusted: true` so the board can label it.
+// whose text includes outside text carries `untrusted: true` so the board can label it, and its line in the emailed
+// text starts with "[from outside] ".
 import { formatLocal, localDate } from "../time.ts";
 
 export type BriefSection = "overdue" | "due_today" | "gone_quiet" | "new_lead";
@@ -54,6 +55,7 @@ export interface ComposedBrief {
   localDate: string;
   /** "Pipeline brief for Thursday Nov 19": the first line, and the email subject. */
   subject: string;
+  /** The emailed text's lines: item lines with outside text carry OUTSIDE_LABEL after the dash. */
   lines: string[];
   text: string;
   items: BriefItem[];
@@ -77,6 +79,11 @@ export const SECTION_TITLES: Record<BriefSection, string> = {
   gone_quiet: "Gone quiet",
   new_lead: "New leads",
 };
+
+/** Marks outside text in the emailed text, which has no other way to show it; the board labels items itself. */
+export const OUTSIDE_LABEL = "[from outside] ";
+
+const textLine = (item: BriefItem) => (item.untrusted ? `- ${OUTSIDE_LABEL}${item.line.slice(2)}` : item.line);
 
 export function composeBrief(input: BriefInput): ComposedBrief {
   const { now, tz } = input;
@@ -110,7 +117,7 @@ export function composeBrief(input: BriefInput): ComposedBrief {
       const mine = items.filter((item) => item.section === section);
       if (mine.length === 0) continue;
       if (lines.at(-1) !== "") lines.push("");
-      lines.push(SECTION_TITLES[section], ...mine.map((item) => item.line));
+      lines.push(SECTION_TITLES[section], ...mine.map(textLine));
     }
   }
   return { localDate: date, subject, lines, text: lines.join("\n"), items };

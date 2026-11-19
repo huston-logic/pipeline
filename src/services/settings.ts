@@ -1,5 +1,6 @@
 // get_settings and update_settings. Owner emails gate who can sign in, so they are shown but never changed here
-// (decision 0005): the patch type has no field for them.
+// (decision 0005): the patch type has no field for them. The brief can only be sent to an owner email, so no text
+// that talks the AI into a new address can redirect the brief (decision 0005, addendum).
 import type { Db, SettingsRow } from "../db/db.ts";
 import { getSettings as getSettingsRow } from "../db/queries.ts";
 import { type ChangeResult, commitChange, type Ctx, updatedRow } from "./change.ts";
@@ -14,7 +15,10 @@ export interface SettingsView {
   briefEmail: string | null;
   briefEnabled: boolean;
   ownerEmails: string[];
+  /** When the latest brief was composed (the briefs log), or null before the first one. */
   lastBriefAt: string | null;
+  /** When a brief last went out by email, or null when none has. */
+  lastBriefSentAt: string | null;
 }
 
 export interface SettingsPatch {
@@ -27,15 +31,23 @@ export interface SettingsPatch {
   briefEnabled?: boolean;
 }
 
+export interface SettingsOptions {
+  /** Owner emails from the OWNER_EMAILS var, on top of settings.owner_emails. */
+  extraOwnerEmails?: readonly string[];
+}
+
 export async function getSettings(db: Db): Promise<SettingsView> {
   const row = await getSettingsRow(db);
+  const latest = await db.prepare("SELECT composed_at FROM briefs ORDER BY local_date DESC LIMIT 1").first<{ composed_at: string }>();
+  const sent = await db.prepare("SELECT MAX(sent_at) AS at FROM briefs").first<{ at: string | null }>();
   return {
     timezone: row.timezone,
     briefHour: row.brief_hour,
     briefEmail: row.brief_email,
     briefEnabled: row.brief_enabled === 1,
     ownerEmails: parseStringArray(row.owner_emails),
-    lastBriefAt: row.last_brief_at,
+    lastBriefAt: latest?.composed_at ?? null,
+    lastBriefSentAt: sent?.at ?? null,
   };
 }
 
@@ -51,7 +63,17 @@ function checkTimezone(input: string): string {
   }
 }
 
-export async function updateSettings(ctx: Ctx, patch: SettingsPatch): Promise<ChangeResult> {
+const lower = (email: string) => email.trim().toLowerCase();
+
+function checkOwnerEmail(email: string, owners: string[]): void {
+  if (owners.includes(lower(email))) return;
+  const list = owners.length > 0 ? owners.join(", ") : "none are set yet";
+  throw new UserError(
+    `The brief can only go to an owner email (${list}), and ${email} isn't one. Use an owner email, or null to clear it.`,
+  );
+}
+
+export async function updateSettings(ctx: Ctx, patch: SettingsPatch, options: SettingsOptions = {}): Promise<ChangeResult> {
   const before = await getSettingsRow(ctx.db);
   const set: Partial<SettingsRow> = {};
   const parts: string[] = [];
@@ -74,7 +96,11 @@ export async function updateSettings(ctx: Ctx, patch: SettingsPatch): Promise<Ch
   }
   if (patch.briefEmail !== undefined) {
     const email = clean(patch.briefEmail);
-    if (email !== null) checkEmail(email);
+    if (email !== null) {
+      checkEmail(email);
+      const owners = [...parseStringArray(before.owner_emails), ...(options.extraOwnerEmails ?? [])].map(lower);
+      checkOwnerEmail(email, [...new Set(owners.filter((owner) => owner !== ""))]);
+    }
     if (email !== before.brief_email) {
       set.brief_email = email;
       parts.push(email === null ? "brief email cleared" : `brief email to ${email}`);

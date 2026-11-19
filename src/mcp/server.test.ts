@@ -74,6 +74,31 @@ test("every read tool is annotated read-only and every write tool is not", async
   assert.equal(byName.get("undo_change")?.annotations?.destructiveHint, true);
 });
 
+// Tools that overwrite or close things (undo exists, but clients use the hint to ask for confirmation), and tools whose
+// repeat call is refused or changes something again.
+const DESTRUCTIVE = [
+  "archive_stage",
+  "undo_change",
+  "update_contact",
+  "update_deal",
+  "update_field",
+  "update_rule",
+  "update_rulebook",
+  "update_settings",
+  "update_stage",
+];
+const IDEMPOTENT = ["pause_rule", "resume_rule", "update_contact", "update_deal", "update_field", "update_rule", "update_rulebook", "update_settings", "update_stage"];
+
+test("destructive and idempotent hints are set exactly on the tools that need them", async () => {
+  const { tools } = await (await client()).listTools();
+  const writes = tools.filter((t) => WRITE_TOOLS.includes(t.name));
+  assert.deepEqual(writes.filter((t) => t.annotations?.destructiveHint === true).map((t) => t.name).sort(), DESTRUCTIVE);
+  assert.deepEqual(writes.filter((t) => t.annotations?.idempotentHint === true).map((t) => t.name).sort(), IDEMPOTENT);
+  for (const name of ["complete_task", "snooze_task", "undo_change"]) {
+    assert.equal(writes.find((t) => t.name === name)?.annotations?.idempotentHint, false, name);
+  }
+});
+
 test("date inputs describe the accepted formats", async () => {
   const { tools } = await (await client()).listTools();
   const dateInputs = tools.flatMap((tool) =>

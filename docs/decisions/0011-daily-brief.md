@@ -59,5 +59,10 @@ Comparing local hours with `>=` and local dates with `UNIQUE` makes the clock-ch
 - The first brief after a long outage lists leads from the whole gap, because the window starts at the previous
   brief; the very first one only looks back 24 hours.
 - Changing the brief hour or timezone to an earlier time after the brief ran does not compose a second one that day.
-- `settings.last_brief_at` is unused; remove it in a later migration if it stays unused.
+- `settings.last_brief_at` is unused; remove it in a later migration if it stays unused. `get_settings` reports
+  `lastBriefAt` (the latest brief's `composed_at`) and `lastBriefSentAt` (the latest `sent_at`) from `briefs` instead
+  (final review).
+- The emailed text has no way to label outside text, so each line whose item is `untrusted` starts with
+  "- [from outside] " there. The stored `items` (and so the board, which labels them itself) are unchanged (final
+  review).
 - The export (task 9) includes `briefs`.
