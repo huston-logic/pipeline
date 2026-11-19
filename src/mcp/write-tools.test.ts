@@ -153,3 +153,115 @@ test("errors name outside records by id only", async () => {
   const message = await fails(c, "update_contact", { contact: "Robin Sample", phone: "555-0100" });
   assert.equal(message, '"Robin Sample" matches more than one contact: contact ct_seed02; contact ct_twin. Use the contact id instead.');
 });
+
+const dataOf = <T>(answer: { data: unknown }) => answer.data as T;
+
+test("stage tools: add, rename keeping the key, reorder, archive refusal and undo, each ending with a change id", async () => {
+  const { c } = await setup();
+  const added = await ok(c, "add_stage", { label: "Demo booked", after: "Replied" });
+  assert.match(added.headline, /^Added stage Demo booked \(key demo_booked\) after Replied \(change chg_[a-z0-9]{12}\)$/);
+  assert.equal(dataOf<{ key: string }>(added).key, "demo_booked");
+
+  const renamed = await ok(c, "update_stage", { stage: "Call done", label: "Met" });
+  assert.match(renamed.headline, /^Renamed stage Call done to Met \(change /);
+  assert.equal(dataOf<{ key: string }>(renamed).key, "call_done");
+  const moved = await ok(c, "update_stage", { stage: "met", position: 1 });
+  assert.match(moved.headline, /^Moved stage Met to position 1 of 9 \(change /);
+
+  const { stages } = dataOf<{ stages: { key: string; position: number; openDeals: number }[] }>(await ok(c, "list_stages"));
+  assert.deepEqual(stages.slice(0, 3).map((s) => [s.key, s.position]), [["call_done", 1], ["new_inquiry", 2], ["replied", 3]]);
+  assert.equal(stages.find((s) => s.key === "call_done")?.openDeals, 1);
+
+  assert.match(await fails(c, "archive_stage", { stage: "Met" }), /^1 open deal is in Met: "Online store for Fake Street Bikes" \(Jordan Fake\)\. Move it first with update_deal, for example to /);
+  const archived = await ok(c, "archive_stage", { stage: "Demo booked" });
+  assert.match(archived.headline, /^Archived stage Demo booked \(change /);
+  const hidden = await ok(c, "list_stages");
+  assert.ok(!dataOf<{ stages: { key: string }[] }>(hidden).stages.some((s) => s.key === "demo_booked"));
+  assert.ok(dataOf<{ stages: { key: string }[] }>(await ok(c, "list_stages", { includeArchived: true })).stages.some((s) => s.key === "demo_booked"));
+
+  const undone = await ok(c, "undo_change", { changeId: dataOf<{ changeId: string }>(archived).changeId });
+  assert.match(undone.headline, /^Undid chg_[a-z0-9]{12}: /);
+  assert.match(await fails(c, "update_stage", { stage: "Met" }), /^Nothing to change on Met/);
+  assert.match(await fails(c, "update_stage", { stage: "Met", position: 0 }), /"position" must be at least 1/);
+  assert.match(await fails(c, "add_stage", { label: "Odd", kind: "done" }), /"kind" must be one of: open, won, lost, not_now/);
+});
+
+test("field tools: add, validate values on update_deal, refuse a used choice, archive", async () => {
+  const { c } = await setup();
+  const added = await ok(c, "add_field", { entity: "deal", label: "Temperature", type: "choice", choices: ["Cold", "Warm", "Hot"] });
+  assert.match(added.headline, /^Added deal field Temperature \(key temperature, choice: Cold, Warm, Hot\) \(change chg_[a-z0-9]{12}\)$/);
+  const { fieldId } = dataOf<{ fieldId: string; key: string }>(added);
+  assert.match(fieldId, /^fd_/);
+
+  assert.match(await fails(c, "update_deal", { deal: "dl_seed01", fields: { temperature: "Lukewarm" } }), /"Lukewarm" isn't one of the choices for Temperature: Cold, Warm, Hot/);
+  await ok(c, "update_deal", { deal: "dl_seed01", fields: { temperature: "Warm" } });
+  assert.match(await fails(c, "update_field", { field: fieldId, choices: ["Cold", "Hot"] }), /^Can't remove the choice Warm from Temperature: 1 deal uses it/);
+
+  const grown = await ok(c, "update_field", { field: "deal.temperature", choices: ["Cold", "Warm", "Hot", "On fire"] });
+  assert.match(grown.headline, /^Updated deal field Temperature: added the choice On fire \(change /);
+  const { fields } = dataOf<{ fields: { id: string; choices: string[] | null; archived: boolean }[] }>(await ok(c, "list_fields", { entity: "deal" }));
+  assert.deepEqual(fields.map((f) => [f.id, f.choices, f.archived]), [[fieldId, ["Cold", "Warm", "Hot", "On fire"], false]]);
+  assert.equal((await ok(c, "list_fields", { entity: "contact" })).headline, "There are no custom fields yet. Add one with add_field.");
+
+  const archived = await ok(c, "update_field", { field: "Temperature", archived: true });
+  assert.match(archived.headline, /archived \(change /);
+  assert.match(await fails(c, "update_deal", { deal: "dl_seed01", fields: { temperature: "Hot" } }), /deal field "temperature" is archived/);
+  assert.match(await fails(c, "add_field", { entity: "deal", label: "X", type: "color" }), /"type" must be one of: text, number, date, choice/);
+});
+
+test("complete_task and snooze_task answer a change line and are undoable", async () => {
+  const { c } = await setup();
+  const snoozed = await ok(c, "snooze_task", { task: "tk_seed02", until: "2026-11-20T09:00" });
+  assert.match(snoozed.headline, /^Snoozed task "Send Casey the price sheet" for "Landscaping site with a quote form" \(Casey Placeholder\) until Fri Nov 20, 9:00 AM \(change chg_[a-z0-9]{12}\)$/);
+  const due = dataOf<{ overdueTasks: { id: string }[] }>(await ok(c, "whats_due"));
+  assert.ok(!due.overdueTasks.some((t) => t.id === "tk_seed02"), "snoozed tasks are hidden from whats_due");
+
+  const done = await ok(c, "complete_task", { task: "tk_seed01" });
+  assert.match(done.headline, /^Completed task "Prepare questions for Pat's call" for "Website refresh for Example Plumbing" \(Pat Example\) \(change /);
+  assert.match(await fails(c, "complete_task", { task: "tk_seed01" }), /is already done/);
+  assert.match(await fails(c, "snooze_task", { task: "tk_seed03", until: "2026-11-18" }), /in the future/);
+  assert.match(await fails(c, "snooze_task", { task: "tk_seed03" }), /"until" is missing/);
+  const undone = await ok(c, "undo_change", { changeId: dataOf<{ changeId: string }>(done).changeId });
+  assert.match(undone.headline, /^Undid chg_[a-z0-9]{12}: Put back the earlier done date on task/);
+});
+
+test("update_rulebook replaces or adds a document that get_rulebook then returns", async () => {
+  const { c } = await setup();
+  const updated = await ok(c, "update_rulebook", { name: "voice", markdown: "# Voice\n\nShort and warm." });
+  assert.match(updated.headline, /^Updated rulebook document "voice" \(change chg_[a-z0-9]{12}\)$/);
+  const added = await ok(c, "update_rulebook", { name: "pricing", markdown: "Only quote from the price sheet." });
+  assert.match(added.headline, /^Added rulebook document "pricing" \(change /);
+  const { documents } = dataOf<{ documents: { name: string; markdown: string }[] }>(await ok(c, "get_rulebook"));
+  assert.deepEqual(documents.map((d) => d.name), ["voice", "pipeline", "guardrails", "pricing"]);
+  assert.equal(documents[0]?.markdown, "# Voice\n\nShort and warm.");
+  const undone = await ok(c, "undo_change", { changeId: dataOf<{ changeId: string }>(updated).changeId });
+  assert.match(undone.headline, /^Undid chg_[a-z0-9]{12}: Put back the earlier markdown on rulebook "voice"/);
+  assert.match(await fails(c, "update_rulebook", { name: "bad name!", markdown: "x" }), /letters, numbers/);
+});
+
+test("settings tools: get shows the owner emails, update changes the rest and refuses owner emails", async () => {
+  const { db, c } = await setup();
+  db.exec(`UPDATE settings SET owner_emails = '["owner@example.com"]'`);
+  const before = await ok(c, "get_settings");
+  assert.equal(before.headline, "Timezone America/Los_Angeles; the daily brief is off (7:00 AM).");
+  assert.deepEqual(before.data, {
+    timezone: "America/Los_Angeles",
+    briefHour: 7,
+    briefEmail: null,
+    briefEnabled: false,
+    ownerEmails: ["owner@example.com"],
+    lastBriefAt: null,
+  });
+
+  const changed = await ok(c, "update_settings", { timezone: "Europe/London", briefHour: 8, briefEmail: "me@example.com", briefEnabled: true });
+  assert.match(changed.headline, /^Updated settings: timezone to Europe\/London, brief hour to 8:00, brief email to me@example\.com and the daily brief on \(change chg_[a-z0-9]{12}\)$/);
+  assert.match(await fails(c, "update_settings", { timezone: "Mars/Base" }), /isn't a timezone I know/);
+  assert.match(await fails(c, "update_settings", { briefHour: 25 }), /"briefHour" must be at most 23/);
+  const refused = await fails(c, "update_settings", { ownerEmails: ["intruder@example.com"] });
+  assert.match(refused, /Unknown field "ownerEmails"\. Use only: timezone, briefHour, briefEmail, briefEnabled/);
+  assert.deepEqual(dataOf<{ ownerEmails: string[] }>(await ok(c, "get_settings")).ownerEmails, ["owner@example.com"]);
+  const cleared = await ok(c, "update_settings", { briefEmail: null });
+  assert.match(cleared.headline, /brief email cleared/);
+  const undone = await ok(c, "undo_change", { changeId: dataOf<{ changeId: string }>(cleared).changeId });
+  assert.match(undone.headline, /^Undid chg_[a-z0-9]{12}: Put back the earlier brief email on the settings/);
+});

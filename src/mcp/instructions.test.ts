@@ -25,3 +25,8 @@ test("the instructions explain archive instead of delete, undo_change and the ow
   assert.match(SERVER_INSTRUCTIONS, /undo_change reverses one change by its id/);
   assert.match(SERVER_INSTRUCTIONS, /owner's timezone/);
 });
+
+test("the instructions say the pipeline's building blocks can be changed by talking, but not the owner emails", () => {
+  assert.match(SERVER_INSTRUCTIONS, /stages, custom fields, the rulebook and settings/);
+  assert.match(SERVER_INSTRUCTIONS, /owner emails can't be changed here/);
+});

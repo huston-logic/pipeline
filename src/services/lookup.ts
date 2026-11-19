@@ -1,6 +1,6 @@
 // Finding the records a request names. Contacts and deals accept an id or an exact name (ignoring case); a name
 // that matches more than one record is refused with every match's id, so the caller can pick.
-import type { ContactRow, Db, DealRow, FieldEntity, StageKind, StageRow } from "../db/db.ts";
+import type { ContactRow, Db, DealRow, StageKind, StageRow } from "../db/db.ts";
 import { getContact, getDeal, getSettings, listStages } from "../db/queries.ts";
 import { UserError } from "./errors.ts";
 import { contactName, contactRef, dealTitle, isTrusted } from "./labels.ts";
@@ -104,22 +104,6 @@ export async function firstStageOfKind(db: Db, kind: StageKind): Promise<StageRo
 /** Every stage's label by key, archived ones included (old changes and activities name them). */
 export async function stageLabels(db: Db): Promise<Map<string, string>> {
   return new Map((await listStages(db, { includeArchived: true })).map((s) => [s.key, s.label]));
-}
-
-/**
- * Refuses keys that are not active custom fields for the entity. Values are checked against the field types in
- * task 5; until then any JSON scalar is accepted.
- */
-export async function checkFieldKeys(db: Db, entity: FieldEntity, fields: FieldValues): Promise<void> {
-  const keys = Object.keys(fields);
-  if (keys.length === 0) return;
-  const known = (
-    await rows<{ key: string }>(db, "SELECT key FROM field_defs WHERE entity = ? AND archived = 0 ORDER BY key", entity)
-  ).map((f) => f.key);
-  const unknown = keys.find((key) => !known.includes(key));
-  if (unknown === undefined) return;
-  const choices = known.length > 0 ? ` or use one of: ${known.join(", ")}` : "";
-  throw new UserError(`Unknown ${entity} field "${unknown}". Add it with add_field first${choices}.`);
 }
 
 export function parseObject(json: string): Record<string, unknown> {

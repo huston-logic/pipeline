@@ -27,5 +27,8 @@ export const contactRef = (description = "The contact: their id (ct_...) or exac
 
 export const DEAL_STATUSES = ["open", "won", "lost", "not_now"] as const;
 
+export const FIELD_ENTITIES = ["contact", "deal"] as const;
+export const FIELD_TYPES = ["text", "number", "date", "choice"] as const;
+
 /** The schema or null, described on the outside so tools/list shows the description beside the property. */
 export const orNull = <T extends z.ZodType>(schema: T) => schema.nullable().describe(schema.description ?? "");

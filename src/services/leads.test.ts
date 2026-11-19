@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { ActivityRow, AuditRow, ContactRow, Db, DealRow } from "../db/db.ts";
+import { racing } from "../../tests/helpers/race-db.ts";
 import { openTestDb } from "../db/sqlite-d1.ts";
 import type { Ctx } from "./change.ts";
 import { UserError } from "./errors.ts";
@@ -205,4 +206,35 @@ test("contact names that match more than one contact are refused with the ids", 
   assert.ok(error instanceof UserError);
   assert.match(error.message, /more than one contact/);
   assert.ok(error.message.includes(a.contactId) && error.message.includes(b.contactId));
+});
+
+const RIVAL_EMAIL = "INSERT INTO contacts (id, name, email) VALUES ('ct_rival', 'Rival Example', 'new@example.com')";
+const DUPLICATE_EMAIL = /^Another contact already uses that email: contact ct_rival\. Use update_contact on that one instead\.$/;
+
+test("a duplicate email that slips in between the check and the write is a plain UserError (add_lead)", async () => {
+  const db = await openTestDb();
+  const rival = racing(db, async () => void (await db.prepare(RIVAL_EMAIL).run()));
+  const error = await addLead(ctxFor(rival), { name: "Lee Example", email: "new@example.com" }).catch((e: unknown) => e);
+  assert.ok(error instanceof UserError);
+  assert.match(error.message, DUPLICATE_EMAIL);
+  assert.equal((await deals(db)).length, 0);
+});
+
+test("a duplicate email that slips in between the check and the write is a plain UserError (update_contact)", async () => {
+  const db = await openTestDb();
+  const lee = await addLead(ctxFor(db), { name: "Lee Example", email: "lee@example.com" });
+  const rival = racing(db, async () => void (await db.prepare(RIVAL_EMAIL).run()));
+  const error = await updateContact(ctxFor(rival, "update_contact"), lee.contactId, { email: "new@example.com" }).catch(
+    (e: unknown) => e,
+  );
+  assert.ok(error instanceof UserError);
+  assert.match(error.message, DUPLICATE_EMAIL);
+});
+
+test("updateContact compares the parsed untrusted_fields, so a no-op writes no change", async () => {
+  const db = await openTestDb();
+  const lee = await addLead(ctxFor(db), { name: "Lee Example", phone: "555-0100" });
+  await db.prepare("UPDATE contacts SET untrusted_fields = '[ ]' WHERE id = ?").bind(lee.contactId).run();
+  await assert.rejects(updateContact(ctxFor(db, "update_contact"), lee.contactId, { phone: "555-0100" }), /Nothing to change/);
+  assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM audit_log").first<{ n: number }>())?.n, 1);
 });

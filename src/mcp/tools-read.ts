@@ -4,11 +4,14 @@ import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import { getRulebook } from "../db/queries.ts";
 import { UserError } from "../services/errors.ts";
+import { fieldOverview } from "../services/fields.ts";
 import { ownerTimezone } from "../services/lookup.ts";
+import { getSettings } from "../services/settings.ts";
+import { stageOverview } from "../services/stages.ts";
 import { getDealBrief, listDealsFiltered, pipelineSummary, recentChanges, searchContacts, whatsDue } from "../services/read.ts";
 import { formatLocal, parseWhen } from "../time.ts";
 import { toolResult } from "./format.ts";
-import { DEAL_STATUSES, dealRef, shortText, when } from "./schemas.ts";
+import { DEAL_STATUSES, dealRef, FIELD_ENTITIES, shortText, when } from "./schemas.ts";
 import { registerTool, type ToolDeps } from "./tool.ts";
 
 const DAY_MS = 86_400_000;
@@ -204,6 +207,82 @@ export function registerReadTools(server: McpServer, deps: ToolDeps): void {
             ? "The rulebook is empty."
             : `Rulebook: ${count(documents.length, "document")} (${documents.map((doc) => doc.name).join(", ")}).`;
         return toolResult(headline, { documents });
+      },
+    },
+    deps,
+  );
+
+  registerTool(
+    server,
+    {
+      name: "list_stages",
+      title: "List stages",
+      kind: "read",
+      description:
+        "The pipeline's stages in board order, each with its key, label, position, kind (open, won, lost, not_now) and " +
+        "how many open deals sit in it. Archived stages are left out unless asked for.",
+      input: z.strictObject({
+        includeArchived: z.boolean().optional().describe("true to list archived stages too."),
+      }),
+      async run({ includeArchived }, { db }) {
+        const stages = await stageOverview(db, includeArchived === true);
+        const labels = stages.map((s) => `${s.label}${s.archived ? " (archived)" : ""}`);
+        return toolResult(
+          stages.length === 0
+            ? "There are no stages. Add one with add_stage."
+            : `${count(stages.length, "stage")} in board order: ${labels.join(", ")}.`,
+          { stages },
+        );
+      },
+    },
+    deps,
+  );
+
+  registerTool(
+    server,
+    {
+      name: "list_fields",
+      title: "List custom fields",
+      kind: "read",
+      description:
+        "The owner's custom fields on contacts and deals: id, key, label, type (text, number, date, choice) and the " +
+        "choices of a choice field. Use the keys when setting field values. Archived fields are left out unless asked for.",
+      input: z.strictObject({
+        entity: z.enum(FIELD_ENTITIES).optional().describe("Only fields of this kind of record."),
+        includeArchived: z.boolean().optional().describe("true to list archived fields too."),
+      }),
+      async run({ entity, includeArchived }, { db }) {
+        const fields = await fieldOverview(db, { entity, includeArchived });
+        const of = (kind: string) => fields.filter((f) => f.entity === kind).length;
+        return toolResult(
+          fields.length === 0
+            ? "There are no custom fields yet. Add one with add_field."
+            : `${count(of("deal"), "deal field")} and ${count(of("contact"), "contact field")}.`,
+          { fields },
+        );
+      },
+    },
+    deps,
+  );
+
+  registerTool(
+    server,
+    {
+      name: "get_settings",
+      title: "Read the settings",
+      kind: "read",
+      description:
+        "The owner's settings: timezone, the daily brief's hour, address and on/off switch, when it last went out, and " +
+        "the owner emails that may sign in (shown here, never changeable through this server).",
+      input: z.strictObject({}),
+      async run(_args, { db }) {
+        const settings = await getSettings(db);
+        const hour = settings.briefHour;
+        const at = `${hour % 12 === 0 ? 12 : hour % 12}:00 ${hour < 12 ? "AM" : "PM"}`;
+        return toolResult(
+          `Timezone ${settings.timezone}; the daily brief is ${settings.briefEnabled ? "on" : "off"} (${at}).`,
+          settings,
+        );
       },
     },
     deps,

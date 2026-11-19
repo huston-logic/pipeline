@@ -9,10 +9,36 @@ import { createMcpServer } from "./server.ts";
 
 const NOW = new Date("2026-11-19T18:00:00.000Z");
 
-// The spec's tool lists, minus the tools of later plan tasks (5: stages, fields, tasks, rulebook and settings
-// writes; 6: rules). Each of those tasks adds its names here.
-const READ_TOOLS = ["get_deal", "get_rulebook", "list_deals", "pipeline_summary", "recent_changes", "search_contacts", "whats_due"];
-const WRITE_TOOLS = ["add_lead", "add_task", "log_activity", "undo_change", "update_contact", "update_deal"];
+// The spec's tool lists, minus the tools of later plan tasks (6: rules). That task adds its names here.
+const READ_TOOLS = [
+  "get_deal",
+  "get_rulebook",
+  "get_settings",
+  "list_deals",
+  "list_fields",
+  "list_stages",
+  "pipeline_summary",
+  "recent_changes",
+  "search_contacts",
+  "whats_due",
+];
+const WRITE_TOOLS = [
+  "add_field",
+  "add_lead",
+  "add_stage",
+  "add_task",
+  "archive_stage",
+  "complete_task",
+  "log_activity",
+  "snooze_task",
+  "undo_change",
+  "update_contact",
+  "update_deal",
+  "update_field",
+  "update_rulebook",
+  "update_settings",
+  "update_stage",
+];
 
 async function client(db?: Db) {
   return connectInMemory(createMcpServer({ db: db ?? (await openTestDb()), now: () => NOW }));
@@ -46,10 +72,10 @@ test("date inputs describe the accepted formats", async () => {
   const { tools } = await (await client()).listTools();
   const dateInputs = tools.flatMap((tool) =>
     Object.entries((tool.inputSchema.properties ?? {}) as Record<string, { description?: string }>)
-      .filter(([key]) => ["nextAt", "dueAt", "occurredAt", "since"].includes(key))
+      .filter(([key]) => ["nextAt", "dueAt", "occurredAt", "since", "until"].includes(key))
       .map(([key, schema]) => [`${tool.name}.${key}`, schema.description ?? ""] as const),
   );
-  assert.equal(dateInputs.length, 5);
+  assert.equal(dateInputs.length, 6);
   for (const [name, description] of dateInputs) {
     assert.match(description, /YYYY-MM-DD\b/, name);
     assert.match(description, /YYYY-MM-DDTHH:mm in the owner's timezone/, name);

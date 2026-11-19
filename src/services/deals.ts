@@ -6,10 +6,10 @@ import { newId } from "../ids.ts";
 import { type ChangeResult, changedColumns, commitChange, type Ctx, type RowChange, updatedRow } from "./change.ts";
 import { columnLabel, fieldsLabel, joinAnd, nextPart, withArticle } from "./describe.ts";
 import { UserError } from "./errors.ts";
-import { checkValue, clean, whenOrNull, withoutNulls } from "./input.ts";
+import { checkFieldValues } from "./fields.ts";
+import { checkValue, clean, whenOrNull } from "./input.ts";
 import { dealLabel, dealTitle, withoutUntrusted } from "./labels.ts";
 import {
-  checkFieldKeys,
   type FieldValues,
   findDeal,
   findStage,
@@ -90,7 +90,7 @@ export async function updateDeal(ctx: Ctx, dealRef: string, patch: DealPatch): P
   if (patch.nextStep !== undefined) set.next_step = clean(patch.nextStep);
   if (patch.nextAt !== undefined) set.next_at = whenOrNull(patch.nextAt, tz);
   if (patch.fields !== undefined) {
-    await checkFieldKeys(db, "deal", withoutNulls(patch.fields));
+    await checkFieldValues(db, "deal", patch.fields);
     set.fields = mergeFields(before.fields, patch.fields);
   }
 

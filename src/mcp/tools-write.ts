@@ -6,11 +6,26 @@ import { CONTACT_TYPES } from "../services/activities.ts";
 import { logActivity } from "../services/activities.ts";
 import type { Ctx } from "../services/change.ts";
 import { updateDeal } from "../services/deals.ts";
+import { addField, updateField } from "../services/fields.ts";
 import { addLead, updateContact } from "../services/leads.ts";
-import { addTask } from "../services/tasks.ts";
+import { updateRulebook } from "../services/rulebook.ts";
+import { updateSettings } from "../services/settings.ts";
+import { addStage, archiveStage, updateStage } from "../services/stages.ts";
+import { addTask, completeTask, snoozeTask } from "../services/tasks.ts";
 import { undoChange } from "../services/undo.ts";
 import { toolResult } from "./format.ts";
-import { contactRef, DEAL_STATUSES, dealRef, fieldValues, longText, orNull, shortText, when } from "./schemas.ts";
+import {
+  contactRef,
+  DEAL_STATUSES,
+  dealRef,
+  FIELD_ENTITIES,
+  FIELD_TYPES,
+  fieldValues,
+  longText,
+  orNull,
+  shortText,
+  when,
+} from "./schemas.ts";
 import { registerTool, type ToolDeps } from "./tool.ts";
 
 const aiCtx = ({ db, now }: ToolDeps, tool: string): Ctx => ({ db, now: now(), actor: "ai", tool });
@@ -148,6 +163,200 @@ export function registerWriteTools(server: McpServer, deps: ToolDeps): void {
       async run({ deal, contact, ...rest }, deps) {
         const result = await addTask(aiCtx(deps, "add_task"), { dealId: deal, contactId: contact, ...rest });
         return toolResult(result.summary, { changeId: result.changeId, taskId: result.taskId });
+      },
+    },
+    deps,
+  );
+
+  registerTool(
+    server,
+    {
+      name: "complete_task",
+      title: "Complete a task",
+      kind: "write",
+      idempotent: true,
+      description: "Marks a task done. Find the task id with whats_due or get_deal. Undo it with undo_change.",
+      input: z.strictObject({ task: z.string().min(1).max(100).describe("The task's id, tk_...") }),
+      async run({ task }, deps) {
+        const result = await completeTask(aiCtx(deps, "complete_task"), task);
+        return toolResult(result.summary, { changeId: result.changeId, taskId: result.taskId });
+      },
+    },
+    deps,
+  );
+
+  registerTool(
+    server,
+    {
+      name: "snooze_task",
+      title: "Snooze a task",
+      kind: "write",
+      idempotent: true,
+      description: "Hides an open task from whats_due until a later time, when it comes back.",
+      input: z.strictObject({
+        task: z.string().min(1).max(100).describe("The task's id, tk_..."),
+        until: when("When the task should come back; it must be in the future"),
+      }),
+      async run({ task, until }, deps) {
+        const result = await snoozeTask(aiCtx(deps, "snooze_task"), task, until);
+        return toolResult(result.summary, { changeId: result.changeId, taskId: result.taskId });
+      },
+    },
+    deps,
+  );
+
+  registerTool(
+    server,
+    {
+      name: "add_stage",
+      title: "Add a stage",
+      kind: "write",
+      description:
+        "Adds a pipeline stage. Its key is made from the label (\"Demo booked\" becomes demo_booked). By default it goes " +
+        "after the last open stage; say `after` to put it elsewhere.",
+      input: z.strictObject({
+        label: shortText("The stage's name, for example \"Demo booked\"."),
+        kind: z.enum(["open", "won", "lost", "not_now"]).optional().describe("open (the default), or a closing kind."),
+        after: shortText("The stage it goes after: its key or label.").optional(),
+      }),
+      async run(args, deps) {
+        const result = await addStage(aiCtx(deps, "add_stage"), args);
+        return toolResult(result.summary, { changeId: result.changeId, key: result.key });
+      },
+    },
+    deps,
+  );
+
+  registerTool(
+    server,
+    {
+      name: "update_stage",
+      title: "Rename or move a stage",
+      kind: "write",
+      idempotent: true,
+      description:
+        "Renames a stage (its key stays the same, so deals and rules keep working) and/or moves it to a position. " +
+        "Positions count from 1 among the stages that are not archived.",
+      input: z.strictObject({
+        stage: shortText("The stage: its key (call_done) or label (Call done)."),
+        label: shortText("The new name.").optional(),
+        position: z.number().int().min(1).max(100).optional().describe("The new place, counting from 1."),
+      }),
+      async run({ stage, ...patch }, deps) {
+        const result = await updateStage(aiCtx(deps, "update_stage"), stage, patch);
+        return toolResult(result.summary, { changeId: result.changeId, key: result.key });
+      },
+    },
+    deps,
+  );
+
+  registerTool(
+    server,
+    {
+      name: "archive_stage",
+      title: "Archive a stage",
+      kind: "write",
+      description:
+        "Retires a stage: it leaves the board and the stage list. Refused while open deals sit in it (the answer says " +
+        "which and where to move them) and for the last stage of a kind. Undo it with undo_change.",
+      input: z.strictObject({ stage: shortText("The stage: its key or label.") }),
+      async run({ stage }, deps) {
+        const result = await archiveStage(aiCtx(deps, "archive_stage"), stage);
+        return toolResult(result.summary, { changeId: result.changeId, key: result.key });
+      },
+    },
+    deps,
+  );
+
+  registerTool(
+    server,
+    {
+      name: "add_field",
+      title: "Add a custom field",
+      kind: "write",
+      description:
+        "Adds a custom field to contacts or deals. Types: text, number, date (YYYY-MM-DD) or choice (give the choices). " +
+        "Its key is made from the label; use the key when setting values.",
+      input: z.strictObject({
+        entity: z.enum(FIELD_ENTITIES).describe("Whether the field is on contacts or on deals."),
+        label: shortText("The field's name, for example \"Budget\"."),
+        type: z.enum(FIELD_TYPES).describe("text, number, date or choice."),
+        choices: z.array(z.string().max(100)).max(50).optional().describe("The options of a choice field; only for choice."),
+      }),
+      async run(args, deps) {
+        const result = await addField(aiCtx(deps, "add_field"), args);
+        return toolResult(result.summary, { changeId: result.changeId, fieldId: result.fieldId, key: result.key });
+      },
+    },
+    deps,
+  );
+
+  registerTool(
+    server,
+    {
+      name: "update_field",
+      title: "Update a custom field",
+      kind: "write",
+      idempotent: true,
+      description:
+        "Renames a custom field (its key stays), adds choices to a choice field, or archives or restores it. A choice " +
+        "that records use can't be removed. Values already stored stay on the records.",
+      input: z.strictObject({
+        field: shortText("The field: its id (fd_...), or its key or label (give `entity` if both kinds of record have it)."),
+        entity: z.enum(FIELD_ENTITIES).optional().describe("Narrows a lookup by key or label."),
+        label: shortText("The new name.").optional(),
+        choices: z.array(z.string().max(100)).max(50).optional().describe("The whole list of choices, with the new ones added."),
+        archived: z.boolean().optional().describe("true to archive the field, false to bring it back."),
+      }),
+      async run({ field, ...patch }, deps) {
+        const result = await updateField(aiCtx(deps, "update_field"), field, patch);
+        return toolResult(result.summary, { changeId: result.changeId, fieldId: result.fieldId });
+      },
+    },
+    deps,
+  );
+
+  registerTool(
+    server,
+    {
+      name: "update_rulebook",
+      title: "Update the rulebook",
+      kind: "write",
+      idempotent: true,
+      description:
+        "Creates or replaces one rulebook document (voice, pipeline, guardrails, or a new name). Send the whole new text: " +
+        "read it first with get_rulebook and change only what the owner asked. Undo it with undo_change.",
+      input: z.strictObject({
+        name: z.string().min(1).max(40).describe("The document's name: letters, numbers, \"-\" and \"_\"."),
+        markdown: z.string().min(1).max(20_000).describe("The document's whole text, in markdown."),
+      }),
+      async run({ name, markdown }, deps) {
+        const result = await updateRulebook(aiCtx(deps, "update_rulebook"), name, markdown);
+        return toolResult(result.summary, { changeId: result.changeId });
+      },
+    },
+    deps,
+  );
+
+  registerTool(
+    server,
+    {
+      name: "update_settings",
+      title: "Update the settings",
+      kind: "write",
+      idempotent: true,
+      description:
+        "Changes the owner's timezone, the daily brief's hour, address or on/off switch. Give only what changes. Owner " +
+        "emails can't be changed here.",
+      input: z.strictObject({
+        timezone: shortText("An IANA timezone name, for example America/Los_Angeles or Europe/London.").optional(),
+        briefHour: z.number().int().min(0).max(23).optional().describe("The hour the daily brief goes out, 0 to 23 in the owner's timezone."),
+        briefEmail: orNull(shortText("The address the brief is sent to, or null to clear it.")).optional(),
+        briefEnabled: z.boolean().optional().describe("true to send the daily brief, false to stop."),
+      }),
+      async run(args, deps) {
+        const result = await updateSettings(aiCtx(deps, "update_settings"), args);
+        return toolResult(result.summary, { changeId: result.changeId });
       },
     },
     deps,

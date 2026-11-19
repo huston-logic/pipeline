@@ -160,11 +160,25 @@ function writeStatement(db: Db, table: ChangeTable, pk: string, change: RowChang
     .bind(...set.map((column) => after[column]), after[pk]);
 }
 
-const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
+/** The error's message and those of every `cause` below it: D1 wraps the SQLite text in its own error. */
+function errorText(error: unknown): string {
+  const parts: string[] = [];
+  const seen = new Set<unknown>();
+  for (let current = error; current !== undefined && current !== null && !seen.has(current); ) {
+    seen.add(current);
+    parts.push(current instanceof Error ? current.message : String(current));
+    current = current instanceof Error ? current.cause : undefined;
+  }
+  return parts.join("\n");
+}
 
 export const isGuardFailure = (error: unknown) => /CHECK constraint failed: ok = 1/.test(errorText(error));
 
 export const isForeignKeyFailure = (error: unknown) => /FOREIGN KEY constraint failed/.test(errorText(error));
+
+/** Two contacts with the same email (the unique index on lower(email)). */
+export const isDuplicateEmailFailure = (error: unknown) =>
+  /UNIQUE constraint failed: (?:index 'contacts_email'|contacts\.)/.test(errorText(error));
 
 export async function commitChange(ctx: Ctx, input: ChangeInput): Promise<ChangeResult> {
   const { db } = ctx;

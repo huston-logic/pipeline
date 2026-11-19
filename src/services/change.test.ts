@@ -2,7 +2,16 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { AuditRow, ContactRow, Db, RulebookRow, SettingsRow, StageRow } from "../db/db.ts";
 import { openTestDb } from "../db/sqlite-d1.ts";
-import { commitChange, type Ctx, type RowChange, StaleWriteError, updatedRow } from "./change.ts";
+import {
+  commitChange,
+  type Ctx,
+  isDuplicateEmailFailure,
+  isForeignKeyFailure,
+  isGuardFailure,
+  type RowChange,
+  StaleWriteError,
+  updatedRow,
+} from "./change.ts";
 import { UserError } from "./errors.ts";
 
 const NOW = new Date("2026-11-19T18:00:00.000Z");
@@ -254,4 +263,17 @@ test("a summary is always one line", async () => {
     changes: [{ table: "contacts", id: row.id, before: null, after: row }],
   });
   assert.equal(result.summary, `Added contact Pat Example today (change ${result.changeId})`);
+});
+
+test("guard and foreign-key failures are recognized anywhere in the cause chain", () => {
+  const guard = new Error("D1_ERROR: CHECK constraint failed: ok = 1: SQLITE_CONSTRAINT");
+  const wrapped = new Error("Failed query", { cause: new Error("batch failed", { cause: guard }) });
+  assert.equal(isGuardFailure(wrapped), true);
+  assert.equal(isGuardFailure(new Error("Failed query", { cause: new Error("nope") })), false);
+  assert.equal(isForeignKeyFailure(new Error("outer", { cause: new Error("FOREIGN KEY constraint failed") })), true);
+  assert.equal(
+    isDuplicateEmailFailure(new Error("outer", { cause: new Error("UNIQUE constraint failed: index 'contacts_email'") })),
+    true,
+  );
+  assert.equal(isDuplicateEmailFailure(new Error("UNIQUE constraint failed: rule_firings.fire_key")), false);
 });

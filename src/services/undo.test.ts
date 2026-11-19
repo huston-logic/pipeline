@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { AuditRow, Db, DealRow } from "../db/db.ts";
+import { racing } from "../../tests/helpers/race-db.ts";
 import { openTestDb } from "../db/sqlite-d1.ts";
 import { logActivity } from "./activities.ts";
 import type { Ctx } from "./change.ts";
@@ -176,4 +177,15 @@ test("a foreign-key failure inside the undo batch becomes the plain-English refu
   };
   const message = await refusal(undoChange(undoCtx(failing), changeId));
   assert.equal(message, `Can't undo ${changeId}: other records now depend on it (records added since). Change those first, or leave it.`);
+});
+
+test("when another undo wins the race, the slower one is told the change was already undone", async () => {
+  const { db, dealId } = await setup();
+  const move = await updateDeal(ctxAt(db, NOW, "update_deal"), dealId, { stage: "replied" });
+  const rival = racing(db, () => undoChange(undoCtx(db), move.changeId));
+
+  const message = await refusal(undoChange(undoCtx(rival), move.changeId));
+
+  assert.match(message, new RegExp(`^${move.changeId} was already undone \\(by chg_[a-z2-7]{12}\\)\\. Nothing to do\\.$`));
+  assert.equal((await deal(db, dealId))?.stage_key, "new_inquiry", "restored once, not twice");
 });

@@ -10,5 +10,6 @@ Rules:
 Also:
 - There are no delete tools. To retire a record, archive it; to take back a mistake, undo it.
 - undo_change reverses one change by its id (see recent_changes). It refuses when the change was already undone or a record it touched has changed since.
+- The owner can change the pipeline by talking: stages, custom fields, the rulebook and settings each have their own tools (add_stage, update_stage, archive_stage, add_field, update_field, update_rulebook, update_settings), and tasks can be completed or snoozed. The owner emails can't be changed here.
 - Dates and times are in the owner's timezone. Date inputs accept YYYY-MM-DD, YYYY-MM-DDTHH:mm (the owner's local time) or a full ISO time with an offset.
 - No tool sends email or moves data out of the system.`;
