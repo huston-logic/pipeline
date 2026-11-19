@@ -6,6 +6,7 @@ import { after, before, test } from "node:test";
 import { gzipSync } from "node:zlib";
 import { SECURITY_HEADERS } from "../src/security.ts";
 import { build } from "./build.mjs";
+import { ICONS } from "./make-icons.mjs";
 
 let outDir;
 
@@ -33,6 +34,20 @@ test("board.js stays small and plain: under 3 KB gzipped, no eval, no third-part
   const script = read("board.js");
   assert.ok(gzipSync(script).length < 3 * 1024, `${gzipSync(script).length} bytes gzipped`);
   assert.doesNotMatch(script, /\beval\(|new Function|innerHTML|import\(|https?:\/\//);
+});
+
+test("copies every icon from public/icons/ into out/icons/, byte for byte (decision 0019)", () => {
+  for (const icon of ICONS) {
+    const built = readFileSync(join(outDir, "icons", icon.file));
+    assert.ok(built.equals(readFileSync(new URL(`../public/icons/${icon.file}`, import.meta.url))), icon.file);
+  }
+});
+
+test("the static pages link the PNG favicon and no manifest (it needs a sign-in)", () => {
+  for (const name of ["index.html", "404.html"]) {
+    assert.match(read(name), /<link rel="icon" href="\/icons\/favicon-32.png" type="image\/png" sizes="32x32">/, name);
+    assert.doesNotMatch(read(name), /manifest/, name);
+  }
 });
 
 test("sitemap.xml is an empty <urlset> (decision 0003)", () => {

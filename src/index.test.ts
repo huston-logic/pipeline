@@ -132,6 +132,30 @@ test("/theme.css comes from the settings: text/css, not cached, security headers
   assert.equal((await get("/theme.css", env, { method: "POST" })).status, 405);
 });
 
+test("/manifest.webmanifest comes from the settings: manifest JSON, not cached, security headers, never from ASSETS", async () => {
+  const calls: AssetCall[] = [];
+  const env = await devEnv(calls);
+  const unset = await get("/manifest.webmanifest", env);
+  assert.equal(unset.status, 200);
+  assert.equal(unset.headers.get("Content-Type"), "application/manifest+json");
+  assert.equal(unset.headers.get("Cache-Control"), "no-store");
+  assertSecurityHeaders(unset);
+  const defaults = (await unset.json()) as Record<string, unknown>;
+  assert.equal(defaults.name, "Pipeline");
+  assert.equal(defaults.short_name, "Pipeline");
+  assert.equal(defaults.theme_color, "#2b6455");
+  assert.equal(defaults.display, "standalone");
+
+  // A name that would break a hand-built JSON string comes back intact, because the body is JSON.stringify's.
+  await env.DB.prepare("UPDATE settings SET business_name = ?, accent_color = '#1e4a3d'").bind(`Fern "&" Co`).run();
+  const named = (await (await get("/manifest.webmanifest", env)).json()) as Record<string, unknown>;
+  assert.equal(named.name, `Fern "&" Co`);
+  assert.equal(named.short_name, `Fern "&" Co`);
+  assert.equal(named.theme_color, "#1e4a3d");
+  assert.deepEqual(calls, []);
+  assert.equal((await get("/manifest.webmanifest", env, { method: "POST" })).status, 405);
+});
+
 test("a POST to a board page that is not a write path is 405 with an Allow header", async () => {
   const res = await get("/", fakeEnv(), { method: "POST", body: "x" });
   assert.equal(res.status, 405);
@@ -197,7 +221,7 @@ test("AUTH_MODE=dev in production fails closed with 500 on every route", async (
   }
 });
 
-const BOARD_PATHS = ["/", "/pipeline", "/contacts", "/more", "/rules", "/deals/dl_seed01", "/export", "/theme.css"];
+const BOARD_PATHS = ["/", "/pipeline", "/contacts", "/more", "/rules", "/deals/dl_seed01", "/export", "/theme.css", "/manifest.webmanifest"];
 const API_PATHS = ["/api/pipeline", "/api/export.json", "/api/export/contacts.csv"];
 
 test("in production without Access settings the board and /api fail closed with 500; static files and the 404 page still work", async () => {

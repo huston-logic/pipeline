@@ -3,6 +3,7 @@ import { authMode } from "./auth/dev.ts";
 import { isOAuthPath } from "./auth/oauth-routes.ts";
 import { matchBoardAction } from "./board/actions.ts";
 import { type CsrfMode, csrfCookie, csrfFromCookies, newCsrfToken } from "./board/csrf.ts";
+import { MANIFEST_PATH, manifestFor } from "./board/manifest.ts";
 import { notFoundPage, serverErrorPage } from "./board/pages/not-found.ts";
 import { handleBoardPost } from "./board/post.ts";
 import { matchBoardPage } from "./board/router.ts";
@@ -25,6 +26,12 @@ const SERVER_ERROR = "Something went wrong on the server. Nothing was changed.";
 function cssResponse(body: string): Response {
   return withSecurityHeaders(
     new Response(body, { headers: { "Content-Type": "text/css; charset=utf-8", "Cache-Control": "no-store" } }),
+  );
+}
+
+function manifestResponse(body: string): Response {
+  return withSecurityHeaders(
+    new Response(body, { headers: { "Content-Type": "application/manifest+json", "Cache-Control": "no-store" } }),
   );
 }
 
@@ -99,7 +106,7 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
     }
   }
 
-  // Before the static-file branch: it looks like a file, but the Worker writes it from the settings.
+  // Before the static-file branch: they look like files, but the Worker writes them from the settings.
   if (pathname === THEME_PATH) {
     try {
       const auth = await signIn();
@@ -107,6 +114,16 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
       return cssResponse(await themeStylesheet(env.DB));
     } catch {
       console.error(JSON.stringify({ event: "theme_failed" }));
+      return textResponse(SERVER_ERROR, 500);
+    }
+  }
+  if (pathname === MANIFEST_PATH) {
+    try {
+      const auth = await signIn();
+      if (!auth.ok) return textResponse(auth.message, auth.status);
+      return manifestResponse(await manifestFor(env.DB));
+    } catch {
+      console.error(JSON.stringify({ event: "manifest_failed" }));
       return textResponse(SERVER_ERROR, 500);
     }
   }
