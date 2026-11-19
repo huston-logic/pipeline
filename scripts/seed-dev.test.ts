@@ -190,13 +190,18 @@ test("one active and one paused rule", async () => {
 
 test("one brief, for yesterday, with an outside line, so the cron still composes today's", async () => {
   const db = await seeded();
-  const briefs = await rows<{ local_date: string; text: string; items: string }>(db, "SELECT * FROM briefs");
+  const briefs = await rows<{ local_date: string; text: string; items: string; sent_at: string | null; send_status: string }>(
+    db,
+    "SELECT * FROM briefs",
+  );
   assert.equal(briefs.length, 1);
   assert.equal(briefs[0]?.local_date, "2026-11-18");
   assert.match(briefs[0]?.text ?? "", /^Pipeline brief for Wednesday Nov 18\n/);
   const items = JSON.parse(briefs[0]?.items ?? "[]") as { section: string; untrusted: boolean }[];
   assert.deepEqual([...new Set(items.map((item) => item.section))], ["overdue", "due_today", "gone_quiet", "new_lead"]);
   assert.ok(items.some((item) => item.untrusted));
+  assert.equal(briefs[0]?.sent_at, null, "never emailed");
+  assert.equal(briefs[0]?.send_status, "off: brief_enabled is off");
 });
 
 test("the change log: recent changes by the owner, the AI and the form, each summary naming its change id", async () => {
@@ -222,6 +227,7 @@ test("the change log: recent changes by the owner, the AI and the form, each sum
 test("every seeded change either undoes cleanly or is refused in plain English; the newest ones undo", async () => {
   const ids = (await rows<{ id: string }>(await seeded(), "SELECT id FROM audit_log ORDER BY at")).map((r) => r.id);
   const undoable: string[] = [];
+  const refused = new Map<string, string>();
   for (const id of ids) {
     const db = await seeded();
     try {
@@ -230,16 +236,24 @@ test("every seeded change either undoes cleanly or is refused in plain English; 
       assert.deepEqual(await rows(db, "PRAGMA foreign_key_check"), [], id);
     } catch (error) {
       assert.ok(error instanceof UserError, `${id}: ${String(error)}`);
+      refused.set(id, error.message);
     }
   }
   const db = await seeded();
-  const tools = async (list: string[]) =>
-    Promise.all(list.map(async (id) => String(await db.prepare("SELECT tool FROM audit_log WHERE id = ?").bind(id).first("tool"))));
+  const toolOf = async (id: string) => String(await db.prepare("SELECT tool FROM audit_log WHERE id = ?").bind(id).first("tool"));
   assert.deepEqual(
-    (await tools(undoable)).sort(),
+    (await Promise.all(undoable.map(toolOf))).sort(),
     ["add_rule", "add_task", "complete_task", "intake", "log_activity", "pause_rule", "snooze_task", "update_contact", "update_deal"],
   );
-  assert.equal(ids.length - undoable.length, 3, "the old add_lead, the undone move and its undo are refused");
+  // What each refused one answers, as the comments in seed-dev.ts and decision 0016 say.
+  assert.deepEqual([...refused.keys()].sort(), ["chg_seed00000003", "chg_seed00000006", "chg_seed00000007", "chg_seed00000013"]);
+  assert.match(refused.get("chg_seed00000003") ?? "", /^Can't undo chg_seed00000003: other records now depend on it \(5 activities and 1 task\)/);
+  assert.match(
+    refused.get("chg_seed00000013") ?? "",
+    /^Can't undo chg_seed00000013: deal "Foundations for three new fermentation tanks" changed since \(see recent_changes\)\./,
+  );
+  assert.match(refused.get("chg_seed00000006") ?? "", /^chg_seed00000006 was already undone \(by chg_seed00000007\)/);
+  assert.match(refused.get("chg_seed00000007") ?? "", /^Undo entries can't be undone/);
 });
 
 test("the same time and timezone give the same SQL; quotes are escaped", () => {

@@ -5,8 +5,10 @@
 //   node scripts/seed-dev.ts --out <file> [--tz <IANA timezone>]
 // `npm run dev` and `npm run preview` load it after seed/defaults.sql (scripts/dev.mjs). Unit tests use their own
 // fixture (tests/helpers/fixture-seed.ts), so this file can change without breaking them.
-// The audit_log rows are real snapshots: the newest change on a row matches the row as seeded (so it can be undone),
-// older ones are refused by undo_change as "changed since", and one change is already undone (decision 0016).
+// The audit_log rows are real snapshots. The newest change on a row matches the row as seeded, so undo_change undoes
+// it. Three are refused, each with its own plain-English answer: an older move whose deal has changed since, Dana's
+// first add_lead (records added later depend on it), and a move that was already undone (plus its undo entry).
+// scripts/seed-dev.test.ts checks every answer; decision 0016.
 import { writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -190,7 +192,7 @@ export function devSeed(now: Date, tz: string): DevSeed {
     { n: 1, contact: 1, title: "Structural review for warehouse mezzanine", stage: "call_booked", value: 8500, created: day(-9, "09:00"), extra: { next_step: "Site walk and discovery call", next_at: day(2, "14:00"), fields: '{"project_type":"Industrial"}', version: 3, updated_at: day(-2, "10:15") } },
     { n: 2, contact: 2, title: "Jamie Lindqvist inquiry", stage: "new_inquiry", value: null, created: day(-1, "06:40"), extra: { untrusted_fields: '["title"]' } },
     { n: 3, contact: 3, title: "Balcony condition assessment, 24 units", stage: "replied", value: 12000, created: day(-7, "14:20"), extra: { fields: '{"project_type":"Residential"}' } },
-    { n: 4, contact: 4, title: "Foundations for three new fermentation tanks", stage: "call_done", value: 14200, created: day(-6, "10:00"), extra: { next_step: "Send the proposal", next_at: day(1, "12:00"), fields: '{"project_type":"Industrial"}' } },
+    { n: 4, contact: 4, title: "Foundations for three new fermentation tanks", stage: "call_done", value: 14200, created: day(-6, "10:00"), extra: { next_step: "Send the proposal", next_at: day(1, "12:00"), fields: '{"project_type":"Industrial"}', version: 3 } },
     { n: 5, contact: 5, title: "Rooftop HVAC support framing", stage: "proposal_sent", value: 6800, created: day(-21, "10:00"), extra: { fields: '{"project_type":"Commercial"}' } },
     { n: 6, contact: 6, title: "Peer review of a timber-frame library design", stage: "new_inquiry", value: null, created: day(-11, "09:00"), extra: { fields: '{"project_type":"Public"}' } },
     { n: 7, contact: 7, title: "Seismic retrofit of storage building B", stage: "won", value: 22000, created: day(-31, "09:00"), extra: { fields: '{"project_type":"Commercial"}' } },
@@ -472,7 +474,8 @@ export function devSeed(now: Date, tz: string): DevSeed {
   change(2, day(-19, "09:00"), "owner", "pause_rule", ["rules", "ru_seed02"], "Paused rule ru_seed02", [
     { table: "rules", id: "ru_seed02", before: earlier(R("ru_seed02"), { active: 1, updated_at: day(-20, "09:05") }), after: R("ru_seed02") },
   ]);
-  // Dana's lead as it was first added; the deal has moved on since, so undo refuses this one.
+  // Dana's lead as it was first added. Undo would remove the contact, and the activities and task added since depend
+  // on it, so undo refuses ("other records now depend on it").
   const dana = C("ct_seed01");
   const danaDeal = D("dl_seed01");
   change(3, day(-9, "09:00"), "owner", "add_lead", ["deals", "dl_seed01"], `Added lead Dana Whitfield with deal "${danaDeal.title}" in New inquiry`, [
@@ -555,6 +558,25 @@ export function devSeed(now: Date, tz: string): DevSeed {
   ]);
   change(12, day(-1, "11:25"), "ai", "add_task", ["tasks", "tk_seed08"], `Added task "${T("tk_seed08").title}" for ${dealLabel("dl_seed09")}, due ${formatLocal(laterToday, tz)}`, [
     { table: "tasks", id: "tk_seed08", before: null, after: T("tk_seed08") },
+  ]);
+
+  // Elena's deal moved to Call booked by the AI; it has moved on to Call done since, so undo refuses with "changed since"
+  // (nothing depends on what the change added, so that is the answer the owner sees).
+  const elena = D("dl_seed04");
+  const elenaMove = activityOf("move of dl_seed04", (a) => a.deal_id === "dl_seed04" && a.occurred_at === day(-6, "10:05"));
+  const elenaBooked: Row = {
+    ...elena,
+    stage_key: "call_booked",
+    stage_entered_at: day(-6, "10:05"),
+    last_activity_at: day(-6, "10:00"),
+    next_step: null,
+    next_at: null,
+    version: 2,
+    updated_at: day(-6, "10:05"),
+  };
+  change(13, day(-6, "10:05"), "ai", "update_deal", ["deals", "dl_seed04"], `Moved ${dealLabel("dl_seed04")} to Call booked`, [
+    { table: "deals", id: "dl_seed04", before: { ...elenaBooked, stage_key: "new_inquiry", stage_entered_at: String(elena.created_at), version: 1, updated_at: String(elena.created_at) }, after: elenaBooked },
+    { table: "activities", id: String(elenaMove.id), before: null, after: elenaMove },
   ]);
 
   // Yesterday's brief, so the board shows one (with an outside line) and today's is still composed by the cron.

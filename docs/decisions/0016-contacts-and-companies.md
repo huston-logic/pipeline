@@ -49,13 +49,19 @@ the two views share one tab, and how seeded `audit_log` rows stay safe to undo.
   address is at example.com, example.org or example.net. The business name is set only when the local copy has none.
   `dl_seed01` (a normal deal), `dl_seed02` (the form lead) and `ct_seed01` keep their ids and roles. Deal dates
   (`last_activity_at`, `stage_entered_at`) are computed from the seeded activities, the way the services keep them.
-- **Seeded change log.** Twelve `audit_log` rows from the last 30 days, by the owner, the AI and the form, with real
-  snapshots of full rows. The newest change on each row matches the row as seeded, so undo works on it exactly as
-  on a live copy (nine of them); the oldest one (Dana's lead as first added) is refused because the deal has moved
-  on; one AI move is already undone, with its undo logged, and both are refused as "already undone" / "undo entries
-  can't be undone". A seed test runs `undo_change` on every seeded change and checks each either undoes cleanly or
-  is refused in plain English. This was chosen over marking every row as undone: the demo's Undo (task R3) should
-  work on it.
+- **Seeded change log.** Thirteen `audit_log` rows from the last 30 days, by the owner, the AI and the form, with
+  real snapshots of full rows. The newest change on each row matches the row as seeded, so undo works on it exactly
+  as on a live copy (nine of them). Four are refused, each with what `undo_change` really answers: the AI's earlier
+  move of Elena's deal to Call booked (`chg_seed00000013`) gets "deal … changed since (see recent_changes)", because
+  the deal has moved on to Call done and nothing depends on what the change added; Dana's lead as first added
+  (`chg_seed00000003`) gets "other records now depend on it (5 activities and 1 task)", because undo would remove the
+  contact that later activities and a task point at (dependents are checked before "changed since"); one AI move
+  that was undone a few minutes later (`chg_seed00000006`) gets "already undone"; and its undo entry
+  (`chg_seed00000007`) gets "Undo entries can't be undone". A seed test runs `undo_change` on every seeded change and
+  checks each of these answers. This was chosen over marking every row as undone: the demo's Undo (task R3) should
+  work on it. Dana's refusal suggests changing the dependent records first, which the owner can't do (no delete
+  tools); it is kept as the honest answer for a lead that has history, and the "changed since" case is the one the
+  demo shows for an edited record.
 - **Tests and the seed.** The unit tests that needed exact seed names, ids and counts now load the old seed,
   unchanged, from `tests/helpers/fixture-seed.ts`; the demo seed has its own tests that check its shape, not its
   names. The e2e and acceptance tests run on the demo seed and were updated to its people and counts; the intake e2e
