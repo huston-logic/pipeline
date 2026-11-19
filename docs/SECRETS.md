@@ -22,6 +22,11 @@ The only secret the Worker reads so far is `RESEND_API_KEY` (below). Later tasks
 | Name | For | Set with |
 |---|---|---|
 | `RESEND_API_KEY` | Emailing the daily brief through Resend (task 7). Read only when sending is on. | `npx wrangler secret put RESEND_API_KEY` (the owner, in their own Cloudflare account) |
+| `INTAKE_SECRET` | The shared secret a website form's server sends in the `X-Intake-Secret` header to `/intake` (task 8, decision 0012). Unset, `/intake` answers 503. | `npx wrangler secret put INTAKE_SECRET` (the owner; use a long random value). Local dev and the e2e tests use the fake `dev-intake-secret` from `--var`. |
+
+`/intake` also uses the `INTAKE_RATE_LIMIT` Rate Limiting binding (5 requests per 60 s per IP), configured in
+`wrangler.jsonc` (a placeholder namespace id; each copy's own config gives its own number). It is a binding, not a
+secret.
 
 Sending the brief needs all of these at once: `settings.brief_enabled` on (`update_settings`), a `brief_email` address in
 the settings, `BRIEF_SENDING=on`, `BRIEF_FROM` and `RESEND_API_KEY`. If any one is missing the brief is only composed and
@@ -31,7 +36,6 @@ Still to come:
 
 | Added by | For |
 |---|---|
-| Task 8 (`/intake`) | The shared secret a website form sends in the `X-Intake-Secret` header |
 | Task 10 (auth) | The allowed owner email(s) (`OWNER_EMAILS`), the Cloudflare Access team domain and AUD, and the OAuth settings |
 
 ## Local development
