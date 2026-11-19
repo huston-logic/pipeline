@@ -39,7 +39,8 @@ and the authorization page; plus the installed `agents` 0.33.0 types in `dist/mc
 - **Sign-in until task 10:** `src/auth/dev.ts`. `AUTH_MODE=dev` signs in a fake owner (`owner@example.test`) only when
   `ENVIRONMENT=development` and the host is `localhost`, `127.0.0.1` or `[::1]`. `AUTH_MODE=dev` anywhere else, or any
   other `AUTH_MODE` value, is a misconfiguration: every route answers 500 (fail closed). Without `AUTH_MODE`, `/mcp`
-  answers 401 with a plain message; the board is unaffected (Access protects it in production).
+  answers 401 with a plain message; the board is unaffected (Access protects it in production). (Changed by 0013:
+  the board and `/api/*` now use this same gate until task 10.)
 - **Answers:** one text block: a one-line plain-English headline, a blank line, then pretty JSON (`src/mcp/format.ts`).
   A write's headline is the service's summary, ending "(change chg_…)". Read headlines use counts, ids, dates and
   owner-set labels only. Empty results say so ("Your pipeline is empty: ..."). No headline, summary or error message

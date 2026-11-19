@@ -6,6 +6,7 @@
 import { writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { composeBrief } from "../src/brief/compose.ts";
 import { addDays, dayBoundsUtc, DEFAULT_TZ, localDate, zonedToUtc } from "../src/time.ts";
 
 type SqlValue = string | number | null;
@@ -206,6 +207,50 @@ export function buildDevSeed(now: Date, tz: string): string {
     },
   ];
 
+  // Yesterday's brief, so the board shows one (with an outside line) and today's is still composed by the cron.
+  const briefAt = day(-1, "09:30");
+  const brief = composeBrief({
+    now: new Date(briefAt),
+    tz,
+    tasks: {
+      overdue: [],
+      today: [
+        {
+          id: "tk_seed02",
+          title: "Send Casey the price sheet",
+          dueAt: day(-1, "09:00"),
+          dealTitle: "Landscaping site with a quote form",
+          contactName: "Casey Placeholder",
+          untrusted_fields: [],
+        },
+      ],
+    },
+    quietDeals: [
+      { id: "dl_seed06", title: "Hardware store website", contactName: "Morgan Demo", quietDays: 11, untrusted_fields: [] },
+    ],
+    newLeads: [
+      {
+        dealId: "dl_seed02",
+        contactId: "ct_seed02",
+        title: "New website for Sample Bakery",
+        contactName: "Robin Sample",
+        createdAt: day(-1, "08:40"),
+        untrusted_fields: ["title", "contactName"],
+      },
+    ],
+  });
+  const briefs: Row[] = [
+    {
+      id: "br_seed01",
+      local_date: brief.localDate,
+      composed_at: briefAt,
+      text: brief.text,
+      items: JSON.stringify(brief.items),
+      sent_at: null,
+      send_status: "off: brief_enabled is off",
+    },
+  ];
+
   return [
     "-- Fake development data from scripts/seed-dev.ts. Not real people.",
     ...contacts.map((row) => insert("contacts", row)),
@@ -213,6 +258,7 @@ export function buildDevSeed(now: Date, tz: string): string {
     ...activities.map((row) => insert("activities", row)),
     ...tasks.map((row) => insert("tasks", row)),
     ...rules.map((row) => insert("rules", row)),
+    ...briefs.map((row) => insert("briefs", row)),
     "",
   ].join("\n");
 }

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { openTestDb, SqliteD1 } from "./db/sqlite-d1.ts";
+import { createTestDb, openTestDb, SqliteD1 } from "./db/sqlite-d1.ts";
 import type { Env } from "./env.ts";
 import worker from "./index.ts";
 
@@ -20,6 +20,11 @@ function fakeEnv(calls: AssetCall[] = []): Env {
       },
     },
   };
+}
+
+/** Signed in with the local dev sign-in, on a database with the migrations and defaults. */
+async function devEnv(calls: AssetCall[] = []): Promise<Env> {
+  return { ...fakeEnv(calls), AUTH_MODE: "dev", DB: await createTestDb() };
 }
 
 const ctx = { waitUntil() {}, passThroughOnException() {}, props: {} } as unknown as ExecutionContext;
@@ -43,7 +48,7 @@ function assertSecurityHeaders(res: Response) {
 }
 
 test("GET / returns the board as HTML with one <h1>, lang and a meta description", async () => {
-  const res = await get("/");
+  const res = await get("/", await devEnv());
   assert.equal(res.status, 200);
   assert.match(res.headers.get("Content-Type") ?? "", /^text\/html; charset=utf-8/);
   const body = await res.text();
@@ -57,7 +62,7 @@ test("GET / returns the board as HTML with one <h1>, lang and a meta description
 
 test("board pages are not cached and not handed to ASSETS", async () => {
   const calls: AssetCall[] = [];
-  const res = await get("/", fakeEnv(calls));
+  const res = await get("/", await devEnv(calls));
   assert.equal(res.headers.get("Cache-Control"), "no-store");
   assert.deepEqual(calls, []);
 });
@@ -141,6 +146,53 @@ test("AUTH_MODE=dev in production fails closed with 500 on every route", async (
     assert.match(await res.text(), /misconfigured/);
     assertSecurityHeaders(res);
   }
+});
+
+test("without a sign-in mode the board and /api answer 401; static files and the 404 page still work", async () => {
+  for (const ENVIRONMENT of ["production", "development"]) {
+    const env: Env = { ...fakeEnv(), ENVIRONMENT, DB: await createTestDb() };
+    for (const path of ["/", "/rules", "/deals/dl_seed01", "/export"]) {
+      const res = await get(path, env);
+      assert.equal(res.status, 401, `${ENVIRONMENT} ${path}`);
+      assert.match(await res.text(), /Sign-in for the board isn't set up/);
+      assertSecurityHeaders(res);
+    }
+    for (const path of ["/api/pipeline", "/api/export.json", "/api/export/contacts.csv"]) {
+      const res = await get(path, env);
+      assert.equal(res.status, 401, `${ENVIRONMENT} ${path}`);
+      assert.match(res.headers.get("Content-Type") ?? "", /^application\/json/);
+      assert.match(((await res.json()) as { error: string }).error, /Sign-in for the board isn't set up/);
+    }
+    assert.equal((await get("/nope", env)).status, 404);
+    assert.equal((await get("/board.css", env)).status, 200);
+  }
+});
+
+test("a failure while reading answers 500 with no internals and logs only a fixed event", async (t) => {
+  const failed = t.mock.method(console, "error", () => {});
+  const broken: Env = {
+    ...(await devEnv()),
+    DB: {
+      prepare() {
+        throw new Error("D1_ERROR: secret internals");
+      },
+      batch() {
+        throw new Error("D1_ERROR: secret internals");
+      },
+    } as unknown as Env["DB"],
+  };
+  const page = await get("/", broken);
+  assert.equal(page.status, 500);
+  const html = await page.text();
+  assert.match(html, /<h1>Something went wrong<\/h1>/);
+  assert.doesNotMatch(html, /internals|D1_ERROR/);
+  const api = await get("/api/pipeline", broken);
+  assert.equal(api.status, 500);
+  assert.deepEqual(await api.json(), { error: "Something went wrong on the server. Nothing was changed." });
+  assert.deepEqual(
+    failed.mock.calls.map((call) => call.arguments[0]),
+    [JSON.stringify({ event: "board_failed" }), JSON.stringify({ event: "api_failed" })],
+  );
 });
 
 test("/mcp in dev mode on a host that is not loopback fails closed", async () => {

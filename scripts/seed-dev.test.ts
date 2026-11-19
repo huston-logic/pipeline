@@ -132,6 +132,24 @@ test("one active and one paused rule", async () => {
   ]);
 });
 
+test("one brief, for yesterday, with an outside line, so the cron still composes today's", async () => {
+  const db = await seeded();
+  const briefs = await rows<{ local_date: string; text: string; items: string; send_status: string }>(db, "SELECT * FROM briefs");
+  assert.equal(briefs.length, 1);
+  assert.equal(briefs[0]?.local_date, "2026-11-18");
+  assert.match(briefs[0]?.text ?? "", /^Pipeline brief for Wednesday Nov 18\n/);
+  const items = JSON.parse(briefs[0]?.items ?? "[]") as { section: string; untrusted: boolean }[];
+  assert.deepEqual(
+    items.map((item) => [item.section, item.untrusted]),
+    [
+      ["due_today", false],
+      ["gone_quiet", false],
+      ["new_lead", true],
+    ],
+  );
+  assert.equal(briefs[0]?.send_status, "off: brief_enabled is off");
+});
+
 test("the same time and timezone give the same SQL; quotes are escaped", () => {
   assert.equal(buildDevSeed(NOW, DEFAULT_TZ), buildDevSeed(new Date(NOW), DEFAULT_TZ));
   assert.notEqual(buildDevSeed(NOW, DEFAULT_TZ), buildDevSeed(NOW, "UTC"));

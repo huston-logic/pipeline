@@ -1,18 +1,23 @@
 import { devAuth } from "./auth/dev.ts";
-import { homePage } from "./board/pages/home.ts";
-import { notFoundPage } from "./board/pages/not-found.ts";
+import { notFoundPage, serverErrorPage } from "./board/pages/not-found.ts";
+import { matchBoardPage } from "./board/router.ts";
 import { runScheduled } from "./cron.ts";
 import type { Env } from "./env.ts";
+import { apiMethodNotAllowed, handleApi, isApiPath, json } from "./http/api.ts";
 import { handleIntake } from "./http/intake.ts";
 import { MCP_ROUTE } from "./mcp/route.ts";
 import { withSecurityHeaders } from "./security.ts";
 
 const INTAKE_ROUTE = "/intake";
 
-const pages = new Map<string, () => string>([["/", homePage]]);
-
 // A last path segment with an extension (/board.css, /robots.txt) is a static file in out/.
 const FILE_PATH = /\/[^/]+\.[A-Za-z0-9]+$/;
+
+const BOARD_NO_SIGN_IN =
+  "Sign-in for the board isn't set up on this server yet, so it can't be shown. " +
+  "For local development, run `npm run dev` (it turns on the local dev sign-in).";
+
+const SERVER_ERROR = "Something went wrong on the server. Nothing was changed.";
 
 function htmlResponse(body: string, status: number): Response {
   return withSecurityHeaders(
@@ -41,6 +46,8 @@ function methodNotAllowed(): Response {
   );
 }
 
+const isRead = (request: Request) => request.method === "GET" || request.method === "HEAD";
+
 async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   // Checked first so a misconfigured sign-in mode refuses every route, not only /mcp.
   const auth = devAuth(request, env);
@@ -57,10 +64,32 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
   // /intake has its own secret instead of a sign-in, so it sits outside the /mcp auth gate (decision 0012).
   if (pathname === INTAKE_ROUTE) return withSecurityHeaders(await handleIntake(request, env, new Date()));
 
-  if (request.method !== "GET" && request.method !== "HEAD") return methodNotAllowed();
+  // The board and /api use the /mcp sign-in until production auth exists (plan task 10). Pages that show no data
+  // (static files, the 404 page) need none.
+  if (isApiPath(pathname)) {
+    if (!isRead(request)) return apiMethodNotAllowed();
+    if (!auth.ok) return json({ error: BOARD_NO_SIGN_IN }, 401);
+    try {
+      return await handleApi(request, env, new Date());
+    } catch {
+      console.error(JSON.stringify({ event: "api_failed" }));
+      return json({ error: SERVER_ERROR }, 500);
+    }
+  }
 
-  const page = pages.get(pathname);
-  if (page) return htmlResponse(page(), 200);
+  if (!isRead(request)) return methodNotAllowed();
+
+  const page = matchBoardPage(pathname);
+  if (page) {
+    if (!auth.ok) return textResponse(BOARD_NO_SIGN_IN, 401);
+    try {
+      const result = await page(env.DB, new Date());
+      return htmlResponse(result.body, result.status);
+    } catch {
+      console.error(JSON.stringify({ event: "board_failed" }));
+      return htmlResponse(serverErrorPage(), 500);
+    }
+  }
 
   if (FILE_PATH.test(pathname)) {
     const asset = await env.ASSETS.fetch(request);
