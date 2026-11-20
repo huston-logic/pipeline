@@ -37,7 +37,7 @@ Building blocks the owner changes by talking
    * `stage_followup`: when a deal has been in stage S for N days with no logged activity, create a follow-up task.
    * `on_stage_enter`: when a deal enters stage S, create a task (title template, due in N days).
    * `gone_quiet`: any open deal with no activity for N days is flagged in the daily brief.
-   * `lead_followup`: when a lead has been in status `new` or `contacted` for N days with no contact logged since it entered that status, create a task on the contact (once per status entry). Its preview shows the leads it would catch now.
+   * `lead_followup`: when a lead has been in status `new` or `contacted` for N days with no contact logged since it entered that status, create a task on the contact (once per status entry). Its preview shows the leads it would catch now. A person with an open deal is never an unqualified lead: anything that gives one a deal (including reopening a closed deal) qualifies them in the same change.
    * Each rule stores a plain-English description, and can be paused and resumed. `preview_rule` says which deals it would have caught in the last 30 days, without changing anything. Firing is idempotent: one task per rule, per deal, per stage entry.
 * Rulebook: named markdown documents (voice, pipeline, guardrails). Read with `get_rulebook`. The owner can update it by talking; updates are audited and undoable.
 * Settings: timezone, brief hour, brief address, brief on or off, business name, accent colour.

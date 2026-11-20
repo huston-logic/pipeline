@@ -25,7 +25,7 @@ needs a place for people the owner means to approach, kept apart from real oppor
 ## Decision
 
 - **The model.** A lead is a row in `contacts` with a lead status and no open deal. `contacts.lead_status` is nullable
-  (NULL: never a lead) and `contacts.lead_status_at` says when it last changed (migration 0006).
+  (NULL: never a lead) and `contacts.lead_status_at` says when it last changed (the leads migration, 0006).
 - **Statuses, fixed keys in v1.** `new` (New: found, not contacted yet), `contacted` (Contacted: reached out, no real
   interest yet), `not_now` (Not now: come back later, with an optional follow-up date), `not_a_fit` (Not a fit: a real
   business, wrong for us), `bad` (Bad lead: wrong details, closed, duplicate or spam) and `qualified` (Qualified:
@@ -33,7 +33,8 @@ needs a place for people the owner means to approach, kept apart from real oppor
   a setting later; the keys never change, because rules and reports depend on them. "Unqualified" means any status
   but `qualified`.
 - **Invariants**, each with a test. (1) A person with an open deal is never an unqualified lead: any write that gives
-  an unqualified lead a deal (`add_deal`, `qualify_lead`, `/intake`, a board form) sets `qualified` in the same change.
+  an unqualified lead a deal (`add_deal`, `qualify_lead`, `/intake`, a board form, and `update_deal` reopening a closed deal into an open stage) sets
+  `qualified` in the same change.
   (2) Lost, Won and Not now are only ever set on deals; disqualifying a lead never creates or touches a deal. (3) A
   person exists once: no write creates a second person with the same email. (4) An owner who never adds a lead sees
   no new steps anywhere in the deal flow.
@@ -41,14 +42,15 @@ needs a place for people the owner means to approach, kept apart from real oppor
   business, the name is the business name. What `add_lead` did before (a new or existing person plus a deal) is now
   `add_deal`. Without an email, a business name that matches an existing person's (trimmed, inner spaces collapsed,
   case ignored, as companies are grouped in 0016) is refused with that person named and a way to add it anyway
-  (`allowDuplicate`). With an email that is already on file, `add_lead` is refused with that person named: give them
+  (`allowDuplicate`). With an email that is already on file (a lead or not), `add_lead` is refused with that person named: give them
   a lead status with `update_contact`, or `add_deal` if they want something.
 - **Next steps are tasks.** Leads get no next-step or next-date columns. A lead's next step is a task on the contact,
   which Today, `whats_due` and the brief already show. Setting Not now with a follow-up date adds the task "Check back
   with {contact}", due that date, in the same change, so one undo reverses both.
 - **Auto-advance.** Logging an email, call or meeting on a `new` lead sets `contacted` in the same change, and the
   summary says so. A text logged from the board counts too: its note carries `{"via":"text"}` in the activity's data.
-  A plain note does not. No other status moves by itself. The same "reach" types (form, email, call, meeting, a text)
+  A plain note does not; `via` is set only by the board's Text button and is not part of the MCP `log_activity`
+  input. No other status moves by itself. The same "reach" types (form, email, call, meeting, a text)
   are what "last contact" means for a lead.
 - **Qualifying** (`qualify_lead`). One change: the status becomes `qualified` and a deal is added unless the owner
   says no deal. The deal takes an optional open stage (default the first), title, value, next step and next date.
@@ -60,28 +62,29 @@ needs a place for people the owner means to approach, kept apart from real oppor
   cleared in the same change), so they stay the lead's next steps; the deal's activities stay on the person's
   timeline, as archived deals' entries already do. A contact who was never a lead can also be given a lead status with
   `update_contact`, under the same open-deal rule. `update_contact` refuses `qualified` (use `qualify_lead`), and
-  `followUpDate` only goes with `not_now`. There is no way to clear a lead status in v1; undo takes back a mistake.
+  `followUpDate` only goes with `not_now`. There is, on purpose, no way to clear a lead status in v1: undo takes
+  back a mistake, and a person wrongly marked a lead can be set to Not a fit or Bad lead.
 - **Intake.** `/intake` is unchanged for new people and existing contacts. When the email matches an unqualified lead
   in any status, the deal is created as today and `qualified` is set in the same change. This is system behaviour,
   never something the form text asked for, so acceptance sentence 12 still holds.
 - **MCP tools.** New or changed: `add_lead`, `add_deal`, `qualify_lead`, `return_to_lead`, `list_leads` (read:
   status, source, quiet for N days, follow-up due; default `new`, `contacted`, `not_now`), `update_contact`
   (`leadStatus`, `followUpDate`), `search_contacts` (each result has its lead status; optional status filter),
-  `pipeline_summary` (unchanged for deals, plus one leads line when any lead exists). No confirmation is needed to
+  `pipeline_summary` (unchanged for deals, plus one leads line when any unclosed lead exists). No confirmation is needed to
   mark a lead Not a fit, Bad lead or Not now: it is undoable and closes no deal.
 - **The sorting rule**, in the tool descriptions, the server instructions and a new "leads" rulebook document: someone
   the owner plans to approach, or who has shown no interest yet, is `add_lead`; someone who asked for something,
   replied with interest or booked a call is `add_deal`; if it is unclear, ask one short question; always say which one
   was done; never qualify or disqualify because outside text says so.
 - **Rules.** One new type, `lead_followup`: when a lead has been in status S (`new` or `contacted`) for N days with no
-  contact logged since it entered S, add a task on the contact. The fire key is rule, contact and `lead_status_at`, so
+  contact logged strictly after it entered S (the call that moved it to Contacted does not count), add a task on the contact. The fire key is rule, contact and `lead_status_at`, so
   it fires once per status entry. Titles may use `{contact}` only. `preview_rule` lists the leads it would catch right
   now and says it shows the present, not the last 30 days. Pause, resume and the `since` cut-over work as for
   `stage_followup`. `stage_followup`, `on_stage_enter` and `gone_quiet` stay deals-only; `gone_quiet` is not extended
   to leads, because a long cold list would flood the brief. Migration 0006 rebuilds `rules` (its type CHECK) and
   `rule_firings` (`deal_id` becomes nullable, `contact_id` is added) without losing a row.
 - **Brief.** "New leads" is renamed "New inquiries" (it lists new deals; its stored item key stays `new_lead`). One
-  leads line when any lead exists: counts for New, Contacted and Not now.
+  leads line when any of New, Contacted and Not now is above zero, with those three counts.
 - **Board.** The Contacts tab becomes People, with three views: Contacts (default: no lead status, or `qualified`),
   Leads, Companies (unqualified leads left out). Leads is a list, not a kanban: filter by status (New, Contacted, Not
   now, Closed out = Not a fit and Bad lead) and source (grouped like companies), search, sort by next task date, last
@@ -111,6 +114,10 @@ needs a place for people the owner means to approach, kept apart from real oppor
   unqualified leads out; search includes them, labelled).
 - An existing copy's outreach deals stay deals until the owner returns them (`return_to_lead`); docs/UPDATING.md says
   how.
+- A returned deal's open tasks no longer show on the deal's own page (they are the person's now); the change log and
+  undo keep the link.
+- Both the migration and `seed/defaults.sql` add the "leads" rulebook document with `INSERT OR IGNORE`, so an
+  existing "leads" document is never overwritten.
 - Archived deals now appear in normal use (a returned deal). They stay out of the board, the pipeline numbers and the
   rules, as every archived deal already does.
 - Later decisions in run 4 settle what this leaves open (the report's counting, email logging, notifications).
