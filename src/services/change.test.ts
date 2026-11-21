@@ -34,6 +34,8 @@ function contactRow(id: string, name: string): ContactRow {
     version: 1,
     created_at: NOW.toISOString(),
     updated_at: NOW.toISOString(),
+    lead_status: null,
+    lead_status_at: null,
   };
 }
 

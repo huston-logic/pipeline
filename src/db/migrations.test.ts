@@ -58,7 +58,7 @@ test("applyMigrations stops at upTo", async () => {
   assert.deepEqual(await applyMigrations(db, 1), ["0001_init.sql"]);
 });
 
-test("defaults: settings row, eight stages in order, three rulebook documents; loading twice is harmless", async () => {
+test("defaults: settings row, eight stages in order, four rulebook documents; loading twice is harmless", async () => {
   const db = await createTestDb();
   applySqlFile(db, "seed/defaults.sql");
 
@@ -96,7 +96,7 @@ test("defaults: settings row, eight stages in order, three rulebook documents; l
   }>()).results;
   assert.deepEqual(
     rulebook.map((doc) => doc.name),
-    ["guardrails", "pipeline", "voice"],
+    ["guardrails", "leads", "pipeline", "voice"],
   );
   for (const doc of rulebook) assert.ok(doc.markdown.startsWith("# "), `${doc.name} starts with a heading`);
 
@@ -278,6 +278,103 @@ test("0005 from the previous version: activities get an index on occurred_at and
     .bind("2026-10-01T00:00:00.000Z")
     .all<{ id: string }>();
   assert.deepEqual(found.results.map((row) => row.id), ["ac_a"], "the index finds the row that was there before");
+});
+
+test("0006 from the previous version keeps every row; firings gain the contact of their deal", async () => {
+  const db = new SqliteD1();
+  await applyMigrations(db, 5);
+  applySqlFile(db, "seed/defaults.sql");
+  for (const [table, sql] of Object.entries(FAKE_ROWS)) if (table !== "settings") db.exec(sql);
+  db.exec(`INSERT INTO contacts (id, name) VALUES ('ct_two', 'Robin Sample');
+    INSERT INTO deals (id, contact_id, title, stage_key, stage_entered_at)
+      VALUES ('dl_two', 'ct_two', 'Example logo', 'fake_stage', '2026-11-18T17:00:00.000Z');
+    INSERT INTO rules (id, type, params, description, created_by)
+      VALUES ('ru_two', 'stage_followup', '{"type":"stage_followup","days":3}', 'Follow up', 'ai');
+    INSERT INTO rule_firings (id, rule_id, deal_id, fire_key) VALUES ('rf_two', 'ru_two', 'dl_two', 'fake-key-2');`);
+  const tables = ["rules", "rule_firings", "contacts", "deals", "tasks", "rulebook"];
+  const before = await snapshot(db, tables);
+  assert.equal(before.rules?.length, 2);
+  assert.equal(before.rule_firings?.length, 2);
+
+  assert.deepEqual(await applyMigrations(db, 6), ["0006_leads.sql"]);
+
+  const after = await snapshot(db, tables);
+  for (const table of tables) {
+    assert.equal(after[table]?.length, before[table]?.length, `${table} keeps its rows`);
+  }
+  assert.deepEqual(after.rules, before.rules);
+  const firings = (await db.prepare("SELECT id, deal_id, contact_id FROM rule_firings ORDER BY id").all()).results;
+  assert.deepEqual(firings.map((f) => ({ ...f })), [
+    { id: "rf_fake", deal_id: "dl_fake", contact_id: "ct_fake" },
+    { id: "rf_two", deal_id: "dl_two", contact_id: "ct_two" },
+  ]);
+  assert.equal(await db.prepare("SELECT fire_key FROM rule_firings WHERE id = 'rf_fake'").first("fire_key"), "fake-key");
+  assert.equal(await db.prepare("SELECT task_id FROM rule_firings WHERE id = 'rf_fake'").first("task_id"), "tk_fake");
+  const contact = await db.prepare("SELECT lead_status, lead_status_at FROM contacts WHERE id = 'ct_fake'").first();
+  assert.deepEqual({ ...contact }, { lead_status: null, lead_status_at: null });
+  assert.deepEqual((await db.prepare("PRAGMA foreign_key_check").all()).results, []);
+  assert.equal(await db.prepare("PRAGMA integrity_check").first("integrity_check"), "ok");
+});
+
+test("0006 leaves rule_firings pointing at rules, and the task link still clears", async () => {
+  const db = await createTestDb();
+  const sql = await db.prepare("SELECT sql FROM sqlite_master WHERE name = 'rule_firings'").first<string>("sql");
+  assert.match(sql ?? "", /REFERENCES "?rules"? \(id\)/);
+  await addContact(db, "ct_a");
+  await assert.rejects(
+    db.prepare("INSERT INTO rule_firings (id, rule_id, contact_id, fire_key) VALUES ('rf_a', 'ru_none', 'ct_a', 'k')").run(),
+    /FOREIGN KEY constraint failed/,
+  );
+  const indexes = (await db.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'rule_firings' AND name LIKE 'rule_firings_%' ORDER BY name").all<{ name: string }>()).results;
+  assert.deepEqual(indexes.map((i) => i.name), ["rule_firings_contact", "rule_firings_deal", "rule_firings_rule", "rule_firings_task"]);
+});
+
+test("0006 accepts a lead_followup rule and a firing with only a contact", async () => {
+  const db = await createTestDb();
+  await addContact(db, "ct_a");
+  await db.prepare("UPDATE contacts SET lead_status = 'new', lead_status_at = '2026-11-18T17:00:00.000Z'").run();
+  await db
+    .prepare(
+      `INSERT INTO rules (id, type, params, description, created_by)
+       VALUES ('ru_a', 'lead_followup', '{"type":"lead_followup"}', 'Chase leads', 'owner')`,
+    )
+    .run();
+  await db.prepare("INSERT INTO rule_firings (id, rule_id, contact_id, fire_key) VALUES ('rf_a', 'ru_a', 'ct_a', 'k')").run();
+  assert.equal(await db.prepare("SELECT deal_id FROM rule_firings").first("deal_id"), null);
+  await assert.rejects(
+    db.prepare(`INSERT INTO rules (id, type, params, description, created_by) VALUES ('ru_b', 'bogus', '{}', 'x', 'owner')`).run(),
+    /CHECK/,
+  );
+});
+
+test("0006 refuses lead_status 'hot' and accepts the six keys", async () => {
+  const db = await createTestDb();
+  await addContact(db, "ct_a");
+  await assert.rejects(db.prepare("UPDATE contacts SET lead_status = 'hot'").run(), /CHECK/);
+  for (const key of ["new", "contacted", "not_now", "not_a_fit", "bad", "qualified"]) {
+    await db.prepare("UPDATE contacts SET lead_status = ?").bind(key).run();
+  }
+  await db.prepare("UPDATE contacts SET lead_status = NULL").run();
+});
+
+test("0006 refuses a firing with neither deal nor contact", async () => {
+  const db = await createTestDb();
+  await db
+    .prepare(`INSERT INTO rules (id, type, params, description, created_by) VALUES ('ru_a', 'gone_quiet', '{}', 'x', 'owner')`)
+    .run();
+  await assert.rejects(db.prepare("INSERT INTO rule_firings (id, rule_id, fire_key) VALUES ('rf_a', 'ru_a', 'k')").run(), /CHECK/);
+});
+
+test("leads rulebook text is the same in the migration and the defaults", async () => {
+  const fromMigration = new SqliteD1();
+  await applyMigrations(fromMigration);
+  const fromDefaults = new SqliteD1();
+  await applyMigrations(fromDefaults, 5);
+  applySqlFile(fromDefaults, "seed/defaults.sql");
+  const text = (db: SqliteD1) => db.prepare("SELECT markdown FROM rulebook WHERE name = 'leads'").first<string>("markdown");
+  const migrated = await text(fromMigration);
+  assert.ok(migrated?.startsWith("# Leads"));
+  assert.equal(await text(fromDefaults), migrated);
 });
 
 test("settings: the business name is 1 to 60 characters and the accent colour is #rrggbb in lower case", async () => {

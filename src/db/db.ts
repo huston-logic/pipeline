@@ -1,6 +1,8 @@
 // The database type every module takes, and one row type per table in migrations/. SQLite has no boolean or JSON
 // column types: flags are INTEGER 0/1 and JSON is TEXT (parse it where it is used). Times are UTC ISO strings.
 
+import type { LeadStatus } from "../services/lead-status.ts";
+
 /** The part of D1 the code uses, so tests can pass the node:sqlite shim (src/db/sqlite-d1.ts). */
 export type Db = Pick<D1Database, "prepare" | "batch">;
 
@@ -29,7 +31,7 @@ export type DealStatus = StageKind;
 export type FieldEntity = "contact" | "deal";
 export type FieldType = "text" | "number" | "date" | "choice";
 export type ActivityType = "form" | "email" | "call" | "meeting" | "note" | "stage_change" | "system";
-export type RuleType = "stage_followup" | "on_stage_enter" | "gone_quiet";
+export type RuleType = "stage_followup" | "on_stage_enter" | "gone_quiet" | "lead_followup";
 
 export type SettingsRow = {
   id: 1;
@@ -89,6 +91,10 @@ export type ContactRow = {
   version: number;
   created_at: string;
   updated_at: string;
+  /** Null: never a lead. Any status but "qualified" means a lead with no deal (migration 0006, decision 0022). */
+  lead_status: LeadStatus | null;
+  /** When lead_status last changed; null when it never was set. */
+  lead_status_at: string | null;
 };
 
 export type DealRow = {
@@ -161,7 +167,10 @@ export type RuleRow = {
 export type RuleFiringRow = {
   id: string;
   rule_id: string;
-  deal_id: string;
+  /** Set for deal rules; null for a lead_followup firing. */
+  deal_id: string | null;
+  /** Set for every firing made after migration 0006; the deal's contact for older ones. */
+  contact_id: string | null;
   fire_key: string;
   task_id: string | null;
   fired_at: string;

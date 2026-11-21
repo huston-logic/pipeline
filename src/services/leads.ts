@@ -111,6 +111,8 @@ export async function addLead(ctx: Ctx, input: LeadInput): Promise<AddLeadResult
       version: 1,
       created_at: now,
       updated_at: now,
+      lead_status: null,
+      lead_status_at: null,
     };
     changes.push({ table: "contacts", id: contact.id, before: null, after: contact });
   }

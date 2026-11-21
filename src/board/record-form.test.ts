@@ -35,6 +35,8 @@ const contactRow = (extra: Partial<ContactRow> = {}): ContactRow => ({
   version: 1,
   created_at: "2026-11-01T00:00:00.000Z",
   updated_at: "2026-11-01T00:00:00.000Z",
+  lead_status: null,
+  lead_status_at: null,
   ...extra,
 });
 
