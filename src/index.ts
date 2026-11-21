@@ -14,6 +14,7 @@ import { apiMethodNotAllowed, handleApi, isApiPath, json } from "./http/api.ts";
 import { handleIntake } from "./http/intake.ts";
 import { htmlResponse, textResponse } from "./http/respond.ts";
 import { MCP_ROUTE } from "./mcp/route.ts";
+import { vapidKeys } from "./push/vapid.ts";
 import { withSecurityHeaders } from "./security.ts";
 
 const INTAKE_ROUTE = "/intake";
@@ -137,7 +138,7 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
       // A page that finds no CSRF cookie makes one token for its Set-Cookie and every form on it (decision 0014).
       const cookie = csrfFromCookies(request, csrfMode);
       const csrf = cookie ?? newCsrfToken();
-      const result = await page({ db: env.DB, now: new Date(), url, csrf });
+      const result = await page({ db: env.DB, now: new Date(), url, csrf, pushKey: vapidKeys(env)?.publicKey ?? null });
       const headers: Record<string, string> = cookie === null ? { "Set-Cookie": csrfCookie(csrf, csrfMode) } : {};
       return htmlResponse(result.body, result.status, headers);
     } catch {

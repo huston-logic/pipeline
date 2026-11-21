@@ -33,10 +33,17 @@
       }
       await navigator.serviceWorker.register("/sw.js");
       const registration = await navigator.serviceWorker.ready;
-      const subscription = await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: keyBytes(form.dataset.pushKey),
-      });
+      const options = { userVisibleOnly: true, applicationServerKey: keyBytes(form.dataset.pushKey) };
+      let subscription;
+      try {
+        subscription = await registration.pushManager.subscribe(options);
+      } catch (error) {
+        // A subscription made for this copy's earlier key blocks a new one: drop it and subscribe again, once.
+        const old = await registration.pushManager.getSubscription();
+        if (!old) throw error;
+        await old.unsubscribe();
+        subscription = await registration.pushManager.subscribe(options);
+      }
       const { endpoint, keys } = subscription.toJSON();
       form.elements.endpoint.value = endpoint || "";
       form.elements.p256dh.value = (keys && keys.p256dh) || "";

@@ -76,7 +76,8 @@ test("push.js asks for permission on the tap, subscribes with userVisibleOnly an
   const push = readFileSync(join(ROOT, "public/push.js"), "utf8");
   assert.match(push, /addEventListener\("submit"/);
   assert.match(push, /Notification\.requestPermission\(\)/);
-  assert.match(push, /pushManager\.subscribe\(\{\s*userVisibleOnly: true,/);
+  assert.match(push, /const options = \{ userVisibleOnly: true, applicationServerKey: /);
+  assert.deepEqual(push.match(/pushManager\.subscribe\([^)]*\)/g), ["pushManager.subscribe(options)", "pushManager.subscribe(options)"]);
   assert.match(push, /form\.submit\(\)/);
   assert.doesNotMatch(push, /\balert\(|\bconfirm\(|\bprompt\(/);
   // Permission is asked before anything else is awaited, so the phone still counts it as part of the tap.
