@@ -1,12 +1,15 @@
 // What every board write handler shares (decisions 0017, 0018): the context it gets once post.ts has run its checks,
 // its answers (a 303 or a page), acting as the owner, and where to come back to.
 import type { Env } from "../env.ts";
-import type { Ctx } from "../services/change.ts";
+import { type Ctx, StaleWriteError } from "../services/change.ts";
+import { UserError } from "../services/errors.ts";
 import type { PageContext } from "./context.ts";
 import { RETURN_FIELD } from "./forms.ts";
 import { html, type Html } from "./html.ts";
 import { type Look, renderPage } from "./layout.ts";
 import { notFoundPage } from "./pages/not-found.ts";
+import type { FormState } from "./pages/record-page.ts";
+import type { Collected } from "./record-form.ts";
 import { boardReturnPath } from "./return-to.ts";
 
 /** What a handler gets once every check has passed. `csrf` is the request's (checked) token, for the forms it draws. */
@@ -51,6 +54,26 @@ export const pageContext = (ctx: ActionContext, here: string): PageContext => ({
   look: ctx.look,
   banner: "",
 });
+
+/** A collected form as a refused page draws it, with any extra messages that belong to no one field. */
+export const stateOf = (collected: Collected, extra: string[] = []): FormState => ({
+  shown: collected.shown,
+  errors: [...collected.errors, ...extra.map((message) => ({ message }))],
+});
+
+/** A service's refusal, in words for the board: a write that lost a race says so without naming tool calls. */
+export function refusal(error: unknown, what: string): string {
+  if (error instanceof StaleWriteError) return `This ${what} was changed while you were saving, so nothing was saved. Check the form and save again.`;
+  if (error instanceof UserError) return error.message;
+  throw error;
+}
+
+/** Marks one field of a collected form as wrong. */
+export function fieldError(collected: Collected, name: string, message: string): void {
+  collected.errors.push({ name, message });
+  const item = collected.shown.get(name);
+  if (item !== undefined) item.error = message;
+}
 
 /**
  * A refused write: the plain-English reason, the form again when there is one, and the way back. `current` is the

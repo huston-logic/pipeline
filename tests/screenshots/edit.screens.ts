@@ -34,16 +34,16 @@ test("the deal page with Add a task, Log and a task's Snooze open", async ({ pag
   await check(page, "edit-deal-forms");
 });
 
-test("a refused New lead: the error summary, each field's message and the values kept", async ({ page }) => {
-  await page.goto("/leads/new?from=pipeline");
-  await check(page, "edit-lead-new");
+test("a refused Add a deal: the error summary, each field's message and the values kept", async ({ page }) => {
+  await page.goto("/deals/new?from=pipeline");
+  await check(page, "edit-deal-new");
   await page.getByLabel("Name (required)").fill("Lee Example");
   await page.getByLabel("Email").fill("lee@example.com");
   await page.getByLabel("Value").fill("about 2k");
-  await page.getByRole("button", { name: "Add the lead" }).click();
+  await page.getByRole("button", { name: "Add the deal" }).click();
   await expect(page.getByRole("alert")).toContainText("Give a number of 0 or more");
   await expect(page.getByLabel("Email")).toHaveValue("lee@example.com");
-  await check(page, "edit-lead-error");
+  await check(page, "edit-deal-error");
 });
 
 test("Edit contact with outside values, and saving it unchanged is refused", async ({ page }) => {

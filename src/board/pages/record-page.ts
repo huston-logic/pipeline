@@ -25,8 +25,9 @@ export type RecordPageOptions = {
   cancel: string;
   submit: string;
   prefix: string;
-  /** One card per group; a group with a heading is its own section. */
-  groups: { heading?: string; id?: string; specs: Spec[] }[];
+  /** One card per group; a group with a heading is its own section. `before` and `after` sit in the card around the
+   * fields (a checkbox such as "Create a deal"). */
+  groups: { heading?: string; id?: string; specs: Spec[]; before?: Html; after?: Html }[];
   shown: Map<string, Shown>;
   errors: FormError[];
 };
@@ -35,8 +36,8 @@ export function recordFormPage(ctx: PageContext, options: RecordPageOptions): st
   const specs = options.groups.flatMap((group) => group.specs);
   const cards = options.groups.map((group) => {
     const card = html`<div class="card form-card">
-${specFields(group.specs, options.shown, options.prefix)}
-</div>`;
+${group.before ?? ""}${specFields(group.specs, options.shown, options.prefix)}
+${group.after ?? ""}</div>`;
     return group.heading === undefined || group.id === undefined ? card : section(group.id, group.heading, card, "form-section");
   });
   const refused = options.errors.length > 0;

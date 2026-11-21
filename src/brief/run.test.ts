@@ -7,6 +7,7 @@ import type { Env } from "../env.ts";
 import type { Ctx } from "../services/change.ts";
 import { addDeal } from "../services/add-deal.ts";
 import { addLead } from "../services/leads.ts";
+import { latestBrief } from "../services/read.ts";
 import { addRule } from "../services/rules.ts";
 import { addTask } from "../services/tasks.ts";
 import { toBase64Url } from "../push/bytes.ts";
@@ -132,6 +133,32 @@ test("new leads are the deals created after the previous brief, or in the last 2
   assert.doesNotMatch(second?.text ?? "", /Jo Example/);
   first = await one<BriefRow>(db, "SELECT * FROM briefs WHERE local_date = '2026-11-19'");
   assert.match(first.text, /Jo Example/, "the stored brief is not rewritten");
+});
+
+test("logged emails that matched no one since the previous brief are counted once, in their own line", async () => {
+  const db = await openTestDb();
+  const logged = (key: string, at: Date, matched: number) =>
+    db
+      .prepare("INSERT INTO email_log (message_key, received_at, local_date, matched, unmatched) VALUES (?, ?, '2026-11-19', ?, 1)")
+      .bind(key, at.toISOString(), matched)
+      .run();
+  await logged("<old@mail.example.com>", new Date(SEVEN.getTime() - 25 * HOUR), 0);
+  await logged("<a@mail.example.com>", new Date(SEVEN.getTime() - 2 * HOUR), 0);
+  await logged("<b@mail.example.com>", new Date(SEVEN.getTime() - HOUR), 0);
+  await logged("<matched@mail.example.com>", new Date(SEVEN.getTime() - HOUR), 2);
+  await runBrief(envFor(db), SEVEN);
+  const [first] = await briefs(db);
+  assert.match(first?.text ?? "", /\n\nLogged email\n- 2 logged emails matched no one\.$/);
+  const stored = await latestBrief(db);
+  assert.deepEqual(stored?.items.at(-1), { section: "logged_email", id: "email_log", line: "- 2 logged emails matched no one.", untrusted: false }, "the board and the API read the item back");
+
+  await logged("<c@mail.example.com>", new Date(SEVEN.getTime() + HOUR), 0);
+  await runBrief(envFor(db), new Date(SEVEN.getTime() + DAY));
+  const [, second] = await briefs(db);
+  assert.match(second?.text ?? "", /\n\nLogged email\n- 1 logged email matched no one\.$/, "only the one since the last brief");
+  await runBrief(envFor(db), new Date(SEVEN.getTime() + 2 * DAY));
+  const [, , third] = await briefs(db);
+  assert.doesNotMatch(third?.text ?? "", /Logged email/);
 });
 
 test("the brief carries a Leads line with the open lead counts, and none without leads", async () => {

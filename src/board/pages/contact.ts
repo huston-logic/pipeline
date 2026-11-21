@@ -1,6 +1,8 @@
 // /contacts/<id>: one contact's details, custom fields, every deal of theirs, their open tasks and one timeline (the
-// contact's own entries and their deals', newest first). Outside text is labelled exactly as on the deal page.
-import { listFieldDefs } from "../../db/queries.ts";
+// contact's own entries and their deals', newest first). Outside text is labelled exactly as on the deal page. A lead's
+// page adds the Lead section (status line, status menu, Qualify) and an Ask Claude intro (decision 0028).
+import type { ContactRow } from "../../db/db.ts";
+import { getContact, listFieldDefs } from "../../db/queries.ts";
 import { ownerTimezone } from "../../services/lookup.ts";
 import { type ContactDetail, contactDetail, type DealItem } from "../../services/read.ts";
 import { formatLocal } from "../../time.ts";
@@ -13,8 +15,11 @@ import { logForm } from "../log-form.ts";
 import { reachActions } from "../reach.ts";
 import { customRows, outsideNote, STATUS, taskCard, timelineItem } from "../records.ts";
 import { addTaskForm, type Subject } from "../task-forms.ts";
+import { leadAskSection } from "../ask-claude.ts";
+import { qualifyPath, statusLine, statusMenu } from "../lead-forms.ts";
 import { contactEditPath } from "./contact-edit.ts";
 import { newDealPath } from "./deal-new.ts";
+import { canQualify } from "./qualify.ts";
 
 function detailsSection(detail: ContactDetail, labels: Map<string, string>, tz: string, form: FormContext, subject: Subject): Html {
   const { contact } = detail;
@@ -39,6 +44,23 @@ ${reachActions(contact, subject, form)}
 <p class="card-actions"><a href="${contactEditPath(contact.id)}">Edit details</a></p>
 </div>`,
   );
+}
+
+/**
+ * The Lead section, only for someone with a lead status (decision 0022, invariant 4): the status line, and for an
+ * unqualified lead who is not archived the status menu and Qualify. A Qualified person keeps the line as history.
+ */
+async function leadSection(contact: ContactRow, tz: string, form: FormContext): Promise<Html | ""> {
+  if (contact.lead_status === null) return "";
+  const line = statusLine(contact.lead_status, contact.lead_status_at, tz);
+  const controls = canQualify(contact)
+    ? html`${await statusMenu(contact.id, contact.lead_status, form)}
+<p class="lead-qualify"><a class="button" href="${qualifyPath(contact.id)}">Qualify</a></p>`
+    : "";
+  return section("lead-heading", "Lead", html`<div class="card lead-card">
+${line}
+${controls}
+</div>`);
 }
 
 function dealCard(deal: DealItem): Html {
@@ -124,7 +146,8 @@ export async function contactPage(ctx: PageContext, id: string): Promise<string 
   const { db, now } = ctx;
   const tz = await ownerTimezone(db);
   const detail = await contactDetail(db, id, tz, now);
-  if (detail === null) return null;
+  const row = await getContact(db, id);
+  if (detail === null || row === null) return null;
   const defs = await listFieldDefs(db, { includeArchived: true });
   const labels = new Map(defs.filter((def) => def.entity === "contact").map((def) => [def.key, def.label]));
   const { contact } = detail;
@@ -142,16 +165,18 @@ export async function contactPage(ctx: PageContext, id: string): Promise<string 
     current: `/contacts/${contact.id}`,
     frame: ctx,
     script: true,
-    body: html`<p class="back"><a href="/contacts">Back to contacts</a></p>
+    body: html`${canQualify(row) ? html`<p class="back"><a href="/leads">Back to leads</a></p>` : html`<p class="back"><a href="/contacts">Back to contacts</a></p>`}
 <h1>${labelled(contact.name, outside.has("name"))}</h1>
 ${company}
 ${hasOutsideText(detail) ? outsideNote() : ""}
 <div class="detail-columns">
 <div>
+${await leadSection(row, tz, ctx)}
 ${detailsSection(detail, labels, tz, ctx, subject)}
 ${dealsSection(detail)}
 </div>
 <div>
+${canQualify(row) ? leadAskSection(row.id) : ""}
 ${tasksSection(detail, now, tz, ctx, subject)}
 ${timelineSection(detail, ctx, subject)}
 </div>

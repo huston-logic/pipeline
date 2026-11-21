@@ -11,6 +11,7 @@ import { moveForm, safeDealName } from "../move.ts";
 import { contactHref, empty, formatNumber, labelled, type Pair, pairs, section, tag, when } from "../parts.ts";
 import { logForm } from "../log-form.ts";
 import { askSection } from "../ask-claude.ts";
+import { backToLeadsForm, offersBackToLeads } from "../lead-forms.ts";
 import { reachActions } from "../reach.ts";
 import { customRows, outsideNote, STATUS, taskCard, timelineItem } from "../records.ts";
 import { addTaskForm, type Subject } from "../task-forms.ts";
@@ -41,7 +42,7 @@ ${reachActions(contact, subject, form)}
   );
 }
 
-function dealSection(brief: DealBrief, labels: Map<string, string>, tz: string, stages: StageRow[], form: FormContext): Html {
+function dealSection(brief: DealBrief, labels: Map<string, string>, tz: string, stages: StageRow[], form: FormContext, backToLeads: boolean): Html {
   const { deal, stage } = brief;
   const name = safeDealName(deal.id, deal.title, deal.untrusted_fields.includes("title"));
   return section(
@@ -63,6 +64,7 @@ ${pairs([
 ${deal.archived ? html`<p class="note">This deal is archived.</p>` : ""}
 <p class="card-actions"><a href="${dealEditPath(deal.id)}">Edit deal</a></p>
 ${deal.archived ? "" : html`<div class="card-move">${moveForm({ id: deal.id, name, stageKey: stage.key }, stages, form)}</div>`}
+${backToLeads ? html`<div class="card-return">${backToLeadsForm(deal.id, form)}</div>` : ""}
 </div>`,
   );
 }
@@ -152,7 +154,7 @@ ${note}
 <div class="deal-columns">
 <div>
 ${contactSection(brief, labelsFor("contact"), ctx, subject)}
-${dealSection(brief, labelsFor("deal"), tz, await listStages(db), ctx)}
+${dealSection(brief, labelsFor("deal"), tz, await listStages(db), ctx, await offersBackToLeads(db, brief.deal))}
 </div>
 <div>
 ${nextSection(brief)}

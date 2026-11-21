@@ -66,7 +66,7 @@ function scriptTag(script: boolean | "push"): Html | "" {
 }
 
 /** The nav item a page belongs to without being it: a deal is in Pipeline; a contact, Leads, a new lead and Companies
- * are in People; Rules, Changes, Export and Notifications are in More. */
+ * are in People; Rules, Changes, Export, Notifications and Email logging are in More. */
 function sectionOf(path: string): string | null {
   if (path.startsWith("/deals/")) return "/pipeline";
   if (path.startsWith("/contacts/") || path === "/companies" || path === "/leads" || path.startsWith("/leads/")) return "/contacts";

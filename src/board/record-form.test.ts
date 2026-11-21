@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { ContactRow, DealRow, FieldDefRow } from "../db/db.ts";
 import { fingerprint } from "./edit-state.ts";
-import { collectEdit, collectNew, contactSpecs, dealSpecs, editShown, leadSpecs, parseValue, postedValue, shownOf } from "./record-form.ts";
+import { collectEdit, collectNew, contactSpecs, dealSpecs, editShown, personDealSpecs, parseValue, postedValue, shownOf } from "./record-form.ts";
 
 const TZ = "America/Los_Angeles";
 
@@ -103,7 +103,7 @@ test("deal fields: title, value, next step and date, then custom deal fields; nu
     ["df.start", "date"],
   ]);
   assert.deepEqual(specs.find((spec) => spec.name === "df.tier")?.choices, ["Cold", "Warm"]);
-  assert.ok(!leadSpecs(DEFS).some((spec) => spec.name === "title" && spec.required), "a lead's deal title is optional");
+  assert.ok(!personDealSpecs(DEFS).some((spec) => spec.name === "title" && spec.required), "a lead's deal title is optional");
 });
 
 test("archived custom fields are left off the forms", () => {
@@ -120,7 +120,7 @@ test("stored values as the form shows them: the next date in the owner's time, n
 });
 
 test("parsing: required, email, numbers, dates and times, and choices, each with a plain fix", () => {
-  const specs = new Map(leadSpecs(DEFS).map((spec) => [spec.name, spec]));
+  const specs = new Map(personDealSpecs(DEFS).map((spec) => [spec.name, spec]));
   const spec = (name: string) => specs.get(name) ?? assert.fail(name);
   assert.deepEqual(parseValue(spec("name"), "  "), { ok: false, message: "Give the person's name." });
   assert.deepEqual(parseValue(spec("email"), "pat@"), { ok: false, message: "Give an email address like name@example.com." });
@@ -159,7 +159,7 @@ test("a new record's input leaves out empty fields and puts custom fields in the
     "df.tier": "Cold",
     "df.budget": "",
   });
-  const result = collectNew(leadSpecs(DEFS), form);
+  const result = collectNew(personDealSpecs(DEFS), form);
   assert.deepEqual(result.errors, []);
   assert.deepEqual(result.input, {
     name: "Lee Example",

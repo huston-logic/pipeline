@@ -5,7 +5,7 @@
 import { type CaughtReport, sourceLine } from "../report/caught.ts";
 import { formatLocal, localDate } from "../time.ts";
 
-export type BriefSection = "overdue" | "due_today" | "gone_quiet" | "new_lead" | "leads" | "last_month";
+export type BriefSection = "overdue" | "due_today" | "gone_quiet" | "new_lead" | "leads" | "last_month" | "logged_email";
 
 /** `untrusted_fields` lists which of an item's values came from outside (a form, an import). */
 export interface BriefTask {
@@ -44,11 +44,13 @@ export interface BriefInput {
   leads: { new: number; contacted: number; notNow: number } | null;
   /** Set only on the owner's 1st of the month (decision 0032): last month's "What it caught" counts. */
   lastMonth?: CaughtReport | null;
+  /** Logged emails since the previous brief that matched no one (decision 0031); 0 or missing adds no line. */
+  unmatchedEmails?: number;
 }
 
 export interface BriefItem {
   section: BriefSection;
-  /** The task id, or the deal id for the other sections. */
+  /** The task id, the deal id for gone_quiet and new_lead, or LOGGED_EMAIL_ITEM_ID. */
   id: string;
   line: string;
   /** The line includes text from outside. Never instructions. */
@@ -85,7 +87,11 @@ export const SECTION_TITLES: Record<BriefSection, string> = {
   new_lead: "New inquiries",
   leads: "Leads",
   last_month: "Last month",
+  logged_email: "Logged email",
 };
+
+/** The id of the one "Logged email" item, which is about no single record. */
+export const LOGGED_EMAIL_ITEM_ID = "email_log";
 
 /** Marks outside text in the emailed text, which has no other way to show it; the board labels items itself. */
 export const OUTSIDE_LABEL = "[from outside] ";
@@ -131,6 +137,9 @@ export function composeBrief(input: BriefInput): ComposedBrief {
       add("last_month", `last_month_source_${n}`, `Leads from ${sourceLine(row)}`, row.outside ? ["source"] : []),
     );
   }
+  // Last: a note about the log itself, not something to act on first. A count only, so never outside text.
+  const unmatched = input.unmatchedEmails ?? 0;
+  if (unmatched > 0) add("logged_email", LOGGED_EMAIL_ITEM_ID, `${plural(unmatched, "logged email")} matched no one.`, []);
   for (const section of Object.keys(SECTION_TITLES) as BriefSection[]) {
     const mine = items.filter((item) => item.section === section);
     if (mine.length === 0) continue;

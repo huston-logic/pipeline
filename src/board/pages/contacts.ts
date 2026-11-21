@@ -7,7 +7,7 @@ import { type Html, html } from "../html.ts";
 import type { PageContext } from "../context.ts";
 import { renderPage } from "../layout.ts";
 import { peopleSwitch } from "../people-switch.ts";
-import { contactLink, count, dealLink, empty, formatNumber, labelled, newLeadButton, pairs, when } from "../parts.ts";
+import { contactLink, count, dealLink, empty, formatNumber, labelled, addButtons, pairs, when } from "../parts.ts";
 
 type Dir = "asc" | "desc";
 
@@ -98,7 +98,7 @@ export async function contactsPage(ctx: PageContext): Promise<string> {
   const clear = query === "" ? "" : html`<p class="search-clear"><a href="${clearHref}">Clear search</a></p>`;
   let results: Html;
   if (total === 0 && query === "") {
-    results = empty("No contacts yet.", "Add one with New lead, or by talking to your AI app. People from your website form show up here too.");
+    results = empty("No contacts yet.", "Add one with Add a deal or Add a lead, or by talking to your AI app. People from your website form show up here too.");
   } else if (total === 0) {
     results = html`${empty(`No contacts match "${query}".`, "Try part of a name, an email address, a phone number or a company.")}
 ${clear}`;
@@ -114,7 +114,7 @@ ${clear}`;
     frame: ctx,
     body: html`<h1>Contacts</h1>
 ${peopleSwitch("contacts")}
-${newLeadButton("contacts")}
+${addButtons("contacts", ["deal", "lead"])}
 ${total === 0 && query === "" ? "" : searchForm(query, sortValue)}
 ${results}`,
   });

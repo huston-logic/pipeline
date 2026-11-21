@@ -9,7 +9,7 @@ import { type Html, html } from "../html.ts";
 import type { PageContext } from "../context.ts";
 import { renderPage } from "../layout.ts";
 import { peopleSwitch } from "../people-switch.ts";
-import { contactLink, count, empty, formatNumber, labelled, pairs, when } from "../parts.ts";
+import { addButtons, contactLink, count, empty, formatNumber, labelled, pairs, when } from "../parts.ts";
 
 const QUERY_MAX = 100;
 
@@ -168,6 +168,7 @@ ${clear}`;
     frame: ctx,
     body: html`<h1>Leads</h1>
 ${peopleSwitch("leads")}
+${addButtons("leads", ["lead"])}
 ${searchForm(asked, list.sources, token)}
 ${results}`,
   });

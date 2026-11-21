@@ -1386,8 +1386,11 @@ button.button {
 
 /* ---------- Editing (decision 0018) ---------- */
 
-/* The New lead button under a page's lede. */
+/* Add a deal and Add a lead under a page's lede (decision 0028). */
 .page-action {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
   margin: -0.5rem 0 1.5rem;
 }
 
@@ -1438,6 +1441,62 @@ button.button {
 /* The From outside label under a field's label, at its own width. */
 .field > .outside {
   align-self: flex-start;
+}
+
+/* A checkbox with its label beside it; the label is the 44px tap area (decision 0028). */
+.check {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.check input {
+  flex: none;
+  width: 1.5rem;
+  height: 1.5rem;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.check label {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  font-weight: 600;
+}
+
+/* A lead's page (decision 0028): the status line, the status menu and Qualify in one card. */
+.lead-status-line {
+  margin: 0;
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.lead-status-form {
+  display: grid;
+  gap: 1rem;
+  justify-items: start;
+  margin: 1rem 0 0;
+}
+
+.lead-status-form > .field {
+  width: 100%;
+}
+
+.refused-form .lead-status-form {
+  margin-top: 0;
+}
+
+.lead-qualify,
+.card-return {
+  margin: 1rem 0 0;
+  padding-top: 1rem;
+  border-top: 1px solid var(--divider);
+}
+
+.confirm-field {
+  max-width: 28rem;
+  margin: 1rem 0 0;
 }
 
 .field-required {
@@ -1719,11 +1778,19 @@ button.button {
   justify-content: center;
 }
 
-.ask-tools {
+.ask-tools,
+.copy-tools {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem 1rem;
+}
+
+/* Email logging (decision 0031): the address in a read-only field, Copy address under it. */
+.copy-card {
+  display: grid;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
 }
 
 .copy-status {

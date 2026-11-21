@@ -121,6 +121,15 @@ ${hintOf(props)}${errorOf(props)}${control(props)}
 ${wasField(props)}</div>`;
 }
 
+/** One checkbox that posts `value` when ticked and nothing when not, with its label beside it (the label is the tap
+ * area too). */
+export function checkbox(props: { id: string; name: string; label: string; value: string; checked: boolean }): Html {
+  return html`<div class="check">
+<input id="${props.id}" name="${props.name}" type="checkbox" value="${props.value}"${props.checked ? " checked" : ""}>
+<label for="${props.id}">${props.label}</label>
+</div>`;
+}
+
 /** At the top of a refused form: every problem, each linked to its field when it has one. */
 export function errorSummary(errors: FieldError[]): Html | "" {
   if (errors.length === 0) return "";

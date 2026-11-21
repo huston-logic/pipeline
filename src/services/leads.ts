@@ -35,6 +35,17 @@ export interface AddLeadResult extends ChangeResult {
   contactId: string;
 }
 
+/** add_lead refused because the person seems to be on file already; `who` names them safely (labels.ts). */
+export class DuplicateLeadError extends UserError {
+  readonly by: "email" | "business";
+  readonly who: string;
+  constructor(message: string, by: "email" | "business", who: string) {
+    super(message);
+    this.by = by;
+    this.who = who;
+  }
+}
+
 /** The first person on file (not archived) whose business is the same company, ignoring case and spaces. */
 async function sameBusiness(db: Db, business: string): Promise<ContactRow | null> {
   const key = businessKey(business);
@@ -56,15 +67,18 @@ export async function addLead(ctx: Ctx, input: NewLeadInput): Promise<AddLeadRes
     checkEmail(email);
     const other = await findContactByEmail(db, email);
     if (other) {
-      throw new UserError(
-        `${capitalize(contactRef(other))} already uses that email. ` +
-          "Give them a lead status with update_contact, or use add_deal if they want something.",
+      const who = capitalize(contactRef(other));
+      throw new DuplicateLeadError(
+        `${who} already uses that email. Give them a lead status with update_contact, or use add_deal if they want something.`,
+        "email",
+        who,
       );
     }
   } else if (business !== null && input.allowDuplicate !== true) {
     const other = await sameBusiness(db, business);
     if (other) {
-      throw new UserError(`${capitalize(contactRef(other))} already has that business. Say allowDuplicate: true to add another lead anyway.`);
+      const who = capitalize(contactRef(other));
+      throw new DuplicateLeadError(`${who} already has that business. Say allowDuplicate: true to add another lead anyway.`, "business", who);
     }
   }
   const fields = withoutNulls(input.fields ?? {});

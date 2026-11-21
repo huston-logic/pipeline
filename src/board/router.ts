@@ -15,7 +15,10 @@ import { contactEditPage } from "./pages/contact-edit.ts";
 import { contactsPage } from "./pages/contacts.ts";
 import { dealEditPage } from "./pages/deal-edit.ts";
 import { newDealPage } from "./pages/deal-new.ts";
+import { PERSON_DEAL_PATH, personDealPage } from "./pages/deal-new-person.ts";
+import { qualifyPage } from "./pages/qualify.ts";
 import { dealPage } from "./pages/deal.ts";
+import { EMAIL_LOG_PATH, emailLogPage } from "./pages/email-log.ts";
 import { exportPage } from "./pages/export.ts";
 import { LEAD_PATH, leadPage } from "./pages/lead-new.ts";
 import { leadsPage } from "./pages/leads.ts";
@@ -29,10 +32,11 @@ import { todayPage } from "./pages/today.ts";
 
 export type PageResult = { status: 200 | 404; body: string };
 /**
- * One GET of a board page: the database, the clock, the URL, this response's CSRF token and this copy's VAPID public
- * key (public by design; null until push is set up, decision 0030).
+ * One GET of a board page: the database, the clock, the URL, this response's CSRF token, this copy's VAPID public key
+ * (public by design; null until push is set up, decision 0030) and its email logging address (null when it has none;
+ * decision 0031).
  */
-export type PageRequest = { db: Db; now: Date; url: URL; csrf: string; pushKey: string | null };
+export type PageRequest = { db: Db; now: Date; url: URL; csrf: string; pushKey: string | null; emailLogAddress: string | null };
 export type BoardPage = (request: PageRequest) => Promise<PageResult>;
 type Page = (ctx: PageContext, request: PageRequest) => Promise<string>;
 type RecordPage = (ctx: PageContext, id: string) => Promise<string | null>;
@@ -50,7 +54,9 @@ const PAGES = new Map<string, Page>([
   [REPORT_PATH, reportPage],
   ["/export", exportPage],
   [NOTIFICATIONS_PATH, (ctx, request) => notificationsPage(ctx, request.pushKey)],
+  [EMAIL_LOG_PATH, (ctx, request) => emailLogPage(ctx, request.emailLogAddress)],
   [LEAD_PATH, (ctx) => leadPage(ctx)],
+  [PERSON_DEAL_PATH, (ctx) => personDealPage(ctx)],
 ]);
 
 /** Anything isDealId or isContactId refuses can't be a record, so it gets the plain 404 without a lookup. */
@@ -60,9 +66,10 @@ const RECORD_PATHS: { path: RegExp; isId: (id: string) => boolean; page: RecordP
   { path: /^\/deals\/([^/]+)\/edit$/, isId: isDealId, page: (ctx, id) => dealEditPage(ctx, id) },
   { path: /^\/contacts\/([^/]+)\/edit$/, isId: isContactId, page: (ctx, id) => contactEditPage(ctx, id) },
   { path: /^\/contacts\/([^/]+)\/deals\/new$/, isId: isContactId, page: (ctx, id) => newDealPage(ctx, id) },
+  { path: /^\/contacts\/([^/]+)\/qualify$/, isId: isContactId, page: (ctx, id) => qualifyPage(ctx, id) },
 ];
 
-async function contextFor({ db, now, url, csrf }: Omit<PageRequest, "pushKey">): Promise<PageContext> {
+async function contextFor({ db, now, url, csrf }: Omit<PageRequest, "pushKey" | "emailLogAddress">): Promise<PageContext> {
   const here = herePath(url);
   return {
     db,

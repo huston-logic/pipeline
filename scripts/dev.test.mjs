@@ -43,8 +43,19 @@ test("wrangler dev runs local only, in development mode, without prompts", () =>
     ".wrangler/preview-1",
   ]);
   const vars = args.flatMap((arg, i) => (args[i - 1] === "--var" ? [arg] : []));
-  assert.deepEqual(vars, ["ENVIRONMENT:development", "AUTH_MODE:dev", "INTAKE_SECRET:dev-intake-secret"]);
+  assert.deepEqual(vars, [
+    "ENVIRONMENT:development",
+    "AUTH_MODE:dev",
+    "INTAKE_SECRET:dev-intake-secret",
+    "EMAIL_LOG_ADDRESS:log-dev@log.example.test",
+  ]);
   assert.ok(!args.some((arg) => /remote|deploy/.test(arg)));
+});
+
+test("extra vars (the e2e tests' own values) come after the fixed ones, each as its own --var", () => {
+  const args = wranglerDevArgs({ port: 4822, stateDir: ".wrangler/preview-1", extraVars: ["OWNER_EMAILS:owner@example.test"] });
+  const vars = args.flatMap((arg, i) => (args[i - 1] === "--var" ? [arg] : []));
+  assert.equal(vars.at(-1), "OWNER_EMAILS:owner@example.test");
 });
 
 test("dev and preview get a throwaway push key pair, made in memory per start, that the Worker accepts (decision 0030)", async () => {
@@ -61,7 +72,7 @@ test("dev and preview get a throwaway push key pair, made in memory per start, t
 
   const args = wranglerDevArgs({ port: 4822, stateDir: ".wrangler/preview-1", extraVars: first });
   const vars = args.flatMap((arg, i) => (args[i - 1] === "--var" ? [arg] : []));
-  assert.deepEqual(vars.slice(3), first);
+  assert.deepEqual(vars.slice(4), first);
 });
 
 test("migrations apply to the local database in the same state folder", () => {

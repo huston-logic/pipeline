@@ -3,8 +3,9 @@
 // and of TypeScript-only syntax beyond type annotations.
 // The two deal pages and the contact page are fixed ids from the fake seed (scripts/seed-dev.ts): dl_seed02 came in
 // through the website form, so its page shows outside text; ct_seed07 has an open and a won deal. The form pages
-// (decision 0018) are New lead, editing the form lead's contact (ct_seed02, outside values labelled), a new deal for
-// ct_seed07 and editing dl_seed01. ct_lead03 is a Contacted lead (decision 0029).
+// (decisions 0018, 0028) are Add a lead, Add a deal, editing the form lead's contact (ct_seed02, outside values
+// labelled), a new deal for ct_seed07, editing dl_seed01 and Qualify for ct_lead03. ct_lead03 is a Contacted lead
+// (decision 0029).
 
 export type IconName =
   | "today"
@@ -16,7 +17,8 @@ export type IconName =
   | "changes"
   | "report"
   | "export"
-  | "notifications";
+  | "notifications"
+  | "email";
 
 /** `hint` is read out after the label but not shown, where the label alone says too little ("More" alone fails
  * Lighthouse's descriptive-link-text audit). */
@@ -38,13 +40,16 @@ export const boardRoutes: string[] = [
   "/report",
   "/export",
   "/notifications",
+  "/email-log",
   "/deals/dl_seed01",
   "/deals/dl_seed02",
   "/contacts/ct_seed07",
   "/contacts/ct_lead03",
   "/leads/new",
+  "/deals/new",
   "/contacts/ct_seed02/edit",
   "/contacts/ct_seed07/deals/new",
+  "/contacts/ct_lead03/qualify",
   "/deals/dl_seed01/edit",
 ];
 
@@ -54,7 +59,13 @@ export const navItems: NavItem[] = [
   { href: "/pipeline", label: "Pipeline", icon: "pipeline", description: "Open deals by stage." },
   { href: "/contacts", label: "People", icon: "contacts", description: "Contacts, leads and companies." },
   { href: "/brief", label: "Brief", icon: "brief", description: "The latest daily brief." },
-  { href: "/more", label: "More", icon: "more", description: "Rules, changes, the monthly report, export and notifications.", hint: " pages" },
+  {
+    href: "/more",
+    label: "More",
+    icon: "more",
+    description: "Rules, changes, the monthly report, export, notifications and email logging.",
+    hint: " pages",
+  },
 ];
 
 /** Under More: on the /more page on phones, listed in the side bar on wide screens. */
@@ -64,4 +75,5 @@ export const moreItems: NavItem[] = [
   { href: "/report", label: "What it caught", icon: "report", description: "Last month: what your rules did, and how many nudges you acted on." },
   { href: "/export", label: "Export", icon: "export", description: "Download a copy of everything, as JSON or CSV." },
   { href: "/notifications", label: "Notifications", icon: "notifications", description: "A phone notification when the daily brief is ready." },
+  { href: "/email-log", label: "Email logging", icon: "email", description: "The address to add in Bcc, so an email you send is logged." },
 ];

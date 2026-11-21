@@ -284,8 +284,9 @@ test("0006 from the previous version keeps every row; firings gain the contact o
   const db = new SqliteD1();
   await applyMigrations(db, 5);
   applySqlFile(db, "seed/defaults.sql");
-  // push_subscriptions comes later (0007), so it has no table yet at version 5.
-  for (const [table, sql] of Object.entries(FAKE_ROWS)) if (table !== "settings" && table !== "push_subscriptions") db.exec(sql);
+  // Only the tables that exist at version 5: later migrations (push_subscriptions, email_log) add more.
+  const present = await userTables(db);
+  for (const [table, sql] of Object.entries(FAKE_ROWS)) if (table !== "settings" && present.includes(table)) db.exec(sql);
   db.exec(`INSERT INTO contacts (id, name) VALUES ('ct_two', 'Robin Sample');
     INSERT INTO deals (id, contact_id, title, stage_key, stage_entered_at)
       VALUES ('dl_two', 'ct_two', 'Example logo', 'fake_stage', '2026-11-18T17:00:00.000Z');
@@ -419,6 +420,36 @@ test("settings: the business name is 1 to 60 characters and the accent colour is
   await db.prepare("UPDATE settings SET business_name = NULL, accent_color = NULL").run();
 });
 
+test("email_log from the previous version: existing rows stay and the table starts empty", async () => {
+  const file = migrationFiles().find((f) => f.name.endsWith("_email_log.sql"));
+  assert.ok(file, "the email_log migration exists");
+  const db = new SqliteD1();
+  await applyMigrations(db, file.number - 1);
+  applySqlFile(db, "seed/defaults.sql");
+  for (const [table, sql] of Object.entries(FAKE_ROWS)) if (table !== "email_log") db.exec(sql);
+  const before = await snapshot(db, ["contacts", "activities", "briefs"]);
+
+  assert.deepEqual(await applyMigrations(db, file.number), [file.name]);
+  assert.equal(await count(db, "email_log"), 0);
+  assert.deepEqual(await snapshot(db, ["contacts", "activities", "briefs"]), before);
+});
+
+test("email_log: one row per message key; counts can't be negative", async () => {
+  const db = await createTestDb();
+  const insert = (key: string, matched = 1) =>
+    db
+      .prepare("INSERT INTO email_log (message_key, received_at, local_date, matched, unmatched) VALUES (?, '2026-11-19T17:00:00.000Z', '2026-11-19', ?, 0)")
+      .bind(key, matched)
+      .run();
+  await insert("<a@mail.example.com>");
+  await assert.rejects(insert("<a@mail.example.com>"), /UNIQUE constraint failed: email_log\.message_key/);
+  await assert.rejects(insert("<b@mail.example.com>", -1), /CHECK/);
+  await assert.rejects(
+    db.prepare("INSERT INTO email_log (message_key, received_at, local_date, matched, unmatched) VALUES ('k', 'x', 'y', 'one', 0)").run(),
+    /cannot store TEXT/,
+  );
+});
+
 test("briefs: one per local date, items must be a JSON array", async () => {
   const db = await createTestDb();
   const insert = (id: string, date: string, items = "[]") =>
@@ -458,6 +489,8 @@ const FAKE_ROWS: Record<string, string> = {
     "INSERT INTO briefs (id, local_date, composed_at, text) VALUES ('br_fake', '2026-11-18', '2026-11-18T15:00:00.000Z', 'Fake brief')",
   push_subscriptions:
     "INSERT INTO push_subscriptions (id, endpoint, p256dh, auth) VALUES ('ps_fake', 'https://push.example.net/send/fake', 'BAAA', 'AAAA')",
+  email_log:
+    "INSERT INTO email_log (message_key, received_at, local_date, matched, unmatched) VALUES ('<fake@mail.example.com>', '2026-11-18T17:00:00.000Z', '2026-11-18', 1, 0)",
 };
 
 /** Tables that hold no rows between batches or belong to SQLite or wrangler. */

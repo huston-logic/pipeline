@@ -9,6 +9,7 @@ import { handleBoardPost } from "./board/post.ts";
 import { matchBoardPage } from "./board/router.ts";
 import { THEME_PATH, themeStylesheet } from "./board/theme.ts";
 import { runScheduled } from "./cron.ts";
+import { logAddressOf } from "./email/address.ts";
 import type { Env } from "./env.ts";
 import { apiMethodNotAllowed, handleApi, isApiPath, json } from "./http/api.ts";
 import { handleIntake } from "./http/intake.ts";
@@ -138,7 +139,8 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
       // A page that finds no CSRF cookie makes one token for its Set-Cookie and every form on it (decision 0014).
       const cookie = csrfFromCookies(request, csrfMode);
       const csrf = cookie ?? newCsrfToken();
-      const result = await page({ db: env.DB, now: new Date(), url, csrf, pushKey: vapidKeys(env)?.publicKey ?? null });
+      const pushKey = vapidKeys(env)?.publicKey ?? null;
+      const result = await page({ db: env.DB, now: new Date(), url, csrf, pushKey, emailLogAddress: logAddressOf(env) });
       const headers: Record<string, string> = cookie === null ? { "Set-Cookie": csrfCookie(csrf, csrfMode) } : {};
       return htmlResponse(result.body, result.status, headers);
     } catch {
@@ -167,5 +169,17 @@ export default {
   // The hourly Cron Trigger. Awaited (not waitUntil): the invocation lasts exactly as long as the run.
   async scheduled(controller: ScheduledController, env: Env, _ctx: ExecutionContext): Promise<void> {
     await runScheduled(env, new Date(controller.scheduledTime));
+  },
+
+  // Email Routing hands mail for the log address here (decision 0031). Loaded only for an email, so the board never
+  // loads the MIME parser. A failure is logged without any of the message and the mail is dropped: nothing ever
+  // answers the sender.
+  async email(message: ForwardableEmailMessage, env: Env, _ctx: ExecutionContext): Promise<void> {
+    try {
+      const { handleLogEmail } = await import("./email/log.ts");
+      await handleLogEmail(message, env, new Date());
+    } catch {
+      console.error(JSON.stringify({ event: "email_log_failed" }));
+    }
   },
 };
