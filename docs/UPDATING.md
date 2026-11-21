@@ -34,6 +34,89 @@ could read and change real client data. Copies provisioned before this setting e
 `"preview_urls": false,` in `.copies/<name>/wrangler.jsonc` before the next `npm run copies:update`. To try a release
 safely, use the copy's preview database as described below, never a version preview URL.
 
+## Run 4: after you update
+
+Run 4 adds leads (people you approach, kept apart from real deals), email logging, a monthly "What it caught" report
+and a phone notification for the daily brief. Do these in order, per copy.
+
+### 1. Update the copy
+
+```bash
+git switch main && git pull --ff-only
+npm run copies:update -- --copy <name> --dry-run
+npm run copies:update -- --copy <name>
+```
+
+Migrations 0006 (leads), 0007 (notifications) and 0008 (email log) apply when wrangler asks you to confirm; they only
+add tables and columns and keep every row. 0006 also rebuilds the rules and their firings tables under the same names
+and adds a "leads" rulebook document to the copy. It never overwrites a rulebook document you already have: a copy
+that already has one called "leads" keeps its own words. (Try them on the preview database first if you want to: see
+"Before a release that has a new migration" below.)
+
+Access needs no change for these pages: they sit behind the board's sign-in like the rest. The one exception is the
+phone: it must be signed in to the board for the notification service worker to install (step 6).
+
+### 2. Reconnect the AI app's connector if the tool list looks stale
+
+New tools: `add_deal`, `qualify_lead`, `return_to_lead`, `list_leads`. `add_lead` now means "a person to approach"
+(a lead, with no deal); a real inquiry uses `add_deal`. Most AI apps refresh the list by themselves. If yours does not
+show the new tools, open its connector or integrations settings, remove the copy's connector and add it again (or use
+its reconnect or refresh option), then start a new conversation.
+
+### 3. Sentences to say to the AI app
+
+Say these in the AI app, one at a time. It reads the rulebook first and asks before closing anything.
+
+- **Move an outreach deal back to leads.** "That deal for <business> was never a real opportunity. Put it back in
+  leads." For many at once: "List my open deals in New inquiry that never replied, and return each one to leads after
+  I confirm the list." Each is one change you can undo.
+- **Pause deal rules that were doing outreach.** "Show me my rules." (it uses `list_rules` first) then "Pause the rule
+  that reminds me about New inquiry deals." Pausing is not deleting: say "resume" to put it back.
+- **Add a lead rule.** "From now on, remind me five days after I contact a lead with no reply." It should preview the
+  rule (how many leads it would catch today) and wait for your yes before saving it. It is a `lead_followup` rule.
+
+### 4. Import a list of leads
+
+Dry run first. Nothing is written until `--apply`:
+
+```bash
+npm run import:contacts -- --copy <name> --file <csv> --as leads
+npm run import:contacts -- --copy <name> --file <csv> --as leads --apply
+```
+
+The dry run prints how many people it would add and skip. Lines marked "possible duplicate" look like someone already on
+file or earlier in the same file (a row with no email whose business is already there); they are skipped. Check them, and add `--allow-duplicates` only if you want them
+anyway. A big file is split into files of about 190 rows when applied (D1 allows 100 KB per statement). The import is
+one change; ask the AI app to undo it if it was wrong.
+
+### 5. Email logging
+
+Optional, per copy, and a STOP item (it needs DNS and Email Routing in the client's account). Follow
+`docs/EMAIL-LOGGING.md`: a log subdomain, the `EMAIL_LOG_ADDRESS` secret, the routing rule to the Worker, then its two
+go-live checks (a normal email is logged, and Cloudflare's activity log shows DMARC pass). A strict DMARC policy
+(`p=quarantine` or `p=reject`) on your sending domain is recommended. Until the secret is set, the copy drops every
+email and the board says so on More > Email logging.
+
+### 6. Notifications for the daily brief
+
+Optional, per copy. Make the copy's keys (nothing is written to a file):
+
+```bash
+node scripts/make-vapid-keys.mjs --copy <name> --subject mailto:<owner email>
+```
+
+It prints three `npx wrangler secret put ... -c .copies/<name>/wrangler.jsonc` commands (`VAPID_PUBLIC_KEY`,
+`VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`) and the value to paste at each prompt. Run each one yourself. Then, on the phone:
+
+1. Open the board in the phone's browser and sign in.
+2. Add the board to the Home Screen (iPhone: Share, then Add to Home Screen) and open it from there. An iPhone only
+   allows notifications from the Home Screen app.
+3. Open More, then Notifications, then Turn on notifications, and allow them when the phone asks.
+4. Choose Send a test. A notification should arrive.
+
+A phone that is signed out of Access cannot install or update the service worker, so sign in again if it stops
+working. Notifications can be turned off from the same page ("Turn off on this phone").
+
 ## Before a release that has a new migration
 
 Migrations only go forward: there is no "undo" for a database change. Try a release on a copy's preview database

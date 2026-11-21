@@ -13,13 +13,114 @@ are task E1.
 
 | # | Task | PR | State |
 | --- | --- | --- | --- |
-| T0 | Record the design | this PR | |
-| E1 | Install lessons | | |
-| L1 to L9 | People and leads | | |
-| B1 | What it caught | | |
-| C1 | Email logging | | |
-| D1 | Brief notification | | |
-| E2 | After you update | | |
+| T0 | Record the design (0022) | [#28](https://github.com/huston-logic/pipeline/pull/28) | merged |
+| E1 | Install lessons | [#29](https://github.com/huston-logic/pipeline/pull/29) | merged |
+| L1 | Leads migration 0006 (lead status on contacts; rules and firings rebuilt) | [#30](https://github.com/huston-logic/pipeline/pull/30) | merged |
+| L2 | `add_lead` for people to approach, `add_deal` for inquiries, auto-advance (0023) | [#31](https://github.com/huston-logic/pipeline/pull/31) | merged |
+| L3 | `qualify_lead` and `return_to_lead` (0024) | [#33](https://github.com/huston-logic/pipeline/pull/33) | merged |
+| L4 | `list_leads`, lead status in search, leads line in the summary and brief (0025) | [#34](https://github.com/huston-logic/pipeline/pull/34) | merged |
+| L5 | `lead_followup` rule (0026) | [#35](https://github.com/huston-logic/pipeline/pull/35) | merged |
+| L6 | People tab: Contacts, Leads, Companies; the Leads list (0027) | [#36](https://github.com/huston-logic/pipeline/pull/36) | merged |
+| L7 | Lead pages on the board: status, Qualify, Add a lead or a deal, Back to leads (0028) | [#41](https://github.com/huston-logic/pipeline/pull/41) | merged |
+| L8 | Leads in the import, export and demo seed (0029) | [#38](https://github.com/huston-logic/pipeline/pull/38) | merged |
+| L9 | Acceptance sentences 13 to 20, CPU on 2,000 leads | [#40](https://github.com/huston-logic/pipeline/pull/40) | merged |
+| B1 | What it caught, a monthly report (0032) | [#39](https://github.com/huston-logic/pipeline/pull/39) | merged |
+| C1 | Email logging by BCC (0031, migration 0008) | [#37](https://github.com/huston-logic/pipeline/pull/37) | merged |
+| D1 | Phone notification when the brief is ready (0030, migration 0007) | [#32](https://github.com/huston-logic/pipeline/pull/32) | merged |
+| E2 | After you update, closing status, CPU re-measure | [#42](https://github.com/huston-logic/pipeline/pull/42) | auto-merge queued |
+
+Every task went through an independent review; fixes were made before merge. CI flakes on the way: `lighthouse`
+`NO_NAVSTART` (re-ran the failed job) on #32 and #36.
+
+Code scanning on the way, each fixed in code (never dismissed):
+- #32 had two High alerts: a URL substring check in a test, and a regular expression in `src/push/vapid.ts` that could
+  run very slowly on some inputs.
+- #37 had High alert 12, `js/incomplete-multi-character-sanitization`, in `src/email/parse.ts`. The HTML-to-text step
+  for an HTML-only email removed one tag at a time with `/<[^<>]*>/g`, so `<scr<b>ipt>` became `<script>`.
+  - The fix: tags are now removed in one forward walk. A `<` before a letter, `/`, `!` or `?` starts a tag that runs to
+    the next `>`. Any other `<` stays as text with the character after it. Entities are decoded once, afterwards.
+  - Tests: nested-tag cases and a seeded fuzz test over 5,000 inputs prove that no `<` left in the text can start a tag.
+
+### Run 4 rulings (cost if wrong)
+
+- 1. `contactedIfNew` in `src/services/lead-change.ts` is the one definition of auto-advance (New to Contacted);
+  `log_activity` and email logging both use it. Cost: a small rename.
+- 2. Web push sends an encrypted fixed payload, never record text (research note for C1 and D1). Cost: a notification
+  says less.
+- 3. Email logging trusts only Cloudflare's own `Authentication-Results` (authserv-id `mx.cloudflare.net`) and needs
+  dmarc=pass (or spf and dkim pass when dmarc is absent). Cost: some genuine owner mail is not logged, silently.
+- 4. Decision numbers reserved up front (L tasks 0023 to 0029, D1 0030, C1 0031, B1 0032); 0028 is the lead pages.
+  Cost: a gap in the numbering.
+- 5. Worktree implementers write reports only to the controller's scratchpad. Cost: none.
+- 6. D1 ran in parallel with the L tasks in its own worktree. Cost: merge conflicts, which happened and were resolved
+  (`src/brief/run.ts`, `tools-read.ts`, `layout.test.ts`).
+- 7. Undo refuses, in plain English, when it would reopen a deal whose person is now an unqualified lead (it points to
+  `update_deal`). Cost: one extra step in a rare case.
+- 8. The brief counts accepted emails with no matched person ("N logged emails matched no one"). Cost: the count's
+  meaning shifts slightly.
+- 9. The last test-only fix on D1 was checked by the run controller directly, not by a fifth reviewer. Cost: a flaky
+  test CI would catch.
+- 10. The empty Leads view says "No open leads. Choose Closed out under Status to see the rest." when closed-out leads
+  exist (new copy, no change of existing meaning). Cost: one sentence to reword.
+- 11. Email logging reads authentication from the headers Cloudflare builds, not the raw message; every result of a
+  method must pass; no header means drop. Cost: all mail dropped until fixed (the safe direction).
+- 12. Only Cloudflare's first header segment counts (cut at the first comma outside comments and quotes). Cost: re-tune
+  after the first live test email.
+- 13. Cloudflare's header is isolated by subtracting the raw message's own values; if it does not end that way, the
+  mail is dropped; several dmarc results must all pass. Cost: owner mail dropped until adjusted.
+- 14. "Back to leads" shows on open, lost and not-now deals for every owner, so existing outreach deals can be moved.
+  Cost: hide it behind "this person has a lead" later.
+- 15. In an email's HTML read as text, a `<` starts a tag only before a letter, `/`, `!` or `?`, as in a browser. Any
+  other `<` is kept with the character after it ("I am < 5 min away"), except one before another `<` or at the end.
+  Cost: a stray character or two lost or kept in odd HTML.
+
+### Dependencies added in run 4
+
+- `postal-mime` 4.2.1 (runtime, exact; MIT-0 licence, no dependencies of its own, published 2026-11-10, 10 days old
+  at the time). Parses the raw email for email logging. PR #37.
+
+### STOP queue added in run 4 (needs the owner)
+
+1. **Email logging, per copy** (docs/EMAIL-LOGGING.md): a log subdomain with Email Routing onboarded, its DNS records,
+   the `EMAIL_LOG_ADDRESS` secret, the routing rule to the Worker, then both go-live checks with a real test email.
+   A strict DMARC policy on your sending domain is recommended. Ruling 12 may need tuning after the first test.
+2. **Notification keys, per copy:** `node scripts/make-vapid-keys.mjs --copy <name> --subject mailto:<owner email>`,
+   then the three `wrangler secret put` commands it prints, then the phone steps in docs/UPDATING.md.
+3. **Copy decisions for you:**
+   - The board's outside-text note says "came from a website form or an import". That is now wrong for a logged email.
+     Changing it changes what the copy says, so I did not.
+   - The Pipeline empty state now says "Inquiries from your website form" (it said "Leads ..."), because "lead" now
+     means a person you approach. Confirm you want that wording.
+4. **Local Playwright Chromium** (still open, run 1 STOP 2): this Mac has 1248, `@playwright/test` wants 1254. Run
+   `npx playwright install chromium` in your own terminal.
+5. **CPU items over 10 ms** (docs/PAID-PLAN.md, "Run 4 closing re-measure"), to check in the Cloudflare dashboard on
+   the first real copy: Today 13.8 ms, the hour of the brief 11.5, `preview_rule` on a deal rule 11.0, `list_deals`
+   10.3, and the export (102 ms). All on a fake copy of 2,000 deals plus 2,000 leads on a busy Mac. `/companies`
+   (7.7 ms) and `/leads` (2.1 ms) are fine.
+
+### What's left after run 4
+
+Not built: replies from leads are not logged (they reach your own inbox, not the log address), so email logging
+covers only mail you send with the Bcc; forwarded mail is not parsed for the original sender.
+
+Minor review findings left (none blocks use), grouped:
+
+- **Rules and undo:** a paused deal rule still shows its 30-day look-back in a preview (`paused: true`); the fire-key
+  read in a lead preview covers all the rule's keys (bounded); the rulebook order differs between a fresh and an
+  upgraded copy (harmless); `db.ts` imports the `LeadStatus` type from `services/` (layering, type only).
+- **Leads and the board:** the summary says "Moved ... back to leads (Contacted)" when already Contacted; a snoozed
+  task with no due date is left out of `list_leads`' next task; the Contacts search gives no hint that a person may be
+  under Leads; double-posting Not now with a date adds two check-back tasks; the contact detail is read twice on a
+  deal page.
+- **Import:** a bad custom field value skips the whole merge row (as it does on create).
+- **Email logging:** a quoted local part containing `;` in Cloudflare's header is dropped (fails closed); the end-to-end
+  test covers only the drop path (the logged path is unit-tested).
+- **Notifications:** `wrangler dev` may echo the throwaway keys in the local terminal; the 20-device cap is not atomic;
+  a failure while marking a device gone loses the counts (cosmetic).
+- **Performance:** narrow the contact read in the brief and in the deal reads to the people the request needs, if the
+  CPU items above bite on a real copy.
+- **Docs:** ACCESS-SETUP has a "worked on the first live copy" history note; one Access item ("Add public hostname")
+  is not flagged "check in the dashboard".
 
 ## Run 3 (2026-11-19)
 

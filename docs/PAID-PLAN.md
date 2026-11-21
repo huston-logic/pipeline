@@ -19,7 +19,7 @@ Access (Zero Trust Free covers up to 50 users; a copy needs one or two).
 |---|---|---|
 | Worker size: 3 MB compressed | 1.35 MB raw, about 0.24 MB gzip (the `wrangler dev` bundle, measured 2026-11-18 after the MCP endpoint, task 4), plus about 0.27 MB raw / 0.07 MB gzip for `workers-oauth-provider` (task 10; the package's own file size, the bundle not re-measured) | Low. The MCP SDK, `agents` and `zod` are most of it. |
 | KV (free plan): 100,000 reads, 1,000 writes, 1,000 deletes and 1,000 lists a day | Every `/mcp` request reads its token record (one read); a sign-in writes a few records; a token refresh (about hourly while an AI app is in use) writes a few | Low for one owner. Many connected AI apps refreshing all day could approach 1,000 writes; then Workers Paid lifts it. **Abuse risk:** `/register` and `/authorize` write to KV before anyone signs in, so a flood could use up the day's writes and block the owner's sign-ins until the next day. Fixed in task 11 with the `OAUTH_RATE_LIMIT` binding (20 per minute per IP on those two paths; Rate Limiting is free) and a `HEAD /authorize` that writes nothing (decision 0006). A flood from many IPs could still spend writes; if that happens, Workers Paid lifts the KV limit. |
-| CPU time: 10 ms per request | Measured locally on a 2,000-deal fake copy, not yet in production: in run 2 every request but the export fit, the largest at about 7 ms; with 2,000 leads added (run 4, a busier Mac) `list_deals`, deal `preview_rule`, the hour of the brief, Today and `/companies` are at or over 10 ms (see "CPU check" and "Run 4" below) | **Medium.** Every `/mcp` request builds a fresh MCP server and then runs the tool; JSON Schemas for `tools/list` are converted once per isolate (decision 0020). The tools that list every open deal (`pipeline_summary`, `list_deals`) grow with the pipeline and would reach 10 ms at about 2,000 open deals. If requests fail with "exceeded CPU", that is the sign to move the copy to Workers Paid (30 s default CPU limit). |
+| CPU time: 10 ms per request | Measured locally on a 2,000-deal fake copy, not yet in production: in run 2 every request but the export fit, the largest at about 7 ms; with 2,000 leads added (run 4, a busier Mac) `list_deals`, deal `preview_rule`, the hour of the brief and Today are at or over 10 ms; `/companies` (7.7 ms) and `/leads` (2.1 ms) are inside it (see "CPU check" and "Run 4" below) | **Medium.** Every `/mcp` request builds a fresh MCP server and then runs the tool; JSON Schemas for `tools/list` are converted once per isolate (decision 0020). The tools that list every open deal (`pipeline_summary`, `list_deals`) grow with the pipeline and would reach 10 ms at about 2,000 open deals. If requests fail with "exceeded CPU", that is the sign to move the copy to Workers Paid (30 s default CPU limit). |
 | Cron Triggers | One hourly trigger (`0 * * * *`: the rules run, then the daily brief; tasks 6 and 7). Cron Triggers are included in the free plan (up to 5 per account) | Low for the trigger itself. |
 | CPU time of the hourly run (10 ms per invocation on the free plan) | Measured locally: about 2 ms with 50 firings due (25 written), about 7 ms on the hour that also composes the brief, on 1,200 open deals (see "CPU check" below) | **Medium as a pipeline grows.** Each run reads every open deal once, the fire keys of open deals and the active rules, then checks each deal against each stage rule: about open deals × stage rules comparisons, plus one D1 batch per new task. A one-person pipeline (tens to a few hundred open deals, a handful of rules) is small; thousands of open deals with many rules, or a run that has to create many tasks at once (for example right after a new rule is added), could go over 10 ms. Failed firings are retried on the next run, so going over is a delay, not lost work. A firing that cannot be written is counted, not thrown, so watch for `failed` above 0 in the `cron_rules_done` log line (several runs in a row), as well as for `cron_rules_failed` or "exceeded CPU"; those are the signs to move the copy to Workers Paid. |
 | Subrequests and D1 queries per invocation (free plan: 50 of each) | One batch per firing in the hourly run, plus the reads and the brief: measured, 37 D1 calls holding 112 statements on the hour of the brief (see "CPU check" below) | **Unknown until confirmed:** if Cloudflare counts each statement in a batch as a query, a run that writes 25 firings is over 50. Otherwise low since the final review: a run writes at most 25 firings (`MAX_FIRINGS_PER_RUN`, decision 0010), so a catch-up after a new rule cannot use up the invocation and starve the brief that runs after it. The rest fire next hour; `deferred` above 0 in `cron_rules_done` for many hours in a row means more tasks are due each hour than one run writes. |
@@ -187,15 +187,32 @@ read (see the limits table).
   grows with the data (about 5 ms per MB here, 3.5 in run 2). `/companies` is the only one that crosses 10 ms because of the
   leads. It belongs to the board's lead views (PR #36), not to this task; reported, not changed.
 - **Near the limit already, and tipped over by the 2,000 leads** (table above, same Mac, without then with leads): the
-  hourly run on the hour of the brief 9.9 to 11.2, `preview_rule` on a deal rule 9.9 to 11.0, `list_deals` 9.5 to 10.0.
+  hourly run on the hour of the brief 9.9 to 11.2 (11.5 in the closing re-measure), `preview_rule` on a deal rule 9.9 to 11.0, `list_deals` 9.5 to 10.0.
   These are the same requests as run 2's "still near or over the limit", about 1.3 times higher on a busier machine, and
   the leads add about 0.5 to 1.3 ms to each because they all read the contacts table (3,500 rows instead of 1,500).
   Only Today (12.5, 13.7 with leads) was over without them. What to do: nothing in this task. If a real copy has this
   many people and these requests fail with "exceeded CPU", Workers Paid is the fix; a later task could narrow the
   contact read in the brief and in the deal reads to the people the request needs. Treat all of them as
   first-real-copy checks, as before.
-- **`/companies` should drop back** once PR #36 (Companies leaves out unqualified leads) merges; it had not merged
-  when this was written, so the 15.0 ms above stands until it is re-measured.
-- **The `/leads` page is not measured here:** `src/board/pages/leads.ts` was not on `main` when this was written (PR
-  #36). Measured in a later task: run `node --disable-warning=ExperimentalWarning --import ./tests/helpers/workers-runtime.mjs scripts/cpu-check.ts`
-  after adding `fetchCase("/leads", ...)` for the route.
+- **`/companies` and `/leads`, re-measured after PR #36** (Companies leaves out unqualified leads; the Leads page is
+  on `main`), 2026-11-20, same method and copy, median of 20: see "Run 4 closing re-measure" below.
+
+### Run 4 closing re-measure (task E2, 2026-11-20)
+
+`scripts/cpu-check.ts` gained two cases (`/leads` and `/leads?status=closed`); everything else is unchanged.
+
+| Request | Worker CPU ms | D1 statements | Body |
+|---|---|---|---|
+| `/companies` (was 15.0 ms, 857 KB with the leads' businesses) | 7.7 | 4 | 344 KB |
+| `/leads` (default: open leads, first 200) | 2.1 | 4 | 99 KB |
+| `/leads?status=closed` | 1.0 | 4 | 82 KB |
+
+On this run the Mac was about as busy as in the L9 run (Today 13.8 ms, `list_deals` 10.3, the hour of the brief 11.5,
+`preview_rule` on a deal rule 11.0, all as in the table above).
+
+Verdict: `/companies` is back to its run 2 level (7.7 ms here, 7.3 without leads in the L9 run), because the page now
+leaves out unqualified leads (PR #36), so their 2,000 businesses no longer count. `/leads` is
+cheap (2.1 ms) because it shows at most 200 rows. Neither crosses 10 ms. Still over 10 ms on this Mac with 2,000 leads
+and 2,000 deals, and flagged for the first real copy (see the STOP queue in docs/STATUS.md): Today (13.8), the hour of
+the brief (11.5), `preview_rule` on a deal rule (11.0) and `list_deals` for every open deal (10.3). They fail only on a
+copy with thousands of people and deals; Workers Paid is the fix if "exceeded CPU" shows up in the dashboard.
