@@ -35,6 +35,7 @@ const DEPENDENTS: Partial<Record<ChangeTable, { table: ChangeTable; column: stri
     { table: "deals", column: "contact_id", one: "deal", many: "deals" },
     { table: "activities", column: "contact_id", one: "activity", many: "activities" },
     { table: "tasks", column: "contact_id", one: "task", many: "tasks" },
+    { table: "rule_firings", column: "contact_id", one: "rule firing", many: "rule firings" },
   ],
   deals: [
     { table: "activities", column: "deal_id", one: "activity", many: "activities" },
@@ -132,18 +133,48 @@ const changedMessage = (changeId: string, what: string) =>
   `Can't undo ${changeId}: ${what} changed since (see recent_changes). Undo the later changes first, or leave it.`;
 
 /**
- * A rule firing keeps firing idempotent, so the deal or rule it names can never be removed again (decision 0010).
- * The refusal says what to do instead of "change those first", which the owner can't do for a firing.
+ * A rule firing keeps firing idempotent, so the deal, person or rule it names can never be removed again (decisions
+ * 0010 and 0026). The refusal says what to do instead of "change those first", which the owner can't do for a firing.
  */
 function ruleHistoryMessage(changeId: string, entry: Entry): string {
   const row = entry.after ?? {};
   if (entry.table === "rules") {
     return `Can't undo ${changeId}: rule ${entry.id} has already fired, so it can't be removed. Pause it with pause_rule instead.`;
   }
+  if (entry.table === "contacts") {
+    return (
+      `Can't undo ${changeId}: this person has rule history (a rule already fired on ${rowLabel("contacts", row)}), so ` +
+      "they can't be removed. Mark them Bad lead or Not a fit with update_contact instead."
+    );
+  }
   return (
     `Can't undo ${changeId}: this lead has rule history (a rule already fired on ${rowLabel("deals", row)}), so it can't ` +
     "be removed. Close the deal instead: update_deal with status lost or not_now."
   );
+}
+
+/**
+ * Refuses when a row the undo would remove has rule firings. A person whose firings all came from deal rules (they
+ * record the deal's contact too) gets the deal's message, since closing the deal is the way out.
+ */
+async function ruleHistory(ctx: Ctx, changeId: string, deleting: Entry[]): Promise<void> {
+  for (const entry of deleting) {
+    const pkValue = entry.after?.[primaryKey(entry.table)];
+    for (const dep of DEPENDENTS[entry.table] ?? []) {
+      if (dep.table !== "rule_firings") continue;
+      const firings = await ctx.db
+        .prepare(`SELECT deal_id FROM rule_firings WHERE ${dep.column} = ?`)
+        .bind(pkValue)
+        .all<{ deal_id: string | null }>();
+      const [first] = firings.results;
+      if (first === undefined) continue;
+      if (entry.table === "contacts" && first.deal_id !== null && firings.results.every((f) => f.deal_id !== null)) {
+        const deal = await ctx.db.prepare("SELECT * FROM deals WHERE id = ?").bind(first.deal_id).first<Row>();
+        if (deal) throw new UserError(ruleHistoryMessage(changeId, { table: "deals", id: first.deal_id, before: null, after: deal }));
+      }
+      throw new UserError(ruleHistoryMessage(changeId, entry));
+    }
+  }
 }
 
 const isOpenDeal = (row: Row | null) => row !== null && row.status === "open" && row.archived !== 1;
@@ -173,18 +204,17 @@ async function reopenBlocker(ctx: Ctx, changeId: string, entries: Entry[], curre
 
 async function dependents(ctx: Ctx, changeId: string, entries: Entry[]): Promise<string | null> {
   const deleting = entries.filter((entry) => entry.before === null);
+  await ruleHistory(ctx, changeId, deleting);
   const removed = new Set(deleting.map((entry) => rowKey(entry.table, entry.id)));
   const counts = new Map<string, { n: number; one: string; many: string }>();
   for (const entry of deleting) {
     const pkValue = entry.after?.[primaryKey(entry.table)];
     for (const dep of DEPENDENTS[entry.table] ?? []) {
+      if (dep.table === "rule_firings") continue;
       const rows = await ctx.db
         .prepare(`SELECT id FROM ${dep.table} WHERE ${dep.column} = ?`)
         .bind(pkValue)
         .all<{ id: string }>();
-      if (dep.table === "rule_firings" && rows.results.length > 0) {
-        throw new UserError(ruleHistoryMessage(changeId, entry));
-      }
       for (const row of rows.results) {
         const key = rowKey(dep.table, row.id);
         if (removed.has(key)) continue;

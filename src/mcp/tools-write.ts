@@ -445,10 +445,12 @@ export function registerWriteTools(server: McpServer, deps: ToolDeps): void {
       description:
         "Adds a rule the hourly run follows. stage_followup: when a deal has sat in a stage for `days` days with no " +
         "contact logged, add a follow-up task. on_stage_enter: when a deal enters a stage, add a task (`title`, due " +
-        "`dueInDays` after). gone_quiet: flag open deals with no contact for `days` days in the daily brief. Show the " +
-        "owner preview_rule first. The description is written for you unless you give one.",
+        "`dueInDays` after). gone_quiet: flag open deals with no contact for `days` days in the daily brief. " +
+        "lead_followup: when a lead has been in `status` (new or contacted) for `days` days with no contact logged " +
+        "since, add a follow-up task on the person. Show the owner preview_rule first. The description is written for " +
+        "you unless you give one.",
       input: z.strictObject({
-        type: z.enum(RULE_TYPES).describe("stage_followup, on_stage_enter or gone_quiet."),
+        type: z.enum(RULE_TYPES).describe("stage_followup, on_stage_enter, gone_quiet or lead_followup."),
         ...ruleSettings,
         description: shortText("What the rule does, in plain English; written from the settings when left out.").optional(),
       }),
@@ -476,8 +478,9 @@ export function registerWriteTools(server: McpServer, deps: ToolDeps): void {
         ...ruleSettings,
         title: orNull(
           shortText(
-            "The new task title, or null to go back to stage_followup's default (\"Follow up with {contact} about " +
-              "{deal}\"). It may use {deal}, {contact} and {stage}.",
+            "The new task title, or null to go back to the default (stage_followup: \"Follow up with {contact} about " +
+              "{deal}\"; lead_followup: \"Follow up with {contact}\"). It may use {deal}, {contact} and {stage} " +
+              "({contact} only for lead_followup).",
           ),
         ).optional(),
         description: shortText("A new plain-English description.").optional(),
