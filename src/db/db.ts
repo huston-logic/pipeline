@@ -20,6 +20,7 @@ export const TABLE_NAMES = [
   "audit_log",
   "write_guard",
   "briefs",
+  "push_subscriptions",
 ] as const;
 
 export type TableName = (typeof TABLE_NAMES)[number];
@@ -194,6 +195,21 @@ export type BriefRow = {
   sent_at: string | null;
   /** Why the email did or did not go: "sent", "off: <reason>" or "failed: <HTTP status>". */
   send_status: string | null;
+};
+
+/** One browser that turned notifications on (decision 0030). Its values come from the owner's own browser. */
+export type PushSubscriptionRow = {
+  id: string;
+  /** The push service's https URL for this browser. Never shown in a summary or a log. */
+  endpoint: string;
+  /** The browser's P-256 public key (65 bytes) and auth secret (16 bytes), base64url. */
+  p256dh: string;
+  auth: string;
+  created_at: string;
+  /** When it was turned off, or the push service said it is gone; null while notifications are on. */
+  gone_at: string | null;
+  version: number;
+  updated_at: string;
 };
 
 export type AuditRow = {
