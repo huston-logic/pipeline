@@ -429,6 +429,9 @@ const escapeLike = (text: string) => text.replace(/[\\%_]/g, (c) => `\\${c}`);
 
 type OpenDealJson = { id: string; title: string; untrusted: string; position: number; entered: string };
 
+/** The Contacts and Companies views leave out unqualified leads (decision 0027); a qualified lead is a contact. */
+const NOT_AN_OPEN_LEAD = "(c.lead_status IS NULL OR c.lead_status = 'qualified')";
+
 /**
  * The board's contacts list: contacts that are not archived, searched and sorted, with their open deals and the
  * newest activity on the contact or any of their deals. One query, whatever the number of contacts.
@@ -437,7 +440,7 @@ export async function listContacts(db: Db, tz: string, options: ContactListOptio
   const text = (options.query ?? "").trim();
   const sort = options.sort ?? "name";
   const dir = options.dir === "desc" ? "DESC" : "ASC";
-  const where = ["c.archived = 0"];
+  const where = ["c.archived = 0", NOT_AN_OPEN_LEAD];
   const params: unknown[] = [];
   if (text !== "") {
     where.push(["c.name", "c.email", "c.phone", "c.business"].map((column) => `${column} LIKE ? ESCAPE '\\'`).join(" OR "));
@@ -536,7 +539,7 @@ const COMPANY_ORDER = new Intl.Collator("en", { sensitivity: "base" });
 export async function listCompanies(db: Db, now: Date, tz: string): Promise<CompanyList> {
   const contacts = await rows<ContactRow>(
     db,
-    "SELECT * FROM contacts WHERE archived = 0 ORDER BY name COLLATE NOCASE, id",
+    `SELECT * FROM contacts c WHERE c.archived = 0 AND ${NOT_AN_OPEN_LEAD} ORDER BY c.name COLLATE NOCASE, c.id`,
     [],
   );
   const deals = await dealItems(db, ["d.status = 'open'"], [], now, tz);

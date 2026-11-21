@@ -39,7 +39,7 @@ test("the layout adds no <h1> and no script of its own", () => {
   assert.doesNotMatch(out, /<script/i);
 });
 
-test("the nav lists Today, Pipeline, Contacts, Brief and More, then Rules, Changes and Export under More", () => {
+test("the nav lists Today, Pipeline, People, Brief and More, then Rules, Changes and Export under More", () => {
   const out = page("/");
   const hrefs = [...out.matchAll(/<nav[\s\S]*?<\/nav>/g)].flatMap((nav) => [...nav[0].matchAll(/<a href="([^"]+)"/g)].map((m) => m[1]));
   assert.deepEqual(hrefs, ["/", "/pipeline", "/contacts", "/brief", "/more", "/rules", "/changes", "/export"]);
@@ -63,6 +63,9 @@ test("the current page is aria-current=page; a page inside a section marks the s
   assert.equal(rules.match(/aria-current=/g)?.length, 2);
 
   assert.match(page("/deals/dl_abc"), /<a href="\/pipeline" aria-current="true">/);
+  for (const path of ["/leads", "/leads/new", "/companies", "/contacts/ct_abc"]) {
+    assert.match(page(path), /<a href="\/contacts" aria-current="true">/, path);
+  }
   assert.doesNotMatch(page(undefined), /aria-current/);
 });
 

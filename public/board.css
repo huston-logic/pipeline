@@ -854,6 +854,15 @@ ol.panel {
   grid-column: 1 / -1;
 }
 
+/* The Leads form has three selects: as many per row as fit. */
+.search-filters {
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+}
+
+.search-filters .button {
+  justify-self: start;
+}
+
 .field {
   display: flex;
   flex-direction: column;

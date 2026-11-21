@@ -19,6 +19,8 @@ export const boardRoutes: string[] = [
   "/pipeline?view=list&stage=new_inquiry",
   "/contacts",
   "/companies",
+  "/leads",
+  "/leads?status=closed",
   "/brief",
   "/more",
   "/rules",
@@ -37,7 +39,7 @@ export const boardRoutes: string[] = [
 export const navItems: NavItem[] = [
   { href: "/", label: "Today", icon: "today", description: "What is overdue and due today." },
   { href: "/pipeline", label: "Pipeline", icon: "pipeline", description: "Open deals by stage." },
-  { href: "/contacts", label: "Contacts", icon: "contacts", description: "Everyone you are talking to." },
+  { href: "/contacts", label: "People", icon: "contacts", description: "Contacts, leads and companies." },
   { href: "/brief", label: "Brief", icon: "brief", description: "The latest daily brief." },
   { href: "/more", label: "More", icon: "more", description: "Rules, changes and export.", hint: " pages" },
 ];
