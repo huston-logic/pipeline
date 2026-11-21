@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Env } from "../env.ts";
 import { fromBase64Url, toBase64Url, utf8 } from "./bytes.ts";
-import { vapidHeaders, vapidKeys } from "./vapid.ts";
+import { isVapidSubject, vapidHeaders, vapidKeys } from "./vapid.ts";
 
 const NOW = new Date("2026-11-19T15:00:00.000Z");
 const ENDPOINT = "https://push.example.net/send/abc123?x=1";
@@ -29,6 +29,25 @@ test("vapidKeys: null unless all three secrets are set and well formed", async (
   assert.notEqual(vapidKeys(envWith({ ...secrets, VAPID_SUBJECT: "https://example.com" })), null);
   assert.equal(vapidKeys(envWith({ ...secrets, VAPID_PUBLIC_KEY: secrets.VAPID_PUBLIC_KEY.slice(4) })), null, "a short key");
   assert.equal(vapidKeys(envWith({ ...secrets, VAPID_PRIVATE_KEY: "not base64url!" })), null);
+});
+
+test("isVapidSubject: mailto: with an @ inside, or https:// and more; no whitespace; same answers as before", () => {
+  for (const good of ["mailto:owner@example.com", "mailto:a@b", "mailto:@a@b", "https://example.com", "https://x"]) {
+    assert.equal(isVapidSubject(good), true, good);
+  }
+  for (const bad of ["owner@example.com", "mailto:", "mailto:@", "mailto:a@", "mailto:@b", "mailto:ab", "mailto:a @b", "https://", "http://example.com", "https://a b", "", " mailto:a@b"]) {
+    assert.equal(isVapidSubject(bad), false, bad);
+  }
+});
+
+test("isVapidSubject answers a long hostile string at once (no backtracking)", () => {
+  for (const hostile of [`mailto:${"!@".repeat(50_000)} `, `mailto:${"!@".repeat(50_000)}`, `https://${"a".repeat(100_000)} `]) {
+    const start = performance.now();
+    isVapidSubject(hostile);
+    assert.ok(performance.now() - start < 250, `${hostile.slice(0, 12)}… took ${performance.now() - start} ms`);
+  }
+  assert.equal(isVapidSubject(`mailto:${"!@".repeat(50_000)} `), false);
+  assert.equal(isVapidSubject(`mailto:${"!@".repeat(50_000)}`), true);
 });
 
 test("vapidHeaders: an ES256 JWT for the endpoint's origin that verifies with the public key, and k = that key", async () => {

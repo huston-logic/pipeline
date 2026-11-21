@@ -4,6 +4,7 @@
 //   node scripts/make-vapid-keys.mjs --copy <name> --subject mailto:<the owner's email>
 import { pathToFileURL } from "node:url";
 import { resolve } from "node:path";
+import { isVapidSubject } from "../src/push/vapid.ts";
 import { parseFlags, UsageError } from "./cli-args.mjs";
 
 const toBase64Url = (bytes) => Buffer.from(bytes).toString("base64url");
@@ -16,7 +17,6 @@ export async function makeVapidKeys() {
   return { publicKey, privateKey: d };
 }
 
-const SUBJECT = /^(mailto:\S+@\S+|https:\/\/\S+)$/;
 
 /** The lines to print: for each secret, the command and the value to paste when wrangler asks for it. */
 export function secretLines(keys, { copy, subject }) {
@@ -46,7 +46,7 @@ export async function main(argv = process.argv.slice(2), log = console.log) {
   const copy = typeof flags.copy === "string" ? flags.copy : "";
   if (!/^[a-z0-9][a-z0-9-]*$/.test(copy)) throw new UsageError("Give the copy's name, like --copy acme (lower case, digits and dashes).");
   const subject = typeof flags.subject === "string" ? flags.subject : "";
-  if (!SUBJECT.test(subject)) {
+  if (!isVapidSubject(subject)) {
     throw new UsageError(
       "Give the contact push services see, starting with mailto: or https://, like --subject mailto:owner@example.com.",
     );
