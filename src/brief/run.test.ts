@@ -220,12 +220,27 @@ async function addDevice(db: Db, n: number) {
   );
 }
 
+const RESEND_URL = "https://api.resend.com/emails";
+const PUSH_ORIGIN = "https://push.example.net";
+/** A fake device's push URL, compared by origin (never by substring). */
+const isPushUrl = (url: string) => new URL(url).origin === PUSH_ORIGIN;
+
+/**
+ * A timeout signal on a ref'd timer, for the test whose push service never answers. Node's AbortSignal.timeout() uses
+ * an unref'd timer, so with nothing else pending the test run could end before it fires.
+ */
+function refTimeout(ms: number): AbortSignal {
+  const controller = new AbortController();
+  setTimeout(() => controller.abort(new DOMException("The push timed out.", "TimeoutError")), ms);
+  return controller.signal;
+}
+
 /** Mocks fetch for both the brief email (always 200) and push (the status `push` gives for the device's URL). */
 function mockBoth(t: { mock: { method: typeof import("node:test").mock.method } }, push: (url: string) => number | "throw" = () => 201) {
   const urls: string[] = [];
   t.mock.method(globalThis, "fetch", async (url: string) => {
     urls.push(url);
-    if (url.startsWith("https://push.example.net/")) {
+    if (isPushUrl(url)) {
       const status = push(url);
       if (status === "throw") throw new TypeError("network down");
       return new Response(null, { status });
@@ -242,7 +257,7 @@ test("with push keys, the stored brief is pushed once to every device, whether o
   await addDevice(db, 2);
   const env = envFor(db, await vapidSecrets());
   assert.deepEqual(await runBrief(env, SEVEN), { composed: 1, sent: 0, failed: 0, pushed: 2, push_gone: 0, push_failed: 0 });
-  assert.equal(urls.filter((url) => url.startsWith("https://push.example.net/")).length, 2);
+  assert.equal(urls.filter((url) => isPushUrl(url)).length, 2);
   assert.deepEqual(await runBrief(env, new Date(SEVEN.getTime() + HOUR)), { composed: 0, sent: 0, failed: 0 }, "once a day");
   assert.equal(urls.length, 2);
 });
@@ -255,7 +270,7 @@ test("push failures never break the brief: the email still goes and the counts s
   await addDevice(db, 2);
   const env = envFor(db, { ...READY, ...(await vapidSecrets()) });
   assert.deepEqual(await runBrief(env, SEVEN), { composed: 1, sent: 1, failed: 0, pushed: 0, push_gone: 1, push_failed: 1 });
-  assert.ok(urls.includes("https://api.resend.com/emails"));
+  assert.equal(urls.filter((url) => url === RESEND_URL).length, 1, "the email went once");
   assert.equal((await briefs(db))[0]?.send_status, "sent");
 });
 
@@ -263,7 +278,7 @@ test("a push service that never answers can't hold the email back: it goes first
   const order: string[] = [];
   t.mock.method(globalThis, "fetch", (url: string, init: RequestInit) => {
     order.push(url);
-    if (!url.startsWith("https://push.example.net/")) return Promise.resolve(new Response("{}", { status: 200 }));
+    if (!isPushUrl(url)) return Promise.resolve(new Response("{}", { status: 200 }));
     // Hangs until the sender's timeout aborts it, like a host that never answers.
     return new Promise((_, reject) => init.signal?.addEventListener("abort", () => reject(init.signal?.reason)));
   });
@@ -271,8 +286,15 @@ test("a push service that never answers can't hold the email back: it goes first
   await db.prepare(`UPDATE settings SET brief_enabled = 1, brief_email = 'owner@example.test', owner_emails = '["owner@example.test"]'`).run();
   await addDevice(db, 1);
   const env = envFor(db, { ...READY, ...(await vapidSecrets()) });
-  assert.deepEqual(await runBrief(env, SEVEN, { timeoutMs: 50 }), { composed: 1, sent: 1, failed: 0, pushed: 0, push_gone: 0, push_failed: 1 });
-  assert.deepEqual(order, ["https://api.resend.com/emails", "https://push.example.net/send/device-1"], "the email before the push");
+  assert.deepEqual(await runBrief(env, SEVEN, { timeoutMs: 50, timeoutSignal: refTimeout }), {
+    composed: 1,
+    sent: 1,
+    failed: 0,
+    pushed: 0,
+    push_gone: 0,
+    push_failed: 1,
+  });
+  assert.deepEqual(order, [RESEND_URL, `${PUSH_ORIGIN}/send/device-1`], "the email before the push");
   assert.equal((await briefs(db))[0]?.send_status, "sent");
 });
 

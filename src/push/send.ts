@@ -22,9 +22,15 @@ type Outcome = "sent" | "gone" | "failed";
 /** How long one push service may take to answer before that device counts as failed. */
 export const PUSH_TIMEOUT_MS = 10_000;
 
-export type PushOptions = { timeoutMs?: number };
+/**
+ * `timeoutMs` and `timeoutSignal` are for tests. Node's AbortSignal.timeout() runs on an unref'd timer, so a test whose
+ * mocked push service never answers passes a signal whose timer keeps the test process alive until it fires.
+ */
+export type PushOptions = { timeoutMs?: number; timeoutSignal?: (ms: number) => AbortSignal };
 
-async function pushOne(sub: PushSubscriptionRow, keys: VapidKeys, now: Date, timeoutMs: number): Promise<Outcome> {
+const defaultTimeoutSignal = (ms: number) => AbortSignal.timeout(ms);
+
+async function pushOne(sub: PushSubscriptionRow, keys: VapidKeys, now: Date, signal: AbortSignal): Promise<Outcome> {
   try {
     const body = await encryptPayload(utf8(BRIEF_PAYLOAD), sub);
     const response = await fetch(sub.endpoint, {
@@ -39,7 +45,7 @@ async function pushOne(sub: PushSubscriptionRow, keys: VapidKeys, now: Date, tim
       body,
       // A push service answers directly; a redirect (3xx) counts as a failure and is never followed.
       redirect: "manual",
-      signal: AbortSignal.timeout(timeoutMs),
+      signal,
     });
     await response.body?.cancel();
     if (response.status === 404 || response.status === 410) return "gone";
@@ -55,7 +61,9 @@ export async function sendBriefPush(db: Db, env: Env, now: Date, options: PushOp
   const keys = vapidKeys(env);
   if (keys === null) return { ...counts, skipped: "no_keys" };
   const subs = await listLivePush(db);
-  const settled = await Promise.allSettled(subs.map((sub) => pushOne(sub, keys, now, options.timeoutMs ?? PUSH_TIMEOUT_MS)));
+  const timeoutSignal = options.timeoutSignal ?? defaultTimeoutSignal;
+  const timeoutMs = options.timeoutMs ?? PUSH_TIMEOUT_MS;
+  const settled = await Promise.allSettled(subs.map((sub) => pushOne(sub, keys, now, timeoutSignal(timeoutMs))));
   for (const [i, sub] of subs.entries()) {
     const result = settled[i];
     const outcome: Outcome = result?.status === "fulfilled" ? result.value : "failed";
