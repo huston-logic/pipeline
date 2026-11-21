@@ -16,9 +16,10 @@ deals, how source groups are labelled, and what happens to snoozed tasks.
   SQL), on the person or on any of their deals, archived ones included. A plain note does not count.
 - **Quiet for N days** means the latest reach (or, with none, the day the lead was added) is N days or more before now,
   the same test `gone_quiet` uses for deals.
-- **Next task** is the soonest open task with a due date that is not snoozed past now, on the person or on one of their
-  deals. A snoozed task does not count until it wakes.
-- **Due within N days** means that next task is due before the end of the owner's local day N days from today, overdue
+- **Next task** is the soonest open task with a due date, on the person or on one of their deals, by its effective
+  time: a task snoozed past now counts from the day it wakes (the later of its due date and the snooze). A lead whose
+  only task is snoozed therefore shows that day and sorts there, not with the leads that have no task.
+- **Due within N days** means that next task, at its effective time (a snoozed task is left out until it wakes), is due before the end of the owner's local day N days from today, overdue
   ones included. N = 0 is "today or overdue". "Follow-ups due this week" in the summary is N = 6, counted as people.
 - **Sorts.** `next_task` soonest first, `last_contact` longest ago first, `added` newest first. People with no next
   task or no contact go last; ties go by name.
@@ -41,4 +42,6 @@ already knows. Counting only awake tasks matches Today and `whats_due`.
 ## Consequences
 
 - `ContactView` (so `get_deal`, the contact page data and `search_contacts`) gains `leadStatus` and `leadStatusLabel`.
-- A lead whose only task is snoozed shows no next task and is not "due".
+- A snoozed task is not "due" until it wakes.
+- A source group whose label is outside text carries `untrusted_fields: ["label"]` (and `outside: true`).
+- The brief's "Nothing due today." depends on the dated sections only; the Leads line follows it.

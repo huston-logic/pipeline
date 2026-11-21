@@ -89,15 +89,15 @@ test("source matches ignoring case and spacing, and the source groups ignore the
   const { db, a, b } = await seeded();
   const list = await listLeads(db, NOW, TZ, { source: "  TRADE   fair " });
   assert.deepEqual(ids(list.items).sort(), [a, b].sort());
-  assert.deepEqual(list.sources, [{ key: "trade fair", label: "Trade Fair", count: 2, outside: false }]);
+  assert.deepEqual(list.sources, [{ key: "trade fair", label: "Trade Fair", count: 2, outside: false, untrusted_fields: [] }]);
 });
 
 test("a source group is labelled with its earliest trusted spelling, and outside-only ones are marked", async () => {
   const { db, a, b } = await seeded();
   await db.prepare("UPDATE contacts SET untrusted_fields = '[\"source\"]' WHERE id = ?").bind(a).run();
-  assert.deepEqual((await listLeads(db, NOW, TZ)).sources, [{ key: "trade fair", label: "trade fair", count: 2, outside: false }]);
+  assert.deepEqual((await listLeads(db, NOW, TZ)).sources, [{ key: "trade fair", label: "trade fair", count: 2, outside: false, untrusted_fields: [] }]);
   await db.prepare("UPDATE contacts SET untrusted_fields = '[\"source\"]' WHERE id = ?").bind(b).run();
-  assert.deepEqual((await listLeads(db, NOW, TZ)).sources, [{ key: "trade fair", label: "Trade Fair", count: 2, outside: true }]);
+  assert.deepEqual((await listLeads(db, NOW, TZ)).sources, [{ key: "trade fair", label: "Trade Fair", count: 2, outside: true, untrusted_fields: ["label"] }]);
 });
 
 test("lastContactAt counts calls and texts, ignores a plain note, and reaches through an archived deal", async () => {
@@ -130,9 +130,22 @@ test("dueWithinDays counts awake open tasks due before the end of the local day 
   const snoozed = await task(db, c, "2026-11-19T09:00", "Snoozed");
   await snoozeTask(ctxFor(db, NOW, "snooze_task"), snoozed, "2026-11-30T09:00");
   assert.deepEqual(ids((await listLeads(db, NOW, TZ, { dueWithinDays: 0 })).items), [b], "a snoozed task is not due");
+  assert.deepEqual(ids((await listLeads(db, NOW, TZ, { dueWithinDays: 11 })).items), [b, a, c], "it counts from the day it wakes");
   const done = await task(db, c, "2026-11-19T08:00", "Done");
   await db.prepare("UPDATE tasks SET done_at = ? WHERE id = ?").bind(NOW.toISOString(), done).run();
   assert.deepEqual(ids((await listLeads(db, NOW, TZ, { dueWithinDays: 0 })).items), [b], "a done task is not due");
+});
+
+test("a lead whose only task is snoozed shows the day it wakes and sorts there, not with the no-task leads", async () => {
+  const { db, a, b, c } = await seeded();
+  const t = await task(db, c, "2026-11-19T09:00", "Snoozed");
+  await snoozeTask(ctxFor(db, NOW, "snooze_task"), t, "2026-11-30T09:00");
+  const list = await listLeads(db, NOW, TZ);
+  assert.equal(list.items.find((i) => i.id === c)?.nextTaskAt, "2026-11-30T17:00:00.000Z");
+  assert.deepEqual(ids(list.items), [b, a, c]);
+  const d = await lead(db, "Dee Example", "new", "2026-11-09");
+  assert.deepEqual(ids((await listLeads(db, NOW, TZ)).items), [b, a, c, d], "no task at all still goes last");
+  assert.equal((await pipelineSummary(db, NOW, TZ)).leads?.followUpsDueThisWeek, 2, "a snoozed task is not due this week");
 });
 
 test("a task on one of the lead's deals counts as theirs", async () => {

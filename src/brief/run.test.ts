@@ -145,7 +145,7 @@ test("the brief carries a Leads line with the open lead counts, and none without
   }
   await runBrief(envFor(other), SEVEN);
   const [row] = await briefs(other);
-  assert.match(row?.text ?? "", /\n\nLeads\n- 2 new, 1 contacted$/);
+  assert.match(row?.text ?? "", /\n\nNothing due today\.\n\nLeads\n- 2 new, 1 contacted$/);
   assert.deepEqual(
     (JSON.parse(row?.items ?? "[]") as { section: string }[]).map((i) => i.section),
     ["leads"],

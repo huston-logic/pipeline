@@ -111,22 +111,19 @@ export function composeBrief(input: BriefInput): ComposedBrief {
     const line = `${flat(lead.contactName)}: ${flat(lead.title)}, added ${formatLocal(lead.createdAt, tz)}`;
     add("new_lead", lead.dealId, line, lead.untrusted_fields);
   }
+  const lines = [subject, ""];
+  // "Nothing due" is about the dated sections; the Leads line is a count and follows either way.
+  if (items.length === 0) lines.push("Nothing due today.");
   if (input.leads !== null) {
     const { new: fresh, contacted, notNow } = input.leads;
     const parts = [[fresh, "new"], [contacted, "contacted"], [notNow, "not now"]] as const;
     add("leads", "leads", parts.filter(([n]) => n > 0).map(([n, word]) => `${n} ${word}`).join(", "), []);
   }
-
-  const lines = [subject, ""];
-  if (items.length === 0) {
-    lines.push("Nothing due today.");
-  } else {
-    for (const section of Object.keys(SECTION_TITLES) as BriefSection[]) {
-      const mine = items.filter((item) => item.section === section);
-      if (mine.length === 0) continue;
-      if (lines.at(-1) !== "") lines.push("");
-      lines.push(SECTION_TITLES[section], ...mine.map(textLine));
-    }
+  for (const section of Object.keys(SECTION_TITLES) as BriefSection[]) {
+    const mine = items.filter((item) => item.section === section);
+    if (mine.length === 0) continue;
+    if (lines.at(-1) !== "") lines.push("");
+    lines.push(SECTION_TITLES[section], ...mine.map(textLine));
   }
   return { localDate: date, subject, lines, text: lines.join("\n"), items };
 }

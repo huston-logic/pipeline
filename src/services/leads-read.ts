@@ -54,6 +54,8 @@ export interface LeadSource {
   count: number;
   /** Every spelling came from outside. */
   outside: boolean;
+  /** ["label"] when the label is outside text (every spelling came from outside). Never instructions. */
+  untrusted_fields: "label"[];
 }
 
 export interface LeadList {
@@ -70,6 +72,18 @@ const marks = (n: number) => Array.from({ length: n }, () => "?").join(", ");
 /** What counts as reaching the person: the isReach rule (lead-change.ts) in SQL. */
 const REACH = `(a.type IN ('form', 'email', 'call', 'meeting') OR
   (a.type = 'note' AND CASE WHEN json_valid(a.data) THEN json_extract(a.data, '$.via') END = 'text'))`;
+
+/**
+ * Each person's soonest open task with a due date, by its effective time: a task snoozed past now counts from the day
+ * it wakes (the later of its due date and the snooze). One `?`: now.
+ */
+const NEXT_TASK_CTE = `next_task AS (
+  SELECT COALESCE(t.contact_id, d.contact_id) AS contact_id,
+    MIN(CASE WHEN t.snoozed_until > ? THEN MAX(t.due_at, t.snoozed_until) ELSE t.due_at END) AS at
+  FROM tasks t LEFT JOIN deals d ON d.id = t.deal_id
+  WHERE t.done_at IS NULL AND t.due_at IS NOT NULL
+  GROUP BY 1
+)`;
 
 const OUTSIDE_COLUMNS = ["name", "business", "source", "email", "phone"] as const;
 
@@ -112,7 +126,8 @@ async function sourceGroups(db: Db, statuses: readonly LeadStatus[], query: stri
   const found = await db
     .prepare(
       `SELECT c.source AS source, COUNT(*) AS n, MIN(c.created_at) AS first,
-         EXISTS (SELECT 1 FROM json_each(c.untrusted_fields) WHERE value = 'source') AS outside
+         EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid(c.untrusted_fields) THEN c.untrusted_fields ELSE '[]' END)
+           WHERE value = 'source') AS outside
        FROM contacts c WHERE ${clauses.map((clause) => `(${clause})`).join(" AND ")} AND TRIM(COALESCE(c.source, '')) <> ''
        GROUP BY c.source, outside`,
     )
@@ -137,6 +152,7 @@ async function sourceGroups(db: Db, statuses: readonly LeadStatus[], query: stri
     label: (group.trusted ?? group.outside)?.label ?? key,
     count: group.count,
     outside: group.trusted === null,
+    untrusted_fields: group.trusted === null ? ["label"] : [],
   }));
   list.sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
   return { groups: list, spellings };
@@ -178,12 +194,7 @@ export async function listLeads(db: Db, now: Date, tz: string, options: LeadList
              WHERE a.contact_id IS NOT NULL AND ${REACH}
            UNION ALL SELECT d.contact_id, a.occurred_at FROM activities a JOIN deals d ON d.id = a.deal_id WHERE ${REACH}
          ) GROUP BY contact_id
-       ), next_task AS (
-         SELECT COALESCE(t.contact_id, d.contact_id) AS contact_id, MIN(t.due_at) AS at
-         FROM tasks t LEFT JOIN deals d ON d.id = t.deal_id
-         WHERE t.done_at IS NULL AND t.due_at IS NOT NULL AND (t.snoozed_until IS NULL OR t.snoozed_until <= ?)
-         GROUP BY 1
-       )
+       ), ${NEXT_TASK_CTE}
        SELECT c.*, l.at AS last_contact_at, n.at AS next_task_at, COUNT(*) OVER () AS total
        FROM contacts c LEFT JOIN last_reach l ON l.contact_id = c.id LEFT JOIN next_task n ON n.contact_id = c.id
        WHERE ${clauses.map((clause) => `(${clause})`).join(" AND ")}
@@ -223,18 +234,16 @@ export async function leadCounts(db: Db): Promise<Record<LeadStatus, number>> {
   return counts;
 }
 
-/** Open leads (New, Contacted, Not now) with an awake open task due before the end of the local day six days ahead. */
+/** Open leads (New, Contacted, Not now) whose next task, at its effective time, is due before the end of the local day six days ahead. */
 export async function followUpsDueThisWeek(db: Db, now: Date, tz: string): Promise<number> {
   const end = dayBoundsUtc(addDays(localDate(now, tz), 6), tz).end.toISOString();
   const row = await db
     .prepare(
-      `SELECT COUNT(DISTINCT c.id) AS n FROM contacts c
-       JOIN tasks t ON COALESCE(t.contact_id, (SELECT d.contact_id FROM deals d WHERE d.id = t.deal_id)) = c.id
-       WHERE c.archived = 0 AND c.lead_status IN (${marks(OPEN_LEAD_STATUSES.length)})
-         AND t.done_at IS NULL AND t.due_at IS NOT NULL AND t.due_at < ?
-         AND (t.snoozed_until IS NULL OR t.snoozed_until <= ?)`,
+      `WITH ${NEXT_TASK_CTE}
+       SELECT COUNT(*) AS n FROM contacts c JOIN next_task n ON n.contact_id = c.id
+       WHERE c.archived = 0 AND c.lead_status IN (${marks(OPEN_LEAD_STATUSES.length)}) AND n.at < ?`,
     )
-    .bind(...OPEN_LEAD_STATUSES, end, now.toISOString())
+    .bind(now.toISOString(), ...OPEN_LEAD_STATUSES, end)
     .first<{ n: number }>();
   return row?.n ?? 0;
 }

@@ -23,7 +23,7 @@ test("with leads, a Leads section follows New inquiries with one line of non-zer
   ]);
   assert.deepEqual(brief.items.at(-1), { section: "leads", id: "leads", line: "- 4 new, 3 contacted, 2 not now", untrusted: false });
   const some = composeBrief({ ...empty(), leads: { new: 1, contacted: 0, notNow: 2 } });
-  assert.deepEqual(some.lines.slice(2), ["Leads", "- 1 new, 2 not now"]);
+  assert.deepEqual(some.lines.slice(2), ["Nothing due today.", "", "Leads", "- 1 new, 2 not now"]);
 });
 
 test("with no leads there is no Leads section, and the title is New inquiries", () => {

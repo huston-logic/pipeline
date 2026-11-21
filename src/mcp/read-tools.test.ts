@@ -133,6 +133,7 @@ async function leadsClient() {
   await db.prepare("UPDATE contacts SET lead_status = 'bad' WHERE id = ?").bind(cy.contactId).run();
   await addTask({ db, now: NOW, actor: "ai", tool: "add_task" }, { contactId: ann.contactId, title: "Reach out", dueAt: "2026-11-19T15:00" });
   await db.prepare("UPDATE contacts SET untrusted_fields = '[\"name\"]' WHERE id = ?").bind(bo.contactId).run();
+  await db.prepare("UPDATE contacts SET untrusted_fields = '[\"source\"]' WHERE id = ?").bind(ann.contactId).run();
   return { c: await connectInMemory(createMcpServer({ db, now: () => NOW })), ann, bo };
 }
 
@@ -150,6 +151,8 @@ test("list_leads is a read tool, answers an empty database, and keeps names out 
   assert.deepEqual(data.items.map((i) => i.id), [ann.contactId, bo.contactId]);
   assert.deepEqual(data.items[1]?.untrusted_fields, ["name"]);
   assert.deepEqual(data.sources.map((s) => s.key), ["trade fair"]);
+  assert.deepEqual((data.sources[0] as { untrusted_fields?: string[] }).untrusted_fields, ["label"], "an outside-only label is flagged");
+  assert.deepEqual(data.items[0]?.untrusted_fields, ["source"]);
 
   assert.equal((await ok(c, "list_leads", { statuses: ["bad"] })).headline, "1 lead (1 bad lead).");
   assert.equal((await ok(c, "list_leads", { dueWithinDays: 0 })).headline, "1 lead (1 new).");

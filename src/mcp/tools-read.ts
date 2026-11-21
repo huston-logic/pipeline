@@ -168,7 +168,7 @@ export function registerReadTools(server: McpServer, deps: ToolDeps): void {
         statuses: leadStatusList("Only these lead statuses (default: new, contacted, not_now).").optional(),
         source: shortText("Only leads from this source, ignoring case and spacing.").optional(),
         quietDays: z.number().int().min(1).max(3650).optional().describe("No contact for at least this many days."),
-        dueWithinDays: z.number().int().min(0).max(365).optional().describe("A follow-up task is due within this many days (0: today or overdue)."),
+        dueWithinDays: z.number().int().min(0).max(365).optional().describe("A follow-up task is due within this many days (0: today or overdue). A snoozed task counts from the day it wakes."),
         query: shortText("Text to look for in name, email, phone or business.").optional(),
         sort: z.enum(LEAD_SORTS).optional().describe("next_task (default), last_contact (longest ago first) or added (newest first)."),
       }),
