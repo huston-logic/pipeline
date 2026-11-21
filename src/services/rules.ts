@@ -443,7 +443,7 @@ async function engineDeals(db: Db, openOnly: boolean): Promise<EngineDeal[]> {
  * in step. activities.data is always a JSON object (a CHECK); the CASE still keeps json_extract away from anything
  * else, since one bad row would fail the whole query.
  */
-const REACH_SQL = `(a.type IN ('form', 'email', 'call', 'meeting') OR (a.type = 'note' AND
+export const REACH_SQL = `(a.type IN ('form', 'email', 'call', 'meeting') OR (a.type = 'note' AND
   CASE WHEN json_valid(a.data) THEN json_extract(a.data, '$.via') END = 'text'))`;
 
 type LeadJoin = {

@@ -19,6 +19,9 @@ const PATHS: Record<IconName, string> = {
   more: '<circle cx="5.5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="18.5" cy="12" r="1.5"/>',
   rules: '<path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/>',
   changes: '<path d="M3.5 12a8.5 8.5 0 1 0 2.5-6"/><path d="M3.5 4v4.5H8"/><path d="M12 7.5V12l3 2"/>',
+  report:
+    '<path d="M4.5 20.5h15"/><rect x="5.5" y="12" width="3.5" height="6.5" rx="1"/>' +
+    '<rect x="10.25" y="7.5" width="3.5" height="11" rx="1"/><rect x="15" y="4" width="3.5" height="14.5" rx="1"/>',
   export:
     '<path d="M12 3.5v11M7.5 10l4.5 4.5 4.5-4.5"/>' +
     '<path d="M4 15v3a2.5 2.5 0 0 0 2.5 2.5h11A2.5 2.5 0 0 0 20 18v-3"/>',

@@ -358,3 +358,50 @@ test("a brief address that is no longer an owner email stops the send, with the 
   assert.equal(row?.sent_at, null);
   assert.equal(calls.length, 0, "fetch is never called");
 });
+
+// Tue Dec 1, 2026, 7:00 AM in Los Angeles: the first of the month.
+const FIRST = new Date("2026-12-01T15:00:00.000Z");
+
+async function novemberNudge(db: Db) {
+  const at = new Date("2026-11-10T18:00:00.000Z");
+  await db.prepare(`INSERT INTO rules (id, type, params, description, created_by) VALUES ('rl_a', 'gone_quiet', '{"type":"gone_quiet","days":5}', 'x', 'owner')`).run();
+  const deal = await addDeal(ctxFor(db, at), { name: "Pat Example", dealTitle: "Website refresh", value: 1200 });
+  await db
+    .prepare(`INSERT INTO tasks (id, deal_id, title, source, done_at, created_at, updated_at) VALUES ('tk_1', ?, 'Follow up', 'rl_a', ?, ?, ?)`)
+    .bind(deal.dealId, "2026-11-11T18:00:00.000Z", at.toISOString(), at.toISOString())
+    .run();
+  await db
+    .prepare(`INSERT INTO rule_firings (id, rule_id, deal_id, fire_key, task_id, fired_at) VALUES ('rf_1', 'rl_a', ?, 'k1', 'tk_1', ?)`)
+    .bind(deal.dealId, at.toISOString())
+    .run();
+}
+
+test("on the owner's 1st the stored brief has a Last month section; on other days it does not", async () => {
+  const db = await openTestDb();
+  await novemberNudge(db);
+  assert.deepEqual(await runBrief(envFor(db), FIRST), { composed: 1, sent: 0, failed: 0 });
+  assert.deepEqual(await runBrief(envFor(db), new Date(FIRST.getTime() + DAY)), { composed: 1, sent: 0, failed: 0 });
+  const [first, second] = await briefs(db);
+  assert.match(first?.text ?? "", /\nLast month\n- Rules fired: 1\n- Tasks made: 1\n- Acted on within 7 days: 1 of 1\n- Deals touched after a nudge: 1, worth 1,200/);
+  assert.doesNotMatch(second?.text ?? "", /Last month/);
+  const sections = (JSON.parse(first?.items ?? "[]") as { section: string }[]).map((i) => i.section);
+  assert.ok(sections.includes("last_month"));
+});
+
+test("the 1st counts in the owner's calendar: 11 PM on Nov 30 there is Dec 1 in UTC and gets no section", async () => {
+  const db = await openTestDb();
+  await novemberNudge(db);
+  const lateNov30 = new Date("2026-12-01T07:00:00.000Z"); // 11 PM Nov 30 in Los Angeles
+  await db.prepare("UPDATE settings SET brief_hour = 23").run();
+  assert.deepEqual(await runBrief(envFor(db), lateNov30), { composed: 1, sent: 0, failed: 0 });
+  const [row] = await briefs(db);
+  assert.equal(row?.local_date, "2026-11-30");
+  assert.doesNotMatch(row?.text ?? "", /Last month/);
+});
+
+test("an empty last month adds no section on the 1st", async () => {
+  const db = await openTestDb();
+  assert.deepEqual(await runBrief(envFor(db), FIRST), { composed: 1, sent: 0, failed: 0 });
+  const [row] = await briefs(db);
+  assert.doesNotMatch(row?.text ?? "", /Last month/);
+});
