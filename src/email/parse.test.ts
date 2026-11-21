@@ -178,8 +178,44 @@ test("htmlText finds script tags on the text as given: a letter that grows when 
   assert.equal(htmlText("İİİ<STYLE>p{}</Style><p>Kept</p><Script>x</SCRIPT>"), "İİİKept\n");
 });
 
+test("htmlText can't rebuild a tag from the pieces of nested ones (CodeQL js/incomplete-multi-character-sanitization)", () => {
+  for (const html of [
+    "<scr<b>ipt>alert(1)</scr<b>ipt>",
+    "<<b>script>alert(1)<</b>/script>",
+    "<sc<i></i>ript src=x>",
+    "<img<b> src=x onerror=alert(1)>",
+    "<!<!-- x -->-- hidden -->",
+    "a < b and c <d",
+  ]) {
+    assert.doesNotMatch(htmlText(html), /</, html);
+  }
+});
+
+test("htmlText: no < from markup survives any mix of tag characters (seeded fuzz, 5,000 inputs)", () => {
+  // With no "&" in the input, a "<" in the output could only be left over from markup.
+  const alphabet = ["<", ">", "/", "!", "-", "s", "c", "r", "i", "p", "t", "b", " ", "=", '"', "\n"];
+  let seed = 0x5eed;
+  // A linear congruential generator; its low bits repeat quickly, so the high ones pick the characters.
+  const next = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) >>> 16;
+  for (let n = 0; n < 5000; n++) {
+    let html = "";
+    for (let length = next() % 40; length > 0; length--) html += alphabet[next() % alphabet.length];
+    assert.doesNotMatch(htmlText(html), /</, JSON.stringify(html));
+  }
+});
+
+test("htmlText decodes each entity once: &amp;lt; is the text &lt;, and &lt;b&gt; is the visible text <b>", () => {
+  assert.equal(htmlText("&amp;lt;script&amp;gt;"), "&lt;script&gt;");
+  assert.equal(htmlText("<p>5 &lt; 6 &amp;&amp; &quot;x&quot; &#39;y&#39;&nbsp;z</p>"), "5 < 6 && \"x\" 'y' z\n");
+  assert.equal(htmlText("&lt;b&gt;bold?&lt;/b&gt;"), "<b>bold?</b>");
+});
+
+test("htmlText turns <br> and the end of a block into a line break", () => {
+  assert.equal(htmlText("a<br>b<BR/>c<br />d</p>e</DIV>f</li>g</tr>h</h2>i<b>j</b>"), "a\nb\nc\nd\ne\nf\ng\nh\nij");
+});
+
 test("the HTML strip is linear: 20,000 characters of unclosed tags take well under 50 ms each", () => {
-  for (const unit of ["<b", "<script", "<style", "<script>", "<br ", "<script></script>", "<style></style>"]) {
+  for (const unit of ["<b", "<script", "<style", "<script>", "<br ", "<script></script>", "<style></style>", "<", "<scr<b>ipt>"]) {
     const html = unit.repeat(Math.ceil(20_000 / unit.length)).slice(0, 20_000);
     const started = performance.now();
     htmlText(html);

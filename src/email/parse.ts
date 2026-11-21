@@ -185,20 +185,42 @@ function withoutBlocks(html: string): string {
   }
 }
 
+/** A tag, as the text between its < and >, that ends a line: <br>, <br/>, </p>, </div>, </li>, </tr>, </h1> to </h6>. */
+const LINE_BREAK = /^(?:br\s*\/?|\/(?:p|div|li|tr|h[1-6]))$/i;
+const LONGEST_LINE_BREAK = 8;
+
+/**
+ * The HTML with its tags gone, in one indexOf walk: every "<" starts a tag that runs to the next ">", or to the end when
+ * there is none. Only text between tags is kept, so no "<" from the markup is left, and no tag can be pieced together
+ * from the parts of others (a regular expression that removes one tag at a time turns "<scr<b>ipt>" into "<script>").
+ */
+function withoutTags(html: string): string {
+  let out = "";
+  let at = 0;
+  for (;;) {
+    const open = html.indexOf("<", at);
+    if (open === -1) return out + html.slice(at);
+    out += html.slice(at, open);
+    const close = html.indexOf(">", open + 1);
+    if (close === -1) return out;
+    if (close - open - 1 <= LONGEST_LINE_BREAK && LINE_BREAK.test(html.slice(open + 1, close))) out += "\n";
+    at = close + 1;
+  }
+}
+
+const ENTITIES: Readonly<Record<string, string>> = { nbsp: " ", lt: "<", gt: ">", quot: '"', "#39": "'", amp: "&" };
+
 /**
  * HTML read as text: the body of an HTML-only message (postal-mime 4.2.1 gives no text part for one). Crude, and
- * linear in its input, which is capped first.
+ * linear in its input, which is capped first. Entities are decoded once, after the tags are gone, so "&lt;b&gt;" is the
+ * visible text "<b>" a reader saw, and "&amp;lt;" stays "&lt;". The result is plain outside text, escaped wherever it
+ * is shown.
  */
 export function htmlText(html: string): string {
-  return withoutBlocks(html.slice(0, BODY_INPUT_CHARS))
-    .replace(/<br\s*\/?>|<\/(p|div|li|tr|h[1-6])>/gi, "\n")
-    .replace(/<[^<>]*>/g, "")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&amp;/g, "&");
+  return withoutTags(withoutBlocks(html.slice(0, BODY_INPUT_CHARS))).replace(
+    /&(nbsp|lt|gt|quot|#39|amp);/g,
+    (entity, name: string) => ENTITIES[name] ?? entity,
+  );
 }
 
 function mailboxes(addresses: readonly Address[] | undefined): string[] {
