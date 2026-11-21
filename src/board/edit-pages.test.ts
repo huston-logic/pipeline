@@ -32,46 +32,51 @@ function assertLabelled(form: string, where: string) {
 
 const OUTSIDE_NAMES = /Robin Sample|Sample Bakery|robin@example\.com|New website for Sample Bakery/;
 
-test("New lead: one h1, every field labelled, name required in words, the token, and Cancel back where it came from", async () => {
+test("Add a deal: one h1, every field labelled, name required in words, the token, and Cancel back where it came from", async () => {
   const db = await seededDb();
   const env = devEnv(db);
-  const { res, body } = await load(env, "/leads/new?from=contacts");
+  const { res, body } = await load(env, "/deals/new?from=contacts");
   assert.equal(res.status, 200);
   assert.equal(h1Count(body), 1);
-  assert.match(body, /<h1>New lead<\/h1>/);
-  const form = formOf(body, "/leads/new");
+  assert.match(body, /<h1>Add a deal<\/h1>/);
+  const form = formOf(body, "/deals/new");
   // The server checks every value, so the browser's own rules (stricter than intake's for email) never block a save.
-  assert.match(form, /<form class="record-form" method="post" action="\/leads\/new" novalidate>/);
+  assert.match(form, /<form class="record-form" method="post" action="\/deals\/new" novalidate>/);
   assert.match(form, /<input type="hidden" name="csrf" value="[A-Za-z0-9_-]{43}">/);
   assert.match(form, /<input type="hidden" name="return_to" value="\/contacts">/);
-  assertLabelled(form, "/leads/new");
-  assert.match(form, /<label for="lead-name">Name <span class="field-required">\(required\)<\/span><\/label>/);
+  assertLabelled(form, "/deals/new");
+  assert.match(form, /<label for="deal-name">Name <span class="field-required">\(required\)<\/span><\/label>/);
   for (const label of ["Email", "Phone", "Company", "Source", "Deal title", "Value", "Next step", "Notes"]) {
     assert.ok(labels(form).some((text) => text.startsWith(label)), label);
   }
   assert.match(form, /<legend>Next date<\/legend>/);
-  assert.match(form, /<button class="button" type="submit">Add the lead<\/button>/);
+  assert.match(form, /<button class="button" type="submit">Add the deal<\/button>/);
   assert.match(form, /<a class="form-cancel" href="\/contacts">Cancel<\/a>/);
-  assert.match((await load(env, "/leads/new")).body, /<a class="form-cancel" href="\/pipeline">Cancel<\/a>/, "Pipeline by default");
-  assert.match((await load(env, "/leads/new?from=//evil.example")).body, /<a class="form-cancel" href="\/pipeline">Cancel<\/a>/);
-  assert.match(body, /<a href="\/contacts" aria-current="true">/, "a new lead is in the People section");
+  assert.match((await load(env, "/deals/new")).body, /<a class="form-cancel" href="\/pipeline">Cancel<\/a>/, "Pipeline by default");
+  assert.match((await load(env, "/deals/new?from=//evil.example")).body, /<a class="form-cancel" href="\/pipeline">Cancel<\/a>/);
+  assert.match(body, /<a href="\/pipeline" aria-current="true">/, "a new deal is in the Pipeline section");
 });
 
-test("New lead on an empty database still renders, and custom fields appear by their type", async () => {
+test("Add a lead and Add a deal on an empty database still render, and custom fields appear by their type", async () => {
   const db = await createTestDb();
   const env = devEnv(db);
+  assert.equal((await load(env, "/deals/new")).res.status, 200);
   assert.equal((await load(env, "/leads/new")).res.status, 200);
   const owner = { db, now: new Date(), actor: "owner" as const, tool: "add_field" };
   await addField(owner, { entity: "contact", label: "Role", type: "text" });
   await addField(owner, { entity: "deal", label: "Budget", type: "number" });
   await addField(owner, { entity: "deal", label: "Start date", type: "date" });
   await addField(owner, { entity: "deal", label: "Temperature", type: "choice", choices: ["Cold", "Warm", "Hot"] });
-  const form = formOf((await load(env, "/leads/new")).body, "/leads/new");
+  const form = formOf((await load(env, "/deals/new")).body, "/deals/new");
   assertLabelled(form, "custom fields");
-  assert.match(form, /<input id="lead-cf-role" name="cf\.role" type="text" value="" autocomplete="off"/);
-  assert.match(form, /<input id="lead-df-budget" name="df\.budget" type="text" value="" autocomplete="off" inputmode="decimal"/);
-  assert.match(form, /<input id="lead-df-start_date" name="df\.start_date" type="date" value="">/);
-  assert.match(form, /<select id="lead-df-temperature" name="df\.temperature">\n<option value="">Not set<\/option>\n<option value="Cold">Cold<\/option>/);
+  assert.match(form, /<input id="deal-cf-role" name="cf\.role" type="text" value="" autocomplete="off"/);
+  assert.match(form, /<input id="deal-df-budget" name="df\.budget" type="text" value="" autocomplete="off" inputmode="decimal"/);
+  assert.match(form, /<input id="deal-df-start_date" name="df\.start_date" type="date" value="">/);
+  assert.match(form, /<select id="deal-df-temperature" name="df\.temperature">\n<option value="">Not set<\/option>\n<option value="Cold">Cold<\/option>/);
+  const lead = formOf((await load(env, "/leads/new")).body, "/leads/new");
+  assertLabelled(lead, "lead custom fields");
+  assert.match(lead, /<input id="lead-cf-role" name="cf\.role" type="text" value="" autocomplete="off"/);
+  assert.doesNotMatch(lead, /df\./, "a lead has no deal fields");
 });
 
 test("Edit contact: the stored values, outside ones labelled beside their label, nothing from outside in the title or labels", async () => {
@@ -190,11 +195,15 @@ test("an outside task title never names a button: the task's id does", async () 
   assert.doesNotMatch(body, /visually-hidden">: Robin/);
 });
 
-test("Today, Pipeline and Contacts each have a New lead button that says where Cancel goes back to", async () => {
+test("Today, Pipeline and Contacts each have Add a deal and Add a lead buttons that say where Cancel goes back to", async () => {
   const db = await seededDb();
   const env = devEnv(db);
   for (const [path, from] of [["/", "today"], ["/pipeline", "pipeline"], ["/contacts", "contacts"]] as const) {
-    assert.match((await load(env, path)).body, new RegExp(`<a class="button" href="/leads/new\\?from=${from}">New lead</a>`), path);
+    assert.match(
+      (await load(env, path)).body,
+      new RegExp(`<p class="page-action"><a class="button" href="/deals/new\\?from=${from}">Add a deal</a><a class="button button-quiet" href="/leads/new\\?from=${from}">Add a lead</a></p>`),
+      path,
+    );
   }
   const today = (await load(env, "/")).body;
   assert.ok(formOf(today, "/tasks/tk_seed01/complete"), "Today's task cards have Done");
@@ -203,8 +212,8 @@ test("Today, Pipeline and Contacts each have a New lead button that says where C
 test("empty states say what can be done on the board now", async () => {
   const env = devEnv(await createTestDb());
   const today = (await load(env, "/")).body;
-  assert.match(today, /<p class="empty-title">Nothing due today\.<\/p><p>Add a task on a deal or contact page, or add a new lead\.<\/p>/);
-  assert.match((await load(env, "/pipeline")).body, /Add one with New lead, or by talking to your AI app\./);
-  assert.match((await load(env, "/contacts")).body, /Add one with New lead, or by talking to your AI app\./);
+  assert.match(today, /<p class="empty-title">Nothing due today\.<\/p><p>Add a task on a deal or contact page, or add a deal or a lead\.<\/p>/);
+  assert.match((await load(env, "/pipeline")).body, /Add one with Add a deal, or by talking to your AI app\. Inquiries from your website form/);
+  assert.match((await load(env, "/contacts")).body, /Add one with Add a deal or Add a lead, or by talking to your AI app\./);
   assert.match(today, /<footer class="app-footer">\n<p>Add leads, edit contacts and deals, and move, log and undo here, or change anything by talking to your AI app\.<\/p>/);
 });

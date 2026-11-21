@@ -1,4 +1,4 @@
-// The fields of the board's record forms (new lead, new deal, edit contact, edit deal; decision 0018): which fields
+// The fields of the board's record forms (add a lead or a deal, edit contact, edit deal; decisions 0018, 0028): which fields
 // each form has, how a stored value is shown, how a posted value is read, and, for an edit, which fields the owner
 // actually changed. Custom fields come from field_defs, one input per active field, by its type.
 import type { FieldDefRow, FieldEntity } from "../db/db.ts";
@@ -108,11 +108,24 @@ export function dealSpecs(defs: FieldDefRow[], options: { titleRequired: boolean
   ];
 }
 
-/** The new-lead form: the person, then their first deal. */
-export function leadSpecs(defs: FieldDefRow[]): Spec[] {
+/** Add a deal (/deals/new): a new person, then their first deal (add_deal). */
+export function personDealSpecs(defs: FieldDefRow[]): Spec[] {
   return [
     ...contactSpecs(defs, { notes: false, bag: "contactFields" }),
     ...dealSpecs(defs, { titleRequired: false, notes: true, titleProp: "dealTitle" }),
+  ];
+}
+
+/** Add a lead (/leads/new, add_lead): a name or a business is enough; notes are logged as a note on the person. */
+export function newLeadSpecs(defs: FieldDefRow[]): Spec[] {
+  return [
+    line("name", "Name", "text", "contact", { hint: "A name or a business is enough." }),
+    line("business", "Business", "text", "contact"),
+    line("email", "Email", "email", "contact"),
+    line("phone", "Phone", "tel", "contact"),
+    line("source", "Source", "text", "contact", { hint: "Where they came from, for example a referral." }),
+    line("notes", "Notes", "textarea", "contact", { column: undefined, hint: "Saved as a note on the lead." }),
+    ...customSpecs(defs, "contact", "fields"),
   ];
 }
 

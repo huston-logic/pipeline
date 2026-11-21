@@ -38,11 +38,11 @@ async function editForm(db: SqliteD1, path: string) {
   return { fields: formFields(page.body, path), cookie: page.cookie, token: page.token };
 }
 
-test("New lead: one add_deal change by the owner, then the new deal's page with the banner", async () => {
+test("Add a deal for a new person: one add_deal change by the owner, then the new deal's page with the banner", async () => {
   const db = await seededDb();
   const env = devEnv(db);
   const before = await auditCount(db);
-  const { res, location } = await post(env, "/leads/new", {
+  const { res, location } = await post(env, "/deals/new", {
     name: "Lee Example",
     email: "lee@example.com",
     title: "Garage plans",
@@ -64,29 +64,29 @@ test("New lead: one add_deal change by the owner, then the new deal's page with 
   assert.match(shown, /<p class="banner-text">Added contact Lee Example with deal &quot;Garage plans&quot; in /);
 });
 
-test("New lead with an email already on file adds the deal to that contact, and the banner says so", async () => {
+test("Add a deal with an email already on file adds the deal to that contact, and the banner says so", async () => {
   const db = await seededDb();
   const env = devEnv(db);
-  const { location } = await post(env, "/leads/new", { name: "P. Example", email: "PAT@example.com", title: "Second site" });
+  const { location } = await post(env, "/deals/new", { name: "P. Example", email: "PAT@example.com", title: "Second site" });
   const id = /^\/deals\/(dl_[a-z0-9]+)/.exec(location)?.[1] ?? "";
   assert.equal((await deal(db, id))?.contact_id, "ct_seed01");
   assert.match((await load(env, location)).body, /Added deal &quot;Second site&quot; for existing contact Pat Example in /);
 });
 
-test("a refused New lead is a 422 with an error summary linking each field, the values kept and nothing written", async () => {
+test("a refused Add a deal is a 422 with an error summary linking each field, the values kept and nothing written", async () => {
   const db = await seededDb();
   const env = devEnv(db);
   const before = await auditCount(db);
-  const { res, body } = await post(env, "/leads/new", { name: "", email: "lee@example.com", value: "lots", "next_at.date": "", "next_at.time": "09:00", return_to: "/contacts" });
+  const { res, body } = await post(env, "/deals/new", { name: "", email: "lee@example.com", value: "lots", "next_at.date": "", "next_at.time": "09:00", return_to: "/contacts" });
   assert.equal(res.status, 422);
   assert.equal(await auditCount(db), before);
   assert.equal(h1Count(body), 1);
-  assert.match(body, /<title>Error: New lead · Pipeline<\/title>/);
+  assert.match(body, /<title>Error: Add a deal · Pipeline<\/title>/);
   assert.match(body, /<div class="error-summary" role="alert" aria-labelledby="error-summary-heading" tabindex="-1" autofocus>\n<h2 id="error-summary-heading">3 things to fix<\/h2>/);
-  assert.match(body, /<li><a href="#lead-name">Give the person&#39;s name\.<\/a><\/li>/);
-  assert.match(body, /<li><a href="#lead-value">Give a number of 0 or more\.<\/a><\/li>/);
-  assert.match(body, /<li><a href="#lead-next_at-date">Give a date for this time, or clear the time\.<\/a><\/li>/);
-  assert.match(body, /<input id="lead-name" name="name" type="text" value="" autocomplete="off" required maxlength="500" aria-describedby="lead-name-error" aria-invalid="true">/);
+  assert.match(body, /<li><a href="#deal-name">Give the person&#39;s name\.<\/a><\/li>/);
+  assert.match(body, /<li><a href="#deal-value">Give a number of 0 or more\.<\/a><\/li>/);
+  assert.match(body, /<li><a href="#deal-next_at-date">Give a date for this time, or clear the time\.<\/a><\/li>/);
+  assert.match(body, /<input id="deal-name" name="name" type="text" value="" autocomplete="off" required maxlength="500" aria-describedby="deal-name-error" aria-invalid="true">/);
   assert.match(body, /name="email" type="email" value="lee@example\.com"/, "the values are kept");
   assert.match(body, /name="value" type="text" value="lots"/);
   assert.match(body, /<a class="form-cancel" href="\/contacts">Cancel<\/a>/, "Cancel still goes back where it came from");
@@ -377,7 +377,7 @@ test("every new write route sits behind the same checks: a cross-site origin or 
   const env = devEnv(db);
   const before = await auditCount(db);
   const routes: [string, Record<string, string>][] = [
-    ["/leads/new", { name: "Lee Example" }],
+    ["/deals/new", { name: "Lee Example" }],
     ["/contacts/ct_seed01/edit", { phone: "555-0100" }],
     ["/deals/dl_seed01/edit", { value: "10" }],
     ["/contacts/ct_seed01/deals/new", { title: "Another" }],
@@ -417,10 +417,10 @@ test("a malformed or unknown record id on every new route is the 404 page", asyn
   }
 });
 
-test("undoing a new lead from its deal page goes to the pipeline, because the deal is gone", async () => {
+test("undoing a new person's deal from its deal page goes to the pipeline, because the deal and the person are gone", async () => {
   const db = await seededDb();
   const env = devEnv(db);
-  const added = await post(env, "/leads/new", { name: "Lee Example", title: "Garage plans" });
+  const added = await post(env, "/deals/new", { name: "Lee Example", title: "Garage plans" });
   const dealPath = added.location.split("?")[0] ?? "";
   const undone = await post(env, `/changes/${changeIdOf(added.location)}/undo`, { confirm: "yes", return_to: dealPath });
   assert.equal(undone.res.status, 303);
