@@ -22,6 +22,7 @@ after(async () => {
 test("lists the tools over Streamable HTTP, with the server instructions", async () => {
   const { tools } = await client.listTools();
   assert.deepEqual(tools.map((t) => t.name).sort(), [
+    "add_deal",
     "add_field",
     "add_lead",
     "add_rule",
@@ -65,7 +66,7 @@ test("reads the seeded pipeline from local D1", async () => {
 });
 
 test("a write and its undo go through real D1, and a second undo refuses", async () => {
-  const added = await ok(client, "add_lead", { name: "Lee Example", email: "lee@example.com", nextAt: "2026-11-20T09:00" });
+  const added = await ok(client, "add_deal", { name: "Lee Example", email: "lee@example.com", nextAt: "2026-11-20T09:00" });
   assert.match(added.headline, CHANGE_LINE);
   const { changeId } = added.data as { changeId: string };
   const undone = await ok(client, "undo_change", { changeId });
@@ -74,7 +75,7 @@ test("a write and its undo go through real D1, and a second undo refuses", async
 });
 
 test("undo after a later edit refuses in plain English against real D1", async () => {
-  const added = (await ok(client, "add_lead", { name: "Kim Example" })).data as { changeId: string; dealId: string };
+  const added = (await ok(client, "add_deal", { name: "Kim Example" })).data as { changeId: string; dealId: string };
   await ok(client, "log_activity", { deal: added.dealId, type: "call", summary: "Called Kim." });
   assert.match(
     await fails(client, "undo_change", { changeId: added.changeId }),

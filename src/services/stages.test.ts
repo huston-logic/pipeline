@@ -6,7 +6,7 @@ import { openTestDb } from "../db/sqlite-d1.ts";
 import type { Ctx } from "./change.ts";
 import { updateDeal } from "./deals.ts";
 import { UserError } from "./errors.ts";
-import { addLead } from "./leads.ts";
+import { addDeal } from "./add-deal.ts";
 import { addRule, pauseRule } from "./rules.ts";
 import { addStage, archiveStage, stageOverview, updateStage } from "./stages.ts";
 import { undoChange } from "./undo.ts";
@@ -88,7 +88,7 @@ test("addStage refuses a blank or symbol-only label, a duplicate label and an un
 
 test("renaming a stage keeps its key, so deals and rules that name it keep working", async () => {
   const db = await openTestDb();
-  const lead = await addLead(ctxFor(db, "add_lead"), { name: "Pat Example", dealTitle: "Website refresh" });
+  const lead = await addDeal(ctxFor(db, "add_deal"), { name: "Pat Example", dealTitle: "Website refresh" });
   await updateDeal(ctxFor(db, "update_deal"), lead.dealId, { stage: "call_done" });
 
   const result = await updateStage(ctxFor(db, "update_stage"), "Call done", { label: "Met" });
@@ -126,7 +126,7 @@ test("update_stage position renumbers every stage in one change", async () => {
 test("archiveStage refuses while open deals sit in the stage, listing up to five and suggesting a stage", async () => {
   const db = await openTestDb();
   for (let i = 1; i <= 6; i += 1) {
-    const lead = await addLead(ctxFor(db, "add_lead"), { name: `Person ${i}`, dealTitle: `Job ${i}` });
+    const lead = await addDeal(ctxFor(db, "add_deal"), { name: `Person ${i}`, dealTitle: `Job ${i}` });
     await updateDeal(ctxFor(db, "update_deal", new Date(NOW.getTime() + i * 60_000)), lead.dealId, { stage: "call_done" });
   }
   const message = await refusal(archiveStage(ctxFor(db, "archive_stage"), "Call done"));
@@ -141,7 +141,7 @@ test("archiveStage refuses while open deals sit in the stage, listing up to five
 
 test("a single deal is named in the singular, and an outside title is named by id", async () => {
   const db = await openTestDb();
-  const lead = await addLead(ctxFor(db, "add_lead"), { name: "Robin Sample" });
+  const lead = await addDeal(ctxFor(db, "add_deal"), { name: "Robin Sample" });
   await db.prepare("UPDATE deals SET untrusted_fields = '[\"title\"]' WHERE id = ?").bind(lead.dealId).run();
   const message = await refusal(archiveStage(ctxFor(db, "archive_stage"), "new_inquiry"));
   assert.equal(

@@ -6,7 +6,7 @@ import { openTestDb } from "./db/sqlite-d1.ts";
 import type { Env } from "./env.ts";
 import type { Ctx } from "./services/change.ts";
 import { updateDeal } from "./services/deals.ts";
-import { addLead } from "./services/leads.ts";
+import { addDeal } from "./services/add-deal.ts";
 import { addRule } from "./services/rules.ts";
 
 const NOW = new Date("2026-11-19T18:00:00.000Z");
@@ -17,7 +17,7 @@ const envFor = (db: Db) => ({ DB: db }) as unknown as Env;
 test("the hourly run fires the rules and logs only a fixed event name and counts", async (t) => {
   const logged = t.mock.method(console, "log", () => {});
   const db = await openTestDb();
-  const lead = await addLead(ctxFor(db, "add_lead"), { name: "Pat Example", dealTitle: "Website refresh" });
+  const lead = await addDeal(ctxFor(db, "add_deal"), { name: "Pat Example", dealTitle: "Website refresh" });
   await updateDeal(ctxFor(db, "update_deal"), lead.dealId, { stage: "Proposal sent" });
   await addRule(ctxFor(db, "add_rule"), { type: "stage_followup", stage: "proposal_sent", days: 3 });
 
@@ -55,7 +55,7 @@ test("the brief runs after the rules, so tasks the rules just made are in it", (
 test("the brief includes a task the rules created in the same run, and logs no text from it", async (t) => {
   const logged = t.mock.method(console, "log", () => {});
   const db = await openTestDb();
-  const lead = await addLead(ctxFor(db, "add_lead"), { name: "Pat Example", dealTitle: "Website refresh" });
+  const lead = await addDeal(ctxFor(db, "add_deal"), { name: "Pat Example", dealTitle: "Website refresh" });
   await updateDeal(ctxFor(db, "update_deal"), lead.dealId, { stage: "Proposal sent" });
   await addRule(ctxFor(db, "add_rule"), { type: "stage_followup", stage: "proposal_sent", days: 3 });
   await runScheduled(envFor(db), later(3));

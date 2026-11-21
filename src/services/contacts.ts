@@ -1,0 +1,169 @@
+// update_contact, and the duplicate-email answer every write that adds or changes an email shares.
+import type { ContactRow, TaskRow } from "../db/db.ts";
+import { findContactByEmail } from "../db/queries.ts";
+import { formatLocal, localWhen, parseWhen } from "../time.ts";
+import {
+  type ChangeInput,
+  type ChangeResult,
+  changedColumns,
+  commitChange,
+  type Ctx,
+  isDuplicateEmailFailure,
+  type Row,
+  type RowChange,
+  updatedRow,
+} from "./change.ts";
+import { capitalize, columnLabel, fieldsLabel, joinAnd } from "./describe.ts";
+import { UserError } from "./errors.ts";
+import { checkFieldValues } from "./fields.ts";
+import { checkEmail, clean } from "./input.ts";
+import { contactName, isTrusted, taskTitle } from "./labels.ts";
+import { followUpTask, openDealCount } from "./lead-change.ts";
+import { isLeadStatus, isUnqualified, LEAD_STATUS_LABELS, type LeadStatus } from "./lead-status.ts";
+import { type FieldValues, findContact, mergeFields, ownerTimezone, parseObject, parseStringArray } from "./lookup.ts";
+
+/** commitChange, with a duplicate email that another writer got in first turned into a plain answer. */
+export async function commitWithEmail(ctx: Ctx, input: ChangeInput, email: string | null): Promise<ChangeResult> {
+  try {
+    return await commitChange(ctx, input);
+  } catch (error) {
+    if (email === null || !isDuplicateEmailFailure(error)) throw error;
+    const other = await findContactByEmail(ctx.db, email);
+    const who = other ? `: contact ${other.id}` : "";
+    throw new UserError(`Another contact already uses that email${who}. Use update_contact on that one instead.`, {
+      cause: error,
+    });
+  }
+}
+
+export interface ContactPatch {
+  name?: string;
+  email?: string | null;
+  phone?: string | null;
+  business?: string | null;
+  source?: string | null;
+  notes?: string | null;
+  /** Merged into the stored values; null removes a key. */
+  fields?: FieldValues;
+  /** Any status but qualified (qualify_lead does that), and an unqualified one only while they have no open deal. */
+  leadStatus?: LeadStatus;
+  /** With the Not now status: adds the task "Check back with {contact}" due then. Read in the owner's timezone. */
+  followUpDate?: string;
+}
+
+const OPTIONAL_COLUMNS = ["email", "phone", "business", "source", "notes"] as const;
+
+/** Refuses a value that is no lead status, and an unqualified one while the person has an open deal (invariant 1). */
+async function checkLeadStatus(ctx: Ctx, contact: ContactRow, status: LeadStatus): Promise<void> {
+  if (!isLeadStatus(status) || !isUnqualified(status)) {
+    throw new UserError(`"${String(status)}" isn't a lead status. Use one of: new, contacted, not_now, not_a_fit, bad.`);
+  }
+  const open = await openDealCount(ctx.db, contact.id);
+  if (open === 0) return;
+  const who = capitalize(contactName(contact));
+  throw new UserError(
+    open === 1
+      ? `${who} has 1 open deal. Use return_to_lead on that deal instead, or close it first.`
+      : `${who} has ${open} open deals. Close them first, or close all but one and use return_to_lead on that one.`,
+  );
+}
+
+/** "Fri Dec 4" for a date given without a time (midnight), else "Fri Dec 4, 10:30 AM". */
+function dueText(due: Date, tz: string): string {
+  const shown = formatLocal(due, tz);
+  return localWhen(due, tz).includes("T") ? shown : (shown.split(",")[0] ?? shown);
+}
+
+/**
+ * Every field this sets is the owner's word from now on, so it leaves `untrusted_fields`. A lead status (decision 0022)
+ * goes with the time it changed; Not now with a follow-up date adds the "Check back" task in the same change.
+ */
+export async function updateContact(ctx: Ctx, contactRef: string, patch: ContactPatch): Promise<ChangeResult> {
+  const { db } = ctx;
+  const before = await findContact(db, contactRef);
+  const set: Row = {};
+  const confirmed: string[] = [];
+
+  if (patch.name !== undefined) {
+    const name = clean(patch.name);
+    if (name === null) throw new UserError("A contact's name can't be blank. Give the new name.");
+    set.name = name;
+    confirmed.push("name");
+  }
+  for (const column of OPTIONAL_COLUMNS) {
+    if (patch[column] === undefined) continue;
+    const value = clean(patch[column]);
+    if (column === "email" && value !== null) {
+      checkEmail(value);
+      const other = await findContactByEmail(db, value);
+      if (other && other.id !== before.id) {
+        throw new UserError(
+          `${isTrusted(other, "name") ? `${other.name} (${other.id})` : `contact ${other.id}`} already uses ` +
+            `${isTrusted(other, "email") ? other.email : value}. Use a different email, or update that contact instead.`,
+        );
+      }
+    }
+    set[column] = value;
+    confirmed.push(column);
+  }
+  if (patch.fields !== undefined) {
+    await checkFieldValues(db, "contact", patch.fields);
+    set.fields = mergeFields(before.fields, patch.fields);
+    confirmed.push(...Object.keys(patch.fields).map((key) => `fields.${key}`));
+  }
+  if (patch.leadStatus === "qualified") {
+    throw new UserError("Use qualify_lead to make a lead a contact; it can add the deal too.");
+  }
+  // The same status again leaves its time alone, so on its own it changes nothing.
+  if (patch.leadStatus !== undefined && patch.leadStatus !== before.lead_status) {
+    await checkLeadStatus(ctx, before, patch.leadStatus);
+    set.lead_status = patch.leadStatus;
+    set.lead_status_at = ctx.now.toISOString();
+  }
+  const followUp = clean(patch.followUpDate);
+  const tz = await ownerTimezone(db);
+  let task: TaskRow | null = null;
+  if (followUp !== null) {
+    if ((patch.leadStatus ?? before.lead_status) !== "not_now") {
+      throw new UserError(
+        "A follow-up date only goes with the Not now status. Give leadStatus not_now too, or add a task with add_task instead.",
+      );
+    }
+    task = followUpTask(before, parseWhen(followUp, tz), ctx.now);
+  }
+  const untrusted = parseStringArray(before.untrusted_fields);
+  const remaining = untrusted.filter((field) => !confirmed.includes(field));
+  if (remaining.length !== untrusted.length) set.untrusted_fields = JSON.stringify(remaining);
+
+  const after = updatedRow(before, set as Partial<ContactRow>, ctx.now);
+  const changed = changedColumns(before, after).filter((c) => !["version", "updated_at", "lead_status_at"].includes(c));
+  if (changed.length === 0 && task === null) {
+    throw new UserError(`Nothing to change for ${contactName(before)}: every value you gave is already set.`);
+  }
+
+  const changes: RowChange[] = changed.length > 0 ? [{ table: "contacts", id: before.id, before, after }] : [];
+  if (task !== null) changes.push({ table: "tasks", id: task.id, before: null, after: task });
+  const who = contactName(after);
+  const status = changed.includes("lead_status") && after.lead_status !== null ? [`lead status to ${LEAD_STATUS_LABELS[after.lead_status]}`] : [];
+  const labels = changed
+    .filter((c) => c !== "untrusted_fields" && c !== "lead_status")
+    .map((c) => (c === "fields" ? fieldsLabel(parseObject(before.fields), parseObject(after.fields)) : columnLabel(c)));
+  const confirmedOnly = untrusted.filter((field) => confirmed.includes(field));
+  const head =
+    status.length + labels.length > 0
+      ? `Updated ${who}: ${joinAnd([...status, ...labels])}`
+      : changed.length > 0
+        ? `Confirmed ${joinAnd(confirmedOnly.map(columnLabel))} for ${who}`
+        : null;
+  let summary = head ?? "";
+  if (task !== null) {
+    const named = isTrusted(task, "title") ? `task ${taskTitle(task)}` : taskTitle(task);
+    const due = dueText(new Date(task.due_at ?? ""), tz);
+    summary = head === null ? `Added ${named} for ${who}, due ${due}` : `${head}; added ${named}, due ${due}`;
+  }
+  return commitWithEmail(
+    ctx,
+    { target: { table: "contacts", id: before.id }, summary, changes },
+    typeof set.email === "string" ? set.email : null,
+  );
+}

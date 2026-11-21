@@ -5,7 +5,7 @@ import type { BriefRow, Db } from "../db/db.ts";
 import { openTestDb } from "../db/sqlite-d1.ts";
 import type { Env } from "../env.ts";
 import type { Ctx } from "../services/change.ts";
-import { addLead } from "../services/leads.ts";
+import { addDeal } from "../services/add-deal.ts";
 import { addRule } from "../services/rules.ts";
 import { addTask } from "../services/tasks.ts";
 import { runBrief, shouldRunBrief } from "./run.ts";
@@ -14,7 +14,7 @@ const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
 // Thu Nov 19, 2026, 7:00 AM in Los Angeles (the default brief hour).
 const SEVEN = new Date("2026-11-19T15:00:00.000Z");
-const ctxFor = (db: Db, now: Date, tool = "add_lead"): Ctx => ({ db, now, actor: "ai", tool });
+const ctxFor = (db: Db, now: Date, tool = "add_deal"): Ctx => ({ db, now, actor: "ai", tool });
 const envFor = (db: Db, extra: Partial<Env> = {}) => ({ DB: db, ...extra }) as unknown as Env;
 const READY = { BRIEF_SENDING: "on", RESEND_API_KEY: "re_fake_key", BRIEF_FROM: "brief@example.test" };
 
@@ -47,7 +47,7 @@ test("shouldRunBrief: once per local day, at or after the brief hour", () => {
 test("the brief is composed and stored at the brief hour, whatever brief_enabled says, and sends nothing", async (t) => {
   const calls = mockFetch(t);
   const db = await openTestDb();
-  const lead = await addLead(ctxFor(db, new Date(SEVEN.getTime() - 5 * HOUR)), { name: "Pat Example", dealTitle: "Website refresh" });
+  const lead = await addDeal(ctxFor(db, new Date(SEVEN.getTime() - 5 * HOUR)), { name: "Pat Example", dealTitle: "Website refresh" });
   await addTask(ctxFor(db, SEVEN, "add_task"), { dealId: lead.dealId, title: "Send the quote", dueAt: "2026-11-18T09:00" });
   await addTask(ctxFor(db, SEVEN, "add_task"), { dealId: lead.dealId, title: "Call back", dueAt: "2026-11-19T14:00" });
 
@@ -100,8 +100,8 @@ test("later runs the same day do nothing; the next day composes a new brief", as
 test("gone-quiet deals are listed once each, longest quiet first, even when two rules flag them", async () => {
   const db = await openTestDb();
   const old = new Date(SEVEN.getTime() - 10 * DAY);
-  await addLead(ctxFor(db, old), { name: "Pat Example", dealTitle: "Website refresh" });
-  await addLead(ctxFor(db, new Date(SEVEN.getTime() - 6 * DAY)), { name: "Robin Sample", dealTitle: "Menu design" });
+  await addDeal(ctxFor(db, old), { name: "Pat Example", dealTitle: "Website refresh" });
+  await addDeal(ctxFor(db, new Date(SEVEN.getTime() - 6 * DAY)), { name: "Robin Sample", dealTitle: "Menu design" });
   await addRule(ctxFor(db, old, "add_rule"), { type: "gone_quiet", days: 5 });
   await addRule(ctxFor(db, old, "add_rule"), { type: "gone_quiet", days: 3 });
   await runBrief(envFor(db), SEVEN);
@@ -114,14 +114,14 @@ test("gone-quiet deals are listed once each, longest quiet first, even when two 
 
 test("new leads are the deals created after the previous brief, or in the last 24 hours when there is none", async () => {
   const db = await openTestDb();
-  await addLead(ctxFor(db, new Date(SEVEN.getTime() - 25 * HOUR)), { name: "Too Old", dealTitle: "Before the window" });
-  await addLead(ctxFor(db, new Date(SEVEN.getTime() - 23 * HOUR)), { name: "Jo Example", dealTitle: "Bakery site" });
+  await addDeal(ctxFor(db, new Date(SEVEN.getTime() - 25 * HOUR)), { name: "Too Old", dealTitle: "Before the window" });
+  await addDeal(ctxFor(db, new Date(SEVEN.getTime() - 23 * HOUR)), { name: "Jo Example", dealTitle: "Bakery site" });
   await runBrief(envFor(db), SEVEN);
   let [first] = await briefs(db);
   assert.match(first?.text ?? "", /New leads\n- Jo Example: Bakery site, added Wed Nov 18, 8:00 AM$/);
   assert.doesNotMatch(first?.text ?? "", /Too Old/);
 
-  await addLead(ctxFor(db, new Date(SEVEN.getTime() + 2 * HOUR)), { name: "Sam Sample", dealTitle: "Menu design" });
+  await addDeal(ctxFor(db, new Date(SEVEN.getTime() + 2 * HOUR)), { name: "Sam Sample", dealTitle: "Menu design" });
   const nextDay = new Date(SEVEN.getTime() + DAY);
   await runBrief(envFor(db), nextDay);
   const [, second] = await briefs(db);
@@ -133,7 +133,7 @@ test("new leads are the deals created after the previous brief, or in the last 2
 
 test("outside text is marked untrusted on its item, and message bodies never appear", async () => {
   const db = await openTestDb();
-  const lead = await addLead(ctxFor(db, new Date(SEVEN.getTime() - HOUR)), { name: "Robin Sample", dealTitle: "Menu design" });
+  const lead = await addDeal(ctxFor(db, new Date(SEVEN.getTime() - HOUR)), { name: "Robin Sample", dealTitle: "Menu design" });
   await db.prepare("UPDATE contacts SET untrusted_fields = '[\"name\"]'").run();
   await db
     .prepare(

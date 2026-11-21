@@ -7,7 +7,7 @@ import { DEFAULT_TZ } from "../time.ts";
 import type { Ctx } from "./change.ts";
 import { updateDeal } from "./deals.ts";
 import { UserError } from "./errors.ts";
-import { addLead } from "./leads.ts";
+import { addDeal as addDealChange } from "./add-deal.ts";
 import {
   contactDetail,
   type ContactSort,
@@ -392,7 +392,7 @@ test("listDealsFiltered filters by stage, status, due window and quiet days", as
 test("recentChanges lists changes newest first with who, what and whether they were undone", async () => {
   const db = await openTestDb();
   const at = (iso: string, tool: string): Ctx => ({ db, now: new Date(iso), actor: "ai", tool });
-  const lead = await addLead(at("2026-11-19T16:00:00.000Z", "add_lead"), { name: "Pat Example", dealTitle: "Site" });
+  const lead = await addDealChange(at("2026-11-19T16:00:00.000Z", "add_deal"), { name: "Pat Example", dealTitle: "Site" });
   const move = await updateDeal(at("2026-11-19T17:00:00.000Z", "update_deal"), lead.dealId, { stage: "replied" });
   const undo = await undoChange(at("2026-11-19T17:30:00.000Z", "undo_change"), move.changeId);
 
@@ -414,8 +414,8 @@ test("recentChanges lists changes newest first with who, what and whether they w
 
 test("getChange finds one change by id, whatever its age; an unknown id is null", async () => {
   const db = await openTestDb();
-  const ctx: Ctx = { db, now: new Date("2020-01-01T00:00:00.000Z"), actor: "owner", tool: "add_lead" };
-  const lead = await addLead(ctx, { name: "Pat Example" });
+  const ctx: Ctx = { db, now: new Date("2020-01-01T00:00:00.000Z"), actor: "owner", tool: "add_deal" };
+  const lead = await addDealChange(ctx, { name: "Pat Example" });
   const undo = await undoChange({ ...ctx, tool: "undo_change" }, lead.changeId);
   const change = await getChange(db, lead.changeId);
   assert.equal(change?.summary, lead.summary);

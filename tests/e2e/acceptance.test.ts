@@ -116,13 +116,14 @@ describe("the twelve owner sentences", () => {
   });
 
   test('4. "Add a lead: [name], met at [place], wants [thing]."', async () => {
-    const answer = await tool("add_lead", {
+    // They want something, so by the sorting rule (decision 0022) this is a deal, not an add_lead.
+    const answer = await tool("add_deal", {
       name: "Jordan Testcase",
       source: "Example Expo",
       notes: "Met at Example Expo. Wants a new website.",
     });
     assert.match(answer.headline, CHANGE_LINE);
-    assert.match(answer.headline, /^Added lead /);
+    assert.match(answer.headline, /^Added contact Jordan Testcase with deal /);
     const data = answer.data as { changeId: string; contactId: string; dealId: string };
     leadChangeId = data.changeId;
     leadDealId = data.dealId;
@@ -220,7 +221,7 @@ describe("the twelve owner sentences", () => {
     assert.deepEqual(ids.slice(0, expected.length), expected);
     assert.deepEqual(
       changes.slice(0, expected.length).map((c) => c.tool),
-      ["undo_change", "log_activity", "add_task", "log_activity", "update_deal", "add_lead"],
+      ["undo_change", "log_activity", "add_task", "log_activity", "update_deal", "add_deal"],
     );
     for (const change of changes) assert.match(change.changeId, /^chg_[a-z0-9]{12}$/);
   });

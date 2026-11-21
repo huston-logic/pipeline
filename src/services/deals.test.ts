@@ -5,7 +5,7 @@ import { openTestDb } from "../db/sqlite-d1.ts";
 import type { Ctx } from "./change.ts";
 import { updateDeal } from "./deals.ts";
 import { UserError } from "./errors.ts";
-import { addLead } from "./leads.ts";
+import { addDeal } from "./add-deal.ts";
 
 const CREATED = new Date("2026-11-16T18:00:00.000Z");
 const NOW = new Date("2026-11-19T18:00:00.000Z");
@@ -13,7 +13,7 @@ const ctxAt = (db: Db, now: Date, tool = "update_deal"): Ctx => ({ db, now, acto
 
 async function setup(): Promise<{ db: Db; dealId: string; contactId: string }> {
   const db = await openTestDb();
-  const lead = await addLead(ctxAt(db, CREATED, "add_lead"), {
+  const lead = await addDeal(ctxAt(db, CREATED, "add_deal"), {
     name: "Pat Example",
     email: "pat@example.com",
     dealTitle: "Website refresh",
@@ -147,10 +147,39 @@ test("updateDeal refuses unknown stages, unknown fields, unknown deals and no-op
 
 test("a deal name matching several deals is refused with each deal's id", async () => {
   const { db, dealId } = await setup();
-  const other = await addLead(ctxAt(db, CREATED, "add_lead"), { name: "Pat Example", email: "pat@example.com", dealTitle: "Logo" });
+  const other = await addDeal(ctxAt(db, CREATED, "add_deal"), { name: "Pat Example", email: "pat@example.com", dealTitle: "Logo" });
   const error = await updateDeal(ctxAt(db, NOW), "Pat Example", { stage: "replied" }).catch((e: unknown) => e);
   assert.ok(error instanceof UserError);
   assert.match(error.message, /"Pat Example" matches 2 deals/);
   assert.ok(error.message.includes(dealId) && error.message.includes(other.dealId));
   assert.match(error.message, /Use the deal id/);
+});
+
+const leadStatusOf = async (db: Db, id: string) =>
+  (await db.prepare("SELECT lead_status, lead_status_at FROM contacts WHERE id = ?").bind(id).first<{ lead_status: string | null; lead_status_at: string | null }>());
+
+test("reopening a Lost deal of a Not a fit person into an open stage makes them Qualified in the same change (invariant 1)", async () => {
+  const { db, dealId, contactId } = await setup();
+  await updateDeal(ctxAt(db, CREATED), dealId, { status: "lost" });
+  await db.prepare("UPDATE contacts SET lead_status = 'not_a_fit', lead_status_at = ? WHERE id = ?").bind(CREATED.toISOString(), contactId).run();
+
+  const result = await updateDeal(ctxAt(db, NOW), dealId, { stage: "replied" });
+  assert.equal(result.summary, `Moved "Website refresh" (Pat Example) to Replied; Pat Example is now Qualified (change ${result.changeId})`);
+  assert.deepEqual({ ...(await leadStatusOf(db, contactId)) }, { lead_status: "qualified", lead_status_at: NOW.toISOString() });
+  const audit = await db.prepare("SELECT after_json FROM audit_log WHERE id = ?").bind(result.changeId).first<{ after_json: string }>();
+  assert.ok(Object.keys(JSON.parse(audit?.after_json ?? "{}")).includes(`contacts:${contactId}`));
+});
+
+test("moving an open deal, closing it, or reopening one for a person with no lead status leaves the contact alone", async () => {
+  const { db, dealId, contactId } = await setup();
+  await db.prepare("UPDATE contacts SET lead_status = 'contacted' WHERE id = ?").bind(contactId).run();
+  const moved = await updateDeal(ctxAt(db, NOW), dealId, { stage: "replied" });
+  assert.doesNotMatch(moved.summary, /Qualified/, "only a reopen qualifies");
+  await updateDeal(ctxAt(db, NOW), dealId, { status: "lost" });
+  assert.equal((await leadStatusOf(db, contactId))?.lead_status, "contacted", "closing a deal never touches the lead status");
+
+  await db.prepare("UPDATE contacts SET lead_status = NULL WHERE id = ?").bind(contactId).run();
+  const reopened = await updateDeal(ctxAt(db, NOW), dealId, { stage: "new_inquiry" });
+  assert.doesNotMatch(reopened.summary, /Qualified/);
+  assert.equal((await leadStatusOf(db, contactId))?.lead_status, null);
 });

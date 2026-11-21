@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { TABLE_NAMES, type ContactRow, type DealRow } from "../db/db.ts";
 import { createTestDb, type SqliteD1 } from "../db/sqlite-d1.ts";
 import type { Env } from "../env.ts";
+import { addDeal } from "../services/add-deal.ts";
 import { addLead } from "../services/leads.ts";
 import { handleIntake, MAX_BODY_BYTES, parseBody } from "./intake.ts";
 
@@ -211,8 +212,8 @@ test("without the rate-limit binding the request is allowed and a fixed event is
 
 test("an email that matches an existing contact (any case) gets a deal; the contact is never overwritten", async () => {
   const { db, env } = await setup();
-  const ctx = { db, now: new Date("2026-11-01T12:00:00.000Z"), actor: "owner" as const, tool: "add_lead" };
-  const lead = await addLead(ctx, { name: "Pat Example", email: "pat@example.com", phone: "555-0100", business: "Owner Bakery" });
+  const ctx = { db, now: new Date("2026-11-01T12:00:00.000Z"), actor: "owner" as const, tool: "add_deal" };
+  const lead = await addDeal(ctx, { name: "Pat Example", email: "pat@example.com", phone: "555-0100", business: "Owner Bakery" });
   const before = await one<ContactRow>(db, "SELECT * FROM contacts WHERE id = ?", lead.contactId);
 
   const res = await post(env, { name: "Totally Different", email: "PAT@Example.com", phone: "999", business: "Other", message: "Second ask." });
@@ -228,6 +229,43 @@ test("an email that matches an existing contact (any case) gets a deal; the cont
   const activity = await one<{ contact_id: string; untrusted_text: string }>(db, "SELECT * FROM activities WHERE type = 'form'");
   assert.equal(activity?.contact_id, lead.contactId);
   assert.equal(activity?.untrusted_text, "Second ask.");
+});
+
+test("a form from a Not now lead's email adds one deal and makes them Qualified, with no new contact", async () => {
+  const { db, env } = await setup();
+  const ctx = { db, now: new Date("2026-11-01T12:00:00.000Z"), actor: "owner" as const, tool: "add_lead" };
+  const lead = await addLead(ctx, { name: "Pat Example", email: "pat@example.com" });
+  db.exec(`UPDATE contacts SET lead_status = 'not_now', version = version + 1 WHERE id = '${lead.contactId}'`);
+
+  const res = await post(env, { ...goodBody, email: "PAT@example.com" });
+  assert.equal(res.status, 201);
+  const total = await counts(db);
+  assert.equal(total.contacts, 1);
+  assert.equal(total.deals, 1);
+  const person = await one<ContactRow>(db, "SELECT * FROM contacts WHERE id = ?", lead.contactId);
+  assert.equal(person?.lead_status, "qualified");
+  assert.equal(person?.lead_status_at, NOW.toISOString());
+  assert.equal(person?.name, "Pat Example", "the contact is otherwise left as it was");
+
+  const audit = await one<{ actor: string; tool: string; summary: string; after_json: string }>(
+    db,
+    "SELECT * FROM audit_log WHERE tool = 'intake'",
+  );
+  assert.equal(audit?.actor, "system");
+  assert.match(audit?.summary ?? "", /^Form submission: new deal for an existing lead, now Qualified, "Pat Example inquiry" \(Pat Example\) in New inquiry \(change chg_/);
+  assert.ok(Object.keys(JSON.parse(audit?.after_json ?? "{}")).includes(`contacts:${lead.contactId}`), "one change");
+});
+
+test("a form from a contact who was never a lead leaves lead_status null", async () => {
+  const { db, env } = await setup();
+  const ctx = { db, now: new Date("2026-11-01T12:00:00.000Z"), actor: "owner" as const, tool: "add_deal" };
+  const person = await addDeal(ctx, { name: "Pat Example", email: "pat@example.com" });
+  assert.equal((await post(env, goodBody)).status, 201);
+  const row = await one<ContactRow>(db, "SELECT * FROM contacts WHERE id = ?", person.contactId);
+  assert.equal(row?.lead_status, null);
+  assert.equal(row?.version, 1, "the contact row is not touched");
+  const audit = await one<{ summary: string }>(db, "SELECT summary FROM audit_log WHERE tool = 'intake'");
+  assert.match(audit?.summary ?? "", /^Form submission: new deal for an existing contact, /);
 });
 
 test("an existing contact whose name is untrusted gets an untrusted deal title", async () => {
@@ -275,9 +313,9 @@ test("control characters are stripped (newlines kept in message) and single-line
 
 test("injection text changes nothing but its own lead", async () => {
   const { db, env } = await setup();
-  const ctx = { db, now: new Date("2026-11-01T12:00:00.000Z"), actor: "owner" as const, tool: "add_lead" };
-  await addLead(ctx, { name: "Robin Sample", email: "robin@example.com" });
-  await addLead(ctx, { name: "Kim Sample", email: "kim@example.com" });
+  const ctx = { db, now: new Date("2026-11-01T12:00:00.000Z"), actor: "owner" as const, tool: "add_deal" };
+  await addDeal(ctx, { name: "Robin Sample", email: "robin@example.com" });
+  await addDeal(ctx, { name: "Kim Sample", email: "kim@example.com" });
   const dealsBefore = (await db.prepare("SELECT * FROM deals ORDER BY id").all<DealRow>()).results;
   const before = await counts(db);
 

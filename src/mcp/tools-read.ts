@@ -34,7 +34,7 @@ export function registerReadTools(server: McpServer, deps: ToolDeps): void {
       async run(_args, { db, now }) {
         const at = now();
         const summary = await pipelineSummary(db, at, await ownerTimezone(db));
-        if (summary.total === 0) return toolResult("Your pipeline is empty: there are no deals yet. Add one with add_lead.", summary);
+        if (summary.total === 0) return toolResult("Your pipeline is empty: there are no deals yet. Add one with add_deal.", summary);
         const { open, closed } = summary;
         return toolResult(
           `${count(open.count, "open deal")} (total value ${open.value}) across ${count(summary.stages.length, "open stage")}; ` +
@@ -78,7 +78,7 @@ export function registerReadTools(server: McpServer, deps: ToolDeps): void {
             ? `${count(deals.length, "deal")} ${filtered ? "found" : "in the pipeline"}.`
             : filtered
               ? "No deals match those filters."
-              : "Your pipeline is empty: there are no deals yet. Add one with add_lead.";
+              : "Your pipeline is empty: there are no deals yet. Add one with add_deal.";
         return toolResult(headline, { filter: args, deals });
       },
     },
@@ -123,7 +123,7 @@ export function registerReadTools(server: McpServer, deps: ToolDeps): void {
         const headline =
           contacts.length === 0
             ? query.trim() === ""
-              ? "There are no contacts yet. Add one with add_lead."
+              ? "There are no contacts yet. Add a lead with add_lead, or a deal with add_deal."
               : "No contacts match that search."
             : `${count(contacts.length, "contact")} found.`;
         return toolResult(headline, { query, contacts });
