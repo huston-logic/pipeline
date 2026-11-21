@@ -1,12 +1,13 @@
-// `npm run import:contacts -- --file <csv> (--copy <name> | --local [--persist-to <dir>]) [--apply]`
-// Imports contacts from a CSV with a header row (name, email, phone, business, source, notes; docs/INSTALL.md).
+// `npm run import:contacts -- --file <csv> (--copy <name> | --local [--persist-to <dir>]) [--as leads] [--allow-duplicates] [--apply]`
+// Imports contacts from a CSV with a header row (name, email, phone, business, source, notes, and optionally lead_status
+// and columns named like contact custom fields; docs/INSTALL.md). --as leads makes the new people leads (status New).
 // The default is a dry run: it reads the copy's contacts, then shows what would be created, filled in and skipped.
 // --apply writes it as one audited change (actor owner, tool "import"; undo_change reverses it): a SQL file in the
 // git-ignored copy folder (or .wrangler/ for --local), run by `wrangler d1 execute --file`, then removed.
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import type { ContactRow } from "../src/db/db.ts";
+import type { ContactRow, FieldDefRow } from "../src/db/db.ts";
 import { importChange, renderImport } from "../src/import/change.ts";
 import { type ImportPlan, planImport } from "../src/import/plan.ts";
 import { parseFlags, UsageError } from "./cli-args.mjs";
@@ -19,6 +20,10 @@ export interface ImportOptions {
   local: boolean;
   persistTo?: string;
   apply: boolean;
+  /** --as leads: the new people become leads (status New). */
+  asLeads: boolean;
+  /** --allow-duplicates: don't skip leads who look like someone already on file. */
+  allowDuplicates: boolean;
 }
 
 export interface ImportDeps {
@@ -36,18 +41,29 @@ const FLAGS = {
     "--file": { key: "file", example: "contacts.csv" },
     "--copy": { key: "copy", example: "acme" },
     "--persist-to": { key: "persistTo", example: ".wrangler/state" },
+    "--as": { key: "as", example: "leads" },
   },
-  switches: { "--apply": "apply", "--local": "local" },
+  switches: { "--apply": "apply", "--local": "local", "--allow-duplicates": "allowDuplicates" },
 };
 
 const text = (value: unknown) => (typeof value === "string" ? value : undefined);
 
 export function parseImportArgs(argv: string[]): ImportOptions {
   const flags = parseFlags(argv, FLAGS, "Use --file, --copy or --local, and --apply to write.");
-  const options: Partial<ImportOptions> = { local: flags.local === true, apply: flags.apply === true };
+  const options: Partial<ImportOptions> = {
+    local: flags.local === true,
+    apply: flags.apply === true,
+    asLeads: false,
+    allowDuplicates: flags.allowDuplicates === true,
+  };
   for (const key of ["file", "copy", "persistTo"] as const) {
     const value = text(flags[key]);
     if (value !== undefined) options[key] = value;
+  }
+  const as = text(flags.as);
+  if (as !== undefined) {
+    if (as !== "leads") throw new UsageError('--as can only be "leads" (the new people become leads). Leave it out to import contacts.');
+    options.asLeads = true;
   }
   if (options.file === undefined) throw new UsageError("Name the CSV file: --file <path>.");
   if (options.copy !== undefined && !isCopyName(options.copy)) throw new UsageError(copyNameProblem(options.copy));
@@ -62,7 +78,7 @@ const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? o
 function showPlan(plan: ImportPlan, log: (line: string) => void): void {
   log(
     `${plural(plan.create.length, "new contact")}, ${plan.merge.length} filled in, ${plan.unchanged.length} unchanged, ` +
-      `${plan.skipped.length} skipped.`,
+      `${plan.skipped.length} skipped${plan.duplicates.length > 0 ? `, ${plural(plan.duplicates.length, "possible duplicate")}` : ""}.`,
   );
   const list = <T>(title: string, items: T[], line: (item: T) => string) => {
     if (items.length === 0) return;
@@ -71,10 +87,13 @@ function showPlan(plan: ImportPlan, log: (line: string) => void): void {
   };
   list("New contacts", plan.create, (row) => `line ${row.line}: ${row.name}${row.email ? ` <${row.email}>` : ""}`);
   list("Details filled in on contacts already on file (nothing is overwritten)", plan.merge, (row) =>
-    `line ${row.line}: contact ${row.id} gets ${Object.keys(row.changes).join(", ")}`,
+    `line ${row.line}: contact ${row.id} gets ${[...Object.keys(row.changes), ...Object.keys(row.fields ?? {})].join(", ")}`,
   );
   list("Matched, nothing to fill in", plan.unchanged, (row) => `line ${row.line}: contact ${row.id}`);
   list("Skipped", plan.skipped, (row) => `line ${row.line}: ${row.reason}`);
+  list("Possible duplicates, skipped (add --allow-duplicates to import them anyway)", plan.duplicates, (row) =>
+    `line ${row.line}: possible duplicate of ${row.ofId === null ? `line ${row.ofLine}` : `contact ${row.ofId}`}`,
+  );
   if (plan.skippedColumns.length > 0) log(`Columns not imported: ${plan.skippedColumns.join(", ")}`);
 }
 
@@ -89,7 +108,8 @@ export async function importContacts(options: ImportOptions, deps: ImportDeps): 
   const target = databaseTarget(options, { copiesDir: deps.copiesDir, root });
   const runner = makeRunner(deps, target.accountId);
   const existing = query(runner, target, "SELECT * FROM contacts ORDER BY rowid") as ContactRow[];
-  const plan = planImport(csv, existing);
+  const fieldDefs = query(runner, target, "SELECT * FROM field_defs ORDER BY rowid") as FieldDefRow[];
+  const plan = planImport(csv, existing, { asLeads: options.asLeads, allowDuplicates: options.allowDuplicates, fieldDefs });
   deps.log(`Import plan for ${options.local ? "the local dev database" : `the copy "${options.copy}"`}:`);
   showPlan(plan, deps.log);
   if (!options.apply) {
