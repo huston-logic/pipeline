@@ -79,19 +79,21 @@
     });
   }
 
-  // Copy prompt: the button is hidden until the clipboard can be used; the result is said in a polite live region.
+  // Copy prompt (and the email log address, decision 0031): the button is hidden until the clipboard can be used; the
+  // result is said in a polite live region. data-copy-fail says what to do instead on a page with other words.
   if (!navigator.clipboard) return;
   for (const button of document.querySelectorAll("[data-copy]")) {
     const source = document.getElementById(button.dataset.copy);
     const status = document.getElementById(button.dataset.copyStatus);
     if (!source || !status) continue;
+    const failed = button.dataset.copyFail || "Couldn't copy. Open Show the prompt and copy it from there.";
     button.hidden = false;
     button.addEventListener("click", () => {
       // Emptied first, so a second click says "Copied." again to a screen reader.
       status.textContent = "";
       navigator.clipboard.writeText(source.value).then(
         () => (status.textContent = "Copied."),
-        () => (status.textContent = "Couldn't copy. Open Show the prompt and copy it from there."),
+        () => (status.textContent = failed),
       );
     });
   }

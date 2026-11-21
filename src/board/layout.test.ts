@@ -39,10 +39,10 @@ test("the layout adds no <h1> and no script of its own", () => {
   assert.doesNotMatch(out, /<script/i);
 });
 
-test("the nav lists Today, Pipeline, Contacts, Brief and More, then Rules, Changes and Export under More", () => {
+test("the nav lists Today, Pipeline, Contacts, Brief and More, then Rules, Changes, Export and Email logging under More", () => {
   const out = page("/");
   const hrefs = [...out.matchAll(/<nav[\s\S]*?<\/nav>/g)].flatMap((nav) => [...nav[0].matchAll(/<a href="([^"]+)"/g)].map((m) => m[1]));
-  assert.deepEqual(hrefs, ["/", "/pipeline", "/contacts", "/brief", "/more", "/rules", "/changes", "/export"]);
+  assert.deepEqual(hrefs, ["/", "/pipeline", "/contacts", "/brief", "/more", "/rules", "/changes", "/export", "/email-log"]);
   for (const item of [...navItems, ...moreItems]) {
     assert.match(out, new RegExp(`<svg [^>]*aria-hidden="true"[^>]*>[\\s\\S]*?</svg><span class="nav-label">${item.label}</span>`), item.label);
   }

@@ -13,6 +13,7 @@ import { contactName } from "../services/labels.ts";
 import { LEAD_STATUS_LABELS } from "../services/lead-status.ts";
 import { ownerTimezone } from "../services/lookup.ts";
 import { localDate } from "../time.ts";
+import { logAddressOf } from "./address.ts";
 import { authPasses, MAX_RAW_BYTES, messageKey, occurredAt, type ParsedEmail, parseEmail, untrustedText } from "./parse.ts";
 
 export type LogOutcome = "logged" | "duplicate" | "dropped";
@@ -146,8 +147,9 @@ async function isLogged(db: Db, key: string): Promise<boolean> {
 }
 
 export async function handleLogEmail(message: LogEmailMessage, env: LogEmailEnv, now: Date): Promise<LogOutcome> {
-  const logAddress = normalize(env.EMAIL_LOG_ADDRESS ?? "");
-  if (logAddress === "") return drop("not_set_up");
+  const configured = logAddressOf(env);
+  if (configured === null) return drop("not_set_up");
+  const logAddress = normalize(configured);
   if (message.rawSize > MAX_RAW_BYTES) return drop("too_large");
   if (normalize(message.to) !== logAddress) return drop("wrong_address");
   const db = env.DB;

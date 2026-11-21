@@ -60,7 +60,7 @@ export type PageOptions = {
 };
 
 /** The nav item a page belongs to without being it: a deal and a new lead are in Pipeline; a contact and Companies
- * are in Contacts; Rules, Changes and Export are in More. */
+ * are in Contacts; Rules, Changes, Export and Email logging are in More. */
 function sectionOf(path: string): string | null {
   if (path.startsWith("/deals/") || path.startsWith("/leads/")) return "/pipeline";
   if (path.startsWith("/contacts/") || path === "/companies") return "/contacts";
