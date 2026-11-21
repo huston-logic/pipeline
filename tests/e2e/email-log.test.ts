@@ -1,6 +1,7 @@
 // Email logging end to end (decision 0031): a raw message posted to wrangler's local Email Routing route reaches the
 // Worker's email() handler, which loads the MIME parser under workerd and logs the email on the matched contact.
-// Locally Cloudflare prepends no Authentication-Results header, so the test message carries the passing one itself.
+// Locally nothing prepends an Authentication-Results header and `message.headers` is read from the message itself, so
+// the test message carries the passing one. (In production the Worker trusts only the header Email Routing puts first.)
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import { rawEmail } from "../helpers/fake-email.ts";

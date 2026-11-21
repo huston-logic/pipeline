@@ -16,7 +16,7 @@ export interface FakeMail {
   date?: string;
   /** null leaves the header out. */
   messageId?: string | null;
-  /** Authentication-Results values, top of the message first. */
+  /** Authentication-Results values written into the raw text, top first (none by default): what a sender could forge. */
   auth?: string[];
   /** The text/plain part; with `html` too the message is multipart/alternative. */
   text?: string;
@@ -53,7 +53,7 @@ function bodyPart(mail: FakeMail): { headers: string[]; body: string } {
 
 /** A raw message with CRLF line ends, as Email Routing hands it over. */
 export function rawEmail(mail: FakeMail = {}): string {
-  const headers = (mail.auth ?? [CLOUDFLARE_PASS]).map((value) => `Authentication-Results: ${value}`);
+  const headers = (mail.auth ?? []).map((value) => `Authentication-Results: ${value}`);
   headers.push(`From: Owner Example <${mail.from ?? OWNER}>`);
   headers.push(`To: ${mail.to ?? "Pat Example <pat@example.com>"}`);
   if (mail.cc !== undefined) headers.push(`Cc: ${mail.cc}`);
@@ -99,7 +99,16 @@ export interface FakeMessage {
   reply(): Promise<never>;
 }
 
-export function fakeMessage(raw: string, envelope: { from?: string; to?: string; rawSize?: number } = {}): FakeMessage {
+/**
+ * `auth` is the Authentication-Results values in the Headers object Email Routing builds, Cloudflare's first: by
+ * default its passing verdict alone. Headers joins several into one value with ", ", as in the Workers runtime.
+ */
+export function fakeMessage(
+  raw: string,
+  envelope: { from?: string; to?: string; rawSize?: number; auth?: string[] } = {},
+): FakeMessage {
+  const headers = new Headers();
+  for (const value of envelope.auth ?? [CLOUDFLARE_PASS]) headers.append("Authentication-Results", value);
   const bytes = new TextEncoder().encode(raw);
   const calls: string[] = [];
   let read = false;
@@ -119,7 +128,7 @@ export function fakeMessage(raw: string, envelope: { from?: string; to?: string;
     to: envelope.to ?? LOG_ADDRESS,
     raw: stream,
     rawSize: envelope.rawSize ?? bytes.byteLength,
-    headers: new Headers(),
+    headers,
     calls,
     get rawRead() {
       return read;

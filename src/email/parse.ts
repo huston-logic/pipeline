@@ -78,20 +78,25 @@ function readAuthResults(value: string): { authservId: string; results: Map<stri
 const allPass = (results: string[] | undefined): boolean =>
   results !== undefined && results.length > 0 && results.every((result) => result === "pass");
 
+const VERDICT_METHODS = ["spf", "dkim", "dmarc"] as const;
+
 /**
- * Ruling 3: read only the first Authentication-Results header whose authserv-id is mx.cloudflare.net (Email Routing
- * prepends it; any other may come from the sender). Pass when dmarc=pass, or, when it has no dmarc result, when both
- * spf=pass and dkim=pass. Every result of a method must pass, so a second, forged result can't outvote a fail.
+ * Ruling 3, on `message.headers.get("authentication-results")`: the Headers object Email Routing builds, where it
+ * prepends its own header. The value must start with the authserv-id mx.cloudflare.net; anything else (or no header)
+ * fails. Pass when dmarc=pass, or, when there is no dmarc result, when both spf=pass and dkim=pass. Headers joins
+ * several Authentication-Results headers into one value with ", ", so a header the sender wrote can follow
+ * Cloudflare's; every spf, dkim and dmarc result in the value must therefore be a pass, so a forged later result can
+ * neither outvote a fail nor add a dmarc=pass that Cloudflare did not give.
  */
-export function authPasses(headers: readonly HeaderField[]): boolean {
-  for (const header of headers) {
-    if (header.key !== "authentication-results") continue;
-    const { authservId, results } = readAuthResults(header.value);
-    if (authservId !== CLOUDFLARE_AUTHSERV_ID) continue;
-    if (results.has("dmarc")) return allPass(results.get("dmarc"));
-    return allPass(results.get("spf")) && allPass(results.get("dkim"));
+export function authPasses(value: string | null): boolean {
+  if (value === null) return false;
+  const { authservId, results } = readAuthResults(value);
+  if (authservId !== CLOUDFLARE_AUTHSERV_ID) return false;
+  for (const method of VERDICT_METHODS) {
+    const found = results.get(method);
+    if (found !== undefined && !allPass(found)) return false;
   }
-  return false;
+  return results.has("dmarc") || (results.has("spf") && results.has("dkim"));
 }
 
 const CONTROL = /[\u0000-\u0009\u000B-\u001F\u007F-\u009F]/g;
@@ -106,12 +111,23 @@ function cap(text: string, max: number): string {
 
 const oneLine = (text: string) => text.replace(/[\r\n\t]/g, " ").replace(CONTROL, "").replace(/\s+/g, " ").trim();
 
+/** How much of a body is read before cleaning: enough for MAX_BODY_CHARS after markup and spaces go, and short enough
+ * that no regular expression below runs long on a 1 MB body. */
+const BODY_INPUT_CHARS = 4 * MAX_BODY_CHARS;
+
 const cleanBody = (text: string) =>
-  text.replace(/\r\n?/g, "\n").replace(CONTROL, "").replace(/\n{3,}/g, "\n\n").trim();
+  text
+    .slice(0, BODY_INPUT_CHARS)
+    .replace(/\r\n?/g, "\n")
+    .replace(/\t/g, " ")
+    .replace(CONTROL, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 
 /** A crude HTML-to-text, only for a message whose parser gave no text at all. */
-function htmlText(html: string): string {
+export function htmlText(html: string): string {
   return html
+    .slice(0, BODY_INPUT_CHARS)
     .replace(/<(script|style)[\s\S]*?<\/\1>/gi, "")
     .replace(/<br\s*\/?>|<\/(p|div|li|tr|h[1-6])>/gi, "\n")
     .replace(/<[^>]*>/g, "")

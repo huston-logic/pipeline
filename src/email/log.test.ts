@@ -133,17 +133,41 @@ test("a spoofed sender is dropped: the envelope or the header From must be an ow
 test("an owner email from the settings counts as well as one from OWNER_EMAILS, ignoring case", async () => {
   const { db, env } = await setup();
   await db.prepare(`UPDATE settings SET owner_emails = '["other.owner@example.com"]'`).run();
-  const mail = { from: "Other.Owner@example.com", auth: ["mx.cloudflare.net; dmarc=pass header.from=example.com"] };
-  assert.equal(await send(env, mail, { from: "OTHER.owner@example.com" }).outcome, "logged");
+  const envelope = { from: "OTHER.owner@example.com", auth: ["mx.cloudflare.net; dmarc=pass header.from=example.com"] };
+  assert.equal(await send(env, { from: "Other.Owner@example.com" }, envelope).outcome, "logged");
 });
 
-test("mail that fails Cloudflare's authentication is dropped, even with a forged pass from the sender below it", async () => {
+test("mail that fails Cloudflare's authentication is dropped, even with a forged pass from the sender after it", async () => {
   const { db, env } = await setup();
   const failing = "mx.cloudflare.net; spf=fail smtp.mailfrom=owner@example.com; dkim=none; dmarc=fail header.from=example.com";
-  assert.equal(await send(env, { auth: [failing] }).outcome, "dropped");
-  assert.equal(await send(env, { auth: [failing, CLOUDFLARE_PASS], messageId: "<f2@mail.example.com>" }).outcome, "dropped");
-  assert.equal(await send(env, { auth: [], messageId: "<f3@mail.example.com>" }).outcome, "dropped");
+  const fail = send(env, {}, { auth: [failing] });
+  assert.equal(await fail.outcome, "dropped");
+  assert.equal(fail.message.rawRead, false, "dropped before the message is read");
+  assert.equal(await send(env, { messageId: "<f2@mail.example.com>" }, { auth: [failing, CLOUDFLARE_PASS] }).outcome, "dropped");
+  assert.equal(await send(env, { messageId: "<f3@mail.example.com>" }, { auth: [] }).outcome, "dropped", "no header at all");
+  const noDmarc = "mx.cloudflare.net; spf=pass smtp.mailfrom=owner@example.com; dkim=fail header.d=example.com";
+  const forgedDmarc = "mx.cloudflare.net; dmarc=pass header.from=example.com";
+  assert.equal(await send(env, { messageId: "<f4@mail.example.com>" }, { auth: [noDmarc, forgedDmarc] }).outcome, "dropped");
   await assertNothingWritten(db);
+});
+
+test("a passing header only in the raw text (none from Cloudflare in Headers) is a forgery and is dropped", async () => {
+  const { db, env } = await setup();
+  const forged = send(env, { auth: [CLOUDFLARE_PASS] }, { auth: [] });
+  assert.equal(await forged.outcome, "dropped");
+  assert.equal(forged.message.rawRead, false);
+  const below = send(env, { auth: [CLOUDFLARE_PASS], messageId: "<f5@mail.example.com>" }, { auth: ["mail.example.net; dmarc=fail"] });
+  assert.equal(await below.outcome, "dropped", "Headers must start with Cloudflare's own verdict");
+  await assertNothingWritten(db);
+});
+
+test("Cloudflare's pass first and another header after it: logged only when every result passes", async () => {
+  const { db, env } = await setup();
+  const otherPass = "mx.cloudflare.net; spf=pass; dkim=pass; dmarc=pass";
+  assert.equal(await send(env, { messageId: "<p1@mail.example.com>" }, { auth: [CLOUDFLARE_PASS, otherPass] }).outcome, "logged");
+  const otherFail = "mail.example.net; dkim=fail";
+  assert.equal(await send(env, { messageId: "<p2@mail.example.com>" }, { auth: [CLOUDFLARE_PASS, otherFail] }).outcome, "dropped");
+  assert.equal((await emailActivities(db)).length, 1);
 });
 
 test("only the log address is accepted, ignoring case; without EMAIL_LOG_ADDRESS everything is dropped", async () => {

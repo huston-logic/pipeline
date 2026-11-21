@@ -18,8 +18,11 @@ import { authPasses, MAX_RAW_BYTES, messageKey, occurredAt, type ParsedEmail, pa
 
 export type LogOutcome = "logged" | "duplicate" | "dropped";
 
-/** The part of Email Routing's ForwardableEmailMessage the log reads. It never gets setReject, reply or forward. */
-export type LogEmailMessage = Pick<ForwardableEmailMessage, "from" | "to" | "raw" | "rawSize">;
+/**
+ * The part of Email Routing's ForwardableEmailMessage the log reads: the envelope, the Headers object (where Email
+ * Routing puts its Authentication-Results) and the raw message. It never gets setReject, reply or forward.
+ */
+export type LogEmailMessage = Pick<ForwardableEmailMessage, "from" | "to" | "headers" | "raw" | "rawSize">;
 
 export type LogEmailEnv = Pick<Env, "DB" | "EMAIL_LOG_ADDRESS" | "OWNER_EMAILS">;
 
@@ -155,6 +158,8 @@ export async function handleLogEmail(message: LogEmailMessage, env: LogEmailEnv,
   const db = env.DB;
   const owners = await ownerEmails(db, env);
   if (!owners.has(normalize(message.from))) return drop("not_owner");
+  // From the Headers object, never from the raw text: a header in the raw text may be one the sender wrote.
+  if (!authPasses(message.headers.get("authentication-results"))) return drop("not_authenticated");
 
   const raw = await readCapped(message.raw, MAX_RAW_BYTES);
   if (raw === null) return drop("too_large");
@@ -164,7 +169,6 @@ export async function handleLogEmail(message: LogEmailMessage, env: LogEmailEnv,
   } catch {
     return drop("unreadable");
   }
-  if (!authPasses(email.headers)) return drop("not_authenticated");
   if (email.from === null || !owners.has(email.from)) return drop("not_owner");
 
   const key = await messageKey(email);

@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { CLOUDFLARE_PASS, rawEmail } from "../../tests/helpers/fake-email.ts";
 import {
   authPasses,
+  htmlText,
   MAX_BODY_CHARS,
   MAX_MESSAGE_KEY_CHARS,
   MAX_SUBJECT_CHARS,
@@ -12,7 +13,14 @@ import {
   untrustedText,
 } from "./parse.ts";
 
-const auth = (...values: string[]) => values.map((value) => ({ key: "authentication-results", value }));
+/** What `message.headers.get("authentication-results")` returns for these headers, top first: null for none, else the
+ * values joined with ", " as the Headers object does. */
+const auth = (...values: string[]): string | null => {
+  if (values.length === 0) return null;
+  const headers = new Headers();
+  for (const value of values) headers.append("Authentication-Results", value);
+  return headers.get("authentication-results");
+};
 const NOW = new Date("2026-11-20T18:00:00.000Z");
 
 test("authPasses: Cloudflare's dmarc=pass, or with no dmarc result both spf=pass and dkim=pass (Ruling 3)", () => {
@@ -24,7 +32,8 @@ test("authPasses: Cloudflare's dmarc=pass, or with no dmarc result both spf=pass
 });
 
 test("authPasses: anything short of that is a fail", () => {
-  assert.equal(authPasses([]), false, "no header");
+  assert.equal(authPasses(auth()), false, "no header");
+  assert.equal(authPasses(auth("mx.cloudflare.net; spf=fail; dkim=pass; dmarc=pass")), false, "any spf, dkim or dmarc fail");
   assert.equal(authPasses(auth("mx.cloudflare.net; none")), false, "no results");
   assert.equal(authPasses(auth("mx.cloudflare.net; spf=pass; dkim=pass; dmarc=fail")), false, "dmarc fail wins");
   assert.equal(authPasses(auth("mx.cloudflare.net; spf=pass; dkim=pass; dmarc=none")), false, "dmarc none");
@@ -35,9 +44,16 @@ test("authPasses: anything short of that is a fail", () => {
   assert.equal(authPasses(auth("mx.cloudflare.net; spf=pass; dkim=pass; dkim=fail")), false, "two dkim results, one fails");
 });
 
-test("authPasses trusts only the first header from mx.cloudflare.net, never one the sender wrote", () => {
+test("authPasses needs Cloudflare's header first, and a header the sender wrote after it can only make it fail", () => {
   const forged = "mx.cloudflare.net; spf=pass; dkim=pass; dmarc=pass";
-  assert.equal(authPasses(auth("mx.cloudflare.net; spf=fail; dkim=none; dmarc=fail", forged)), false, "a forged earlier header below");
+  assert.equal(authPasses(auth("mx.cloudflare.net; spf=fail; dkim=none; dmarc=fail", forged)), false, "Cloudflare's fail, forged pass after");
+  assert.equal(authPasses(auth(CLOUDFLARE_PASS, forged)), true, "Cloudflare's pass, another pass after: every result passes");
+  assert.equal(authPasses(auth(CLOUDFLARE_PASS, "mail.example.net; dkim=fail")), false, "Cloudflare's pass, a fail after");
+  assert.equal(
+    authPasses(auth("mx.cloudflare.net; spf=pass; dkim=fail", "mx.cloudflare.net; dmarc=pass")),
+    false,
+    "a forged dmarc=pass can't stand in for Cloudflare's missing dmarc result",
+  );
   assert.equal(authPasses(auth("mail.example.net; spf=pass; dkim=pass; dmarc=pass")), false, "another receiver's verdict");
   assert.equal(
     authPasses(auth("mail.example.net; dmarc=pass", "mx.cloudflare.net; dmarc=fail")),
@@ -45,7 +61,7 @@ test("authPasses trusts only the first header from mx.cloudflare.net, never one 
     "another receiver's pass above Cloudflare's fail",
   );
   assert.equal(authPasses(auth("mx.cloudflare.net.example.org; dmarc=pass")), false, "a look-alike authserv-id");
-  assert.equal(authPasses(auth("mail.example.net; dmarc=fail", CLOUDFLARE_PASS)), true, "Cloudflare's pass below another's");
+  assert.equal(authPasses(auth("mail.example.net; dmarc=fail", CLOUDFLARE_PASS)), false, "Cloudflare's header not first");
 });
 
 test("authPasses ignores results hidden in quoted strings and comments", () => {
@@ -69,7 +85,7 @@ test("parseEmail reads the header From, the To and Cc people, the subject, the d
   assert.equal(email.messageId, "<fake-1@mail.example.com>");
   assert.equal(email.date, "2026-11-19T17:30:00.000Z");
   assert.equal(email.body, "Line one\nLine two");
-  assert.equal(email.headers.filter((h) => h.key === "authentication-results").length, 1);
+  assert.deepEqual(email.headers.filter((h) => h.key === "subject"), [{ key: "subject", value: "Next steps" }]);
 });
 
 test("parseEmail prefers the text part, falls back to the HTML as text, and ignores attachments", async () => {
@@ -83,13 +99,25 @@ test("parseEmail prefers the text part, falls back to the HTML as text, and igno
   assert.equal(attached.body, "See attached");
 });
 
+test("a large HTML-only body full of unclosed tags is read quickly, and the crude HTML strip reads a capped slice", async () => {
+  const html = `<p>Hello</p>${"<b".repeat(150_000)}`;
+  const started = performance.now();
+  const email = await parseEmail(rawEmail({ html }));
+  const fallback = htmlText(`<p>Hi</p>${"<script".repeat(150_000)}`);
+  const ms = performance.now() - started;
+  assert.ok(ms < 2000, `took ${Math.round(ms)} ms`);
+  assert.ok(email.body.length <= MAX_BODY_CHARS);
+  assert.ok(fallback.length <= 4 * MAX_BODY_CHARS);
+});
+
 test("parseEmail drops control characters, keeps line breaks, and caps the subject and the body", async () => {
   const email = await parseEmail(
     rawEmail({ subject: `Hi\u0007 there ${"s".repeat(400)}`, text: `a\u0000b\tc\u001b[31m\n\n\n\n\nd ${"x".repeat(6000)}` }),
   );
   assert.ok(email.subject.startsWith("Hi there "));
   assert.equal(email.subject.length, MAX_SUBJECT_CHARS);
-  assert.ok(email.body.startsWith("abc[31m\n\nd "), JSON.stringify(email.body.slice(0, 20)));
+  // A tab becomes a space; the other control characters go.
+  assert.ok(email.body.startsWith("ab c[31m\n\nd "), JSON.stringify(email.body.slice(0, 20)));
   assert.equal(email.body.length, MAX_BODY_CHARS);
   assert.doesNotMatch(email.body, /[\u0000-\u0009\u000B-\u001F\u007F-\u009F]/);
 });
