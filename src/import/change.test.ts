@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { AuditRow, ContactRow } from "../db/db.ts";
 import { createTestDb, type SqliteD1 } from "../db/sqlite-d1.ts";
-import { exportTableCsv } from "../http/export.ts";
+import { exportAll, exportTableCsv } from "../http/export.ts";
 import { commitChange } from "../services/change.ts";
 import { contactName } from "../services/labels.ts";
 import { undoChange } from "../services/undo.ts";
@@ -125,6 +125,71 @@ test("a contact edited after the plan was read stops the whole file: nothing is 
   assert.throws(() => runFile(db, renderImport(input, NOW).sql), /CHECK constraint failed/);
   assert.deepEqual(await contacts(db), snapshot);
   assert.deepEqual(await audits(db), []);
+});
+
+test("a leads import writes lead_status, lead_status_at, custom fields and their untrusted names; undo takes them back", async () => {
+  const db = await withPat();
+  const fieldDefs = [
+    {
+      id: "fd_1", entity: "contact" as const, key: "role", label: "Role", type: "text" as const, choices: null,
+      archived: 0 as const, version: 1, created_at: NOW.toISOString(), updated_at: NOW.toISOString(),
+    },
+  ];
+  const csv = "name,email,business,Role,lead_status\r\nRobin Sample,robin@example.com,Fresh Co,Owner,Contacted\r\nCasey,,,,\r\n";
+  const existing = await contacts(db);
+  const plan = planImport(csv, existing, { asLeads: true, allowDuplicates: false, fieldDefs });
+  const input = importChange(plan, existing, NOW);
+  assert.ok(input);
+  runFile(db, renderImport({ ...input, changeId: "chg_leadimport01" }, NOW).sql);
+  const rows = await contacts(db);
+  const robin = rows.find((row) => row.email === "robin@example.com");
+  assert.equal(robin?.lead_status, "contacted");
+  assert.equal(robin?.lead_status_at, NOW.toISOString());
+  assert.deepEqual(JSON.parse(robin?.fields ?? ""), { role: "Owner" });
+  assert.deepEqual(JSON.parse(robin?.untrusted_fields ?? ""), ["name", "email", "business", "role"]);
+  const casey = rows.find((row) => row.name === "Casey");
+  assert.equal(casey?.lead_status, "new");
+  assert.equal(rows.find((row) => row.id === "ct_pat")?.lead_status, null, "people already on file are not made leads");
+  const [audit] = await audits(db);
+  assert.match(audit?.summary ?? "", /^Imported 2 contacts and filled details on 0 \(change chg_[a-z0-9]+\)$/);
+  assert.doesNotMatch(audit?.summary ?? "", /Robin|Casey/);
+  await undoChange({ db, now: LATER, actor: "ai", tool: "undo_change" }, audit?.id ?? "");
+  assert.equal((await contacts(db)).length, 1);
+});
+
+test("a CSV round trip keeps lead_status; lead_status and lead_status_at are in the export", async () => {
+  const source = await createTestDb();
+  source.exec(`INSERT INTO contacts (id, name, email, untrusted_fields, lead_status, lead_status_at) VALUES
+    ('ct_a', 'Avery Lead', 'avery@example.com', '[]', 'contacted', '2026-11-10T00:00:00.000Z'),
+    ('ct_b', 'Blake Plain', 'blake@example.com', '[]', NULL, NULL),
+    ('ct_c', 'Cam Closed', 'cam@example.com', '[]', 'not_a_fit', '2026-11-11T00:00:00.000Z')`);
+  const csv = await exportTableCsv(source, "contacts");
+  const header = csv.split("\r\n")[0] ?? "";
+  assert.match(header, /(^|,)lead_status,lead_status_at(,|$)/);
+  const target = await createTestDb();
+  const plan = planImport(csv, [], { asLeads: false, allowDuplicates: false, fieldDefs: [] });
+  assert.deepEqual(plan.skipped, []);
+  const input = importChange(plan, [], NOW);
+  assert.ok(input);
+  runFile(target, renderImport(input, NOW).sql);
+  const byEmail = Object.fromEntries((await contacts(target)).map((row) => [row.email, row.lead_status]));
+  assert.deepEqual(byEmail, {
+    "avery@example.com": "contacted",
+    "blake@example.com": null,
+    "cam@example.com": "not_a_fit",
+  });
+});
+
+test("the JSON export carries lead_status, lead_status_at and the rule firings' contact_id", async () => {
+  const db = await createTestDb();
+  db.exec(`INSERT INTO contacts (id, name, untrusted_fields, lead_status, lead_status_at)
+    VALUES ('ct_a', 'Avery Lead', '[]', 'new', '2026-11-10T00:00:00.000Z')`);
+  const full = await exportAll(db, NOW);
+  assert.equal(full.tables.contacts[0]?.lead_status, "new");
+  assert.equal(full.tables.contacts[0]?.lead_status_at, "2026-11-10T00:00:00.000Z");
+  const firings = (await exportTableCsv(db, "rule_firings")).split("\r\n")[0] ?? "";
+  assert.match(firings, /(^|,)contact_id(,|$)/);
+  assert.match((await exportTableCsv(db, "contacts")).split("\r\n")[0] ?? "", /lead_status_at/);
 });
 
 test("nothing to import is no change at all", async () => {

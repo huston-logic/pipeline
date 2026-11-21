@@ -2,8 +2,15 @@
 // file (matched by email, ignoring case), and which are skipped and why. Nothing is written here; the import script
 // shows this plan as a dry run, and only `--apply` turns it into one audited change (src/import/change.ts).
 // Every imported value is outside text: the change lists it in the contact's untrusted_fields.
+// Leads (decision 0022): `asLeads` gives created rows the status New; a `lead_status` column is used only when it is
+// exactly a status key or label; a column named like a contact custom field fills that field on created rows; and
+// a leads import skips people who look like ones already on file (no email, same business) unless told not to.
+import type { FieldDefRow } from "../db/db.ts";
 import { parseCsvRecords } from "../http/csv.ts";
 import { UserError } from "../services/errors.ts";
+import { validateFieldValues } from "../services/fields.ts";
+import { businessKey } from "../services/lead-change.ts";
+import { type LeadStatus, leadStatusFromText } from "../services/lead-status.ts";
 
 export const IMPORT_COLUMNS = ["name", "email", "phone", "business", "source", "notes"] as const;
 export type ImportColumn = (typeof IMPORT_COLUMNS)[number];
@@ -33,8 +40,32 @@ export type ExistingContact = {
 
 export type ImportValues = { name: string } & { [K in Exclude<ImportColumn, "name">]: string | null };
 
+/** The header that names the optional status column. */
+export const STATUS_COLUMN = "lead_status";
+
 export interface CreateRow extends ImportValues {
   line: number;
+  /** The status the new contact starts with; null for a contact who is not a lead. */
+  leadStatus: LeadStatus | null;
+  /** Custom field values by field key, for the contact fields the file has columns for. */
+  fields: Record<string, string | number>;
+}
+
+export interface ImportOptions {
+  /** Created rows become leads: New, unless a lead_status column says otherwise. */
+  asLeads: boolean;
+  /** Create rows that look like someone already on file (leads imports only). */
+  allowDuplicates: boolean;
+  fieldDefs: readonly FieldDefRow[];
+}
+
+const NO_OPTIONS: ImportOptions = { asLeads: false, allowDuplicates: false, fieldDefs: [] };
+
+/** A row left out because it may be a person already on file: the existing contact's id or an earlier line. */
+export interface DuplicateRow {
+  line: number;
+  ofId: string | null;
+  ofLine: number | null;
 }
 
 export interface MergeRow {
@@ -49,6 +80,8 @@ export interface ImportPlan {
   /** Rows matching a contact whose fields are all set already. */
   unchanged: { line: number; id: string }[];
   skipped: { line: number; reason: string }[];
+  /** Possible duplicates left out of `create`; always empty unless the import is as leads. */
+  duplicates: DuplicateRow[];
   /** Header names that are not imported. */
   skippedColumns: string[];
 }
@@ -68,20 +101,46 @@ function cleanValue(column: ImportColumn, raw: string): string | null {
   return value === "" ? null : value;
 }
 
-function readHeader(fields: string[]): { columns: Map<ImportColumn, number>; skippedColumns: string[] } {
+interface Header {
+  columns: Map<ImportColumn, number>;
+  status: number | undefined;
+  /** Column index by custom field, for the contact fields (not archived) the file has columns for. */
+  fieldColumns: { def: FieldDefRow; header: string; index: number }[];
+  skippedColumns: string[];
+}
+
+function readHeader(fields: string[], fieldDefs: readonly FieldDefRow[]): Header {
   const columns = new Map<ImportColumn, number>();
+  const fieldColumns: Header["fieldColumns"] = [];
   const skippedColumns: string[] = [];
+  let status: number | undefined;
+  const twice = (name: string) =>
+    new UserError(`The header row names "${name}" twice. Keep one column of each name and try again.`);
   fields.forEach((field, index) => {
     const name = field.trim();
     const key = name.toLowerCase();
     const known = IMPORT_COLUMNS.find((column) => column === key);
     if (known === undefined) {
-      if (name !== "") skippedColumns.push(name);
+      if (key === STATUS_COLUMN) {
+        if (status !== undefined) throw twice(STATUS_COLUMN);
+        status = index;
+        return;
+      }
+      const def = fieldDefs.find(
+        (candidate) =>
+          candidate.entity === "contact" &&
+          candidate.archived === 0 &&
+          (candidate.key.toLowerCase() === key || candidate.label.trim().toLowerCase() === key),
+      );
+      if (def) {
+        if (fieldColumns.some((column) => column.def.key === def.key)) throw twice(def.key);
+        fieldColumns.push({ def, header: name, index });
+      } else if (name !== "") {
+        skippedColumns.push(name);
+      }
       return;
     }
-    if (columns.has(known)) {
-      throw new UserError(`The header row names "${known}" twice. Keep one column of each name and try again.`);
-    }
+    if (columns.has(known)) throw twice(known);
     columns.set(known, index);
   });
   if (!columns.has("name")) {
@@ -90,18 +149,43 @@ function readHeader(fields: string[]): { columns: Map<ImportColumn, number>; ski
         "Add one and try again.",
     );
   }
-  return { columns, skippedColumns };
+  return { columns, status, fieldColumns, skippedColumns };
 }
 
-export function planImport(csvText: string, existing: readonly ExistingContact[]): ImportPlan {
+function fieldProblem(def: FieldDefRow): string {
+  switch (def.type) {
+    case "number":
+      return "needs a number";
+    case "date":
+      return "needs a date like 2026-11-19";
+    case "choice":
+      return `needs one of: ${(JSON.parse(def.choices ?? "[]") as string[]).join(", ")}`;
+    case "text":
+      return "is too long for that field";
+  }
+}
+
+const NUMBER = /^-?\d+(\.\d+)?$/;
+
+export function planImport(
+  csvText: string,
+  existing: readonly ExistingContact[],
+  options: ImportOptions = NO_OPTIONS,
+): ImportPlan {
   const [header, ...records] = parseCsvRecords(csvText);
   if (!header) throw new UserError("The CSV file is empty. Export your contacts with a header row and try again.");
-  const { columns, skippedColumns } = readHeader(header.fields);
+  const { columns, status, fieldColumns, skippedColumns } = readHeader(header.fields, options.fieldDefs);
 
   const byEmail = new Map<string, ExistingContact>();
-  for (const contact of existing) if (contact.email) byEmail.set(contact.email.trim().toLowerCase(), contact);
+  const byBusiness = new Map<string, ExistingContact>();
+  for (const contact of existing) {
+    if (contact.email) byEmail.set(contact.email.trim().toLowerCase(), contact);
+    const business = businessKey(contact.business);
+    if (business !== "" && !byBusiness.has(business)) byBusiness.set(business, contact);
+  }
   const seenEmails = new Map<string, number>();
-  const plan: ImportPlan = { create: [], merge: [], unchanged: [], skipped: [], skippedColumns };
+  const seenBusinesses = new Map<string, number>();
+  const plan: ImportPlan = { create: [], merge: [], unchanged: [], skipped: [], duplicates: [], skippedColumns };
 
   for (const { line, fields } of records) {
     const values = Object.fromEntries(
@@ -124,6 +208,35 @@ export function planImport(csvText: string, existing: readonly ExistingContact[]
     const { name, email } = values;
     if (name === null) {
       skip("no name");
+      continue;
+    }
+    let leadStatus: LeadStatus | null = options.asLeads ? "new" : null;
+    if (status !== undefined) {
+      const text = cleanValue("source", fields[status] ?? "");
+      if (text !== null) {
+        leadStatus = leadStatusFromText(text);
+        if (leadStatus === null) {
+          skip(`${STATUS_COLUMN} isn't a lead status. Use new, contacted, not_now, not_a_fit, bad or qualified (or the same in words).`);
+          continue;
+        }
+      }
+    }
+    const custom: CreateRow["fields"] = {};
+    let badColumn: string | null = null;
+    for (const { def, header: columnName, index } of fieldColumns) {
+      const text = cleanValue("source", fields[index] ?? "");
+      if (text === null) continue;
+      const value = def.type === "number" && NUMBER.test(text) ? Number(text) : text;
+      try {
+        validateFieldValues([def], "contact", { [def.key]: value });
+      } catch {
+        badColumn = `the "${columnName}" column ${fieldProblem(def)}`;
+        break;
+      }
+      custom[def.key] = value;
+    }
+    if (badColumn !== null) {
+      skip(badColumn);
       continue;
     }
     if (email !== null) {
@@ -151,7 +264,21 @@ export function planImport(csvText: string, existing: readonly ExistingContact[]
         continue;
       }
     }
-    plan.create.push({ line, ...values, name });
+    const business = businessKey(values.business);
+    if (email === null && options.asLeads && !options.allowDuplicates && business !== "") {
+      const onFile = byBusiness.get(business);
+      const earlier = seenBusinesses.get(business);
+      if (onFile) {
+        plan.duplicates.push({ line, ofId: onFile.id, ofLine: null });
+        continue;
+      }
+      if (earlier !== undefined) {
+        plan.duplicates.push({ line, ofId: null, ofLine: earlier });
+        continue;
+      }
+    }
+    if (business !== "" && !seenBusinesses.has(business)) seenBusinesses.set(business, line);
+    plan.create.push({ line, ...values, name, leadStatus, fields: custom });
   }
   return plan;
 }

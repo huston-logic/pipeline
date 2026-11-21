@@ -14,6 +14,7 @@ import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { composeBrief } from "../src/brief/compose.ts";
 import { nextPart } from "../src/services/describe.ts";
+import { TEXT_DATA } from "../src/services/lead-change.ts";
 import { addDays, dayBoundsUtc, DEFAULT_TZ, formatLocal, localDate, zonedToUtc } from "../src/time.ts";
 
 export type SqlValue = string | number | null;
@@ -179,9 +180,65 @@ export function devSeed(now: Date, tz: string): DevSeed {
     }),
   ];
 
+  // Leads (decision 0022): people the firm means to approach, one of each kind of status. Only the contacts have
+  // `lead_status`; the other 18 people stay as they were.
+  const lead = (
+    n: number,
+    name: string,
+    email: string,
+    business: string,
+    source: string,
+    status: string,
+    statusDaysAgo: number,
+    createdDaysAgo: number,
+    extra: Row = {},
+  ): Row => ({
+    id: `ct_lead${n2(n)}`,
+    name,
+    email,
+    phone: `555-01${20 + n}`,
+    business,
+    source,
+    notes: null,
+    fields: "{}",
+    untrusted_fields: "[]",
+    archived: 0,
+    version: 1,
+    created_at: day(-createdDaysAgo, "10:00"),
+    updated_at: day(-statusDaysAgo, "10:00"),
+    lead_status: status,
+    lead_status_at: day(-statusDaysAgo, "10:00"),
+    ...extra,
+  });
+  contacts.push(
+    lead(1, "Wren Calloway", "wren.calloway@example.com", "Bluebird Bakery", "trade show", "new", 2, 2),
+    // Came in through a CSV import: the import's text is outside text.
+    lead(2, "Theo Marsh", "theo.marsh@example.net", "Marsh & Daughters Plumbing", "import", "new", 3, 3, {
+      untrusted_fields: '["name","email","phone","business","source"]',
+    }),
+    lead(3, "Imani Okoye", "imani.okoye@example.org", "Greenleaf Daycare", "referral", "contacted", 6, 8, { version: 2 }),
+    lead(4, "Dev Patel-Shaw", "dev.patelshaw@example.com", "Ridgeline Climbing Gym", "cold outreach", "contacted", 12, 12),
+    lead(5, "Noor Haddad", "noor.haddad@example.org", "Eastside Food Pantry", "neighbour referral", "contacted", 4, 6),
+    lead(6, "Colin Reyes", "colin.reyes@example.net", "Reyes Auto Body", "phone call", "not_now", 9, 14, {
+      version: 3,
+    }),
+    lead(7, "Priscilla Voss", "priscilla.voss@example.com", "Voss Family Orchard", "website visit", "new", 40, 40),
+    lead(8, "Hector Alvarez", "hector.alvarez@example.org", "Alvarez Tile & Stone", "trade show", "not_a_fit", 20, 24),
+    lead(9, "Lena Fischer", "lena.fischer@example.net", "Fischer Print Shop", "referral", "bad", 30, 30, {
+      notes: "Phone disconnected; the shop has closed.",
+    }),
+    lead(10, "Omar Rashid", "omar.rashid@example.com", "Rashid Mobile Detailing", "referral", "not_now", 15, 20),
+    lead(11, "Sasha Lindgren", "sasha.lindgren@example.org", "Lindgren Landscape Design", "chamber directory", "contacted", 7, 9),
+    lead(12, "Gwen Ashby", "gwen.ashby@example.net", "Ashby Veterinary Hospital", "referral", "qualified", 3, 10, {
+      version: 3,
+    }),
+  );
+
+  /** A contact id: a number is a ct_seedNN person, a string is the id itself (a lead). */
+  const cid = (contact: number | string) => (typeof contact === "string" ? contact : `ct_seed${n2(contact)}`);
   type DealSpec = {
     n: number;
-    contact: number;
+    contact: number | string;
     title: string;
     stage: string;
     value: number | null;
@@ -209,9 +266,11 @@ export function devSeed(now: Date, tz: string): DevSeed {
     { n: 18, contact: 18, title: "Leaning timber retaining wall behind a deck", stage: "replied", value: 950, created: day(-5, "18:00"), extra: { fields: '{"project_type":"Residential"}' } },
     { n: 19, contact: 7, title: "Seismic retrofit of storage building C", stage: "call_booked", value: 18000, created: day(-8, "10:00"), extra: { next_step: "Site visit for building C", next_at: day(6, "10:00"), fields: '{"project_type":"Commercial"}' } },
     { n: 20, contact: 4, title: "Taproom mezzanine", stage: "won", value: 4400, created: day(-60, "11:00"), extra: { fields: '{"project_type":"Commercial"}' } },
+    // Gwen Ashby, qualified from a lead (change 19): a deal with no activity of its own yet.
+    { n: 21, contact: "ct_lead12", title: "Equipment mezzanine for a surgery suite", stage: "new_inquiry", value: 6500, created: day(-3, "10:00") },
   ];
 
-  type ActivitySpec = { deal: number | null; contact?: number; type: string; summary: string; at: string; extra?: Row };
+  type ActivitySpec = { deal: number | null; contact?: number | string; type: string; summary: string; at: string; extra?: Row };
   const move = (deal: number, from: string, to: string, at: string, actor = "owner"): ActivitySpec => ({
     deal,
     type: "stage_change",
@@ -300,13 +359,22 @@ export function devSeed(now: Date, tz: string): DevSeed {
     said(20, "email", "Elena asked about a mezzanine for the taproom.", day(-60, "11:00")),
     said(20, "call", "Elena approved the taproom mezzanine.", day(-45, "11:00")),
     move(20, "proposal_sent", "won", day(-45, "11:05")),
+    // The leads' history. A text is logged as a note whose data says so (decision 0022); a plain note is not contact.
+    { deal: null, contact: "ct_lead03", type: "note", summary: "Texted Imani about a walkthrough of the daycare's play structure.", at: day(-6, "10:00"), extra: { data: TEXT_DATA } },
+    { deal: null, contact: "ct_lead04", type: "call", summary: "Called the gym and left a voicemail about the climbing wall anchors.", at: day(-12, "10:00") },
+    { deal: null, contact: "ct_lead05", type: "email", summary: "Sent a short intro about free seismic checks for small nonprofits.", at: day(-4, "10:00") },
+    { deal: null, contact: "ct_lead06", type: "call", summary: "Colin said to try again in the spring, after the busy season.", at: day(-10, "11:00") },
+    { deal: null, contact: "ct_lead08", type: "note", summary: "Does only cosmetic tile work; no structural need.", at: day(-20, "10:00") },
+    { deal: null, contact: "ct_lead10", type: "email", summary: "Omar likes the idea but wants to wait until after the busy season.", at: day(-16, "10:00") },
+    { deal: null, contact: "ct_lead11", type: "note", summary: "Found in the chamber of commerce directory. Does a lot of retaining walls.", at: day(-9, "10:00") },
+    { deal: null, contact: "ct_lead12", type: "email", summary: "Gwen asked about a mezzanine for the surgery suite.", at: day(-5, "09:00") },
   ];
 
   const dealContact = new Map(dealSpecs.map((d) => [d.n, d.contact]));
   const activities: Row[] = activitySpecs.map((spec, i) => ({
     id: `ac_seed${n2(i + 1)}`,
     deal_id: spec.deal === null ? null : `dl_seed${n2(spec.deal)}`,
-    contact_id: `ct_seed${n2(spec.contact ?? dealContact.get(spec.deal ?? 0) ?? 0)}`,
+    contact_id: cid(spec.contact ?? dealContact.get(spec.deal ?? 0) ?? 0),
     type: spec.type,
     summary: spec.summary,
     untrusted_text: null,
@@ -328,7 +396,7 @@ export function devSeed(now: Date, tz: string): DevSeed {
     const last = contactTimes.at(-1) ?? null;
     return {
       id,
-      contact_id: `ct_seed${n2(spec.contact)}`,
+      contact_id: cid(spec.contact),
       title: spec.title,
       stage_key: spec.stage,
       value: spec.value,
@@ -347,10 +415,10 @@ export function devSeed(now: Date, tz: string): DevSeed {
     };
   });
 
-  const task = (n: number, where: { deal?: number; contact?: number }, title: string, dueAt: string | null, created: string, extra: Row = {}): Row => ({
+  const task = (n: number, where: { deal?: number; contact?: number | string }, title: string, dueAt: string | null, created: string, extra: Row = {}): Row => ({
     id: `tk_seed${n2(n)}`,
     deal_id: where.deal === undefined ? null : `dl_seed${n2(where.deal)}`,
-    contact_id: `ct_seed${n2(where.contact ?? dealContact.get(where.deal ?? 0) ?? 0)}`,
+    contact_id: cid(where.contact ?? dealContact.get(where.deal ?? 0) ?? 0),
     title,
     due_at: dueAt,
     done_at: null,
@@ -386,6 +454,10 @@ export function devSeed(now: Date, tz: string): DevSeed {
       done_at: day(-22, "11:00"),
       updated_at: day(-22, "11:00"),
     }),
+    // A lead's next step is a task on the person. Set to Not now with a follow-up date, so Check back is future;
+    // the other came due two days ago.
+    task(12, { contact: "ct_lead06" }, "Check back with Colin Reyes", day(10, "09:00"), day(-9, "10:00")),
+    task(13, { contact: "ct_lead10" }, "Check back with Omar Rashid", day(-2, "09:00"), day(-15, "10:00")),
   ];
 
   const rules: Row[] = [
@@ -410,6 +482,17 @@ export function devSeed(now: Date, tz: string): DevSeed {
       version: 2,
       created_at: day(-20, "09:05"),
       updated_at: day(-19, "09:00"),
+    },
+    {
+      id: "ru_seed03",
+      type: "lead_followup",
+      params: '{"type":"lead_followup","status":"contacted","days":5}',
+      description: "When a lead has been Contacted for 5 days with no contact logged, add a follow-up task.",
+      active: 1,
+      created_by: "owner",
+      version: 1,
+      created_at: day(-18, "09:00"),
+      updated_at: day(-18, "09:00"),
     },
   ];
 
@@ -577,6 +660,36 @@ export function devSeed(now: Date, tz: string): DevSeed {
   change(13, day(-6, "10:05"), "ai", "update_deal", ["deals", "dl_seed04"], `Moved ${dealLabel("dl_seed04")} to Call booked`, [
     { table: "deals", id: "dl_seed04", before: { ...elenaBooked, stage_key: "new_inquiry", stage_entered_at: String(elena.created_at), version: 1, updated_at: String(elena.created_at) }, after: elenaBooked },
     { table: "activities", id: String(elenaMove.id), before: null, after: elenaMove },
+  ]);
+
+  // The leads. Each of these is still the newest change on its rows, so undo takes it back; nothing else was done to
+  // these rows since (no later activity or task depends on what a change added).
+  change(14, day(-18, "09:00"), "owner", "add_rule", ["rules", "ru_seed03"], `Added rule ru_seed03: ${R("ru_seed03").description}`, [
+    { table: "rules", id: "ru_seed03", before: null, after: R("ru_seed03") },
+  ]);
+  const wren = C("ct_lead01");
+  change(15, day(-2, "10:00"), "owner", "add_lead", ["contacts", "ct_lead01"], `Added lead ${wren.name} (New), from ${wren.source}`, [
+    { table: "contacts", id: "ct_lead01", before: null, after: wren },
+  ]);
+  // The import's summary counts only; it never quotes the file.
+  change(16, day(-3, "10:00"), "owner", "import", ["contacts", "ct_lead02"], "Imported 1 contact and filled details on 0", [
+    { table: "contacts", id: "ct_lead02", before: null, after: C("ct_lead02") },
+  ]);
+  const imani = C("ct_lead03");
+  const imaniText = activityOf("text to ct_lead03", (a) => a.contact_id === "ct_lead03");
+  change(17, day(-6, "10:00"), "owner", "log_activity", ["activities", String(imaniText.id)], `Logged a note on ${imani.name}: ${imaniText.summary}; moved to Contacted`, [
+    { table: "activities", id: String(imaniText.id), before: null, after: imaniText },
+    { table: "contacts", id: "ct_lead03", before: earlier(imani, { lead_status: "new", lead_status_at: String(imani.created_at), updated_at: String(imani.created_at) }), after: imani },
+  ]);
+  const colin = C("ct_lead06");
+  change(18, day(-9, "10:00"), "owner", "update_contact", ["contacts", "ct_lead06"], `Updated ${colin.name}: lead status to Not now; added task "${T("tk_seed12").title}", due ${formatLocal(day(10, "09:00"), tz)}`, [
+    { table: "contacts", id: "ct_lead06", before: earlier(colin, { lead_status: "contacted", lead_status_at: day(-10, "11:00"), updated_at: day(-10, "11:00") }), after: colin },
+    { table: "tasks", id: "tk_seed12", before: null, after: T("tk_seed12") },
+  ]);
+  const gwen = C("ct_lead12");
+  change(19, day(-3, "10:00"), "owner", "qualify_lead", ["contacts", "ct_lead12"], `Qualified ${gwen.name}; added deal "${D("dl_seed21").title}" in New inquiry`, [
+    { table: "contacts", id: "ct_lead12", before: earlier(gwen, { lead_status: "contacted", lead_status_at: day(-5, "09:00"), updated_at: day(-5, "09:00") }), after: gwen },
+    { table: "deals", id: "dl_seed21", before: null, after: D("dl_seed21") },
   ]);
 
   // Yesterday's brief, so the board shows one (with an outside line) and today's is still composed by the cron.

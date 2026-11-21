@@ -28,14 +28,14 @@ export function importChange(plan: ImportPlan, existing: readonly ContactRow[], 
       business: row.business,
       source: row.source,
       notes: row.notes,
-      fields: "{}",
-      untrusted_fields: JSON.stringify(IMPORT_COLUMNS.filter((column) => row[column] !== null)),
+      fields: JSON.stringify(row.fields),
+      untrusted_fields: JSON.stringify([...IMPORT_COLUMNS.filter((column) => row[column] !== null), ...Object.keys(row.fields)]),
       archived: 0,
       version: 1,
       created_at: stamp,
       updated_at: stamp,
-      lead_status: null,
-      lead_status_at: null,
+      lead_status: row.leadStatus,
+      lead_status_at: row.leadStatus === null ? null : stamp,
     };
     changes.push({ table: "contacts", id: contact.id, before: null, after: contact });
   }

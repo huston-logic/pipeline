@@ -38,7 +38,8 @@ async function harness(t: TestContext, csv: string) {
       runFile(db, readFileSync(path, "utf8"));
       return { status: 0, stdout: "", stderr: "" };
     }
-    const { rows } = db.execute(db.prepare("SELECT * FROM contacts ORDER BY rowid"));
+    const sql = cmd[cmd.indexOf("--command") + 1] ?? "";
+    const { rows } = db.execute(db.prepare(sql));
     return { status: 0, stdout: JSON.stringify([{ results: rows, success: true }]), stderr: "" };
   };
   const deps = { run, log: (line: string) => lines.push(line), copiesDir, now: () => NOW };
@@ -63,11 +64,12 @@ test("the default is a dry run: it reads the contacts, shows the plan and writes
   const h = await harness(t, CSV);
   const code = await importContacts(parseImportArgs(["--file", h.file, "--copy", "acme"]), h.deps);
   assert.equal(code, 0);
-  assert.equal(h.calls.length, 1);
+  assert.equal(h.calls.length, 2);
   const cfg = relative(ROOT, join(h.copyDir, "wrangler.jsonc"));
   assert.deepEqual(h.calls[0]?.cmd, [
     "wrangler", "d1", "execute", "DB", "--remote", "-c", cfg, "--json", "--yes", "--command", "SELECT * FROM contacts ORDER BY rowid",
   ]);
+  assert.deepEqual(h.calls[1]?.cmd.slice(-2), ["--command", "SELECT * FROM field_defs ORDER BY rowid"]);
   assert.deepEqual(h.calls[0]?.env, { CLOUDFLARE_ACCOUNT_ID: STUB_ACCOUNT_ID });
   const out = h.lines.join("\n");
   assert.match(out, /1 new contact, 1 filled in, 0 unchanged, 1 skipped/);
@@ -83,8 +85,8 @@ test("--apply writes one audited change through a SQL file, then removes the fil
   const h = await harness(t, CSV);
   const code = await importContacts(parseImportArgs(["--file", h.file, "--copy", "acme", "--apply"]), h.deps);
   assert.equal(code, 0);
-  assert.equal(h.calls.length, 2);
-  const [, apply] = h.calls;
+  assert.equal(h.calls.length, 3);
+  const [, , apply] = h.calls;
   const cfg = relative(ROOT, join(h.copyDir, "wrangler.jsonc"));
   assert.deepEqual(apply?.cmd.slice(0, 7), ["wrangler", "d1", "execute", "DB", "--remote", "-c", cfg]);
   assert.deepEqual(apply?.cmd.slice(7, 8), ["--file"]);
@@ -113,7 +115,14 @@ test("--local reads and writes the local dev database", async (t) => {
 });
 
 test("arguments: --flag=value works; a missing value, a repeat or a value on a switch is refused in plain English", () => {
-  assert.deepEqual(parseImportArgs(["--file=x.csv", "--copy=acme", "--apply"]), { file: "x.csv", copy: "acme", local: false, apply: true });
+  assert.deepEqual(parseImportArgs(["--file=x.csv", "--copy=acme", "--apply"]), {
+    file: "x.csv",
+    copy: "acme",
+    local: false,
+    apply: true,
+    asLeads: false,
+    allowDuplicates: false,
+  });
   const refuse = (argv: string[], pattern: RegExp) => assert.throws(() => parseImportArgs(argv), { message: pattern }, argv.join(" "));
   refuse(["--copy", "acme", "--file"], /^--file needs a value, like --file contacts\.csv\.$/);
   refuse(["--copy", "acme", "--file", "--apply"], /^--file needs a value/);
@@ -124,10 +133,53 @@ test("arguments: --flag=value works; a missing value, a repeat or a value on a s
   refuse(["--file", "x.csv", "--local", "--remote"], /^Unknown option "--remote"\./);
 });
 
+const LEAD_CSV = [
+  "name,email,business,Role,lead_status",
+  "Robin Sample,robin@example.com,Fresh Co,Owner,",
+  "Casey,,Sample Bakery,,",
+  "Jordan,,Fresh Co,,hot",
+].join("\r\n");
+
+test("--as leads: the dry run lists possible duplicates by line and id only, then --apply creates New leads", async (t) => {
+  const h = await harness(t, LEAD_CSV);
+  h.db.exec(`UPDATE contacts SET business = 'sample bakery' WHERE id = 'ct_pat'`);
+  h.db.exec(`INSERT INTO field_defs (id, entity, key, label, type, archived, version, created_at, updated_at)
+    VALUES ('fd_1', 'contact', 'role', 'Role', 'text', 0, 1, '2026-11-01T00:00:00.000Z', '2026-11-01T00:00:00.000Z')`);
+  const dry = parseImportArgs(["--file", h.file, "--copy", "acme", "--as", "leads"]);
+  assert.equal(dry.asLeads, true);
+  await importContacts(dry, h.deps);
+  const out = h.lines.join("\n");
+  assert.match(out, /1 new contact, 0 filled in, 0 unchanged, 1 skipped, 1 possible duplicate/);
+  assert.match(out, /line 3: possible duplicate of contact ct_pat/);
+  assert.doesNotMatch(out, /Casey.*ct_pat|Sample Bakery/);
+  assert.match(out, /line 4: lead_status isn't a lead status/);
+  assert.equal(await h.db.prepare("SELECT COUNT(*) AS n FROM audit_log").first("n"), 0);
+
+  const apply = await harness(t, LEAD_CSV);
+  apply.db.exec(`UPDATE contacts SET business = 'sample bakery' WHERE id = 'ct_pat'`);
+  apply.db.exec(`INSERT INTO field_defs (id, entity, key, label, type, archived, version, created_at, updated_at)
+    VALUES ('fd_1', 'contact', 'role', 'Role', 'text', 0, 1, '2026-11-01T00:00:00.000Z', '2026-11-01T00:00:00.000Z')`);
+  const both = parseImportArgs(["--file", apply.file, "--copy", "acme", "--as", "leads", "--allow-duplicates", "--apply"]);
+  assert.equal(both.allowDuplicates, true);
+  await importContacts(both, apply.deps);
+  const rows = (await apply.db.prepare("SELECT name, lead_status, fields FROM contacts WHERE id <> 'ct_pat' ORDER BY rowid").all<{
+    name: string;
+    lead_status: string | null;
+    fields: string;
+  }>()).results;
+  assert.deepEqual(rows.map((r) => [r.name, r.lead_status]), [["Robin Sample", "new"], ["Casey", "new"]]);
+  assert.equal(rows[0]?.fields, '{"role":"Owner"}');
+});
+
+test("an unknown --as value is refused in plain English", () => {
+  assert.throws(() => parseImportArgs(["--file", "x.csv", "--local", "--as", "deals"]), { message: /^--as can only be "leads"/ });
+  assert.throws(() => parseImportArgs(["--file", "x.csv", "--local", "--as"]), /--as needs a value/);
+});
+
 test("nothing to import writes nothing, and bad arguments say how to fix them", async (t) => {
   const h = await harness(t, "name,email\r\nPat,pat@example.com\r\n");
   assert.equal(await importContacts(parseImportArgs(["--file", h.file, "--copy", "acme", "--apply"]), h.deps), 0);
-  assert.equal(h.calls.length, 1);
+  assert.equal(h.calls.length, 2);
   assert.ok(h.lines.some((line) => line === "Nothing to import: no new contacts and no details to fill in."));
 
   assert.throws(() => parseImportArgs(["--copy", "acme"]), /--file/);

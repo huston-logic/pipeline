@@ -4,7 +4,7 @@
 // The two deal pages and the contact page are fixed ids from the fake seed (scripts/seed-dev.ts): dl_seed02 came in
 // through the website form, so its page shows outside text; ct_seed07 has an open and a won deal. The form pages
 // (decision 0018) are New lead, editing the form lead's contact (ct_seed02, outside values labelled), a new deal for
-// ct_seed07 and editing dl_seed01.
+// ct_seed07 and editing dl_seed01. ct_lead03 is a Contacted lead (decision 0029).
 
 export type IconName = "today" | "pipeline" | "contacts" | "brief" | "more" | "rules" | "changes" | "export" | "notifications";
 
@@ -28,6 +28,7 @@ export const boardRoutes: string[] = [
   "/deals/dl_seed01",
   "/deals/dl_seed02",
   "/contacts/ct_seed07",
+  "/contacts/ct_lead03",
   "/leads/new",
   "/contacts/ct_seed02/edit",
   "/contacts/ct_seed07/deals/new",

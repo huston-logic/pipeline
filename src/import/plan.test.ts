@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import type { FieldDefRow } from "../db/db.ts";
 import { type ExistingContact, IMPORT_LIMITS, planImport } from "./plan.ts";
 
 const pat: ExistingContact = {
@@ -15,7 +16,17 @@ test("a header row is required: names columns case-insensitively and lists unkno
   const plan = planImport("Name,EMAIL, Phone ,Favourite colour,notes\r\nRobin Sample,robin@example.com,555 0100,blue,hi\r\n", []);
   assert.deepEqual(plan.skippedColumns, ["Favourite colour"]);
   assert.deepEqual(plan.create, [
-    { line: 2, name: "Robin Sample", email: "robin@example.com", phone: "555 0100", business: null, source: null, notes: "hi" },
+    {
+      line: 2,
+      name: "Robin Sample",
+      email: "robin@example.com",
+      phone: "555 0100",
+      business: null,
+      source: null,
+      notes: "hi",
+      leadStatus: null,
+      fields: {},
+    },
   ]);
   assert.throws(() => planImport("", []), /empty/);
   assert.throws(() => planImport("Robin Sample,robin@example.com\r\n", []), /header row/);
@@ -102,4 +113,99 @@ test("single-line fields lose line breaks and control characters; notes keep the
 
 test("an unclosed quote stops the import with a plain message", () => {
   assert.throws(() => planImport('name\r\n"open', []), /quote/);
+});
+
+const defs = (rows: Partial<FieldDefRow>[]): FieldDefRow[] =>
+  rows.map((row, i) => ({
+    id: `fd_${i}`,
+    entity: "contact",
+    key: "role",
+    label: "Role",
+    type: "text",
+    choices: null,
+    archived: 0,
+    version: 1,
+    created_at: "2026-11-01T00:00:00.000Z",
+    updated_at: "2026-11-01T00:00:00.000Z",
+    ...row,
+  }));
+const LEADS = { asLeads: true, allowDuplicates: false, fieldDefs: [] as FieldDefRow[] };
+
+test("--as leads: created rows are New; without it no status is set", () => {
+  const csv = "name,email\r\nRobin Sample,robin@example.com\r\n";
+  assert.equal(planImport(csv, [], LEADS).create[0]?.leadStatus, "new");
+  assert.equal(planImport(csv, []).create[0]?.leadStatus, null);
+});
+
+test("a lead_status column is used only when it is exactly a key or a label; otherwise the row is skipped", () => {
+  const csv = [
+    "name,email,lead_status",
+    "A One,a@example.com,contacted",
+    "B Two,b@example.com, Not a fit ",
+    "C Three,c@example.com,Contacted!",
+    "D Four,d@example.com,hot",
+    "E Five,e@example.com,",
+  ].join("\r\n");
+  const plan = planImport(csv, [], LEADS);
+  assert.deepEqual(
+    plan.create.map((row) => [row.name, row.leadStatus]),
+    [["A One", "contacted"], ["B Two", "not_a_fit"], ["E Five", "new"]],
+  );
+  assert.deepEqual(plan.skipped.map((row) => row.line), [4, 5]);
+  assert.match(plan.skipped[0]?.reason ?? "", /^lead_status isn't a lead status/);
+  assert.doesNotMatch(JSON.stringify(plan.skipped), /hot|Contacted!/, "outside text is not repeated");
+  const without = planImport(csv.replace("C Three,c@example.com,Contacted!\r\nD Four,d@example.com,hot\r\n", ""), []);
+  assert.ok(!without.skippedColumns.includes("lead_status"), "the column counts as imported without --as leads too");
+  assert.deepEqual(without.create.map((row) => row.leadStatus), ["contacted", "not_a_fit", null]);
+});
+
+test("a merge never changes a person's status", () => {
+  const plan = planImport("name,email,lead_status,phone\r\nPat,pat@example.com,bad,555 0101\r\n", [pat], LEADS);
+  assert.deepEqual(plan.merge, [{ id: "ct_pat", line: 2, changes: { phone: "555 0101" } }]);
+  assert.deepEqual(plan.create, []);
+});
+
+test("a column named like a contact field, by key or by label, fills that field; archived and deal fields do not", () => {
+  const fieldDefs = defs([
+    { key: "role", label: "Job title" },
+    { key: "size", label: "Team size", type: "number" },
+    { key: "old", label: "Old", archived: 1 },
+    { key: "stage_note", label: "Deal note", entity: "deal" },
+  ]);
+  const csv = "name,ROLE,team size,Old,Deal note\r\nA One,Owner,4,x,y\r\nB Two,,,,\r\n";
+  const plan = planImport(csv, [], { ...LEADS, fieldDefs });
+  assert.deepEqual(plan.create[0]?.fields, { role: "Owner", size: 4 });
+  assert.deepEqual(plan.create[1]?.fields, {});
+  assert.deepEqual(plan.skippedColumns, ["Old", "Deal note"]);
+  const byLabel = planImport("name,Job Title\r\nA One,Owner\r\n", [], { ...LEADS, fieldDefs });
+  assert.deepEqual(byLabel.create[0]?.fields, { role: "Owner" });
+});
+
+test("a value that does not fit its field skips the row, naming the column and not the value", () => {
+  const fieldDefs = defs([{ key: "size", label: "Team size", type: "number" }]);
+  const plan = planImport("name,Team size\r\nA One,lots\r\nB Two,5\r\n", [], { ...LEADS, fieldDefs });
+  assert.deepEqual(plan.skipped, [{ line: 2, reason: 'the "Team size" column needs a number' }]);
+  assert.deepEqual(plan.create.map((row) => row.name), ["B Two"]);
+  assert.throws(() => planImport("name,Role,role\r\nA,b,c\r\n", [], { ...LEADS, fieldDefs: defs([{}]) }), /twice/);
+});
+
+test("possible duplicates (no email, same business as someone on file or an earlier row) are listed and skipped unless allowed", () => {
+  const csv = [
+    "name,email,business",
+    "A One,,  sample   BAKERY ",
+    "B Two,,Fresh Co",
+    "C Three,,fresh co",
+    "D Four,d@example.com,Sample Bakery",
+    "E Five,,",
+  ].join("\r\n");
+  const plan = planImport(csv, [pat], LEADS);
+  assert.deepEqual(plan.duplicates, [
+    { line: 2, ofId: "ct_pat", ofLine: null },
+    { line: 4, ofId: null, ofLine: 3 },
+  ]);
+  assert.deepEqual(plan.create.map((row) => row.line), [3, 5, 6]);
+  const allowed = planImport(csv, [pat], { ...LEADS, allowDuplicates: true });
+  assert.deepEqual(allowed.duplicates, []);
+  assert.deepEqual(allowed.create.map((row) => row.line), [2, 3, 4, 5, 6]);
+  assert.deepEqual(planImport(csv, [pat]).duplicates, [], "only a leads import looks for duplicates");
 });
