@@ -26,7 +26,9 @@ inputs and a few edge cases open.
 - **The same status again.** When the person already has the status asked for (possible only with a closed deal),
   their row is left alone, as `update_contact` does (0023).
 - **Invariant 1 in the batch.** `return_to_lead` checks for another open deal before writing and again inside the
-  batch (a `write_guard` row), so an open deal added at the same moment makes it fail as a stale write.
+  batch (a `write_guard` row). When a guard trips and the person now has another open deal, the owner gets the same
+  plain "has another open deal" refusal; any other stale write still says "changed since you read it". A deal whose
+  person is archived is refused, as `qualify_lead` refuses an archived person.
 - **Undo.** No special code: undoing `qualify_lead` deletes the deal, so a later activity or task on it refuses the
   undo (0009's dependents); undoing `return_to_lead` puts the person's row back, so a later change to them (such as a
   new deal qualifying them) refuses it as "changed since". Undo summaries no longer list `lead_status_at`, which only

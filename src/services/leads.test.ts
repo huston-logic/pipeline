@@ -374,7 +374,18 @@ test("returnToLead refuses a Won deal, an archived deal, Qualified, and a person
   );
 });
 
-test("returnToLead fails as a stale write when another open deal is added for the person at the same moment", async () => {
+test("returnToLead refuses a deal whose person is archived", async () => {
+  const db = await openTestDb();
+  const kim = await addDeal(ctxFor(db, "add_deal"), { name: "Kim Example" });
+  await db.prepare("UPDATE contacts SET archived = 1 WHERE id = ?").bind(kim.contactId).run();
+  await assert.rejects(
+    returnToLead(laterCtx(db, "return_to_lead"), { deal: kim.dealId }),
+    /^UserError: Kim Example is archived, so they can't go back to leads\.$/,
+  );
+  assert.equal((await dealRow(db, kim.dealId))?.archived, 0);
+});
+
+test("returnToLead refuses in plain English when another open deal is added for the person at the same moment", async () => {
   const db = await openTestDb();
   const kim = await addDeal(ctxFor(db, "add_deal"), { name: "Kim Example" });
   const rival = racing(db, async () => {
@@ -385,9 +396,22 @@ test("returnToLead fails as a stale write when another open deal is added for th
       .bind(kim.contactId)
       .run();
   });
-  await assert.rejects(returnToLead(laterCtx(rival, "return_to_lead"), { deal: kim.dealId }), /changed since you read it/);
+  await assert.rejects(
+    returnToLead(laterCtx(rival, "return_to_lead"), { deal: kim.dealId }),
+    /^UserError: Kim Example has another open deal, so they can't go back to leads\. Close it first, then try again\.$/,
+  );
   assert.equal((await dealRow(db, kim.dealId))?.archived, 0);
   assert.equal((await contactRow(db, kim.contactId))?.lead_status, null);
+});
+
+test("returnToLead on a deal edited at the same moment still fails as a stale write", async () => {
+  const db = await openTestDb();
+  const kim = await addDeal(ctxFor(db, "add_deal"), { name: "Kim Example" });
+  const rival = racing(db, async () => {
+    await db.prepare("UPDATE deals SET value = 100, version = version + 1 WHERE id = ?").bind(kim.dealId).run();
+  });
+  await assert.rejects(returnToLead(laterCtx(rival, "return_to_lead"), { deal: kim.dealId }), /changed since you read it/);
+  assert.equal((await dealRow(db, kim.dealId))?.archived, 0);
 });
 
 test("undo of returnToLead restores the deal, the task's deal link and the earlier status", async () => {

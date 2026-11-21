@@ -1,10 +1,10 @@
 // add_lead: someone the owner plans to approach, as a person with status New and no deal (decision 0022). Someone who
 // wants something is a deal instead (add-deal.ts). qualify_lead and return_to_lead move a person across the line
 // between leads and deals, each in one change (decisions 0022 and 0024).
-import type { ActivityRow, ContactRow, Db, StageRow, TaskRow } from "../db/db.ts";
+import type { ActivityRow, ContactRow, Db, DealRow, StageRow, TaskRow } from "../db/db.ts";
 import { findContactByEmail, getContact, listStages } from "../db/queries.ts";
 import { newId } from "../ids.ts";
-import { type ChangeResult, commitChange, type Ctx, type RowChange, updatedRow } from "./change.ts";
+import { type ChangeResult, commitChange, type Ctx, type RowChange, StaleWriteError, updatedRow } from "./change.ts";
 import { commitWithEmail } from "./contacts.ts";
 import { dealNoun, newDealRow } from "./deal-row.ts";
 import { capitalize, joinAnd, nextPart } from "./describe.ts";
@@ -233,14 +233,8 @@ export async function returnToLead(ctx: Ctx, input: ReturnInput): Promise<Return
   const contact = await getContact(db, deal.contact_id);
   if (!contact) throw new Error(`Deal ${deal.id} points at a missing contact.`);
   const who = contactName(contact);
-  const others = (await openDealCount(db, contact.id)) - (deal.status === "open" ? 1 : 0);
-  if (others > 0) {
-    throw new UserError(
-      others === 1
-        ? `${capitalize(who)} has another open deal, so they can't go back to leads. Close it first, then try again.`
-        : `${capitalize(who)} has ${others} other open deals, so they can't go back to leads. Close them first, then try again.`,
-    );
-  }
+  if (contact.archived === 1) throw new UserError(`${capitalize(who)} is archived, so they can't go back to leads.`);
+  await refuseOtherOpenDeal(db, contact, deal);
 
   const changes: RowChange[] = [{ table: "deals", id: deal.id, before: deal, after: updatedRow(deal, { archived: 1 }, ctx.now) }];
   const open = await db
@@ -258,11 +252,29 @@ export async function returnToLead(ctx: Ctx, input: ReturnInput): Promise<Return
   const noOpenDeal = db
     .prepare("INSERT INTO write_guard (ok) SELECT COUNT(*) = 0 FROM deals WHERE contact_id = ? AND status = 'open' AND archived = 0")
     .bind(contact.id);
-  const result = await commitChange(ctx, {
-    target: { table: "deals", id: deal.id },
-    summary: `Moved ${who} back to leads (${LEAD_STATUS_LABELS[status]}); archived ${dealNoun(deal)}`,
-    changes,
-    extra: [noOpenDeal],
-  });
-  return { ...result, contactId: contact.id, dealId: deal.id };
+  try {
+    const result = await commitChange(ctx, {
+      target: { table: "deals", id: deal.id },
+      summary: `Moved ${who} back to leads (${LEAD_STATUS_LABELS[status]}); archived ${dealNoun(deal)}`,
+      changes,
+      extra: [noOpenDeal],
+    });
+    return { ...result, contactId: contact.id, dealId: deal.id };
+  } catch (error) {
+    // The guard that tripped may be the open-deal one: then say so, not "changed since".
+    if (error instanceof StaleWriteError) await refuseOtherOpenDeal(db, contact, deal);
+    throw error;
+  }
+}
+
+/** Refuses while the person has an open deal other than this one (invariant 1). */
+async function refuseOtherOpenDeal(db: Db, contact: ContactRow, deal: DealRow): Promise<void> {
+  const others = (await openDealCount(db, contact.id)) - (deal.status === "open" && deal.archived === 0 ? 1 : 0);
+  if (others <= 0) return;
+  const who = capitalize(contactName(contact));
+  throw new UserError(
+    others === 1
+      ? `${who} has another open deal, so they can't go back to leads. Close it first, then try again.`
+      : `${who} has ${others} other open deals, so they can't go back to leads. Close them first, then try again.`,
+  );
 }
