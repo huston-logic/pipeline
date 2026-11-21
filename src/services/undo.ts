@@ -95,6 +95,7 @@ const BOOKKEEPING = new Set([
   "created_at",
   "last_activity_at",
   "stage_entered_at",
+  "lead_status_at",
   "status",
   "untrusted_fields",
 ]);

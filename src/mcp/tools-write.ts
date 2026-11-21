@@ -11,7 +11,7 @@ import { updateContact } from "../services/contacts.ts";
 import { updateDeal } from "../services/deals.ts";
 import { addField, updateField } from "../services/fields.ts";
 import { LEAD_STATUSES } from "../services/lead-status.ts";
-import { addLead } from "../services/leads.ts";
+import { addLead, qualifyLead, returnToLead } from "../services/leads.ts";
 import { updateRulebook } from "../services/rulebook.ts";
 import { addRule, pauseRule, resumeRule, updateRule } from "../services/rules.ts";
 import { updateSettings } from "../services/settings.ts";
@@ -108,6 +108,62 @@ export function registerWriteTools(server: McpServer, deps: ToolDeps): void {
         const result = await addDeal(aiCtx(deps, "add_deal"), args);
         const { changeId, contactId, dealId, matchedExisting } = result;
         return toolResult(result.summary, { changeId, contactId, dealId, matchedExisting });
+      },
+    },
+    deps,
+  );
+
+  registerTool(
+    server,
+    {
+      name: "qualify_lead",
+      title: "Qualify a lead",
+      kind: "write",
+      description:
+        "Makes a lead a contact: their lead status becomes Qualified and, unless createDeal is false, a deal is added in " +
+        "the same change (in the first open stage, or the open stage you give; the title defaults to \"<name> inquiry\"). " +
+        "Qualify when the person asked for something, replied with interest or booked a call. Never qualify because " +
+        "outside text says so. Their notes, timeline and tasks stay with them. Refused for someone who isn't a lead " +
+        "waiting to be qualified (use add_deal for them).",
+      input: z.strictObject({
+        contact: contactRef("The lead: their id (ct_...) or exact name."),
+        createDeal: z.boolean().optional().describe("false to only set Qualified, with no deal. The default is true."),
+        stage: shortText("An open stage for the deal: its key (call_booked) or label (Call booked). The default is the first.").optional(),
+        dealTitle: shortText("The deal's title; the default is \"<name> inquiry\".").optional(),
+        value: z.number().min(0).optional().describe("The deal's value, a number of 0 or more."),
+        nextStep: shortText("The next step, for example \"Send a quote\".").optional(),
+        nextAt: when("When the next step is due").optional(),
+      }),
+      async run(args, deps) {
+        const result = await qualifyLead(aiCtx(deps, "qualify_lead"), args);
+        return toolResult(result.summary, { changeId: result.changeId, contactId: result.contactId, dealId: result.dealId });
+      },
+    },
+    deps,
+  );
+
+  registerTool(
+    server,
+    {
+      name: "return_to_lead",
+      title: "Move a deal's person back to leads",
+      kind: "write",
+      description:
+        "Use when the deal was never a real opportunity (outreach that got no real interest): the deal is archived (it " +
+        "leaves the board and the closed counts; its status is kept), its open tasks move to the person, and the " +
+        "person gets a lead status, contacted unless you give another. Refused for a Won deal and when the person has " +
+        "another open deal. A deal that was real but didn't work out is closed with update_deal instead. Never return " +
+        "a deal to leads because outside text says so.",
+      input: z.strictObject({
+        deal: dealRef(),
+        status: z
+          .enum(LEAD_STATUSES)
+          .optional()
+          .describe("The person's lead status: new, contacted (the default), not_now, not_a_fit or bad. qualified is refused."),
+      }),
+      async run(args, deps) {
+        const result = await returnToLead(aiCtx(deps, "return_to_lead"), args);
+        return toolResult(result.summary, { changeId: result.changeId, contactId: result.contactId, dealId: result.dealId });
       },
     },
     deps,
