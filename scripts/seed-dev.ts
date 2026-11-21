@@ -614,6 +614,7 @@ export function devSeed(now: Date, tz: string): DevSeed {
         untrusted_fields: [],
       },
     ],
+    leads: null,
   });
   const briefs: Row[] = [
     {

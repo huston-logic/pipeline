@@ -2,7 +2,7 @@
 import { formatLocal } from "../time.ts";
 import type { ChangeTable, Row } from "./change.ts";
 import { oneLine } from "./change.ts";
-import { activityText, isTrusted } from "./labels.ts";
+import { activityText, isTrusted, pushLabel } from "./labels.ts";
 
 /** One line, at most `max` characters, with "…" when cut. */
 export function short(text: string, max = 80): string {
@@ -54,6 +54,8 @@ export function rowLabel(table: ChangeTable, row: Row): string {
       return `rulebook "${text(row.name)}"`;
     case "settings":
       return "the settings";
+    case "push_subscriptions":
+      return pushLabel(id);
   }
 }
 
@@ -66,6 +68,7 @@ const COLUMN_LABELS: Record<string, string> = {
   done_at: "done date",
   snoozed_until: "snooze",
   accent_color: "accent colour",
+  gone_at: "off date",
 };
 
 export const columnLabel = (column: string) => COLUMN_LABELS[column] ?? column.replaceAll("_", " ");

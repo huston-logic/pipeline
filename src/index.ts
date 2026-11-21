@@ -15,9 +15,11 @@ import { apiMethodNotAllowed, handleApi, isApiPath, json } from "./http/api.ts";
 import { handleIntake } from "./http/intake.ts";
 import { htmlResponse, textResponse } from "./http/respond.ts";
 import { MCP_ROUTE } from "./mcp/route.ts";
+import { vapidKeys } from "./push/vapid.ts";
 import { withSecurityHeaders } from "./security.ts";
 
 const INTAKE_ROUTE = "/intake";
+const SERVICE_WORKER_PATH = "/sw.js";
 
 // A last path segment with an extension (/board.css, /robots.txt) is a static file in out/.
 const FILE_PATH = /\/[^/]+\.[A-Za-z0-9]+$/;
@@ -137,7 +139,8 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
       // A page that finds no CSRF cookie makes one token for its Set-Cookie and every form on it (decision 0014).
       const cookie = csrfFromCookies(request, csrfMode);
       const csrf = cookie ?? newCsrfToken();
-      const result = await page({ db: env.DB, now: new Date(), url, csrf, emailLogAddress: logAddressOf(env) });
+      const pushKey = vapidKeys(env)?.publicKey ?? null;
+      const result = await page({ db: env.DB, now: new Date(), url, csrf, pushKey, emailLogAddress: logAddressOf(env) });
       const headers: Record<string, string> = cookie === null ? { "Set-Cookie": csrfCookie(csrf, csrfMode) } : {};
       return htmlResponse(result.body, result.status, headers);
     } catch {
@@ -148,7 +151,12 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
 
   if (FILE_PATH.test(pathname)) {
     const asset = await env.ASSETS.fetch(request);
-    if (asset.status !== 404) return withSecurityHeaders(asset);
+    if (asset.status !== 404) {
+      const secured = withSecurityHeaders(asset);
+      // The service worker is checked for a new version on every load, not after a cached copy expires (decision 0030).
+      if (pathname === SERVICE_WORKER_PATH) secured.headers.set("Cache-Control", "no-cache");
+      return secured;
+    }
   }
   return htmlResponse(notFoundPage(), 404);
 }

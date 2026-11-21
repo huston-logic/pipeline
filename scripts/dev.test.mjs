@@ -3,8 +3,10 @@ import { test } from "node:test";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { vapidHeaders, vapidKeys } from "../src/push/vapid.ts";
 import {
   childEnv,
+  devPushVars,
   executeFileArgs,
   migrationArgs,
   parseDevArgs,
@@ -54,6 +56,23 @@ test("extra vars (the e2e tests' own values) come after the fixed ones, each as 
   const args = wranglerDevArgs({ port: 4822, stateDir: ".wrangler/preview-1", extraVars: ["OWNER_EMAILS:owner@example.test"] });
   const vars = args.flatMap((arg, i) => (args[i - 1] === "--var" ? [arg] : []));
   assert.equal(vars.at(-1), "OWNER_EMAILS:owner@example.test");
+});
+
+test("dev and preview get a throwaway push key pair, made in memory per start, that the Worker accepts (decision 0030)", async () => {
+  const first = devPushVars();
+  const second = devPushVars();
+  const names = first.map((v) => v.slice(0, v.indexOf(":")));
+  assert.deepEqual(names, ["VAPID_PUBLIC_KEY", "VAPID_PRIVATE_KEY", "VAPID_SUBJECT"]);
+  assert.notDeepEqual(first, second, "a new pair each start");
+  const env = Object.fromEntries(first.map((v) => [v.slice(0, v.indexOf(":")), v.slice(v.indexOf(":") + 1)]));
+  assert.equal(env.VAPID_SUBJECT, "mailto:dev@example.com");
+  const keys = vapidKeys(env);
+  assert.ok(keys, "well formed");
+  assert.match((await vapidHeaders("https://push.example.net/x", keys, new Date())).Authorization, /^vapid t=/, "the pair signs");
+
+  const args = wranglerDevArgs({ port: 4822, stateDir: ".wrangler/preview-1", extraVars: first });
+  const vars = args.flatMap((arg, i) => (args[i - 1] === "--var" ? [arg] : []));
+  assert.deepEqual(vars.slice(4), first);
 });
 
 test("migrations apply to the local database in the same state folder", () => {

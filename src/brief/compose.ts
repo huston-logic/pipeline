@@ -4,7 +4,7 @@
 // text starts with "[from outside] ".
 import { formatLocal, localDate } from "../time.ts";
 
-export type BriefSection = "overdue" | "due_today" | "gone_quiet" | "new_lead" | "logged_email";
+export type BriefSection = "overdue" | "due_today" | "gone_quiet" | "new_lead" | "leads" | "logged_email";
 
 /** `untrusted_fields` lists which of an item's values came from outside (a form, an import). */
 export interface BriefTask {
@@ -39,6 +39,8 @@ export interface BriefInput {
   tasks: { overdue: BriefTask[]; today: BriefTask[] };
   quietDeals: BriefQuietDeal[];
   newLeads: BriefLead[];
+  /** Open lead counts (decision 0022); null when New, Contacted and Not now are all zero. */
+  leads: { new: number; contacted: number; notNow: number } | null;
   /** Logged emails since the previous brief that matched no one (decision 0031); 0 or missing adds no line. */
   unmatchedEmails?: number;
 }
@@ -79,7 +81,8 @@ export const SECTION_TITLES: Record<BriefSection, string> = {
   overdue: "Overdue",
   due_today: "Due today",
   gone_quiet: "Gone quiet",
-  new_lead: "New leads",
+  new_lead: "New inquiries",
+  leads: "Leads",
   logged_email: "Logged email",
 };
 
@@ -114,20 +117,22 @@ export function composeBrief(input: BriefInput): ComposedBrief {
     const line = `${flat(lead.contactName)}: ${flat(lead.title)}, added ${formatLocal(lead.createdAt, tz)}`;
     add("new_lead", lead.dealId, line, lead.untrusted_fields);
   }
+  const lines = [subject, ""];
+  // "Nothing due" is about the dated sections; the Leads line is a count and follows either way.
+  if (items.length === 0) lines.push("Nothing due today.");
+  if (input.leads !== null) {
+    const { new: fresh, contacted, notNow } = input.leads;
+    const parts = [[fresh, "new"], [contacted, "contacted"], [notNow, "not now"]] as const;
+    add("leads", "leads", parts.filter(([n]) => n > 0).map(([n, word]) => `${n} ${word}`).join(", "), []);
+  }
   // Last: a note about the log itself, not something to act on first. A count only, so never outside text.
   const unmatched = input.unmatchedEmails ?? 0;
   if (unmatched > 0) add("logged_email", LOGGED_EMAIL_ITEM_ID, `${plural(unmatched, "logged email")} matched no one.`, []);
-
-  const lines = [subject, ""];
-  if (items.length === 0) {
-    lines.push("Nothing due today.");
-  } else {
-    for (const section of Object.keys(SECTION_TITLES) as BriefSection[]) {
-      const mine = items.filter((item) => item.section === section);
-      if (mine.length === 0) continue;
-      if (lines.at(-1) !== "") lines.push("");
-      lines.push(SECTION_TITLES[section], ...mine.map(textLine));
-    }
+  for (const section of Object.keys(SECTION_TITLES) as BriefSection[]) {
+    const mine = items.filter((item) => item.section === section);
+    if (mine.length === 0) continue;
+    if (lines.at(-1) !== "") lines.push("");
+    lines.push(SECTION_TITLES[section], ...mine.map(textLine));
   }
   return { localDate: date, subject, lines, text: lines.join("\n"), items };
 }

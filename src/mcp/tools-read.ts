@@ -8,8 +8,10 @@ import { fieldOverview } from "../services/fields.ts";
 import { ownerTimezone } from "../services/lookup.ts";
 import { getSettings } from "../services/settings.ts";
 import { stageOverview } from "../services/stages.ts";
+import { LEAD_SORTS, listLeads } from "../services/leads-read.ts";
+import { LEAD_STATUS_LABELS, LEAD_STATUSES, type LeadStatus } from "../services/lead-status.ts";
 import { getDealBrief, listDealsFiltered, pipelineSummary, recentChanges, searchContacts, whatsDue } from "../services/read.ts";
-import { listRules, previewRuleFor } from "../services/rules.ts";
+import { listRules, previewRuleFor, type RulePreview } from "../services/rules.ts";
 import { formatLocal, parseWhen } from "../time.ts";
 import { toolResult } from "./format.ts";
 import { DEAL_STATUSES, dealRef, FIELD_ENTITIES, RULE_TYPES, ruleRef, ruleSettings, shortText, when } from "./schemas.ts";
@@ -19,6 +21,34 @@ const DAY_MS = 86_400_000;
 
 /** "1 open deal", "3 open deals". */
 export const count = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+
+/** preview_rule's one line: deal rules look back 30 days, a lead rule shows the present (decision 0026). */
+function previewHeadline(preview: RulePreview): string {
+  const times = preview.hits.length;
+  if (preview.scope === "now" && preview.paused) {
+    return (
+      `Rule ${preview.ruleId ?? ""} is paused, so it would catch no lead until it is resumed, and then only leads whose ` +
+      "status changes after that. Nothing was changed."
+    );
+  }
+  if (preview.scope === "now") {
+    const caught = times === 0 ? "This rule would not catch any lead now." : `This rule would catch ${count(preview.leadCount, "lead")} now.`;
+    return `${caught} It shows who it would catch now, not the last 30 days. Nothing was changed.`;
+  }
+  return times === 0
+    ? "This rule would not have caught any deal in the last 30 days. Nothing was changed."
+    : `This rule would have caught ${count(preview.dealCount, "deal")} in the last 30 days (${count(times, "time")}). Nothing was changed.`;
+}
+
+const leadStatusList = (description: string) => z.array(z.enum(LEAD_STATUSES)).max(LEAD_STATUSES.length).describe(description);
+
+/** "Leads: 4 new, 3 contacted, 2 not now; 3 follow-ups due this week." Counts only, never a name. */
+function leadsSentence(leads: NonNullable<Awaited<ReturnType<typeof pipelineSummary>>["leads"]>): string {
+  const parts = (["new", "contacted", "not_now", "not_a_fit", "bad"] as const)
+    .filter((status) => leads.counts[status] > 0)
+    .map((status) => `${leads.counts[status]} ${LEAD_STATUS_LABELS[status].toLowerCase()}`);
+  return `Leads: ${parts.join(", ")}; ${count(leads.followUpsDueThisWeek, "follow-up")} due this week.`;
+}
 
 export function registerReadTools(server: McpServer, deps: ToolDeps): void {
   registerTool(
@@ -34,11 +64,14 @@ export function registerReadTools(server: McpServer, deps: ToolDeps): void {
       async run(_args, { db, now }) {
         const at = now();
         const summary = await pipelineSummary(db, at, await ownerTimezone(db));
-        if (summary.total === 0) return toolResult("Your pipeline is empty: there are no deals yet. Add one with add_deal.", summary);
+        const leads = summary.leads === null ? "" : ` ${leadsSentence(summary.leads)}`;
+        if (summary.total === 0) {
+          return toolResult(`Your pipeline is empty: there are no deals yet. Add one with add_deal.${leads}`, summary);
+        }
         const { open, closed } = summary;
         return toolResult(
           `${count(open.count, "open deal")} (total value ${open.value}) across ${count(summary.stages.length, "open stage")}; ` +
-            `${closed.won} won, ${closed.lost} lost, ${closed.not_now} not now.`,
+            `${closed.won} won, ${closed.lost} lost, ${closed.not_now} not now.${leads}`,
           summary,
         );
       },
@@ -116,10 +149,14 @@ export function registerReadTools(server: McpServer, deps: ToolDeps): void {
       kind: "read",
       description:
         "Contacts whose name, email, business or phone contains the text (up to 20, by name), each with their deals. " +
-        "An empty query lists the first 20 contacts.",
-      input: z.strictObject({ query: z.string().max(200).describe("Text to look for, for example part of a name.") }),
-      async run({ query }, { db }) {
-        const contacts = await searchContacts(db, query);
+        "An empty query lists the first 20 contacts. Each result has its lead status (null for someone who was never " +
+        "a lead); leadStatus keeps only people with one of those statuses.",
+      input: z.strictObject({
+        query: z.string().max(200).describe("Text to look for, for example part of a name."),
+        leadStatus: leadStatusList("Only people with one of these lead statuses.").optional(),
+      }),
+      async run({ query, leadStatus }, { db }) {
+        const contacts = await searchContacts(db, query, { leadStatuses: leadStatus });
         const headline =
           contacts.length === 0
             ? query.trim() === ""
@@ -127,6 +164,44 @@ export function registerReadTools(server: McpServer, deps: ToolDeps): void {
               : "No contacts match that search."
             : `${count(contacts.length, "contact")} found.`;
         return toolResult(headline, { query, contacts });
+      },
+    },
+    deps,
+  );
+
+  registerTool(
+    server,
+    {
+      name: "list_leads",
+      title: "List leads",
+      kind: "read",
+      description:
+        "People the owner means to approach (lead status, no deal), soonest next task first and none last. Defaults to " +
+        "New, Contacted and Not now; Not a fit, Bad lead and Qualified only when named in statuses. Every filter is " +
+        "optional and they combine: source, quietDays (no form, email, call, meeting or text for that many days), " +
+        "dueWithinDays (an open task due by the end of the day that many days ahead, overdue included), query (name, " +
+        "email, phone or business). For \"who should I reach out to\", call it with statuses [\"new\"] and again with " +
+        "dueWithinDays (New leads plus leads with a follow-up due). Up to 200 are listed, with the total.",
+      input: z.strictObject({
+        statuses: leadStatusList("Only these lead statuses (default: new, contacted, not_now).").optional(),
+        source: shortText("Only leads from this source, ignoring case and spacing.").optional(),
+        quietDays: z.number().int().min(1).max(3650).optional().describe("No contact for at least this many days."),
+        dueWithinDays: z.number().int().min(0).max(365).optional().describe("A follow-up task is due within this many days (0: today or overdue). A snoozed task counts from the day it wakes."),
+        query: shortText("Text to look for in name, email, phone or business.").optional(),
+        sort: z.enum(LEAD_SORTS).optional().describe("next_task (default), last_contact (longest ago first) or added (newest first)."),
+      }),
+      async run(args, { db, now }) {
+        const list = await listLeads(db, now(), await ownerTimezone(db), args);
+        if (list.total === 0) return toolResult("No leads match.", { filter: args, ...list });
+        const shown = list.items.length;
+        const byStatus = LEAD_STATUSES.map((status: LeadStatus) => [status, list.items.filter((i) => i.leadStatus === status).length] as const)
+          .filter(([, n]) => n > 0)
+          .map(([status, n]) => `${n} ${LEAD_STATUS_LABELS[status].toLowerCase()}`);
+        const headline =
+          shown < list.total
+            ? `${count(list.total, "lead")}, showing the first ${shown}.`
+            : `${count(list.total, "lead")} (${byStatus.join(", ")}).`;
+        return toolResult(headline, { filter: args, ...list });
       },
     },
     deps,
@@ -297,8 +372,10 @@ export function registerReadTools(server: McpServer, deps: ToolDeps): void {
       title: "Preview a rule",
       kind: "read",
       description:
-        "Says which deals a rule would have caught in the last 30 days, and when, without changing anything. Give a " +
-        "saved rule's id, or a new rule's type and settings (the same as add_rule). Preview a new rule before adding it.",
+        "Says which deals a rule would have caught in the last 30 days, and when, without changing anything; for a " +
+        "lead_followup rule, which leads it would catch now (scope \"now\"; a saved rule leaves out leads it already " +
+        "added a task for, and a paused one catches none). Give a saved rule's id, or a new rule's " +
+        "type and settings (the same as add_rule). Preview a new rule before adding it.",
       input: z.strictObject({
         rule: ruleRef().optional(),
         type: z.enum(RULE_TYPES).optional().describe("A new rule's type (leave out when previewing a saved rule)."),
@@ -306,13 +383,7 @@ export function registerReadTools(server: McpServer, deps: ToolDeps): void {
       }),
       async run(args, { db, now }) {
         const preview = await previewRuleFor(db, now(), args);
-        const times = preview.hits.length;
-        const headline =
-          times === 0
-            ? "This rule would not have caught any deal in the last 30 days. Nothing was changed."
-            : `This rule would have caught ${count(preview.dealCount, "deal")} in the last 30 days ` +
-              `(${count(times, "time")}). Nothing was changed.`;
-        return toolResult(headline, preview);
+        return toolResult(previewHeadline(preview), preview);
       },
     },
     deps,

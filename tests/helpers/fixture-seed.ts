@@ -220,6 +220,7 @@ export function buildFixtureSeed(now: Date, tz: string): string {
         untrusted_fields: ["title", "contactName"],
       },
     ],
+    leads: null,
   });
   const briefs: Row[] = [
     {

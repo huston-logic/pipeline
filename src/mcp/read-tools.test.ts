@@ -4,6 +4,8 @@ import { buildFixtureSeed } from "../../tests/helpers/fixture-seed.ts";
 import { connectInMemory, fails, ok } from "../../tests/helpers/mcp-client.ts";
 import { createTestDb, openTestDb } from "../db/sqlite-d1.ts";
 import { DEFAULT_TZ } from "../time.ts";
+import { addLead } from "../services/leads.ts";
+import { addTask } from "../services/tasks.ts";
 import { createMcpServer } from "./server.ts";
 
 const NOW = new Date("2026-11-19T18:00:00.000Z");
@@ -119,6 +121,59 @@ test("get_rulebook returns every document or one by name", async () => {
   assert.ok(all.documents.every((d) => d.markdown.length > 0));
   assert.equal((await ok(c, "get_rulebook", { name: "voice" })).headline, "Rulebook: 1 document (voice).");
   assert.match(await fails(c, "get_rulebook", { name: "tone" }), /^There's no rulebook document "tone"\. Documents: leads, voice, pipeline, guardrails\./);
+});
+
+async function leadsClient() {
+  const db = await openTestDb();
+  const ctx = { db, now: NOW, actor: "ai" as const, tool: "add_lead" };
+  const ann = await addLead(ctx, { name: "Ann Example", source: "Trade fair" });
+  const bo = await addLead(ctx, { name: "Bo Example" });
+  const cy = await addLead(ctx, { name: "Cy Example" });
+  await db.prepare("UPDATE contacts SET lead_status = 'contacted' WHERE id = ?").bind(bo.contactId).run();
+  await db.prepare("UPDATE contacts SET lead_status = 'bad' WHERE id = ?").bind(cy.contactId).run();
+  await addTask({ db, now: NOW, actor: "ai", tool: "add_task" }, { contactId: ann.contactId, title: "Reach out", dueAt: "2026-11-19T15:00" });
+  await db.prepare("UPDATE contacts SET untrusted_fields = '[\"name\"]' WHERE id = ?").bind(bo.contactId).run();
+  await db.prepare("UPDATE contacts SET untrusted_fields = '[\"source\"]' WHERE id = ?").bind(ann.contactId).run();
+  return { c: await connectInMemory(createMcpServer({ db, now: () => NOW })), ann, bo };
+}
+
+test("list_leads is a read tool, answers an empty database, and keeps names out of the headline", async () => {
+  const { tools } = await (await emptyClient()).listTools();
+  assert.equal(tools.find((t) => t.name === "list_leads")?.annotations?.readOnlyHint, true);
+  assert.match(tools.find((t) => t.name === "list_leads")?.description ?? "", /who should I reach out to/);
+  assert.equal((await ok(await emptyClient(), "list_leads")).headline, "No leads match.");
+
+  const { c, ann, bo } = await leadsClient();
+  const answer = await ok(c, "list_leads");
+  assert.equal(answer.headline, "2 leads (1 new, 1 contacted).");
+  assert.doesNotMatch(answer.headline, /Ann|Bo|Cy/);
+  const data = answer.data as { total: number; items: { id: string; untrusted_fields: string[] }[]; sources: { key: string }[] };
+  assert.deepEqual(data.items.map((i) => i.id), [ann.contactId, bo.contactId]);
+  assert.deepEqual(data.items[1]?.untrusted_fields, ["name"]);
+  assert.deepEqual(data.sources.map((s) => s.key), ["trade fair"]);
+  assert.deepEqual((data.sources[0] as { untrusted_fields?: string[] }).untrusted_fields, ["label"], "an outside-only label is flagged");
+  assert.deepEqual(data.items[0]?.untrusted_fields, ["source"]);
+
+  assert.equal((await ok(c, "list_leads", { statuses: ["bad"] })).headline, "1 lead (1 bad lead).");
+  assert.equal((await ok(c, "list_leads", { dueWithinDays: 0 })).headline, "1 lead (1 new).");
+  assert.equal((await ok(c, "list_leads", { dueWithinDays: 3, sort: "added", source: "TRADE FAIR", query: "ann" })).headline, "1 lead (1 new).");
+  assert.equal((await ok(c, "list_leads", { query: "nobody" })).headline, "No leads match.");
+  assert.match(await fails(c, "list_leads", { statuses: ["won"] }), /statuses/);
+  assert.match(await fails(c, "list_leads", { quietDays: 0 }), /quietDays/);
+  assert.match(await fails(c, "list_leads", { sort: "random" }), /sort/);
+});
+
+test("search_contacts shows lead status and can filter by it; pipeline_summary adds a leads sentence only with leads", async () => {
+  const { c, ann } = await leadsClient();
+  const found = (await ok(c, "search_contacts", { query: "example" })).data as { contacts: { id: string; leadStatus: string | null }[] };
+  assert.equal(found.contacts.length, 3);
+  const filtered = (await ok(c, "search_contacts", { query: "example", leadStatus: ["new"] })).data as { contacts: { id: string }[] };
+  assert.deepEqual(filtered.contacts.map((m) => m.id), [ann.contactId]);
+
+  const summary = await ok(c, "pipeline_summary");
+  assert.match(summary.headline, / Leads: 1 new, 1 contacted, 1 bad lead; 1 follow-up due this week\.$/);
+  assert.equal((summary.data as { leads: { counts: { new: number } } }).leads.counts.new, 1);
+  assert.doesNotMatch((await ok(await emptyClient(), "pipeline_summary")).headline, /Leads/);
 });
 
 test("read tools refuse unknown arguments by name", async () => {

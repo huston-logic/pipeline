@@ -39,10 +39,10 @@ test("the layout adds no <h1> and no script of its own", () => {
   assert.doesNotMatch(out, /<script/i);
 });
 
-test("the nav lists Today, Pipeline, Contacts, Brief and More, then Rules, Changes, Export and Email logging under More", () => {
+test("the nav lists Today, Pipeline, Contacts, Brief and More, then Rules, Changes, Export, Notifications and Email logging under More", () => {
   const out = page("/");
   const hrefs = [...out.matchAll(/<nav[\s\S]*?<\/nav>/g)].flatMap((nav) => [...nav[0].matchAll(/<a href="([^"]+)"/g)].map((m) => m[1]));
-  assert.deepEqual(hrefs, ["/", "/pipeline", "/contacts", "/brief", "/more", "/rules", "/changes", "/export", "/email-log"]);
+  assert.deepEqual(hrefs, ["/", "/pipeline", "/contacts", "/brief", "/more", "/rules", "/changes", "/export", "/notifications", "/email-log"]);
   for (const item of [...navItems, ...moreItems]) {
     assert.match(out, new RegExp(`<svg [^>]*aria-hidden="true"[^>]*>[\\s\\S]*?</svg><span class="nav-label">${item.label}</span>`), item.label);
   }
@@ -137,4 +137,11 @@ test("script: true loads /board.js with defer in the head; pages without it load
   assert.equal(out.match(/<script\b/g)?.length, 1);
   assert.match(out, /<script src="\/board.js" defer><\/script>\n<\/head>/);
   assert.doesNotMatch(page("/"), /board\.js/);
+});
+
+test('script: "push" loads only /push.js with defer (the Notifications page, decision 0030)', () => {
+  const out = renderPage({ title: "Notifications", description: "x", body: html`<h1>Notifications</h1>`, script: "push" });
+  assert.equal(out.match(/<script\b/g)?.length, 1);
+  assert.match(out, /<script src="\/push.js" defer><\/script>\n<\/head>/);
+  assert.doesNotMatch(out, /board\.js/);
 });

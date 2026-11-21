@@ -1,5 +1,6 @@
 // What every board write handler shares (decisions 0017, 0018): the context it gets once post.ts has run its checks,
 // its answers (a 303 or a page), acting as the owner, and where to come back to.
+import type { Env } from "../env.ts";
 import type { Ctx } from "../services/change.ts";
 import type { PageContext } from "./context.ts";
 import { RETURN_FIELD } from "./forms.ts";
@@ -11,6 +12,8 @@ import { boardReturnPath } from "./return-to.ts";
 /** What a handler gets once every check has passed. `csrf` is the request's (checked) token, for the forms it draws. */
 export interface ActionContext {
   db: Ctx["db"];
+  /** The Worker's bindings and secrets, for the one handler that reaches outside the database (Send a test). */
+  env: Env;
   now: Date;
   csrf: string;
   form: URLSearchParams;

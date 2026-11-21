@@ -8,7 +8,7 @@ import { moreItems } from "../routes.ts";
 export async function morePage(ctx: PageContext): Promise<string> {
   return renderPage({
     title: "More",
-    description: "Your rules, the change log, the export download and the email logging address.",
+    description: "Your rules, the change log, the export download, phone notifications and the email logging address.",
     current: "/more",
     frame: ctx,
     body: html`<h1>More</h1>

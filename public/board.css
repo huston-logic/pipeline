@@ -1092,6 +1092,28 @@ button.button {
   margin: 0.625rem 0 0;
 }
 
+/* Notifications (decision 0030): a write's result that made no change, in the banner's look; the turn-on and test
+   forms; and the line push.js fills when turning on fails. */
+.push-note {
+  max-width: 52rem;
+  margin: 0 0 1.5rem;
+  padding: 0.75rem 1rem;
+  border-radius: var(--r-card);
+  background: var(--accent-tint);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.push-on,
+.push-test {
+  margin: 1rem 0 0;
+}
+
+.push-status {
+  margin: 0.5rem 0 0;
+  color: var(--ink-2);
+}
+
 /* The Move to form on a deal card, a list row and the deal page. Above the card title's whole-card link. */
 .move {
   position: relative;

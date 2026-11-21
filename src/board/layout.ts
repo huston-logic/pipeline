@@ -55,12 +55,18 @@ export type PageOptions = {
   /** The owner's look and the change banner, on signed-in pages. Without it (404, static and sign-in pages) the board
    * says "Pipeline" and links no /theme.css, which needs a sign-in. */
   frame?: PageFrame;
-  /** Loads /board.js (decision 0014): only pages whose forms it enhances. */
-  script?: boolean;
+  /** Loads /board.js (decision 0014): only pages whose forms it enhances. "push" loads /push.js instead, on the
+   * Notifications page only (decision 0030). */
+  script?: boolean | "push";
 };
 
+function scriptTag(script: boolean | "push"): Html | "" {
+  if (script === "push") return html`<script src="/push.js" defer></script>\n`;
+  return script ? html`<script src="/board.js" defer></script>\n` : "";
+}
+
 /** The nav item a page belongs to without being it: a deal and a new lead are in Pipeline; a contact and Companies
- * are in Contacts; Rules, Changes, Export and Email logging are in More. */
+ * are in Contacts; Rules, Changes, Export, Notifications and Email logging are in More. */
 function sectionOf(path: string): string | null {
   if (path.startsWith("/deals/") || path.startsWith("/leads/")) return "/pipeline";
   if (path.startsWith("/contacts/") || path === "/companies") return "/contacts";
@@ -122,7 +128,7 @@ export function renderPage({ title, description, body, current, frame, script = 
 <meta name="description" content="${description}">
 <link rel="icon" href="/icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="stylesheet" href="/board.css">
-${frame ? html`<link rel="stylesheet" href="/theme.css">\n${appTags(frame.look)}` : ""}${script ? html`<script src="/board.js" defer></script>\n` : ""}</head>
+${frame ? html`<link rel="stylesheet" href="/theme.css">\n${appTags(frame.look)}` : ""}${scriptTag(script)}</head>
 <body>
 <a class="skip-link" href="#main">Skip to content</a>
 <div class="app">

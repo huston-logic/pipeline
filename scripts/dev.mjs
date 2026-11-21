@@ -4,6 +4,7 @@
 //   node scripts/dev.mjs --port <number> [--fresh]
 // --fresh keeps this run's local database in a new .wrangler/preview-<timestamp> folder, so tests start clean.
 import { spawn, spawnSync } from "node:child_process";
+import { generateKeyPairSync } from "node:crypto";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -61,6 +62,22 @@ export function wranglerDevArgs({ port, stateDir, ip, testScheduled = false, ext
     ...extraVars.flatMap((value) => ["--var", value]),
     // No keyboard shortcuts panel, which would wait for a TTY in CI.
     "--show-interactive-dev-session=false",
+  ];
+}
+
+/**
+ * A throwaway web push key pair for `npm run dev` and `npm run preview` (decision 0030), made in memory on each start
+ * and passed only as `--var`, never written to a file: the Notifications page then shows its keyed state locally, for
+ * the accessibility, Lighthouse and screenshot runs. A real copy's keys come from scripts/make-vapid-keys.mjs.
+ */
+export function devPushVars() {
+  const { publicKey, privateKey } = generateKeyPairSync("ec", { namedCurve: "P-256" });
+  const pub = publicKey.export({ format: "jwk" });
+  const point = Buffer.concat([Buffer.from([4]), Buffer.from(pub.x, "base64url"), Buffer.from(pub.y, "base64url")]);
+  return [
+    `VAPID_PUBLIC_KEY:${point.toString("base64url")}`,
+    `VAPID_PRIVATE_KEY:${privateKey.export({ format: "jwk" }).d}`,
+    "VAPID_SUBJECT:mailto:dev@example.com",
   ];
 }
 
@@ -139,7 +156,7 @@ function main() {
     process.exit(1);
   }
 
-  const child = spawn(WRANGLER, wranglerDevArgs(options), { cwd: ROOT, env, stdio: "inherit" });
+  const child = spawn(WRANGLER, wranglerDevArgs({ ...options, extraVars: devPushVars() }), { cwd: ROOT, env, stdio: "inherit" });
   for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
     process.on(signal, () => child.kill(signal));
   }

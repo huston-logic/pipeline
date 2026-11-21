@@ -1,4 +1,5 @@
 // One policy for every response. Scripts may come from this site only: the board's own /board.js (decision 0014),
+// /push.js and the notification service worker /sw.js (decision 0030),
 // never inline and never eval, so public/ holds only scripts written in this repo. public/_headers repeats these
 // values for static files; scripts/build.test.mjs fails if the two drift apart.
 

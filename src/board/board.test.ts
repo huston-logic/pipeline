@@ -6,6 +6,7 @@ import type { Env } from "../env.ts";
 import worker from "../index.ts";
 import type { Ctx } from "../services/change.ts";
 import { updateDeal } from "../services/deals.ts";
+import { addRule } from "../services/rules.ts";
 import { undoChange } from "../services/undo.ts";
 import { headerDate } from "../brief/compose.ts";
 import { addDays, DEFAULT_TZ, formatLocal, localDate, zonedToUtc } from "../time.ts";
@@ -576,7 +577,7 @@ test("the brief page shows the full brief, its date and send status, with outsid
   assert.match(body, /It was not emailed, because sending is off \(brief_enabled is off\)\./);
   assert.match(body, /<h2 id="brief-due_today">Due today<\/h2>/);
   assert.match(body, /<h2 id="brief-gone_quiet">Gone quiet<\/h2>\n<ul class="panel rows"><li>Hardware store website \(Morgan Demo\): 11 days with no contact<\/li>/);
-  assert.match(body, /<h2 id="brief-new_lead">New leads<\/h2>\n<ul class="panel rows"><li><span class="outside">From outside<\/span> <span class="outside-value">Robin Sample: New website for Sample Bakery/);
+  assert.match(body, /<h2 id="brief-new_lead">New inquiries<\/h2>\n<ul class="panel rows"><li><span class="outside">From outside<\/span> <span class="outside-value">Robin Sample: New website for Sample Bakery/);
 });
 
 test("the rules page lists each rule as a card with its status, type, stage and firings", async () => {
@@ -586,6 +587,15 @@ test("the rules page lists each rule as a card with its status, type, stage and 
   assert.match(body, /<span class="tag tag-warn">Paused<\/span>/);
   assert.match(body, /<dt>Stage<\/dt><dd>Call done<\/dd>/);
   assert.match(body, /<dt>Fired<\/dt><dd>0 times<\/dd>/);
+});
+
+test("the rules page shows a lead_followup rule with its type and the lead status it watches", async () => {
+  const db = await seededDb();
+  await addRule({ db, now: new Date(), actor: "ai", tool: "add_rule" }, { type: "lead_followup", status: "contacted", days: 5 });
+  const { body } = await get(db, "/rules");
+  assert.match(body, /<h2 class="card-title">When a lead has been Contacted for 5 days with no contact logged, add a follow-up task\.<\/h2>/);
+  assert.match(body, /<dt>Type<\/dt><dd>Follow-up on a lead<\/dd>/);
+  assert.match(body, /<dt>Lead status<\/dt><dd>Contacted<\/dd>/);
 });
 
 test("the changes page lists the last 30 days newest first and marks undone changes", async () => {

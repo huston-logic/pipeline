@@ -22,6 +22,9 @@ const PATHS: Record<IconName, string> = {
   export:
     '<path d="M12 3.5v11M7.5 10l4.5 4.5 4.5-4.5"/>' +
     '<path d="M4 15v3a2.5 2.5 0 0 0 2.5 2.5h11A2.5 2.5 0 0 0 20 18v-3"/>',
+  notifications:
+    '<path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2H4.5z"/>' +
+    '<path d="M10 20.5a2.2 2.2 0 0 0 4 0"/>',
   email: '<rect x="3.5" y="5.5" width="17" height="13" rx="2.5"/><path d="M4.5 7.5l7.5 5.5 7.5-5.5"/>',
 };
 
