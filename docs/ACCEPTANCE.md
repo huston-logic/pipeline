@@ -18,13 +18,14 @@ the email as an activity.
 
 ## 1. What's in my pipeline?
 - Tools: `pipeline_summary`.
-- Asserts: the headline ("14 open deals (total value 86350) across 5 open stages; 3 won, 2 lost, 1 not now.") and
+- Asserts: the headline ("15 open deals (total value 92850) across 5 open stages; 3 won, 2 lost, 1 not now. Leads: 3 new, 4 contacted, 2 not
+  now, 1 not a fit, 1 bad lead; 1 follow-up due this week.") and
   each stage's count and value match the seed.
 - Test: `1. "What's in my pipeline?"`
 
 ## 2. Who needs a follow-up today?
 - Tools: `whats_due`.
-- Asserts: the headline counts, the seed's overdue tasks (`tk_seed07`, `tk_seed02`), the tasks due today (`tk_seed01`,
+- Asserts: the headline counts, the seed's overdue tasks (`tk_seed13`, `tk_seed07`, `tk_seed02`), the tasks due today (`tk_seed01`,
   `tk_seed08`), the deal whose next step is late (`dl_seed13`) and the one due today (`dl_seed11`); the snoozed task
   stays out.
 - Test: `2. "Who needs a follow-up today?"`

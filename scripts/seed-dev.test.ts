@@ -52,7 +52,7 @@ test("the local copy is named after the demo firm, unless the owner has named it
 
 test("15 to 20 made-up contacts at 8 to 12 companies, several with two or three people, on example domains", async () => {
   const db = await seeded();
-  const contacts = await rows<ContactRow>(db, "SELECT * FROM contacts ORDER BY id");
+  const contacts = await rows<ContactRow>(db, "SELECT * FROM contacts WHERE id LIKE 'ct_seed%' ORDER BY id");
   assert.ok(contacts.length >= 15 && contacts.length <= 20, `${contacts.length} contacts`);
   assert.equal(contacts[0]?.id, "ct_seed01");
   for (const contact of contacts) {
@@ -179,13 +179,57 @@ test("only Grace's proposal sat three days without a reply, and only two open de
   assert.deepEqual(quiet.map((deal) => deal.id).sort(), ["dl_seed05", "dl_seed06"]);
 });
 
-test("one active and one paused rule", async () => {
+test("two active rules and one paused, one of them a lead_followup", async () => {
   const db = await seeded();
-  const rules = await rows<{ id: string; active: number }>(db, "SELECT id, active FROM rules ORDER BY id");
-  assert.deepEqual(rules, [
-    { id: "ru_seed01", active: 1 },
-    { id: "ru_seed02", active: 0 },
+  const rules = await rows<{ id: string; active: number; type: string; params: string; created_by: string }>(
+    db,
+    "SELECT id, active, type, params, created_by FROM rules ORDER BY id",
+  );
+  assert.deepEqual(rules.map((r) => [r.id, r.active, r.type]), [
+    ["ru_seed01", 1, "gone_quiet"],
+    ["ru_seed02", 0, "stage_followup"],
+    ["ru_seed03", 1, "lead_followup"],
   ]);
+  assert.deepEqual(JSON.parse(rules[2]?.params ?? ""), { type: "lead_followup", status: "contacted", days: 5 });
+  assert.equal(rules[2]?.created_by, "owner");
+});
+
+test("twelve made-up leads across every status, on example domains, with reach, follow-ups and one imported", async () => {
+  const db = await seeded();
+  const leads = await rows<ContactRow>(db, "SELECT * FROM contacts WHERE id LIKE 'ct_lead%' ORDER BY id");
+  assert.deepEqual(leads.map((l) => l.id), Array.from({ length: 12 }, (_, i) => `ct_lead${String(i + 1).padStart(2, "0")}`));
+  assert.deepEqual([...new Set(leads.map((l) => l.lead_status))].sort(), ["bad", "contacted", "new", "not_a_fit", "not_now", "qualified"]);
+  for (const lead of leads) {
+    assert.match(lead.email ?? "", /@example\.(com|org|net)$/, lead.id);
+    assert.match(lead.phone ?? "", /^555-01\d\d$/, lead.id);
+    const age = (NOW.getTime() - new Date(lead.lead_status_at ?? "").getTime()) / 86_400_000;
+    assert.ok(age >= 2 && age <= 40.5, `${lead.id}: status set ${age.toFixed(1)} days ago`);
+  }
+  const everyone = await rows<ContactRow>(db, "SELECT * FROM contacts WHERE lead_status IS NULL");
+  assert.ok(everyone.length >= 15, "the people who are not leads are untouched");
+  assert.equal(new Set((await rows<ContactRow>(db, "SELECT email FROM contacts")).map((c) => c.email?.toLowerCase())).size, leads.length + everyone.length);
+
+  const imported = leads.filter((l) => JSON.parse(l.untrusted_fields).includes("name"));
+  assert.equal(imported.length, 1, "one lead came from an import");
+  const activities = await rows<ActivityRow>(db, "SELECT * FROM activities WHERE contact_id LIKE 'ct_lead%'");
+  assert.ok(activities.some((a) => a.type === "note" && a.data === '{"via":"text"}'), "a text logged as a note");
+  assert.ok(activities.some((a) => a.type === "note" && a.data === null), "a plain note");
+  const checkBacks = await rows<TaskRow>(db, "SELECT * FROM tasks WHERE contact_id LIKE 'ct_lead%' AND deal_id IS NULL AND done_at IS NULL");
+  assert.equal(checkBacks.length, 2);
+  assert.ok(checkBacks.some((t) => (t.due_at ?? "") > NOW.toISOString()) && checkBacks.some((t) => (t.due_at ?? "") < NOW.toISOString()));
+  const qualified = leads.filter((l) => l.lead_status === "qualified");
+  for (const lead of qualified) {
+    assert.ok((await rows(db, `SELECT id FROM deals WHERE contact_id = '${lead.id}'`)).length >= 1, "a qualified lead has a deal");
+  }
+  for (const lead of leads.filter((l) => l.lead_status !== "qualified")) {
+    assert.deepEqual(await rows(db, `SELECT id FROM deals WHERE contact_id = '${lead.id}'`), [], `${lead.id}: no deal`);
+  }
+});
+
+test("the leads rule would catch a contacted lead now", async () => {
+  const db = await seeded();
+  const preview = await previewRuleFor(db, NOW, { type: "lead_followup", status: "contacted", days: 5 });
+  assert.deepEqual([...new Set(preview.hits.map((hit) => hit.contactId))].sort(), ["ct_lead03", "ct_lead04", "ct_lead11"]);
 });
 
 test("one brief, for yesterday, with an outside line, so the cron still composes today's", async () => {
@@ -243,7 +287,10 @@ test("every seeded change either undoes cleanly or is refused in plain English; 
   const toolOf = async (id: string) => String(await db.prepare("SELECT tool FROM audit_log WHERE id = ?").bind(id).first("tool"));
   assert.deepEqual(
     (await Promise.all(undoable.map(toolOf))).sort(),
-    ["add_rule", "add_task", "complete_task", "intake", "log_activity", "pause_rule", "snooze_task", "update_contact", "update_deal"],
+    [
+      "add_lead", "add_rule", "add_rule", "add_task", "complete_task", "import", "intake", "log_activity", "log_activity",
+      "pause_rule", "qualify_lead", "snooze_task", "update_contact", "update_contact", "update_deal",
+    ],
   );
   // What each refused one answers, as the comments in seed-dev.ts and decision 0016 say.
   assert.deepEqual([...refused.keys()].sort(), ["chg_seed00000003", "chg_seed00000006", "chg_seed00000007", "chg_seed00000013"]);

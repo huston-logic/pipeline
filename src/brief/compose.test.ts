@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import type { CaughtReport } from "../report/caught.ts";
 import { type BriefInput, composeBrief, SECTION_TITLES } from "./compose.ts";
 
 const TZ = "America/Los_Angeles";
@@ -152,4 +153,52 @@ test("on the days the clocks change, the date and times are still the owner's", 
   assert.equal(springForward.localDate, "2027-03-14");
   assert.equal(springForward.subject, "Pipeline brief for Sunday Mar 14");
   assert.equal(springForward.lines.at(-1), "- Call, due Sun Mar 14, 3:30 AM");
+});
+
+const report = (extra: Partial<CaughtReport> = {}): CaughtReport => ({
+  month: "2026-10",
+  rulesFired: 5,
+  tasksMade: 5,
+  actedOn: 3,
+  dealsTouched: 2,
+  valueTouched: 1500,
+  bySource: [{ source: "Referral", outside: false, added: 2, contacted: 1, qualified: 0 }],
+  lines: ["Rules fired: 5", "Tasks made: 5", "Acted on within 7 days: 3 of 5", "Deals touched after a nudge: 2, worth 1,500"],
+  empty: false,
+  ...extra,
+});
+
+test("on the 1st the brief gets a Last month section after Leads, from the report's lines, with the dated sections unchanged", () => {
+  const brief = composeBrief({ ...empty(), leads: { new: 1, contacted: 0, notNow: 0 }, lastMonth: report() });
+  assert.deepEqual(brief.lines.slice(2), [
+    "Nothing due today.",
+    "",
+    "Leads",
+    "- 1 new",
+    "",
+    "Last month",
+    "- Rules fired: 5",
+    "- Tasks made: 5",
+    "- Acted on within 7 days: 3 of 5",
+    "- Deals touched after a nudge: 2, worth 1,500",
+    "- Leads from Referral: 2 added, 1 contacted, 0 qualified",
+  ]);
+  assert.equal(SECTION_TITLES.last_month, "Last month");
+  assert.deepEqual(brief.items.map((i) => i.section), ["leads", "last_month", "last_month", "last_month", "last_month", "last_month"]);
+  assert.ok(brief.items.every((i) => !i.untrusted));
+});
+
+test("a source from outside makes only its own line untrusted, and the emailed text labels it", () => {
+  const brief = composeBrief({
+    ...empty(),
+    lastMonth: report({ bySource: [{ source: "Web form", outside: true, added: 1, contacted: 0, qualified: 0 }] }),
+  });
+  assert.deepEqual(brief.items.map((i) => i.untrusted), [false, false, false, false, true]);
+  assert.equal(brief.lines.at(-1), "- [from outside] Leads from Web form: 1 added, 0 contacted, 0 qualified");
+});
+
+test("without a lastMonth, or with an empty one, the brief is exactly the same as before", () => {
+  const plain = composeBrief(empty());
+  assert.deepEqual(composeBrief({ ...empty(), lastMonth: null }), plain);
+  assert.deepEqual(composeBrief({ ...empty(), lastMonth: report({ empty: true, lines: [], bySource: [] }) }), plain);
 });

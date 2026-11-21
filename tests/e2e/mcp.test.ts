@@ -63,7 +63,7 @@ test("lists the tools over Streamable HTTP, with the server instructions", async
 
 test("reads the seeded pipeline from local D1", async () => {
   const answer = await ok(client, "pipeline_summary");
-  assert.match(answer.headline, /^14 open deals \(total value 86350\) across 5 open stages; 3 won, 2 lost, 1 not now\.$/);
+  assert.match(answer.headline, /^15 open deals \(total value 92850\) across 5 open stages; 3 won, 2 lost, 1 not now\. Leads: 3 new, 4 contacted, 2 not now, 1 not a fit, 1 bad lead; 1 follow-up due this week\.$/);
   const brief = (await ok(client, "get_deal", { deal: "dl_seed02" })).data as { timeline: { untrusted_text: string | null }[] };
   assert.match(brief.timeline[0]?.untrusted_text ?? "", /made-up test message/);
 });
