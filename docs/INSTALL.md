@@ -12,9 +12,15 @@ Throughout, `<name>` is a short name you pick for the copy (lowercase letters, d
 
 ## 1. What you need
 
+- **First, find out which Cloudflare account owns the client's domain** (the account where the domain shows under
+  the client's websites or domains list). Access, the Worker and the custom domain must all live in that one account.
+  If the client has more than one Cloudflare account, use that one for every step below.
 - This repo, with its packages installed: `npx --yes npm@10.9.9 ci` (README, "Develop").
 - Node 22.19 or later.
-- Wrangler logged in as **you**, in your own terminal: `npx wrangler login`. Check it with `npx wrangler whoami`.
+- Wrangler logged in as **you**, in your own terminal: `npx wrangler login`. It opens a browser page to approve the
+  login: approve it in a browser signed in to the Cloudflare login that can use the account owning the domain (yours,
+  once the client has invited you in step 2). If the browser is signed in to a different Cloudflare login, wrangler
+  gets that one instead (see "Troubleshooting"). Check it with `npx wrangler whoami`.
 - The client's email address(es) that should be able to sign in (the "owner emails").
 - A decision on the address: a custom hostname on a domain in the client's Cloudflare account (recommended, for
   example `pipeline.clientdomain.com`), or the free `workers.dev` address.
@@ -23,8 +29,8 @@ Throughout, `<name>` is a short name you pick for the copy (lowercase letters, d
 
 You never ask for the client's password or an API token. Instead the client adds you as a member of their account:
 
-1. The client opens the Cloudflare dashboard, then **Manage Account** > **Members** > **Invite**. **Check in the
-   dashboard** for the exact place.
+1. The client opens the Cloudflare dashboard **in the account that owns the domain** (step 1), then **Manage
+   Account** > **Members** > **Invite**. **Check in the dashboard** for the exact place.
 2. They enter your Cloudflare login email and pick a role that can edit Workers, D1, KV and Zero Trust (for example
    Administrator). **Check in the dashboard** for the role names.
 3. You accept the invitation from the email Cloudflare sends.
@@ -34,9 +40,10 @@ If the client ever removes you, `npm run copies:update` stops for their copy and
 
 ## 3. Set up sign-in (Cloudflare Access)
 
-Follow [docs/ACCESS-SETUP.md](ACCESS-SETUP.md) steps 1 to 4 in the client's account, using `<copy host>`. Keep the
-five values from step 1 at hand (in a password manager) for the secrets in step 4 below, and note the **team domain**
-and the board application's **AUD tag** from step 4 of that page. Skip its steps 5 and 6: provisioning does them.
+Follow [docs/ACCESS-SETUP.md](ACCESS-SETUP.md) steps 1 to 4 in the client's account (the one that owns the domain),
+using `<copy host>`. The Zero Trust **Free** plan is enough. Keep the five values from step 1 at hand (in a password
+manager) for the secrets in step 4 below, and note the **team domain** and the board application's **AUD tag** from
+step 4 of that page. Skip its steps 5 and 6: provisioning does them.
 
 ## 4. Provision the copy
 
@@ -48,7 +55,9 @@ It asks for:
 
 - **the account**: it lists the accounts your login can use; type the number of the client's;
 - **owner email(s)**: who may sign in, comma-separated;
-- **the Access team domain** and **AUD tag** from step 3;
+- **the Access team domain** and **AUD tag** from step 3. The team domain is the host only, for example
+  `<team>.cloudflareaccess.com`, with no `https://` and no `/` at the end (with them, it asks again). The AUD tag is
+  the value labelled **Application Audience (AUD) Tag** on the board application;
 - **where the copy answers**: `workers.dev`, or the custom hostname;
 - **a "from" address for the daily brief** (optional; press Enter to leave the brief unsent).
 
@@ -59,8 +68,11 @@ writes the copy's config to `.copies/<name>/wrangler.jsonc` (with `copy.json` be
 in both (so you can also sign in to a preview deployment). Wrangler shows the migrations and asks you to confirm
 them: answer yes. If you answer no, provisioning stops there and `--resume` asks again.
 
-Last, it offers to set each secret. For each one, press Enter and wrangler asks for the value; paste it (nobody else
-sees it). Type `s` to skip one; the end of the run lists the commands for the skipped ones. The secrets:
+Last, it offers to set each secret, one at a time: `Set <NAME> now? ... [Y/s(kip)]`. Pressing Enter means **yes**,
+so read which secret the line names before you paste anything: the prompts come quickly and look alike. After the
+yes, wrangler asks for the value; paste the one for that name (nobody else sees it). Type `s` to skip one; the end of
+the run lists the commands for the skipped ones. If you pasted a value into the wrong secret, see "Troubleshooting".
+The secrets:
 
 | Secret | Value |
 |---|---|
@@ -88,7 +100,8 @@ later works the same way: [docs/UPDATING.md](UPDATING.md).
 1. Do [ACCESS-SETUP.md](ACCESS-SETUP.md) step 7 ("Check it"): the board opens for an owner email only.
 2. In the AI app (for example Claude), add a custom connector (a remote MCP server) with the address
    `https://<copy host>/mcp`. The app opens a page "Allow <app name> to use your pipeline?"; select **Allow**, sign in
-   with the owner email and the code Access sends, and the app is connected.
+   with the owner email and the code Access sends, and the app is connected. The email of the AI app's own account
+   does not matter: what counts is the owner email you sign in to Access with.
 3. Ask it "What's in my pipeline?".
 
 ## 7. Connect a website form
@@ -142,3 +155,26 @@ npx wrangler d1 execute DB --remote -c .copies/<name>/wrangler.jsonc --command "
 ```
 
 and remove the email from the Access policies (ACCESS-SETUP.md steps 1 and 2).
+
+## Troubleshooting
+
+**A secret got the wrong value** (for example, Enter said yes to a secret you meant to skip, or you pasted the value
+for a different one). Set it again with the right value; the new one replaces the old:
+
+```bash
+npx wrangler secret put <NAME> -c .copies/<name>/wrangler.jsonc
+```
+
+**The board says "This account isn't allowed to open this board."** The browser signed in to Access with an email
+that is not an owner email (often another account the browser was already signed in with). Sign out of Access, then
+open the board again and use the owner email:
+
+- Sign out: `https://<team>.cloudflareaccess.com/cdn-cgi/access/logout`
+- See which email Access has: `https://<copy host>/cdn-cgi/access/get-identity` (shows a short JSON document; look at
+  `email`). Cloudflare's docs give this path on the team domain,
+  `https://<team>.cloudflareaccess.com/cdn-cgi/access/get-identity`; **check in the dashboard** which one shows your
+  sign-in.
+
+**`npx wrangler whoami` does not list the client's account.** The `wrangler login` page was approved in a browser
+signed in to a different Cloudflare login. Run `npx wrangler logout`, sign the browser in to the login the client
+invited (step 2), then run `npx wrangler login` again and approve it there.
