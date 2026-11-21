@@ -66,6 +66,13 @@ export function contactedIfNew(contact: ContactRow, type: ActivityType, data: st
   return withLeadStatus(contact, "contacted", now);
 }
 
+/** A write_guard statement that fails the batch unless the person has no open, unarchived deal (invariant 1). */
+export function noOpenDeal(db: Db, contactId: string): D1PreparedStatement {
+  return db
+    .prepare("INSERT INTO write_guard (ok) SELECT COUNT(*) = 0 FROM deals WHERE contact_id = ? AND status = 'open' AND archived = 0")
+    .bind(contactId);
+}
+
 export async function openDealCount(db: Db, contactId: string): Promise<number> {
   const row = await db
     .prepare("SELECT COUNT(*) AS n FROM deals WHERE contact_id = ? AND status = 'open' AND archived = 0")

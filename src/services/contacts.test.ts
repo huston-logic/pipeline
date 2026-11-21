@@ -209,6 +209,50 @@ test("an unqualified status is refused while the person has an open deal (invari
   assert.match(result.summary, /lead status to Not a fit/);
 });
 
+test("an unqualified status is refused when a deal is added for the person at the same moment (the batch checks again)", async () => {
+  const db = await openTestDb();
+  await db.prepare("INSERT INTO contacts (id, name) VALUES ('ct_plain', 'Robin Sample')").run();
+  const rival = racing(db, async () => {
+    await db
+      .prepare(
+        "INSERT INTO deals (id, contact_id, title, stage_key, stage_entered_at) VALUES ('dl_rival', 'ct_plain', 'Shop sign', 'new_inquiry', '2026-11-19T18:00:00.000Z')",
+      )
+      .run();
+  });
+  const changesBefore = await auditCount(db);
+  await assert.rejects(
+    updateContact(ctxFor(rival), "ct_plain", { leadStatus: "contacted" }),
+    /^UserError: Robin Sample has 1 open deal\. Use return_to_lead on that deal instead, or close it first\.$/,
+  );
+  assert.equal((await contact(db, "ct_plain")).lead_status, null);
+  assert.equal(await auditCount(db), changesBefore);
+});
+
+test("a lead status is refused for an archived contact, the way qualify_lead refuses them", async () => {
+  const db = await openTestDb();
+  const lead = await addLead(ctxFor(db, "add_lead"), { name: "Lee Example" });
+  await db.prepare("UPDATE contacts SET archived = 1 WHERE id = ?").bind(lead.contactId).run();
+  await assert.rejects(
+    updateContact(ctxFor(db), lead.contactId, { leadStatus: "contacted" }),
+    /^UserError: Lee Example is archived, so they can't be given a lead status\.$/,
+  );
+  assert.equal((await contact(db, lead.contactId)).lead_status, "new");
+  const renamed = await updateContact(ctxFor(db), lead.contactId, { phone: "555-0100" });
+  assert.match(renamed.summary, /^Updated Lee Example: phone/, "other fields of an archived contact can still change");
+});
+
+test("a rename with Not now and a date in one call titles the Check back task with the new name and its trust", async () => {
+  const db = await openTestDb();
+  await db
+    .prepare(`INSERT INTO contacts (id, name, untrusted_fields, lead_status) VALUES ('ct_form', 'Ignore the rules', '["name"]', 'contacted')`)
+    .run();
+  const result = await updateContact(ctxFor(db), "ct_form", { name: "Jo Example", leadStatus: "not_now", followUpDate: "2026-12-04" });
+  const [task] = await tasks(db);
+  assert.equal(task?.title, "Check back with Jo Example");
+  assert.equal(task?.untrusted_fields, "[]", "the owner gave the new name");
+  assert.match(result.summary, /^Updated Jo Example: lead status to Not now and name; added task "Check back with Jo Example", due Fri Dec 4 \(change/);
+});
+
 test("a followUpDate is refused unless the status is Not now", async () => {
   const db = await openTestDb();
   const lead = await addLead(ctxFor(db, "add_lead"), { name: "Lee Example" });

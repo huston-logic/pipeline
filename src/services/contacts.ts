@@ -11,6 +11,7 @@ import {
   isDuplicateEmailFailure,
   type Row,
   type RowChange,
+  StaleWriteError,
   updatedRow,
 } from "./change.ts";
 import { capitalize, columnLabel, fieldsLabel, joinAnd } from "./describe.ts";
@@ -18,7 +19,7 @@ import { UserError } from "./errors.ts";
 import { checkFieldValues } from "./fields.ts";
 import { checkEmail, clean } from "./input.ts";
 import { contactName, isTrusted, taskTitle } from "./labels.ts";
-import { followUpTask, openDealCount } from "./lead-change.ts";
+import { followUpTask, noOpenDeal, openDealCount } from "./lead-change.ts";
 import { isLeadStatus, isUnqualified, LEAD_STATUS_LABELS, type LeadStatus } from "./lead-status.ts";
 import { type FieldValues, findContact, mergeFields, ownerTimezone, parseObject, parseStringArray } from "./lookup.ts";
 
@@ -116,26 +117,28 @@ export async function updateContact(ctx: Ctx, contactRef: string, patch: Contact
   }
   // The same status again leaves its time alone, so on its own it changes nothing.
   if (patch.leadStatus !== undefined && patch.leadStatus !== before.lead_status) {
+    if (before.archived === 1) {
+      throw new UserError(`${capitalize(contactName(before))} is archived, so they can't be given a lead status.`);
+    }
     await checkLeadStatus(ctx, before, patch.leadStatus);
     set.lead_status = patch.leadStatus;
     set.lead_status_at = ctx.now.toISOString();
   }
   const followUp = clean(patch.followUpDate);
   const tz = await ownerTimezone(db);
-  let task: TaskRow | null = null;
-  if (followUp !== null) {
-    if ((patch.leadStatus ?? before.lead_status) !== "not_now") {
-      throw new UserError(
-        "A follow-up date only goes with the Not now status. Give leadStatus not_now too, or add a task with add_task instead.",
-      );
-    }
-    task = followUpTask(before, parseWhen(followUp, tz), ctx.now);
+  if (followUp !== null && (patch.leadStatus ?? before.lead_status) !== "not_now") {
+    throw new UserError(
+      "A follow-up date only goes with the Not now status. Give leadStatus not_now too, or add a task with add_task instead.",
+    );
   }
+  const due = followUp === null ? null : parseWhen(followUp, tz);
   const untrusted = parseStringArray(before.untrusted_fields);
   const remaining = untrusted.filter((field) => !confirmed.includes(field));
   if (remaining.length !== untrusted.length) set.untrusted_fields = JSON.stringify(remaining);
 
   const after = updatedRow(before, set as Partial<ContactRow>, ctx.now);
+  // Built from the updated row, so a rename in the same call names the task (and its trust) after the new name.
+  const task: TaskRow | null = due === null ? null : followUpTask(after, due, ctx.now);
   const changed = changedColumns(before, after).filter((c) => !["version", "updated_at", "lead_status_at"].includes(c));
   if (changed.length === 0 && task === null) {
     throw new UserError(`Nothing to change for ${contactName(before)}: every value you gave is already set.`);
@@ -163,9 +166,20 @@ export async function updateContact(ctx: Ctx, contactRef: string, patch: Contact
     const due = dueText(new Date(task.due_at ?? ""), tz);
     summary = head === null ? `Added ${named} for ${who}, due ${due}` : `${head}; added ${named}, due ${due}`;
   }
-  return commitWithEmail(
-    ctx,
-    { target: { table: "contacts", id: before.id }, summary, changes },
-    typeof set.email === "string" ? set.email : null,
-  );
+  // Setting an unqualified status checks "no open deal" again inside the batch, so a deal added at the same moment
+  // (which doesn't touch the contact row) can't slip past (invariant 1), the way return_to_lead does.
+  const extra = isUnqualified(after.lead_status) && changed.includes("lead_status") ? [noOpenDeal(db, before.id)] : [];
+  try {
+    return await commitWithEmail(
+      ctx,
+      { target: { table: "contacts", id: before.id }, summary, changes, extra },
+      typeof set.email === "string" ? set.email : null,
+    );
+  } catch (error) {
+    // The guard that tripped may be the open-deal one: then say so, not "changed since".
+    if (error instanceof StaleWriteError && after.lead_status !== null && extra.length > 0) {
+      await checkLeadStatus(ctx, before, after.lead_status);
+    }
+    throw error;
+  }
 }

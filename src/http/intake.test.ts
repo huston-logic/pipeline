@@ -4,7 +4,8 @@ import { TABLE_NAMES, type ContactRow, type DealRow } from "../db/db.ts";
 import { createTestDb, type SqliteD1 } from "../db/sqlite-d1.ts";
 import type { Env } from "../env.ts";
 import { addDeal } from "../services/add-deal.ts";
-import { addLead } from "../services/leads.ts";
+import { addLead, qualifyLead } from "../services/leads.ts";
+import { undoChange } from "../services/undo.ts";
 import { handleIntake, MAX_BODY_BYTES, parseBody } from "./intake.ts";
 
 const SECRET = "test-intake-secret";
@@ -254,6 +255,27 @@ test("a form from a Not now lead's email adds one deal and makes them Qualified,
   assert.equal(audit?.actor, "system");
   assert.match(audit?.summary ?? "", /^Form submission: new deal for an existing lead, now Qualified, "Pat Example inquiry" \(Pat Example\) in New inquiry \(change chg_/);
   assert.ok(Object.keys(JSON.parse(audit?.after_json ?? "{}")).includes(`contacts:${lead.contactId}`), "one change");
+});
+
+test("undo of a Qualify (no deal) refuses once a form has given the person a deal, and changes nothing (invariant 1)", async () => {
+  const { db, env } = await setup();
+  const ctx = { db, now: new Date("2026-11-01T12:00:00.000Z"), actor: "owner" as const, tool: "add_lead" };
+  const lead = await addLead(ctx, { name: "Pat Example", email: "pat@example.com" });
+  const qualified = await qualifyLead({ ...ctx, tool: "qualify_lead" }, { contact: lead.contactId, createDeal: false });
+  assert.equal((await post(env, goodBody)).status, 201);
+  const deal = await one<DealRow>(db, "SELECT * FROM deals WHERE contact_id = ?", lead.contactId);
+  assert.equal(deal?.status, "open");
+  const before = await counts(db);
+
+  await assert.rejects(
+    undoChange({ ...ctx, now: NOW, tool: "undo_change" }, qualified.changeId),
+    new RegExp(
+      `^UserError: Can't undo ${qualified.changeId}: it would make Pat Example a lead again \\(New\\), but they have an open ` +
+        `deal now, "Pat Example inquiry"\\. Use return_to_lead on that deal instead, or leave the change\\.$`,
+    ),
+  );
+  assert.deepEqual(await counts(db), before);
+  assert.equal((await one<ContactRow>(db, "SELECT * FROM contacts WHERE id = ?", lead.contactId))?.lead_status, "qualified");
 });
 
 test("a form from a contact who was never a lead leaves lead_status null", async () => {

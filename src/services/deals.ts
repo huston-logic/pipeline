@@ -4,7 +4,7 @@ import type { ActivityRow, DealRow, DealStatus, StageRow } from "../db/db.ts";
 import { getContact } from "../db/queries.ts";
 import { newId } from "../ids.ts";
 import { type ChangeResult, changedColumns, commitChange, type Ctx, type RowChange, updatedRow } from "./change.ts";
-import { columnLabel, fieldsLabel, joinAnd, nextPart, withArticle } from "./describe.ts";
+import { capitalize, columnLabel, fieldsLabel, joinAnd, nextPart, withArticle } from "./describe.ts";
 import { UserError } from "./errors.ts";
 import { checkFieldValues } from "./fields.ts";
 import { checkValue, clean, whenOrNull } from "./input.ts";
@@ -69,6 +69,10 @@ export async function updateDeal(ctx: Ctx, dealRef: string, patch: DealPatch): P
   const tz = await ownerTimezone(db);
   const contact = await getContact(db, before.contact_id);
   if (!contact) throw new Error(`Deal ${before.id} points at a missing contact.`);
+  // An archived deal (often one moved back to leads) stays as it is; reopening it would hide an open deal.
+  if (before.archived === 1) {
+    throw new UserError(`${capitalize(dealLabel(before, contact))} is archived. Undo the change that archived it to bring it back.`);
+  }
   const now = ctx.now.toISOString();
   const set: Partial<DealRow> = {};
 

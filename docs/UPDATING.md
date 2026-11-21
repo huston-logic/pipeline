@@ -58,10 +58,11 @@ phone: it must be signed in to the board for the notification service worker to 
 
 ### 2. Reconnect the AI app's connector if the tool list looks stale
 
-New tools: `add_deal`, `qualify_lead`, `return_to_lead`, `list_leads`. `add_lead` now means "a person to approach"
-(a lead, with no deal); a real inquiry uses `add_deal`. Most AI apps refresh the list by themselves. If yours does not
-show the new tools, open its connector or integrations settings, remove the copy's connector and add it again (or use
-its reconnect or refresh option), then start a new conversation.
+New tools: `add_deal`, `qualify_lead`, `return_to_lead`, `list_leads`, and `update_contact` (sets a lead status and a
+follow-up date). `add_lead` now means "a person to approach" (a lead, with no deal); a real inquiry uses `add_deal`.
+Most AI apps refresh the list by themselves. If yours does not show the new tools, open its connector or integrations
+settings, remove the copy's connector and add it again (or use its reconnect or refresh option), then start a new
+conversation.
 
 ### 3. Sentences to say to the AI app
 
@@ -92,10 +93,10 @@ one change; ask the AI app to undo it if it was wrong.
 ### 5. Email logging
 
 Optional, per copy, and a STOP item (it needs DNS and Email Routing in the client's account). Follow
-`docs/EMAIL-LOGGING.md`: a log subdomain, the `EMAIL_LOG_ADDRESS` secret, the routing rule to the Worker, then its two
-go-live checks (a normal email is logged, and Cloudflare's activity log shows DMARC pass). A strict DMARC policy
-(`p=quarantine` or `p=reject`) on your sending domain is recommended. Until the secret is set, the copy drops every
-email and the board says so on More > Email logging.
+`docs/EMAIL-LOGGING.md`: a log subdomain, the `EMAIL_LOG_ADDRESS` secret, the routing rule to the Worker, then the two
+go-live checks in its section 6 (a normal email is logged, and Cloudflare's activity log shows DMARC pass). A strict
+DMARC policy (`p=quarantine` or `p=reject`) on your sending domain is recommended. Until the secret is set, the copy
+drops every email and the board says so on More > Email logging.
 
 ### 6. Notifications for the daily brief
 

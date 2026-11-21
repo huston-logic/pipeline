@@ -295,6 +295,60 @@ test("undo of qualifyLead after an activity on the new deal refuses in plain Eng
   assert.equal((await contactRow(db, lead.contactId))?.lead_status, "qualified");
 });
 
+test("undo of a Qualify (no deal) refuses once the person has an open deal, and changes nothing (invariant 1)", async () => {
+  const db = await openTestDb();
+  const lead = await addLead(ctxFor(db), { name: "Lee Example" });
+  const qualified = await qualifyLead(laterCtx(db, "qualify_lead"), { contact: lead.contactId, createDeal: false });
+  const deal = await addDeal(laterCtx(db, "add_deal"), { contact: lead.contactId });
+  const changesBefore = await auditCount(db);
+  await assert.rejects(
+    undoChange(laterCtx(db, "undo_change"), qualified.changeId),
+    new RegExp(
+      `^UserError: Can't undo ${qualified.changeId}: it would make Lee Example a lead again \\(New\\), but they have an open ` +
+        `deal now, "Lee Example inquiry"\\. Use return_to_lead on that deal instead, or leave the change\\.$`,
+    ),
+  );
+  assert.equal(await auditCount(db), changesBefore);
+  assert.equal((await contactRow(db, lead.contactId))?.lead_status, "qualified");
+  assert.equal((await dealRow(db, deal.dealId))?.status, "open");
+  const audit = await db.prepare("SELECT * FROM audit_log WHERE id = ?").bind(qualified.changeId).first<AuditRow>();
+  assert.equal(audit?.undone_at, null);
+});
+
+test("undo of a Qualify (no deal) counts each open deal, and a closed or archived one doesn't block it", async () => {
+  const db = await openTestDb();
+  const lead = await addLead(ctxFor(db), { name: "Lee Example" });
+  const qualified = await qualifyLead(laterCtx(db, "qualify_lead"), { contact: lead.contactId, createDeal: false });
+  const first = await addDeal(laterCtx(db, "add_deal"), { contact: lead.contactId });
+  const second = await addDeal(laterCtx(db, "add_deal"), { contact: lead.contactId, dealTitle: "Shop sign" });
+  await assert.rejects(
+    undoChange(laterCtx(db, "undo_change"), qualified.changeId),
+    new RegExp(
+      `^UserError: Can't undo ${qualified.changeId}: it would make Lee Example a lead again \\(New\\), but they have 2 open ` +
+        "deals now\\. Close all but one and use return_to_lead on that one instead, or leave the change\\.$",
+    ),
+  );
+  await db.prepare("UPDATE deals SET status = 'lost', stage_key = 'lost' WHERE id = ?").bind(first.dealId).run();
+  await db.prepare("UPDATE deals SET archived = 1 WHERE id = ?").bind(second.dealId).run();
+  const undone = await undoChange(laterCtx(db, "undo_change"), qualified.changeId);
+  assert.match(undone.summary, new RegExp(`^Undid ${qualified.changeId}: `));
+  assert.equal((await contactRow(db, lead.contactId))?.lead_status, "new");
+});
+
+test("undo of a Qualify (no deal) with no later deal still puts the earlier status back", async () => {
+  const db = await openTestDb();
+  const lead = await addLead(ctxFor(db), { name: "Lee Example" });
+  const qualified = await qualifyLead(laterCtx(db, "qualify_lead"), { contact: lead.contactId, createDeal: false });
+  const undone = await undoChange(laterCtx(db, "undo_change"), qualified.changeId);
+  assert.equal(
+    undone.summary,
+    `Undid ${qualified.changeId}: Put back the earlier lead status on contact Lee Example (change ${undone.changeId})`,
+  );
+  const person = await contactRow(db, lead.contactId);
+  assert.equal(person?.lead_status, "new");
+  assert.equal(person?.lead_status_at, NOW.toISOString());
+});
+
 /** A person with an open deal (no lead status), the deal's note, one open task and one done task. */
 async function dealWithTasks(db: Db) {
   const added = await addDeal(ctxFor(db, "add_deal"), { name: "Kim Example", notes: "Asked about a logo." });

@@ -81,11 +81,12 @@ async function newLeads(db: Db, since: string, now: Date): Promise<BriefLead[]> 
 
 /**
  * Logged emails received after `since` (and not after now) that matched no one (decision 0031). By received time, the
- * same window as new leads, so an email that arrives after the brief on the same day is counted in the next one.
+ * same window as new leads, so an email that arrives after the brief on the same day is counted in the next one. An
+ * email with no recipient but the owner (matched and unmatched both 0) had no one to match, so it isn't counted.
  */
 async function unmatchedEmails(db: Db, since: string, now: Date): Promise<number> {
   const row = await db
-    .prepare("SELECT COUNT(*) AS n FROM email_log WHERE matched = 0 AND received_at > ? AND received_at <= ?")
+    .prepare("SELECT COUNT(*) AS n FROM email_log WHERE matched = 0 AND unmatched > 0 AND received_at > ? AND received_at <= ?")
     .bind(since, now.toISOString())
     .first<{ n: number }>();
   return row?.n ?? 0;

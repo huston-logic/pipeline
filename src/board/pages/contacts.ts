@@ -1,7 +1,9 @@
 // /contacts: every contact that is not archived, as cards, with a search box and a sort control that work without
 // JavaScript (a GET form). Decision 0016: search, sort and the 200-contact limit; the Contacts/Leads/Companies switch
-// is people-switch.ts (decision 0027). Unqualified leads are not listed here: they are on /leads.
+// is people-switch.ts (decision 0027). Unqualified leads are not listed here: they are on /leads, and a search that finds
+// only leads says so (decision 0033).
 import { ownerTimezone } from "../../services/lookup.ts";
+import { listLeads } from "../../services/leads-read.ts";
 import { CONTACT_LIST_LIMIT, type ContactListItem, type ContactSort, listContacts } from "../../services/read.ts";
 import { type Html, html } from "../html.ts";
 import type { PageContext } from "../context.ts";
@@ -89,6 +91,18 @@ function countLine(shown: number, total: number, query: string): string {
   return `${count(total, "contact")} ${total === 1 ? "matches" : "match"} ${quoted}.`;
 }
 
+/**
+ * When a search finds no contacts, one line saying how many open leads (the Leads view's default) match, linking to
+ * that view with the same search, so the owner doesn't add a person twice (decision 0033). Empty when none match.
+ */
+async function leadsHint(ctx: PageContext, tz: string, query: string): Promise<Html | ""> {
+  const { total } = await listLeads(ctx.db, ctx.now, tz, { query, limit: 1 });
+  if (total === 0) return "";
+  const href = `/leads?${new URLSearchParams({ q: query }).toString()}`;
+  return html`<p>${total === 1 ? "1 lead matches." : `${formatNumber(total)} leads match.`} <a href="${href}">See Leads</a></p>
+`;
+}
+
 export async function contactsPage(ctx: PageContext): Promise<string> {
   const { db, query: params } = ctx;
   const tz = await ownerTimezone(db);
@@ -101,7 +115,7 @@ export async function contactsPage(ctx: PageContext): Promise<string> {
     results = empty("No contacts yet.", "Add one with Add a deal or Add a lead, or by talking to your AI app. People from your website form show up here too.");
   } else if (total === 0) {
     results = html`${empty(`No contacts match "${query}".`, "Try part of a name, an email address, a phone number or a company.")}
-${clear}`;
+${await leadsHint(ctx, tz, query)}${clear}`;
   } else {
     results = html`${clear}
 <p class="lede">${countLine(contacts.length, total, query)}</p>

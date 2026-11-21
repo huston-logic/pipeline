@@ -2,7 +2,8 @@
 // refuses when the change is unknown, already undone, itself an undo, when a row it would delete now has other
 // records pointing at it (by foreign key or by key inside a JSON column), when putting back a field's choices would
 // drop one records use, when any row it touched is no longer exactly as the change left it, or when it would reopen a
-// deal for someone who is an unqualified lead now (decision 0022, invariant 1). Decision 0009.
+// deal for someone who is an unqualified lead now, or make someone an unqualified lead again while they have an open
+// deal (decision 0022, invariant 1). Decision 0009.
 import type { AuditRow, RuleType } from "../db/db.ts";
 import { getContact } from "../db/queries.ts";
 import { newId } from "../ids.ts";
@@ -23,7 +24,7 @@ import {
 import { capitalize, columnLabel, dealTitleOf, joinAnd, rowLabel, short } from "./describe.ts";
 import { UserError } from "./errors.ts";
 import { contactName, dealLabel } from "./labels.ts";
-import { isUnqualified, LEAD_STATUS_LABELS } from "./lead-status.ts";
+import { isUnqualified, LEAD_STATUS_LABELS, type LeadStatus } from "./lead-status.ts";
 import { parseStringArray, stageLabels } from "./lookup.ts";
 import { resumedParams } from "./rules.ts";
 
@@ -202,6 +203,45 @@ async function reopenBlocker(ctx: Ctx, changeId: string, entries: Entry[], curre
   return null;
 }
 
+/**
+ * The other half of invariant 1: an undo that would make someone an unqualified lead again while they have an open deal
+ * (one added since, such as a deal for a person qualified with no deal) is refused. Deals in the same undo count as
+ * the undo leaves them. The refusal points to return_to_lead, which archives the deal and sets the status in one change.
+ */
+async function leadAgainBlocker(ctx: Ctx, changeId: string, entries: Entry[], current: Map<Entry, Row | null>): Promise<string | null> {
+  const dealEntries = entries.filter((entry) => entry.table === "deals");
+  for (const entry of entries) {
+    if (entry.table !== "contacts" || entry.before === null) continue;
+    const status = entry.before.lead_status;
+    if (typeof status !== "string" || !isUnqualified(status)) continue;
+    const rows = await ctx.db
+      .prepare("SELECT * FROM deals WHERE contact_id = ? AND status = 'open' AND archived = 0 ORDER BY created_at, id")
+      .bind(entry.id)
+      .all<Row>();
+    const open = new Map(rows.results.map((row) => [String(row.id), row]));
+    for (const deal of dealEntries) {
+      if (isOpenDeal(deal.before) && deal.before?.contact_id === entry.id) open.set(deal.id, deal.before);
+      else open.delete(deal.id);
+    }
+    if (open.size === 0) continue;
+    const contact = current.get(entry) ?? entry.before;
+    const person = { id: entry.id, name: String(contact.name), untrusted_fields: contact.untrusted_fields };
+    const who = `${contactName(person)} a lead again (${LEAD_STATUS_LABELS[status as LeadStatus]})`;
+    const [only] = open.values();
+    if (open.size === 1 && only !== undefined) {
+      return (
+        `Can't undo ${changeId}: it would make ${who}, but they have an open deal now, ${dealTitleOf(only)}. ` +
+        "Use return_to_lead on that deal instead, or leave the change."
+      );
+    }
+    return (
+      `Can't undo ${changeId}: it would make ${who}, but they have ${open.size} open deals now. ` +
+      "Close all but one and use return_to_lead on that one instead, or leave the change."
+    );
+  }
+  return null;
+}
+
 async function dependents(ctx: Ctx, changeId: string, entries: Entry[]): Promise<string | null> {
   const deleting = entries.filter((entry) => entry.before === null);
   await ruleHistory(ctx, changeId, deleting);
@@ -344,7 +384,7 @@ export async function undoChange(ctx: Ctx, changeId: string): Promise<ChangeResu
     const row = current.get(moved) ?? moved.after ?? moved.before;
     throw new UserError(changedMessage(id, row ? rowLabel(moved.table, row) : `${moved.table}:${moved.id}`));
   }
-  const reopening = await reopenBlocker(ctx, id, entries, current);
+  const reopening = (await reopenBlocker(ctx, id, entries, current)) ?? (await leadAgainBlocker(ctx, id, entries, current));
   if (reopening !== null) throw new UserError(reopening);
 
   const changes: RowChange[] = [...entries].reverse().map((entry) => {
