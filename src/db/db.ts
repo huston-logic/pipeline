@@ -21,6 +21,7 @@ export const TABLE_NAMES = [
   "write_guard",
   "briefs",
   "push_subscriptions",
+  "email_log",
 ] as const;
 
 export type TableName = (typeof TABLE_NAMES)[number];
@@ -195,6 +196,19 @@ export type BriefRow = {
   sent_at: string | null;
   /** Why the email did or did not go: "sent", "off: <reason>" or "failed: <HTTP status>". */
   send_status: string | null;
+};
+
+/** One accepted logged email (decision 0031): a system log, not audited. */
+export type EmailLogRow = {
+  /** The Message-ID as given, or "sha256:" and the hex of its Date, From and Subject. */
+  message_key: string;
+  received_at: string;
+  /** The owner's local date when it arrived, YYYY-MM-DD. */
+  local_date: string;
+  /** How many people it was logged for (at most 5). */
+  matched: number;
+  /** How many of its other To and Cc addresses matched no one. */
+  unmatched: number;
 };
 
 /** One browser that turned notifications on (decision 0030). Its values come from the owner's own browser. */

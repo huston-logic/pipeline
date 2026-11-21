@@ -27,8 +27,8 @@ this file before changing the repo, and update it when a rule changes.
 ## Architecture
 
 - **One Worker** (`src/index.ts`) handles every route: the board, static files, `/mcp` (`createMcpHandler` from the
-  Agents SDK, not `McpAgent`), and in later tasks `/intake`, `/api/*` and the `scheduled` handler (hourly rules, daily
-  brief). `run_worker_first: true`, so every request reaches the Worker; it hands file requests
+  Agents SDK, not `McpAgent`), and in later tasks `/intake`, `/api/*`, the `scheduled` handler (hourly rules, daily
+  brief) and the `email` handler (email logging). `run_worker_first: true`, so every request reaches the Worker; it hands file requests
   (a path ending in `name.ext`) to `env.ASSETS` and renders its own 404 page when the file is missing.
 - **The board is HTML rendered by the Worker** (decisions 0001 and 0014): no React, no framework. Pages
   are modules in `src/board/pages/` that take a `PageContext` (`src/board/context.ts`: db, now, query, `here`, the CSRF
@@ -132,6 +132,15 @@ this file before changing the repo, and update it when a rule changes.
 - **CSV import** (`src/import/`): `plan.ts` plans (pure), `change.ts` builds one audited change (actor `owner`, tool
   `import`) with `buildChange` from `src/services/change.ts`, and `sql.ts` renders its bound values as literal SQL for
   `wrangler d1 execute --file`. Imported fields are listed in `untrusted_fields`; a merge never overwrites a value.
+- **Email logging** (decision 0031): the `email` handler in `src/index.ts` loads `src/email/log.ts` with a dynamic
+  `import()` (only `src/email/` imports `postal-mime`). Mail is logged only when the envelope `to` is
+  `EMAIL_LOG_ADDRESS`, the envelope and header From are owner emails, it is at most 1 MB and Cloudflare's
+  `Authentication-Results` passes, read from `message.headers` (the value less the raw text's own such headers at its
+  end, which must start with `mx.cloudflare.net`), never from the raw text, where the sender can write one; anything
+  else is dropped silently. Never call
+  `setReject`, `reply` or `forward`. Each matched To/Cc person (at most five) gets an `email` activity (actor `system`,
+  tool `email_log`, subject and body in `untrusted_text`) through `activityEffects`, all in one change; `email_log`
+  dedupes by Message-ID and feeds the brief's unmatched count. The address is shown only on `/email-log`.
 - **Migrations:** every new migration must keep the data of the previous version; `src/db/migrations.test.ts` checks
   each one against fake rows for every table (add rows to `FAKE_ROWS` for a new table).
 - Files: unit tests sit beside the code (`src/**/*.test.ts`, `scripts/*.test.mjs`). `tests/e2e/*.test.ts` run the
@@ -181,7 +190,7 @@ this file before changing the repo, and update it when a rule changes.
   on), each version at least 7 days old when added; install with
   `npx --yes npm@10.9.9 install -E <pkg>@<version> --before=<7 days ago>` so the lockfile stays npm-10 readable.
   Runtime dependencies are `agents`, `@modelcontextprotocol/server` and `zod` (the MCP endpoint, decision 0004);
-  `wrangler.jsonc` turns on `nodejs_compat` for them. Install `@playwright/test` only, never also `playwright`. `package.json` `overrides` pins `playwright-core`,
+  `wrangler.jsonc` turns on `nodejs_compat` for them. `postal-mime` parses logged email (decision 0031). Install `@playwright/test` only, never also `playwright`. `package.json` `overrides` pins `playwright-core`,
   `basic-ftp` and `minimatch` under `@typescript-eslint/typescript-estree`; remove one when upstream no longer needs it.
 
 ## Accessibility and performance

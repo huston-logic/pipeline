@@ -42,6 +42,8 @@ test("board.js copies prompts with the clipboard API and moves focus to the Log 
   assert.match(script, /"Copied\."/);
   // The live region is emptied first, so a second Copy prompt is announced again.
   assert.match(script, /status\.textContent = "";\s*navigator\.clipboard\.writeText\(/);
+  // A page can say what to do when copying fails (the email log address, decision 0031); Ask Claude keeps its words.
+  assert.match(script, /button\.dataset\.copyFail \|\| "Couldn't copy\. Open Show the prompt and copy it from there\."/);
   assert.match(script, /\[data-log\]/);
   assert.match(script, /\.focus\(\)/);
   assert.doesNotMatch(script, /\balert\(|\bconfirm\(|\bprompt\(/);

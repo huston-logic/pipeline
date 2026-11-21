@@ -44,6 +44,11 @@ export type Env = {
   /** Resend API key (a secret: set with `wrangler secret put`, never in the repo). */
   RESEND_API_KEY?: string;
   /**
+   * The full email logging address, for example "log-<32 random hex>@log.example.com" (a secret; decision 0031). Mail
+   * routed to the Worker for any other address, or with this unset, is dropped silently.
+   */
+  EMAIL_LOG_ADDRESS?: string;
+  /**
    * Web push keys (secrets; decision 0030): the VAPID public key (base64url uncompressed P-256 point), its private
    * scalar d (base64url) and the contact the push services see (mailto: or https:). Push stays off until all three are
    * set; `node scripts/make-vapid-keys.mjs` makes a pair.

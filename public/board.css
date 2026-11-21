@@ -1778,11 +1778,19 @@ button.button {
   justify-content: center;
 }
 
-.ask-tools {
+.ask-tools,
+.copy-tools {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem 1rem;
+}
+
+/* Email logging (decision 0031): the address in a read-only field, Copy address under it. */
+.copy-card {
+  display: grid;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
 }
 
 .copy-status {

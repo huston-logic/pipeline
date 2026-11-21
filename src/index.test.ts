@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { createTestDb, openTestDb, SqliteD1 } from "./db/sqlite-d1.ts";
 import type { Env } from "./env.ts";
 import worker from "./index.ts";
+import { fakeMessage, LOG_ADDRESS, OWNER, rawEmail } from "../tests/helpers/fake-email.ts";
 import { FakeKv } from "../tests/helpers/fake-kv.ts";
 import { makeKey, signJwt, type TestKey } from "../tests/helpers/jwt.ts";
 
@@ -183,6 +184,24 @@ test("scheduled() runs the hourly rules, then the brief, against the database an
     JSON.stringify({ event: "cron_rules_done", rules: 0, fired: 0, alreadyFired: 0, failed: 0, deferred: 0 }),
     JSON.stringify({ event: "cron_brief_done", composed: 1, sent: 0, failed: 0 }),
   ]);
+});
+
+test("email() logs a BCC'd email, and a failure is logged without the message and never answers the sender", async (t) => {
+  const logged = t.mock.method(console, "log", () => {});
+  const failed = t.mock.method(console, "error", () => {});
+  const db = await openTestDb();
+  await db.prepare("INSERT INTO contacts (id, name, email) VALUES ('ct_pat', 'Pat Example', 'pat@example.com')").run();
+  const env: Env = { ...fakeEnv(), DB: db, EMAIL_LOG_ADDRESS: LOG_ADDRESS, OWNER_EMAILS: OWNER };
+  const ok = fakeMessage(rawEmail());
+  await worker.email(ok as unknown as ForwardableEmailMessage, env, ctx);
+  assert.equal(await db.prepare("SELECT COUNT(*) AS n FROM activities WHERE type = 'email'").first("n"), 1);
+
+  const broken = fakeMessage(rawEmail({ messageId: "<other@mail.example.com>" }));
+  const noDb = { prepare() { throw new Error("D1 is down"); }, batch() { throw new Error("D1 is down"); } };
+  await worker.email(broken as unknown as ForwardableEmailMessage, { ...env, DB: noDb as unknown as Env["DB"] }, ctx);
+  assert.deepEqual(failed.mock.calls.map((call) => call.arguments[0]), [JSON.stringify({ event: "email_log_failed" })]);
+  assert.deepEqual(logged.mock.calls, []);
+  assert.deepEqual([...ok.calls, ...broken.calls], []);
 });
 
 const mcpBody = JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list", params: {} });

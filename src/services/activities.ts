@@ -1,6 +1,6 @@
 // log_activity. Owner and AI entries never carry untrusted_text: that column is only for text from outside. Reaching a
 // New lead makes them Contacted in the same change (decision 0022).
-import type { ActivityRow, ActivityType, Db, DealRow } from "../db/db.ts";
+import type { ActivityRow, ActivityType, ContactRow, Db, DealRow } from "../db/db.ts";
 import { newId } from "../ids.ts";
 import { parseWhen } from "../time.ts";
 import { type ChangeResult, commitChange, type Ctx, type RowChange, updatedRow } from "./change.ts";
@@ -39,6 +39,35 @@ async function openDealsOf(db: Db, contactId: string): Promise<DealRow[]> {
 const isContactType = (type: string): type is (typeof CONTACT_TYPES)[number] =>
   (CONTACT_TYPES as readonly string[]).includes(type);
 
+/**
+ * What a contact activity moves besides itself: the last_activity_at of its deal, or with only a contact of each of
+ * their open deals (decision 0009, addendum 2), and a New lead's move to Contacted. The email log (src/email/log.ts)
+ * uses this too, so a logged email resets the quiet clock exactly as log_activity does.
+ */
+export async function activityEffects(
+  db: Db,
+  activity: ActivityRow,
+  deal: DealRow | null,
+  contact: ContactRow,
+  now: Date,
+): Promise<{ changes: RowChange[]; contacted: ContactRow | null }> {
+  const changes: RowChange[] = [];
+  const touched = deal ? [deal] : await openDealsOf(db, contact.id);
+  for (const row of touched) {
+    if (row.last_activity_at !== null && row.last_activity_at >= activity.occurred_at) continue;
+    changes.push({
+      table: "deals",
+      id: row.id,
+      before: row,
+      after: updatedRow(row, { last_activity_at: activity.occurred_at }, now),
+    });
+  }
+  // The contact row read by the caller is the `before`, so a write that bumped it since fails the whole change as stale.
+  const contacted = contactedIfNew(contact, activity.type, activity.data, now);
+  if (contacted !== null) changes.push({ table: "contacts", id: contact.id, before: contact, after: contacted });
+  return { changes, contacted };
+}
+
 export async function logActivity(ctx: Ctx, input: ActivityInput): Promise<ChangeResult & { activityId: string }> {
   const { db } = ctx;
   if (input.type === "stage_change") {
@@ -74,22 +103,9 @@ export async function logActivity(ctx: Ctx, input: ActivityInput): Promise<Chang
     version: 1,
     created_at: ctx.now.toISOString(),
   };
-  const changes: RowChange[] = [{ table: "activities", id: activity.id, before: null, after: activity }];
-  // With only a contact, the activity counts for each of their open deals (decision 0009, addendum 2).
-  const touched = deal ? [deal] : await openDealsOf(db, contact.id);
-  for (const row of touched) {
-    if (row.last_activity_at !== null && row.last_activity_at >= occurredAt) continue;
-    changes.push({
-      table: "deals",
-      id: row.id,
-      before: row,
-      after: updatedRow(row, { last_activity_at: occurredAt }, ctx.now),
-    });
-  }
-
-  // The contact row read above is the `before`, so a write that bumped it since fails the whole change as stale.
-  const contacted = contactedIfNew(contact, input.type, data, ctx.now);
-  if (contacted !== null) changes.push({ table: "contacts", id: contact.id, before: contact, after: contacted });
+  const effects = await activityEffects(db, activity, deal, contact, ctx.now);
+  const changes: RowChange[] = [{ table: "activities", id: activity.id, before: null, after: activity }, ...effects.changes];
+  const { contacted } = effects;
 
   const where = deal ? `on ${dealLabel(deal, contact)}` : `with ${contactName(contact)}`;
   const summary =

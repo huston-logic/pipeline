@@ -17,7 +17,8 @@ export type IconName =
   | "changes"
   | "report"
   | "export"
-  | "notifications";
+  | "notifications"
+  | "email";
 
 /** `hint` is read out after the label but not shown, where the label alone says too little ("More" alone fails
  * Lighthouse's descriptive-link-text audit). */
@@ -39,6 +40,7 @@ export const boardRoutes: string[] = [
   "/report",
   "/export",
   "/notifications",
+  "/email-log",
   "/deals/dl_seed01",
   "/deals/dl_seed02",
   "/contacts/ct_seed07",
@@ -57,7 +59,13 @@ export const navItems: NavItem[] = [
   { href: "/pipeline", label: "Pipeline", icon: "pipeline", description: "Open deals by stage." },
   { href: "/contacts", label: "People", icon: "contacts", description: "Contacts, leads and companies." },
   { href: "/brief", label: "Brief", icon: "brief", description: "The latest daily brief." },
-  { href: "/more", label: "More", icon: "more", description: "Rules, changes, the monthly report, export and notifications.", hint: " pages" },
+  {
+    href: "/more",
+    label: "More",
+    icon: "more",
+    description: "Rules, changes, the monthly report, export, notifications and email logging.",
+    hint: " pages",
+  },
 ];
 
 /** Under More: on the /more page on phones, listed in the side bar on wide screens. */
@@ -67,4 +75,5 @@ export const moreItems: NavItem[] = [
   { href: "/report", label: "What it caught", icon: "report", description: "Last month: what your rules did, and how many nudges you acted on." },
   { href: "/export", label: "Export", icon: "export", description: "Download a copy of everything, as JSON or CSV." },
   { href: "/notifications", label: "Notifications", icon: "notifications", description: "A phone notification when the daily brief is ready." },
+  { href: "/email-log", label: "Email logging", icon: "email", description: "The address to add in Bcc, so an email you send is logged." },
 ];

@@ -623,7 +623,7 @@ test("the export page links to the JSON file and one CSV per table, as downloads
   const db = await createTestDb();
   const { body } = await get(db, "/export");
   assert.match(body, /<a class="button" href="\/api\/export.json" download><svg [^>]*aria-hidden="true"[\s\S]*?<\/svg>Download everything \(JSON\)<\/a>/);
-  assert.equal(body.match(/<a class="download-row" href="\/api\/export\/[a-z_]+\.csv" download>/g)?.length, 12);
+  assert.equal(body.match(/<a class="download-row" href="\/api\/export\/[a-z_]+\.csv" download>/g)?.length, 13);
 });
 
 test("the More page links to Rules, Changes and Export, each with a one-line description", async () => {
