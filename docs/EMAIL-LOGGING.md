@@ -15,6 +15,9 @@ Steps marked **(check in the dashboard)** were not confirmed in Cloudflare's doc
 - The copy runs the code with email logging: run `npm run copies:update` first (docs/UPDATING.md).
 - The domain is on Cloudflare, in the same account as the copy's Worker.
 - Your sending address is one of the copy's owner emails (the ones that can sign in to the board).
+- Your sending address's domain has a DMARC record (a TXT record at `_dmarc.<your domain>`, for example
+  `v=DMARC1; p=none`). Mail whose domain has none gets `dmarc=none` from Cloudflare and is dropped by design (decision
+  0031, Ruling 3). Check your domain's DNS before you start.
 
 ## 1. Pick a subdomain
 
@@ -67,6 +70,8 @@ says "Email logging isn't set up for this copy."
 
 ## 6. Try it
 
+Do this once, right after setup: it is the only way to know Cloudflare's checks reach the Worker for this copy.
+
 1. On the board, open **More > Email logging** and check the address is the one you made.
 2. Send an email from your own address to a test contact who is on the board (their email must be on their contact
    record), with the log address in Bcc.
@@ -84,9 +89,10 @@ Look for `{"event":"email_log_dropped","reason":"…"}`:
 - `not_set_up`: the secret from step 4 is missing.
 - `wrong_address`: the routing rule sends a different address than the secret holds.
 - `not_owner`: the sending address (or the mail provider's envelope sender) is not an owner email.
-- `not_authenticated`: Cloudflare's authentication result did not pass, or the Worker could not find it. If every
-  email from a normal mailbox gets this, the header may not reach the Worker as expected (decision 0031,
-  Consequences); report it before relying on the feature.
+- `not_authenticated`: Cloudflare's authentication result did not pass, or the Worker could not find it. First check
+  your sending domain has a DMARC record (see Before you start). If every email from a normal mailbox still gets
+  this, Cloudflare's header may not reach the Worker as expected (decision 0031, Consequences); report it before
+  relying on the feature. Nothing is logged in that case.
 - `too_large`: the email was over 1 MB (attachments count); send it without the attachment.
 
 ## What gets logged

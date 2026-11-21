@@ -134,8 +134,9 @@ this file before changing the repo, and update it when a rule changes.
   `wrangler d1 execute --file`. Imported fields are listed in `untrusted_fields`; a merge never overwrites a value.
 - **Email logging** (decision 0031): the `email` handler in `src/index.ts` loads `src/email/log.ts` with a dynamic
   `import()` (only `src/email/` imports `postal-mime`). Mail is logged only when the envelope `to` is
-  `EMAIL_LOG_ADDRESS`, the envelope and header From are owner emails, it is at most 1 MB and Cloudflare's own (first
-  `mx.cloudflare.net`) `Authentication-Results` header passes; anything else is dropped silently. Never call
+  `EMAIL_LOG_ADDRESS`, the envelope and header From are owner emails, it is at most 1 MB and Cloudflare's
+  `Authentication-Results` passes, read from `message.headers` (must start with `mx.cloudflare.net`), never from the
+  raw text, where the sender can write one; anything else is dropped silently. Never call
   `setReject`, `reply` or `forward`. Each matched To/Cc person (at most five) gets an `email` activity (actor `system`,
   tool `email_log`, subject and body in `untrusted_text`) through `activityEffects`, all in one change; `email_log`
   dedupes by Message-ID and feeds the brief's unmatched count. The address is shown only on `/email-log`.

@@ -62,6 +62,16 @@ test("the page needs the board sign-in, like every board page", async () => {
   assert.ok(!(await res.text()).includes(LOG_ADDRESS));
 });
 
+test("a stored brief's Logged email line shows on the Brief page (its section is one the reader keeps)", async () => {
+  const env = await withAddress(LOG_ADDRESS);
+  const item = { section: "logged_email", id: "email_log", line: "- 2 logged emails matched no one.", untrusted: false };
+  await env.DB.prepare("INSERT INTO briefs (id, local_date, composed_at, text, items) VALUES ('br_emaillog', '2030-01-02', '2030-01-02T15:00:00.000Z', 'x', ?)")
+    .bind(JSON.stringify([item]))
+    .run();
+  const main = mainOf((await load(env, "/brief")).body);
+  assert.match(main, /<h2 id="brief-logged_email">Logged email<\/h2>\s*<ul class="panel rows"><li>2 logged emails matched no one\.<\/li><\/ul>/);
+});
+
 test("Email logging is listed under More and in the board routes", () => {
   assert.ok(boardRoutes.includes("/email-log"));
   assert.ok(moreItems.some((item) => item.href === "/email-log" && item.label === "Email logging"));

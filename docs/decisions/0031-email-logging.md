@@ -29,8 +29,8 @@ Read on 2026-11-20 (notes in `.superpowers/sdd/2026-11-20-run4-leads/research-em
 
 - **Interface.** `handleLogEmail(message, env, now): Promise<"logged" | "duplicate" | "dropped">` in
   `src/email/log.ts`, called from `email()` in `src/index.ts` through a dynamic `import()`, so the board and its tests
-  never load the parser. It takes only `from`, `to`, `raw` and `rawSize` from the message, so it cannot reject, reply
-  or forward. "logged" means the message was recorded, with one to five people or with none (then only its
+  never load the parser. It takes only `from`, `to`, `headers`, `raw` and `rawSize` from the message, so it cannot
+  reject, reply or forward. "logged" means the message was recorded, with one to five people or with none (then only its
   `email_log` row).
 - **What is accepted.** All of these, in this order; anything else is dropped:
   1. the secret `EMAIL_LOG_ADDRESS` is set (the full address, with an unguessable local part such as
@@ -39,10 +39,16 @@ Read on 2026-11-20 (notes in `.superpowers/sdd/2026-11-20-run4-leads/research-em
   3. the envelope `to` equals `EMAIL_LOG_ADDRESS`, ignoring case;
   4. the envelope `from` is an owner email (the same list the board sign-in uses: `settings.owner_emails` plus
      `OWNER_EMAILS`, ignoring case);
-  5. **Ruling 3:** the first `Authentication-Results` header whose authserv-id is `mx.cloudflare.net` says
-     `dmarc=pass`, or, when it has no dmarc result, both `spf=pass` and `dkim=pass`. Every result of a method must be a
-     pass, so a second result cannot outvote a fail; comments and quoted strings are skipped when reading it;
-  6. the header From is an owner email too. This is one check more than the brief names: DMARC authenticates the
+  5. **Ruling 3**, read from `message.headers` (the Headers object Email Routing builds and prepends its header to),
+     never from the raw text, where any `Authentication-Results` header may be one the sender wrote:
+     `message.headers.get("authentication-results")` must exist and start with the authserv-id `mx.cloudflare.net`
+     (exactly), and say `dmarc=pass`, or, when it has no dmarc result, both `spf=pass` and `dkim=pass`. Headers joins
+     several such headers into one value with ", ", so a header the sender wrote can follow Cloudflare's in that value.
+     So every `spf`, `dkim` and `dmarc` result in the whole value must be a pass: a later, forged result can neither
+     outvote a fail nor add a `dmarc=pass` that Cloudflare did not give. This is stricter than Ruling 3 alone (a
+     `dmarc=pass` with an `spf` fail is dropped); owner mail sent directly from their own domain passes all three.
+     Comments and quoted strings are skipped when reading it. It is checked before the message is read;
+  6. the header From (from the parsed raw text) is an owner email too. This is one check more than the brief names: DMARC authenticates the
      header From's domain, so this is the address the pass is about.
 - **Drop silently.** A dropped message is not answered at all: no `setReject` (which would tell the sender the address
   exists), no reply, no forward. The Worker writes one log line, `{"event":"email_log_dropped","reason":"…"}`, with a
@@ -57,11 +63,14 @@ Read on 2026-11-20 (notes in `.superpowers/sdd/2026-11-20-run4-leads/research-em
   `activityEffects` in `src/services/activities.ts`, the same code `log_activity` uses for an activity with only a
   contact: every open deal of the person whose `last_activity_at` is older moves to the email's time. The change
   summary names people only through `contactName` (an outside name becomes "contact ct_…"), for example "Logged an email
-  by BCC with Pat Example and Robin Sample; Pat Example is now Contacted". Undo works on it like on any change; it
-  leaves the dedupe row, so the same message is not logged again.
+  by BCC with Pat Example and Robin Sample; Pat Example is now Contacted". Undo works on it like on any change. Undoing
+  it removes the activities and puts the deals and lead status back, but keeps the message's `email_log` row (that
+  table is not part of the change), so the same message stays a duplicate and is never logged again.
 - **Caps and cleaning.** Subject: one line, control characters dropped, at most 300 characters. Body: the text part,
-  or when there is none the HTML read as text (postal-mime does this; a crude tag strip is the fallback), CRLF made LF,
-  control characters other than the line break dropped, runs of blank lines cut to one, at most 5,000 characters.
+  or when there is none the HTML read as text (postal-mime does this; a crude tag strip is the fallback). Only the
+  first 20,000 characters (four times the cap) are cleaned, so no pattern runs long on a 1 MB body of unclosed tags.
+  CRLF made LF, tabs made spaces, other control characters dropped, runs of blank lines cut to one, at most 5,000
+  characters.
   Attachments are ignored, and a whole forwarded message attached to the email is one of them. The activity's time is
   the Date header when it is a real time not after now, otherwise now.
 - **Dedupe.** Table `email_log` (migration 0008): `message_key` (primary key), `received_at`, `local_date`, `matched`,
@@ -91,7 +100,8 @@ Read on 2026-11-20 (notes in `.superpowers/sdd/2026-11-20-run4-leads/research-em
 ## Why
 
 - Email Routing is the only inbound mail Cloudflare offers a Worker, and its own header is the only authentication
-  the Worker can trust; reading just the first `mx.cloudflare.net` header is what the docs say.
+  the Worker can trust; the docs say Email Routing prepends it before invoking the Worker, so it is first in
+  `message.headers`. A check on the raw text alone would trust a forged header whenever Cloudflare's is not in it.
 - Checking the envelope sender before reading the message means mail from strangers is dropped without being parsed.
 - Silence gives an attacker nothing: no bounce tells them the address exists or what was wrong.
 - Logging on the person, not a deal, is what `log_activity` does with only a contact, and it keeps the quiet clock
@@ -103,9 +113,11 @@ Read on 2026-11-20 (notes in `.superpowers/sdd/2026-11-20-run4-leads/research-em
 - **STOP for the owner (not confirmed in the docs read, check in the dashboard):** whether a subdomain such as
   `log.<domain>` can be its own Email Routing domain, so the owner's own mail records are untouched; the DNS records
   and routing rule for it; and setting `EMAIL_LOG_ADDRESS`. docs/EMAIL-LOGGING.md has the steps.
-- Not confirmed either: whether the prepended header is part of `message.raw` (the Worker reads it from there). If it
-  is not, every message is dropped with reason `not_authenticated`, which is safe; the first test email after setup
-  shows which (docs/EMAIL-LOGGING.md, step 6).
+- Not confirmed in a live copy yet: that `message.headers` carries Cloudflare's header first, as the docs say. If it
+  does not, every message is dropped as `not_authenticated` (nothing is logged, nothing forged gets through); the
+  owner's first test email shows it (docs/EMAIL-LOGGING.md, step 6).
+- The owner's sending domain needs a DMARC record. Without one the verdict is `dmarc=none`, which is not a pass, so
+  the mail is dropped by design (Ruling 3).
 - The owner's mail provider must set the envelope sender to the owner's own address. A provider that uses a bounce
   address (some newsletter tools) is dropped as `not_owner`.
 - Mail sent from an alias that is not an owner email is dropped; adding it to the owner emails lets it through.
