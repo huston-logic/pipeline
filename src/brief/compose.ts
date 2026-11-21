@@ -4,7 +4,7 @@
 // text starts with "[from outside] ".
 import { formatLocal, localDate } from "../time.ts";
 
-export type BriefSection = "overdue" | "due_today" | "gone_quiet" | "new_lead";
+export type BriefSection = "overdue" | "due_today" | "gone_quiet" | "new_lead" | "leads";
 
 /** `untrusted_fields` lists which of an item's values came from outside (a form, an import). */
 export interface BriefTask {
@@ -39,6 +39,8 @@ export interface BriefInput {
   tasks: { overdue: BriefTask[]; today: BriefTask[] };
   quietDeals: BriefQuietDeal[];
   newLeads: BriefLead[];
+  /** Open lead counts (decision 0022); null when New, Contacted and Not now are all zero. */
+  leads: { new: number; contacted: number; notNow: number } | null;
 }
 
 export interface BriefItem {
@@ -77,7 +79,8 @@ export const SECTION_TITLES: Record<BriefSection, string> = {
   overdue: "Overdue",
   due_today: "Due today",
   gone_quiet: "Gone quiet",
-  new_lead: "New leads",
+  new_lead: "New inquiries",
+  leads: "Leads",
 };
 
 /** Marks outside text in the emailed text, which has no other way to show it; the board labels items itself. */
@@ -107,6 +110,11 @@ export function composeBrief(input: BriefInput): ComposedBrief {
   for (const lead of input.newLeads) {
     const line = `${flat(lead.contactName)}: ${flat(lead.title)}, added ${formatLocal(lead.createdAt, tz)}`;
     add("new_lead", lead.dealId, line, lead.untrusted_fields);
+  }
+  if (input.leads !== null) {
+    const { new: fresh, contacted, notNow } = input.leads;
+    const parts = [[fresh, "new"], [contacted, "contacted"], [notNow, "not now"]] as const;
+    add("leads", "leads", parts.filter(([n]) => n > 0).map(([n, word]) => `${n} ${word}`).join(", "), []);
   }
 
   const lines = [subject, ""];

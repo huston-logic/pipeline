@@ -390,6 +390,7 @@ export function scaleSeed(now: Date, tz: string = DEFAULT_TZ): ScaleSeed {
       },
       quietDeals: sample.slice(3, 5).map((d) => ({ id: String(d.id), title: String(d.title), contactName: "Casey Abbott", quietDays: 15, untrusted_fields: [] })),
       newLeads: [],
+      leads: null,
     });
     return {
       id: `br_scale${pad(k, 3)}`,

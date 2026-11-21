@@ -1,12 +1,35 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { type BriefInput, composeBrief } from "./compose.ts";
+import { type BriefInput, composeBrief, SECTION_TITLES } from "./compose.ts";
 
 const TZ = "America/Los_Angeles";
 // Thu Nov 19, 2026, 7:00 AM in Los Angeles.
 const NOW = new Date("2026-11-19T15:00:00.000Z");
 
-const empty = (): BriefInput => ({ now: NOW, tz: TZ, tasks: { overdue: [], today: [] }, quietDeals: [], newLeads: [] });
+const empty = (): BriefInput => ({ now: NOW, tz: TZ, tasks: { overdue: [], today: [] }, quietDeals: [], newLeads: [], leads: null });
+
+test("with leads, a Leads section follows New inquiries with one line of non-zero counts", () => {
+  const brief = composeBrief({
+    ...empty(),
+    newLeads: [{ dealId: "dl_c", contactId: "ct_c", title: "Bakery site", contactName: "Jo Example", createdAt: "2026-11-19T10:00:00.000Z", untrusted_fields: [] }],
+    leads: { new: 4, contacted: 3, notNow: 2 },
+  });
+  assert.deepEqual(brief.lines.slice(2), [
+    "New inquiries",
+    "- Jo Example: Bakery site, added Thu Nov 19, 2:00 AM",
+    "",
+    "Leads",
+    "- 4 new, 3 contacted, 2 not now",
+  ]);
+  assert.deepEqual(brief.items.at(-1), { section: "leads", id: "leads", line: "- 4 new, 3 contacted, 2 not now", untrusted: false });
+  const some = composeBrief({ ...empty(), leads: { new: 1, contacted: 0, notNow: 2 } });
+  assert.deepEqual(some.lines.slice(2), ["Leads", "- 1 new, 2 not now"]);
+});
+
+test("with no leads there is no Leads section, and the title is New inquiries", () => {
+  assert.ok(!composeBrief(empty()).text.includes("Leads"));
+  assert.equal(SECTION_TITLES.new_lead, "New inquiries");
+});
 
 test("an empty pipeline gives the header and 'Nothing due today.'", () => {
   const brief = composeBrief(empty());
@@ -45,7 +68,7 @@ test("sections come in order, one line per item, and empty sections are left out
     "- Cafe site (Taylor Testcase): 9 days with no contact",
     "- Menu (Sam Sample): 1 day with no contact",
     "",
-    "New leads",
+    "New inquiries",
     "- Jo Example: Bakery site, added Wed Nov 18, 7:30 PM",
   ]);
   assert.deepEqual(brief.items.map((i) => [i.section, i.id]), [
@@ -63,7 +86,7 @@ test("with no tasks but a new lead, the sections that have items show and the re
     ...empty(),
     newLeads: [{ dealId: "dl_c", contactId: "ct_c", title: "Bakery site", contactName: "Jo Example", createdAt: "2026-11-19T10:00:00.000Z", untrusted_fields: [] }],
   });
-  assert.deepEqual(brief.lines.slice(2), ["New leads", "- Jo Example: Bakery site, added Thu Nov 19, 2:00 AM"]);
+  assert.deepEqual(brief.lines.slice(2), ["New inquiries", "- Jo Example: Bakery site, added Thu Nov 19, 2:00 AM"]);
   assert.ok(!brief.text.includes("Nothing due today."));
 });
 
@@ -97,7 +120,7 @@ test("in the emailed text, every line with outside text is labelled; the items a
     "Due today",
     "- Call back, due Thu Nov 19, 2:00 PM",
     "",
-    "New leads",
+    "New inquiries",
     "- [from outside] Jo Example: Bakery site, added Thu Nov 19, 2:00 AM",
   ]);
   assert.equal(brief.text, brief.lines.join("\n"));
