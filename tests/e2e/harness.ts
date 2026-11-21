@@ -102,7 +102,8 @@ async function waitUntilReady(url: string, child: ChildProcess, output: () => st
   throw new Error(`wrangler dev was not ready after ${START_TIMEOUT_MS / 1000}s:\n${output()}`);
 }
 
-export async function startDevServer(): Promise<DevServer> {
+/** `extraVars` are `NAME:value` pairs passed as `--var` on top of the dev ones, for one test file's server. */
+export async function startDevServer({ extraVars = [] }: { extraVars?: string[] } = {}): Promise<DevServer> {
   if (!existsSync(join(ROOT, "out", "index.html"))) {
     throw new Error("out/ has not been built. Run the end-to-end tests with `npm run test:e2e`, which builds it first.");
   }
@@ -110,7 +111,7 @@ export async function startDevServer(): Promise<DevServer> {
   const port = await freePort();
   const url = `http://${HOST}:${port}`;
   // A process group of its own, so stop() reaches workerd as well as wrangler.
-  const child = spawn(WRANGLER, wranglerDevArgs({ port, stateDir, ip: HOST, testScheduled: true }), {
+  const child = spawn(WRANGLER, wranglerDevArgs({ port, stateDir, ip: HOST, testScheduled: true, extraVars }), {
     cwd: ROOT,
     env: childEnv(process.env),
     stdio: ["ignore", "pipe", "pipe"],

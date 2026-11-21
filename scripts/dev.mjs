@@ -35,9 +35,10 @@ export function parseDevArgs(argv, now) {
 
 /**
  * `ip` binds to one address (the e2e tests use 127.0.0.1); `testScheduled` adds wrangler's test route for the cron
- * handler (`/cdn-cgi/handler/scheduled`).
+ * handler (`/cdn-cgi/handler/scheduled`); `extraVars` adds `NAME:value` pairs, each as its own `--var`.
+ * @param {{ port: number | string, stateDir: string, ip?: string, testScheduled?: boolean, extraVars?: string[] }} options
  */
-export function wranglerDevArgs({ port, stateDir, ip, testScheduled = false }) {
+export function wranglerDevArgs({ port, stateDir, ip, testScheduled = false, extraVars = [] }) {
   return [
     "dev",
     "--local",
@@ -54,6 +55,10 @@ export function wranglerDevArgs({ port, stateDir, ip, testScheduled = false }) {
     // A fake value so /intake can be tried locally; real secrets are set with `wrangler secret put` (docs/SECRETS.md).
     "--var",
     "INTAKE_SECRET:dev-intake-secret",
+    // A fake log address, so the Email logging page shows its set-up state locally (decision 0031).
+    "--var",
+    "EMAIL_LOG_ADDRESS:log-dev@log.example.test",
+    ...extraVars.flatMap((value) => ["--var", value]),
     // No keyboard shortcuts panel, which would wait for a TTY in CI.
     "--show-interactive-dev-session=false",
   ];
