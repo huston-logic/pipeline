@@ -5,6 +5,8 @@ import { createTestDb, type SqliteD1 } from "../db/sqlite-d1.ts";
 import type { Env } from "../env.ts";
 import worker from "../index.ts";
 import { addMonths, lastMonth, monthBounds, monthLabel } from "../report/month.ts";
+import { runBrief } from "../brief/run.ts";
+import { latestBrief } from "../services/read.ts";
 import { DEFAULT_TZ } from "../time.ts";
 
 const ctx = { waitUntil() {}, passThroughOnException() {}, props: {} } as unknown as ExecutionContext;
@@ -101,6 +103,26 @@ test("Previous and Next month links carry only a month, and Next appears once th
   assert.ok(main.includes(`href="/report?month=${addMonths(middle, 1)}"`));
   const hrefs = [...main.matchAll(/href="(\/report[^"]*)"/g)].map((m) => m[1]);
   for (const href of hrefs) assert.match(href ?? "", /^\/report\?month=\d{4}-\d{2}$/);
+});
+
+test("a brief composed on the 1st reads back with its Last month section, in latestBrief and on the Brief page", async () => {
+  const db = await createTestDb();
+  seedMonth(db, "2026-11");
+  const first = new Date("2026-12-01T15:00:00.000Z"); // 7 AM on Dec 1 in Los Angeles
+  assert.deepEqual(await runBrief({ DB: db } as unknown as Env, first), { composed: 1, sent: 0, failed: 0 });
+
+  const stored = await latestBrief(db);
+  const lastMonthItems = (stored?.items ?? []).filter((item) => item.section === "last_month");
+  assert.ok(lastMonthItems.length >= 6, "four count lines and two sources");
+  assert.equal(lastMonthItems.filter((item) => item.untrusted).length, 1, "only the outside source line");
+
+  const { body } = await get(db, "/brief");
+  const main = mainOf(body);
+  assert.match(main, /<h2 id="brief-last_month">Last month<\/h2>/);
+  assert.match(main, /Rules fired: 1/);
+  assert.match(main, /Acted on within 7 days: 1 of 1/);
+  assert.match(main, /Leads from Referral: 1 added, 1 contacted, 1 qualified/);
+  assert.match(main, /<span class="outside">From outside<\/span> <span class="outside-value">Leads from &lt;b&gt;Web form&lt;\/b&gt;: 1 added/);
 });
 
 test("the report is behind the same sign-in as the other pages", async () => {

@@ -13,7 +13,8 @@ const empty = (): CaughtInput => ({ month: "2026-10", tz: TZ, firings: [], tasks
 const firing = (n: number, extra: Partial<CaughtInput["firings"][number]> = {}): CaughtInput["firings"][number] => ({
   ruleId: "rl_a",
   dealId: `dl_${n}`,
-  contactId: null,
+  // A real deal firing always carries the deal's person.
+  contactId: `ct_${n}`,
   taskId: `tk_${n}`,
   firedAt: MADE,
   ...extra,
@@ -105,15 +106,12 @@ test("a task completed after the 7 days still counts as acted on; one left open 
   assert.equal(report.actedOn, 1);
 });
 
-test("a reach on the same person counts for a deal nudge that carries the person; a reach on another deal does not", () => {
+test("a deal nudge carries the person, so a reach on the person's other deal counts; a reach on someone else's deal does not", () => {
   const report = composeCaught({
     ...empty(),
-    firings: [firing(1, { contactId: "ct_1" })],
+    firings: [firing(1)],
     tasks: [task(1)],
-    reaches: [
-      { dealId: "dl_other", contactId: null, occurredAt: at(MADE, DAY) },
-      { dealId: null, contactId: "ct_1", occurredAt: at(MADE, DAY) },
-    ],
+    reaches: [{ dealId: "dl_other", contactId: "ct_1", occurredAt: at(MADE, DAY) }],
   });
   assert.equal(report.actedOn, 1);
   const none = composeCaught({

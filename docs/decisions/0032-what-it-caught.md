@@ -25,8 +25,8 @@ brief, or from one month to the next, would be worse than none.
   task was made up to and including 7 days later. 6 days 23 hours counts; 7 days 1 hour does not; exactly 7 days
   counts. A reach before the task was made is not a response to it. "Reach" is `isReach` (0022): a form, email,
   call or meeting, or a note logged as a text; a plain note is not. "That person" is the firing's `contact_id`, so a
-  lead nudge matches reaches on the person and a deal nudge also matches reaches on its person when the firing
-  carries one; a reach on a different deal of the same person does not match a deal nudge that has no person.
+  nudge matches reaches on the deal or on the person. Deal firings always carry the deal's person and the services
+  always write the person's id on an activity, so a reach on the person's other deal also counts for a deal nudge.
 - **Deals touched after a nudge** = distinct deals with at least one acted-on firing. **Value touched** = the sum of
   those deals' values (no value counts as 0; no currency, as elsewhere). A deal is read by id, so one archived, won
   or lost later still counts: it was nudged and acted on in that month. Lead nudges touch no deal.
@@ -34,8 +34,8 @@ brief, or from one month to the next, would be worse than none.
   - **added**: `contacts.created_at` in the month;
   - **contacted**: the person's first reach ever on their own record (`activities.contact_id`) falls in the month.
     Chosen over "first reach in the month for someone who held a lead status then", because earlier statuses are not
-    kept (0026) and this is one fact that can be read in one query. A reach on a deal only (no contact id) is not
-    counted for the person;
+    kept (0026) and this is one fact that can be read in one query. The services always set the person's id on an
+    activity, a deal's activities included, so a reach on their deal counts;
   - **qualified**: `lead_status = 'qualified'` with `lead_status_at` in the month.
   One person can be all three in the same month.
 - **By source.** Sources are grouped as company names are in 0016 (`businessKey`: trimmed, inner spaces collapsed, case
@@ -63,5 +63,5 @@ brief, or from one month to the next, would be worse than none.
 
 - A task completed after the month ends can raise that month's "acted on" later; the report is a live reading, not a
   stored snapshot. The brief's lines are stored when the brief is composed and do not change.
-- A lead whose first email was logged on a deal rather than the person is not counted as contacted.
+- An activity row written outside the services with no contact id is not counted for the person.
 - Nothing is stored for this report: no new table, no migration.

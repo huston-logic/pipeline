@@ -51,7 +51,7 @@ export const navItems: NavItem[] = [
   { href: "/pipeline", label: "Pipeline", icon: "pipeline", description: "Open deals by stage." },
   { href: "/contacts", label: "Contacts", icon: "contacts", description: "Everyone you are talking to." },
   { href: "/brief", label: "Brief", icon: "brief", description: "The latest daily brief." },
-  { href: "/more", label: "More", icon: "more", description: "Rules, changes, export and notifications.", hint: " pages" },
+  { href: "/more", label: "More", icon: "more", description: "Rules, changes, the monthly report, export and notifications.", hint: " pages" },
 ];
 
 /** Under More: on the /more page on phones, listed in the side bar on wide screens. */

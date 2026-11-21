@@ -109,7 +109,8 @@ async function lastMonthReport(db: Db, now: Date, tz: string): Promise<BriefInpu
   try {
     return composeCaught(await loadCaughtInput(db, lastMonth(now, tz), tz));
   } catch {
-    // The extra section must never cost the owner the day's brief.
+    // The extra section must never cost the owner the day's brief. Logged as a fixed event: no record data, no error text.
+    console.log(JSON.stringify({ event: "brief_last_month_failed" }));
     return null;
   }
 }

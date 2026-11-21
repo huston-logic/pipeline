@@ -52,7 +52,8 @@ export async function loadCaughtInput(db: Db, month: string, tz: string): Promis
     .prepare(`SELECT id, value FROM deals WHERE id IN (SELECT deal_id FROM rule_firings WHERE ${FIRED_IN_MONTH})`)
     .bind(from, to)
     .all<DealRow>();
-  // People who hold or held a lead status. Their first reach ever is read only for those that did something in the month.
+  // People who hold or held a lead status. Their first reach ever is computed for every such person (an indexed lookup
+  // on activities_contact each) before the outer WHERE keeps those that did something in the month.
   const leads = await db
     .prepare(
       `SELECT * FROM (

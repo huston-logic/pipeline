@@ -399,6 +399,25 @@ test("the 1st counts in the owner's calendar: 11 PM on Nov 30 there is Dec 1 in 
   assert.doesNotMatch(row?.text ?? "", /Last month/);
 });
 
+test("a failure reading the report still stores the brief, logs one fixed event and leaks nothing", async (t) => {
+  const logged: unknown[][] = [];
+  t.mock.method(console, "log", (...args: unknown[]) => logged.push(args));
+  const db = await openTestDb();
+  await novemberNudge(db);
+  const broken: Db = {
+    prepare: (sql) => {
+      if (/FROM rule_firings WHERE fired_at >= \?/.test(sql)) throw new Error("secret detail about Pat Example");
+      return db.prepare(sql);
+    },
+    batch: (statements) => db.batch(statements),
+  };
+  assert.deepEqual(await runBrief(envFor(broken), FIRST), { composed: 1, sent: 0, failed: 0 });
+  const [row] = await briefs(db);
+  assert.doesNotMatch(row?.text ?? "", /Last month/);
+  assert.deepEqual(logged, [['{"event":"brief_last_month_failed"}']]);
+  assert.doesNotMatch(JSON.stringify(logged), /secret|Pat Example/);
+});
+
 test("an empty last month adds no section on the 1st", async () => {
   const db = await openTestDb();
   assert.deepEqual(await runBrief(envFor(db), FIRST), { composed: 1, sent: 0, failed: 0 });
