@@ -141,7 +141,9 @@ export async function updateContact(ctx: Ctx, contactRef: string, patch: Contact
     throw new UserError(`Nothing to change for ${contactName(before)}: every value you gave is already set.`);
   }
 
-  const changes: RowChange[] = changed.length > 0 ? [{ table: "contacts", id: before.id, before, after }] : [];
+  // The contact row goes in even when only a task is added (its version still moves), so its guard applies: a status
+  // changed by another write since this read fails the change instead of adding a "Check back" task for a non-Not now.
+  const changes: RowChange[] = [{ table: "contacts", id: before.id, before, after }];
   if (task !== null) changes.push({ table: "tasks", id: task.id, before: null, after: task });
   const who = contactName(after);
   const status = changed.includes("lead_status") && after.lead_status !== null ? [`lead status to ${LEAD_STATUS_LABELS[after.lead_status]}`] : [];

@@ -33,6 +33,18 @@ did before), adds lead status to `update_contact`, the New to Contacted move on 
   that row when a guard fails: "Contact ct_… changed since you read it." (or "A record this change touches" when it
   read several). `/intake` retries once on a stale write as it does on a duplicate email, so a lead edited at the same
   moment still gets its deal.
+- **A follow-up date alone** still writes the contact row (only its version and `updated_at` move), so its guard
+  applies: a status changed by another write in between fails the change instead of adding a task. Undo puts the row
+  back and removes the task. Because each follow-up date adds a task, `update_contact` is not marked idempotent.
+- **Undo and invariant 1.** An undo that would make a deal open again (open, not archived) for a person who is an
+  unqualified lead now is refused, unless the contact row is part of the same undo: "Can't undo chg_…: it would reopen
+  <deal>, but <contact> is a lead now (<status>). Reopen the deal with update_deal instead, which makes them a contact
+  again." `update_deal` reopens and qualifies in one change. An undo that reopens a deal for someone who was never a
+  lead works as before.
+- **An accepted race.** `add_deal`, `/intake` and a reopen guard the contact row only when the person is a lead. If a
+  person who was never a lead is given a lead status at the same instant as one of those adds an open deal, both
+  writes succeed and the person is a lead with an open deal. Both writes must land in the same moment, so this is
+  accepted as very unlikely; making them Qualified (`qualify_lead`) or closing the deal fixes it.
 - **Business duplicates.** The check compares `businessKey` in code over the people not archived, because SQLite's
   `lower()` folds ASCII only. An empty business never matches; with an email the check is skipped (the email decides).
   `businessKey` lives in `lead-change.ts` and `read.ts` groups companies with it.

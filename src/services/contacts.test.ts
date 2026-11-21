@@ -163,6 +163,25 @@ test("a followUpDate alone on a Not now lead adds the task and leaves the status
   assert.equal((await tasks(db)).length, 1);
 });
 
+test("a followUpDate alone guards the contact row: a status changed meanwhile fails the change and adds no task", async () => {
+  const db = await openTestDb();
+  const lead = await addLead(ctxFor(db, "add_lead"), { name: "Lee Example" });
+  await updateContact(ctxFor(db), lead.contactId, { leadStatus: "not_now" });
+  const rival = racing(db, () => updateContact(ctxFor(db), lead.contactId, { leadStatus: "contacted" }));
+  await assert.rejects(
+    updateContact(ctxFor(rival), lead.contactId, { followUpDate: "2026-12-04" }),
+    new RegExp(`^UserError: Contact ${lead.contactId} changed since you read it\\.`),
+  );
+  assert.equal((await tasks(db)).length, 0);
+
+  await updateContact(ctxFor(db), lead.contactId, { leadStatus: "not_now" });
+  const added = await updateContact(ctxFor(db), lead.contactId, { followUpDate: "2026-12-04" });
+  const undone = await undoChange(ctxFor(db, "undo_change"), added.changeId);
+  assert.match(undone.summary, /Removed task "Check back with Lee Example"/);
+  assert.equal((await tasks(db)).length, 0);
+  assert.equal((await contact(db, lead.contactId)).lead_status, "not_now");
+});
+
 test("updateContact refuses qualified and points to qualify_lead", async () => {
   const db = await openTestDb();
   const lead = await addLead(ctxFor(db, "add_lead"), { name: "Lee Example" });

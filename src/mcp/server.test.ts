@@ -98,14 +98,15 @@ const DESTRUCTIVE = [
   "update_settings",
   "update_stage",
 ];
-const IDEMPOTENT = ["pause_rule", "resume_rule", "update_contact", "update_deal", "update_field", "update_rule", "update_rulebook", "update_settings", "update_stage"];
+// update_contact is not: a repeated followUpDate adds a second "Check back" task.
+const IDEMPOTENT = ["pause_rule", "resume_rule", "update_deal", "update_field", "update_rule", "update_rulebook", "update_settings", "update_stage"];
 
 test("destructive and idempotent hints are set exactly on the tools that need them", async () => {
   const { tools } = await (await client()).listTools();
   const writes = tools.filter((t) => WRITE_TOOLS.includes(t.name));
   assert.deepEqual(writes.filter((t) => t.annotations?.destructiveHint === true).map((t) => t.name).sort(), DESTRUCTIVE);
   assert.deepEqual(writes.filter((t) => t.annotations?.idempotentHint === true).map((t) => t.name).sort(), IDEMPOTENT);
-  for (const name of ["complete_task", "snooze_task", "undo_change"]) {
+  for (const name of ["complete_task", "snooze_task", "undo_change", "update_contact"]) {
     assert.equal(writes.find((t) => t.name === name)?.annotations?.idempotentHint, false, name);
   }
 });

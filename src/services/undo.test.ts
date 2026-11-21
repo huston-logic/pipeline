@@ -207,3 +207,27 @@ test("undoRemovals counts the records an undo would remove; a move's own stage-c
   assert.deepEqual(await undoRemovals(db, edited.changeId), []);
   assert.deepEqual(await undoRemovals(db, "chg_nothing0000"), []);
 });
+
+test("undo refuses to reopen a deal for someone who became a lead since, and points to update_deal (invariant 1)", async () => {
+  const { db, dealId, contactId } = await setup();
+  const lost = await updateDeal(ctxAt(db, NOW, "update_deal"), dealId, { status: "lost" });
+  await updateContact(ctxAt(db, NOW, "update_contact"), contactId, { leadStatus: "not_a_fit" });
+  const message = await refusal(undoChange(undoCtx(db), lost.changeId));
+  assert.equal(
+    message,
+    `Can't undo ${lost.changeId}: it would reopen "Website refresh" (Pat Example), but Pat Example is a lead now (Not a fit). ` +
+      "Reopen the deal with update_deal instead, which makes them a contact again.",
+  );
+  assert.equal((await deal(db, dealId))?.status, "lost");
+  assert.equal((await audit(db, lost.changeId))?.undone_at, null);
+
+  const reopened = await updateDeal(ctxAt(db, LATER, "update_deal"), dealId, { stage: "new_inquiry" });
+  assert.match(reopened.summary, /; Pat Example is now Qualified/);
+});
+
+test("undo that reopens a deal for a contact who was never a lead still works (invariant 4)", async () => {
+  const { db, dealId } = await setup();
+  const lost = await updateDeal(ctxAt(db, NOW, "update_deal"), dealId, { status: "lost" });
+  await undoChange(undoCtx(db), lost.changeId);
+  assert.equal((await deal(db, dealId))?.status, "open");
+});

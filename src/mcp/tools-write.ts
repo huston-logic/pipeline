@@ -120,7 +120,8 @@ export function registerWriteTools(server: McpServer, deps: ToolDeps): void {
       title: "Update a contact",
       kind: "write",
       destructive: true,
-      idempotent: true,
+      // Not idempotent: each followUpDate adds another "Check back" task.
+      idempotent: false,
       description:
         "Changes a contact's details or lead status. Give only what changes; null clears an optional value. Every value " +
         "you set counts as confirmed by the owner, so it leaves the contact's untrusted_fields. A lead status other " +
