@@ -18,6 +18,7 @@ function fakeEnv(calls: AssetCall[] = []): Env {
         const path = new URL(request.url).pathname;
         if (path === "/board.css") return new Response("body{}", { headers: { "Content-Type": "text/css" } });
         if (path === "/robots.txt") return new Response("User-agent: *\nAllow: /\n");
+        if (path === "/sw.js") return new Response("// sw", { headers: { "Content-Type": "text/javascript", "Cache-Control": "max-age=14400" } });
         return new Response("Not found", { status: 404 });
       },
     },
@@ -105,6 +106,15 @@ test("static files are passed to env.ASSETS.fetch and keep the security headers"
     assertSecurityHeaders(res);
   }
   assert.equal(await (await get("/board.css")).text(), "body{}");
+});
+
+test("/sw.js comes from ASSETS with Cache-Control: no-cache, so a phone checks for a new version each time (decision 0030)", async () => {
+  const res = await get("/sw.js");
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get("Cache-Control"), "no-cache");
+  assert.equal(await res.text(), "// sw");
+  assertSecurityHeaders(res);
+  assert.equal((await get("/board.css")).headers.get("Cache-Control"), null, "other files keep what ASSETS says");
 });
 
 test("a missing static file gets the HTML 404 page", async () => {

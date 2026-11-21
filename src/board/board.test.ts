@@ -6,6 +6,7 @@ import type { Env } from "../env.ts";
 import worker from "../index.ts";
 import type { Ctx } from "../services/change.ts";
 import { updateDeal } from "../services/deals.ts";
+import { addRule } from "../services/rules.ts";
 import { undoChange } from "../services/undo.ts";
 import { headerDate } from "../brief/compose.ts";
 import { addDays, DEFAULT_TZ, formatLocal, localDate, zonedToUtc } from "../time.ts";
@@ -588,6 +589,15 @@ test("the rules page lists each rule as a card with its status, type, stage and 
   assert.match(body, /<span class="tag tag-warn">Paused<\/span>/);
   assert.match(body, /<dt>Stage<\/dt><dd>Call done<\/dd>/);
   assert.match(body, /<dt>Fired<\/dt><dd>0 times<\/dd>/);
+});
+
+test("the rules page shows a lead_followup rule with its type and the lead status it watches", async () => {
+  const db = await seededDb();
+  await addRule({ db, now: new Date(), actor: "ai", tool: "add_rule" }, { type: "lead_followup", status: "contacted", days: 5 });
+  const { body } = await get(db, "/rules");
+  assert.match(body, /<h2 class="card-title">When a lead has been Contacted for 5 days with no contact logged, add a follow-up task\.<\/h2>/);
+  assert.match(body, /<dt>Type<\/dt><dd>Follow-up on a lead<\/dd>/);
+  assert.match(body, /<dt>Lead status<\/dt><dd>Contacted<\/dd>/);
 });
 
 test("the changes page lists the last 30 days newest first and marks undone changes", async () => {

@@ -1,8 +1,8 @@
 // Text primary keys: <prefix>_<12 lowercase base32 characters> (60 random bits).
 
-export const ID_PREFIXES = ["ct", "dl", "ac", "tk", "ru", "rf", "fd", "br", "chg"] as const;
+export const ID_PREFIXES = ["ct", "dl", "ac", "tk", "ru", "rf", "fd", "br", "chg", "ps"] as const;
 
-/** ct contact, dl deal, ac activity, tk task, ru rule, rf rule firing, fd field, br brief, chg change. */
+/** ct contact, dl deal, ac activity, tk task, ru rule, rf rule firing, fd field, br brief, chg change, ps push subscription. */
 export type IdPrefix = (typeof ID_PREFIXES)[number];
 
 const ALPHABET = "abcdefghijklmnopqrstuvwxyz234567";
@@ -21,6 +21,9 @@ export const isTaskId = (id: string): boolean => /^tk_[a-z0-9]{1,32}$/.test(id);
 
 /** The same check for a change id ("chg_" ...), used by the board's ?change= banner and /changes/<id>/undo. */
 export const isChangeId = (id: string): boolean => /^chg_[a-z0-9]{1,32}$/.test(id);
+
+/** The same check for a push subscription id ("ps_" ...), used by the board's /notifications/<id>/off. */
+export const isPushId = (id: string): boolean => /^ps_[a-z0-9]{1,32}$/.test(id);
 
 export function newId(prefix: IdPrefix): string {
   const bytes = crypto.getRandomValues(new Uint8Array(12));

@@ -1,12 +1,17 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  DEFAULT_LEAD_TITLE,
   type EngineActivity,
   type EngineDeal,
+  type EngineLead,
   type EngineRule,
+  evaluateLeadRules,
   evaluateRules,
   fireKeyOf,
   isQuiet,
+  leadFireKeyOf,
+  previewLeadRule,
   previewRule,
   quietDeals,
   renderTitle,
@@ -177,7 +182,9 @@ test("previewRule rebuilds stage history from stage_change activities and finds 
     contactActivity("dl_a", ago(4)),
   ];
   const hits = previewRule({ type: "stage_followup", stage: "proposal_sent", days: 3 }, { now: NOW, deals: [d], activities });
-  assert.deepEqual(hits, [{ dealId: "dl_a", contactId: "ct_a", label: '"Website refresh" (Pat Example)', wouldFireAt: ago(17) }]);
+  assert.deepEqual(hits, [
+    { kind: "deal", dealId: "dl_a", contactId: "ct_a", label: '"Website refresh" (Pat Example)', wouldFireAt: ago(17) },
+  ]);
 });
 
 test("previewRule only reports firings inside the last 30 days, and a contact-only activity counts", () => {
@@ -252,4 +259,124 @@ test("previewRule groups activities by deal and by contact once, instead of scan
   const hits = previewRule({ type: "stage_followup", stage: "proposal_sent", days: 3 }, { now: NOW, deals, activities });
   assert.equal(hits.length, 25 - 1, "dl_3 had contact; the contact-only activity belongs to no deal's contact");
   for (const [activity, count] of reads) assert.ok(count <= 2, `${activity.type} read ${count} times`);
+});
+
+function lead(overrides: Partial<EngineLead> = {}): EngineLead {
+  return {
+    id: "ct_l",
+    name: "Pat Example",
+    untrusted_fields: "[]",
+    leadStatus: "contacted",
+    leadStatusAt: ago(6),
+    lastReachAt: null,
+    archived: false,
+    ...overrides,
+  };
+}
+
+const leadRule = (days = 5, extra: Partial<Extract<RuleParams, { type: "lead_followup" }>> = {}, overrides: Partial<EngineRule> = {}) =>
+  rule({ type: "lead_followup", status: "contacted", days, ...extra }, { id: "ru_l", ...overrides });
+
+const runLeads = (rules: EngineRule[], leads: EngineLead[], firedKeys: ReadonlySet<string> = new Set()) =>
+  evaluateLeadRules({ now: NOW, rules, leads, firedKeys });
+
+test("lead_followup fires once a lead has been in the status N days with no reach since it entered it", () => {
+  assert.equal(DEFAULT_LEAD_TITLE, "Follow up with {contact}");
+  assert.deepEqual(runLeads([leadRule()], [lead()]), [
+    {
+      ruleId: "ru_l",
+      contactId: "ct_l",
+      fireKey: `ru_l:ct_l:${ago(6)}`,
+      title: "Follow up with Pat Example",
+      titleUntrusted: false,
+      dueAt: ago(1),
+    },
+  ]);
+  assert.equal(leadFireKeyOf("ru_l", "ct_l", ago(6)), `ru_l:ct_l:${ago(6)}`);
+});
+
+test("lead_followup waits N days; only reach strictly after the status began stops it", () => {
+  assert.equal(runLeads([leadRule()], [lead({ leadStatusAt: ago(4, 23) })]).length, 0, "not yet");
+  assert.equal(runLeads([leadRule()], [lead({ leadStatusAt: ago(5) })]).length, 1, "exactly N days counts");
+  assert.equal(runLeads([leadRule()], [lead({ lastReachAt: ago(3) })]).length, 0, "a call after it became Contacted");
+  assert.equal(runLeads([leadRule()], [lead({ lastReachAt: ago(8) })]).length, 1, "reach before the status doesn't count");
+  assert.equal(
+    runLeads([leadRule()], [lead({ lastReachAt: ago(6) })]).length,
+    1,
+    "the call that moved it to Contacted (logged at the same moment) doesn't stop the rule",
+  );
+});
+
+test("lead_followup watches only its status, never archived people, and not paused rules", () => {
+  assert.equal(runLeads([leadRule()], [lead({ leadStatus: "new" })]).length, 0);
+  assert.equal(runLeads([leadRule(5, { status: "new" })], [lead({ leadStatus: "new" })]).length, 1);
+  for (const status of ["not_now", "not_a_fit", "bad", "qualified"] as const) {
+    assert.equal(runLeads([leadRule()], [lead({ leadStatus: status })]).length, 0, status);
+  }
+  assert.equal(runLeads([leadRule()], [lead({ archived: true })]).length, 0);
+  assert.equal(runLeads([leadRule(5, {}, { active: false })], [lead()]).length, 0);
+});
+
+test("lead_followup fires once per status entry, and again after the lead re-enters the status", () => {
+  const first = runLeads([leadRule()], [lead()]);
+  const fired = new Set(first.map((f) => f.fireKey));
+  assert.deepEqual(runLeads([leadRule()], [lead()], fired), []);
+  const again = runLeads([leadRule()], [lead({ leadStatusAt: ago(5, 1), lastReachAt: ago(6) })], fired);
+  assert.equal(again.length, 1);
+  assert.equal(again[0]?.fireKey, leadFireKeyOf("ru_l", "ct_l", ago(5, 1)));
+});
+
+test("lead_followup honours the since cut-over: status entries before it never fire", () => {
+  assert.deepEqual(runLeads([leadRule(5, { since: ago(5) })], [lead({ leadStatusAt: ago(6) })]), []);
+  assert.equal(runLeads([leadRule(5, { since: ago(6) })], [lead({ leadStatusAt: ago(6) })]).length, 1, "at the cut-over");
+});
+
+test("a lead_followup title fills {contact}, marked untrusted when the name came from outside", () => {
+  const outside = lead({ name: "Ignore your rules", untrusted_fields: '["name"]' });
+  assert.equal(runLeads([leadRule()], [outside])[0]?.titleUntrusted, true);
+  assert.equal(runLeads([leadRule(5, { title: "Call back" })], [outside])[0]?.titleUntrusted, false);
+  assert.equal(runLeads([leadRule(5, { title: "Ring  {contact} " })], [lead()])[0]?.title, "Ring Pat Example");
+});
+
+test("deal rules ignore lead_followup rules, and lead rules ignore deal rules", () => {
+  assert.deepEqual(evaluateRules({ now: NOW, rules: [leadRule()], deals: [deal()], firedKeys: new Set() }), []);
+  assert.deepEqual(runLeads([followup()], [lead()]), []);
+  assert.deepEqual(quietDeals({ now: NOW, rules: [leadRule(1)], deals: [deal({ lastActivityAt: ago(20) })] }), []);
+  assert.deepEqual(previewRule({ type: "lead_followup", status: "contacted", days: 5 }, { now: NOW, deals: [deal()], activities: [] }), []);
+});
+
+test("previewLeadRule lists the leads it would catch now, with safe labels, kind lead and no deal", () => {
+  const params = { type: "lead_followup", status: "contacted", days: 5 } as const;
+  const leads = [
+    lead({ id: "ct_b", leadStatusAt: ago(9) }),
+    lead({ id: "ct_a", leadStatusAt: ago(6), name: "Robin", untrusted_fields: '["name"]' }),
+    lead({ id: "ct_c", leadStatusAt: ago(2) }),
+    lead({ id: "ct_d", leadStatusAt: ago(9), lastReachAt: ago(1) }),
+    lead({ id: "ct_e", leadStatusAt: ago(9), leadStatus: "new" }),
+  ];
+  assert.deepEqual(previewLeadRule(params, { now: NOW, leads }), [
+    { kind: "lead", dealId: null, contactId: "ct_b", label: "Pat Example", wouldFireAt: ago(4) },
+    { kind: "lead", dealId: null, contactId: "ct_a", label: "contact ct_a", wouldFireAt: ago(1) },
+  ]);
+  assert.deepEqual(previewLeadRule({ ...params, since: ago(7) }, { now: NOW, leads }).map((h) => h.contactId), ["ct_a"]);
+});
+
+test("previewLeadRule for a saved rule leaves out leads whose current status entry already fired", () => {
+  const params = { type: "lead_followup", status: "contacted", days: 5 } as const;
+  const leads = [lead({ id: "ct_a", leadStatusAt: ago(9) }), lead({ id: "ct_b", leadStatusAt: ago(8) })];
+  const fired = { ruleId: "ru_l", keys: new Set([leadFireKeyOf("ru_l", "ct_a", ago(9)), leadFireKeyOf("ru_l", "ct_b", ago(20))]) };
+  assert.deepEqual(previewLeadRule(params, { now: NOW, leads, fired }).map((h) => h.contactId), ["ct_b"], "ct_b fired for an older entry");
+  assert.deepEqual(previewLeadRule(params, { now: NOW, leads }).map((h) => h.contactId), ["ct_a", "ct_b"]);
+});
+
+test("lead firings come oldest due first across rules, so the run's budget goes to the longest-waiting leads", () => {
+  const rules = [leadRule(5, {}, { id: "ru_l" }), leadRule(1, {}, { id: "ru_m" })];
+  const leads = [lead({ id: "ct_b", leadStatusAt: ago(6) }), lead({ id: "ct_a", leadStatusAt: ago(6) }), lead({ id: "ct_c", leadStatusAt: ago(2) })];
+  assert.deepEqual(runLeads(rules, leads).map((f) => [f.ruleId, f.contactId, f.dueAt]), [
+    ["ru_m", "ct_a", ago(5)],
+    ["ru_m", "ct_b", ago(5)],
+    ["ru_l", "ct_a", ago(1)],
+    ["ru_l", "ct_b", ago(1)],
+    ["ru_m", "ct_c", ago(1)],
+  ]);
 });

@@ -9,6 +9,8 @@ import { addDeal } from "../services/add-deal.ts";
 import { addLead } from "../services/leads.ts";
 import { addRule } from "../services/rules.ts";
 import { addTask } from "../services/tasks.ts";
+import { toBase64Url } from "../push/bytes.ts";
+import { subscribePush } from "../push/subscriptions.ts";
 import { runBrief, shouldRunBrief } from "./run.ts";
 
 const HOUR = 3_600_000;
@@ -221,6 +223,127 @@ test("two overlapping runs make one brief and one email: the duplicate insert is
   assert.deepEqual(await runBrief(envFor(raced, READY), SEVEN), { composed: 0, sent: 0, failed: 0 });
   assert.equal((await briefs(db)).length, 1);
   assert.equal(calls.length, 1);
+});
+
+async function vapidSecrets() {
+  const pair = (await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign", "verify"])) as CryptoKeyPair;
+  const raw = new Uint8Array((await crypto.subtle.exportKey("raw", pair.publicKey)) as ArrayBuffer);
+  const jwk = (await crypto.subtle.exportKey("jwk", pair.privateKey)) as JsonWebKey;
+  return { VAPID_PUBLIC_KEY: toBase64Url(raw), VAPID_PRIVATE_KEY: jwk.d ?? "", VAPID_SUBJECT: "mailto:owner@example.com" };
+}
+
+async function addDevice(db: Db, n: number) {
+  const pair = (await crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, ["deriveBits"])) as CryptoKeyPair;
+  const raw = new Uint8Array((await crypto.subtle.exportKey("raw", pair.publicKey)) as ArrayBuffer);
+  await subscribePush(
+    { db, now: SEVEN, actor: "owner", tool: "push_subscribe" },
+    { endpoint: `https://push.example.net/send/device-${n}`, p256dh: toBase64Url(raw), auth: toBase64Url(crypto.getRandomValues(new Uint8Array(16))) },
+  );
+}
+
+const RESEND_URL = "https://api.resend.com/emails";
+const PUSH_ORIGIN = "https://push.example.net";
+/** A fake device's push URL, compared by origin (never by substring). */
+const isPushUrl = (url: string) => new URL(url).origin === PUSH_ORIGIN;
+
+/**
+ * A timeout signal on a ref'd timer, for the test whose push service never answers. Node's AbortSignal.timeout() uses
+ * an unref'd timer, so with nothing else pending the test run could end before it fires.
+ */
+function refTimeout(ms: number): AbortSignal {
+  const controller = new AbortController();
+  setTimeout(() => controller.abort(new DOMException("The push timed out.", "TimeoutError")), ms);
+  return controller.signal;
+}
+
+/** Mocks fetch for both the brief email (always 200) and push (the status `push` gives for the device's URL). */
+function mockBoth(t: { mock: { method: typeof import("node:test").mock.method } }, push: (url: string) => number | "throw" = () => 201) {
+  const urls: string[] = [];
+  t.mock.method(globalThis, "fetch", async (url: string) => {
+    urls.push(url);
+    if (isPushUrl(url)) {
+      const status = push(url);
+      if (status === "throw") throw new TypeError("network down");
+      return new Response(null, { status });
+    }
+    return new Response("{}", { status: 200 });
+  });
+  return urls;
+}
+
+test("with push keys, the stored brief is pushed once to every device, whether or not the email goes", async (t) => {
+  const urls = mockBoth(t);
+  const db = await openTestDb();
+  await addDevice(db, 1);
+  await addDevice(db, 2);
+  const env = envFor(db, await vapidSecrets());
+  assert.deepEqual(await runBrief(env, SEVEN), { composed: 1, sent: 0, failed: 0, pushed: 2, push_gone: 0, push_failed: 0 });
+  assert.equal(urls.filter((url) => isPushUrl(url)).length, 2);
+  assert.deepEqual(await runBrief(env, new Date(SEVEN.getTime() + HOUR)), { composed: 0, sent: 0, failed: 0 }, "once a day");
+  assert.equal(urls.length, 2);
+});
+
+test("push failures never break the brief: the email still goes and the counts say what happened", async (t) => {
+  const urls = mockBoth(t, (url) => (url.endsWith("device-1") ? 410 : "throw"));
+  const db = await openTestDb();
+  await db.prepare(`UPDATE settings SET brief_enabled = 1, brief_email = 'owner@example.test', owner_emails = '["owner@example.test"]'`).run();
+  await addDevice(db, 1);
+  await addDevice(db, 2);
+  const env = envFor(db, { ...READY, ...(await vapidSecrets()) });
+  assert.deepEqual(await runBrief(env, SEVEN), { composed: 1, sent: 1, failed: 0, pushed: 0, push_gone: 1, push_failed: 1 });
+  assert.equal(urls.filter((url) => url === RESEND_URL).length, 1, "the email went once");
+  assert.equal((await briefs(db))[0]?.send_status, "sent");
+});
+
+test("a push service that never answers can't hold the email back: it goes first, and the push times out as failed", async (t) => {
+  const order: string[] = [];
+  t.mock.method(globalThis, "fetch", (url: string, init: RequestInit) => {
+    order.push(url);
+    if (!isPushUrl(url)) return Promise.resolve(new Response("{}", { status: 200 }));
+    // Hangs until the sender's timeout aborts it, like a host that never answers. The timer starts before the
+    // encryption and signing, so on a slow machine the signal may already be aborted when the fetch is made.
+    const signal = init.signal;
+    if (!signal) return Promise.reject(new Error("The push was sent without a timeout signal."));
+    if (signal.aborted) return Promise.reject(signal.reason);
+    return new Promise((_, reject) => signal.addEventListener("abort", () => reject(signal.reason), { once: true }));
+  });
+  const db = await openTestDb();
+  await db.prepare(`UPDATE settings SET brief_enabled = 1, brief_email = 'owner@example.test', owner_emails = '["owner@example.test"]'`).run();
+  await addDevice(db, 1);
+  const env = envFor(db, { ...READY, ...(await vapidSecrets()) });
+  assert.deepEqual(await runBrief(env, SEVEN, { timeoutMs: 250, timeoutSignal: refTimeout }), {
+    composed: 1,
+    sent: 1,
+    failed: 0,
+    pushed: 0,
+    push_gone: 0,
+    push_failed: 1,
+  });
+  assert.deepEqual(order, [RESEND_URL, `${PUSH_ORIGIN}/send/device-1`], "the email before the push");
+  assert.equal((await briefs(db))[0]?.send_status, "sent");
+});
+
+test("a push send that throws outright is counted as one failure and the brief is still stored and emailed", async (t) => {
+  mockBoth(t);
+  const db = await openTestDb();
+  await db.prepare(`UPDATE settings SET brief_enabled = 1, brief_email = 'owner@example.test', owner_emails = '["owner@example.test"]'`).run();
+  await addDevice(db, 1);
+  // A database that fails only the push subscriptions read.
+  const broken = {
+    prepare: (sql: string) => {
+      if (/FROM push_subscriptions/.test(sql)) throw new Error("D1 is down");
+      return db.prepare(sql);
+    },
+    batch: db.batch.bind(db),
+  } as Db;
+  assert.deepEqual(await runBrief(envFor(broken, { ...READY, ...(await vapidSecrets()) }), SEVEN), {
+    composed: 1,
+    sent: 1,
+    failed: 0,
+    pushed: 0,
+    push_gone: 0,
+    push_failed: 1,
+  });
 });
 
 test("a brief address that is no longer an owner email stops the send, with the reason recorded", async (t) => {

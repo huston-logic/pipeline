@@ -43,6 +43,14 @@ export type Env = {
   BRIEF_FROM?: string;
   /** Resend API key (a secret: set with `wrangler secret put`, never in the repo). */
   RESEND_API_KEY?: string;
+  /**
+   * Web push keys (secrets; decision 0030): the VAPID public key (base64url uncompressed P-256 point), its private
+   * scalar d (base64url) and the contact the push services see (mailto: or https:). Push stays off until all three are
+   * set; `node scripts/make-vapid-keys.mjs` makes a pair.
+   */
+  VAPID_PUBLIC_KEY?: string;
+  VAPID_PRIVATE_KEY?: string;
+  VAPID_SUBJECT?: string;
   /** The shared secret a website form's server sends in X-Intake-Secret (a secret). Unset: /intake answers 503. */
   INTAKE_SECRET?: string;
   /** Rate limit for /intake by client IP (binding in wrangler.jsonc). Absent: requests are allowed and a log line says so. */

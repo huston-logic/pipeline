@@ -11,7 +11,7 @@ import { stageOverview } from "../services/stages.ts";
 import { LEAD_SORTS, listLeads } from "../services/leads-read.ts";
 import { LEAD_STATUS_LABELS, LEAD_STATUSES, type LeadStatus } from "../services/lead-status.ts";
 import { getDealBrief, listDealsFiltered, pipelineSummary, recentChanges, searchContacts, whatsDue } from "../services/read.ts";
-import { listRules, previewRuleFor } from "../services/rules.ts";
+import { listRules, previewRuleFor, type RulePreview } from "../services/rules.ts";
 import { formatLocal, parseWhen } from "../time.ts";
 import { toolResult } from "./format.ts";
 import { DEAL_STATUSES, dealRef, FIELD_ENTITIES, RULE_TYPES, ruleRef, ruleSettings, shortText, when } from "./schemas.ts";
@@ -21,6 +21,24 @@ const DAY_MS = 86_400_000;
 
 /** "1 open deal", "3 open deals". */
 export const count = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+
+/** preview_rule's one line: deal rules look back 30 days, a lead rule shows the present (decision 0026). */
+function previewHeadline(preview: RulePreview): string {
+  const times = preview.hits.length;
+  if (preview.scope === "now" && preview.paused) {
+    return (
+      `Rule ${preview.ruleId ?? ""} is paused, so it would catch no lead until it is resumed, and then only leads whose ` +
+      "status changes after that. Nothing was changed."
+    );
+  }
+  if (preview.scope === "now") {
+    const caught = times === 0 ? "This rule would not catch any lead now." : `This rule would catch ${count(preview.leadCount, "lead")} now.`;
+    return `${caught} It shows who it would catch now, not the last 30 days. Nothing was changed.`;
+  }
+  return times === 0
+    ? "This rule would not have caught any deal in the last 30 days. Nothing was changed."
+    : `This rule would have caught ${count(preview.dealCount, "deal")} in the last 30 days (${count(times, "time")}). Nothing was changed.`;
+}
 
 const leadStatusList = (description: string) => z.array(z.enum(LEAD_STATUSES)).max(LEAD_STATUSES.length).describe(description);
 
@@ -354,8 +372,10 @@ export function registerReadTools(server: McpServer, deps: ToolDeps): void {
       title: "Preview a rule",
       kind: "read",
       description:
-        "Says which deals a rule would have caught in the last 30 days, and when, without changing anything. Give a " +
-        "saved rule's id, or a new rule's type and settings (the same as add_rule). Preview a new rule before adding it.",
+        "Says which deals a rule would have caught in the last 30 days, and when, without changing anything; for a " +
+        "lead_followup rule, which leads it would catch now (scope \"now\"; a saved rule leaves out leads it already " +
+        "added a task for, and a paused one catches none). Give a saved rule's id, or a new rule's " +
+        "type and settings (the same as add_rule). Preview a new rule before adding it.",
       input: z.strictObject({
         rule: ruleRef().optional(),
         type: z.enum(RULE_TYPES).optional().describe("A new rule's type (leave out when previewing a saved rule)."),
@@ -363,13 +383,7 @@ export function registerReadTools(server: McpServer, deps: ToolDeps): void {
       }),
       async run(args, { db, now }) {
         const preview = await previewRuleFor(db, now(), args);
-        const times = preview.hits.length;
-        const headline =
-          times === 0
-            ? "This rule would not have caught any deal in the last 30 days. Nothing was changed."
-            : `This rule would have caught ${count(preview.dealCount, "deal")} in the last 30 days ` +
-              `(${count(times, "time")}). Nothing was changed.`;
-        return toolResult(headline, preview);
+        return toolResult(previewHeadline(preview), preview);
       },
     },
     deps,

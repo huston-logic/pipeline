@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { ID_PREFIXES, isChangeId, isContactId, isDealId, isTaskId, newId } from "./ids.ts";
+import { ID_PREFIXES, isChangeId, isContactId, isDealId, isPushId, isTaskId, newId } from "./ids.ts";
 
 test("ids are <prefix>_ plus 12 lowercase base32 characters", () => {
   for (const prefix of ID_PREFIXES) {
@@ -9,7 +9,7 @@ test("ids are <prefix>_ plus 12 lowercase base32 characters", () => {
 });
 
 test("the prefixes are the ones the plan lists", () => {
-  assert.deepEqual([...ID_PREFIXES], ["ct", "dl", "ac", "tk", "ru", "rf", "fd", "br", "chg"]);
+  assert.deepEqual([...ID_PREFIXES], ["ct", "dl", "ac", "tk", "ru", "rf", "fd", "br", "chg", "ps"]);
 });
 
 test("ids do not repeat", () => {
@@ -48,4 +48,10 @@ test("isTaskId accepts newId's task ids and the seed's tk_seed01 style, nothing 
   assert.ok(isTaskId("tk_seed01"));
   const bad = ["dl_seed01", "tk_", "tk", "TK_SEED01", "tk_a-b", "tk_a%2Fb", "tk_a/b", "<script>"];
   for (const id of [...bad, ` ${newId("tk")}`, `tk_${"a".repeat(33)}`]) assert.equal(isTaskId(id), false, id);
+});
+
+test("isPushId accepts newId's push subscription ids, nothing else", () => {
+  for (let i = 0; i < 50; i++) assert.ok(isPushId(newId("ps")));
+  const bad = ["tk_seed01", "ps_", "ps", "PS_ABC", "ps_a-b", "ps_a%2Fb", "ps_a/b", "<script>"];
+  for (const id of [...bad, ` ${newId("ps")}`, `ps_${"a".repeat(33)}`]) assert.equal(isPushId(id), false, id);
 });
