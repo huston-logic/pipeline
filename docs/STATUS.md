@@ -28,6 +28,7 @@ are task E1.
 | C1 | Email logging by BCC (0031, migration 0008) | [#37](https://github.com/huston-logic/pipeline/pull/37) | merged |
 | D1 | Phone notification when the brief is ready (0030, migration 0007) | [#32](https://github.com/huston-logic/pipeline/pull/32) | merged |
 | E2 | After you update, closing status, CPU re-measure | [#42](https://github.com/huston-logic/pipeline/pull/42) | auto-merge queued |
+| F1 | Final-review fixes | this PR | auto-merge queued |
 
 Every task went through an independent review; fixes were made before merge. CI flakes on the way: `lighthouse`
 `NO_NAVSTART` (re-ran the failed job) on #32 and #36.
@@ -91,6 +92,9 @@ Code scanning on the way, each fixed in code (never dismissed):
      Changing it changes what the copy says, so I did not.
    - The Pipeline empty state now says "Inquiries from your website form" (it said "Leads ..."), because "lead" now
      means a person you approach. Confirm you want that wording.
+   - `/intake`'s change summary still says "new lead" for a new person who gets a deal; after run 4 "lead" means a
+     person with a lead status. "new inquiry" would match the Pipeline wording. Changing it changes what the copy says,
+     so I did not.
 4. **Local Playwright Chromium** (still open, run 1 STOP 2): this Mac has 1248, `@playwright/test` wants 1254. Run
    `npx playwright install chromium` in your own terminal.
 5. **CPU items over 10 ms** (docs/PAID-PLAN.md, "Run 4 closing re-measure"), to check in the Cloudflare dashboard on
@@ -109,9 +113,8 @@ Minor review findings left (none blocks use), grouped:
   read in a lead preview covers all the rule's keys (bounded); the rulebook order differs between a fresh and an
   upgraded copy (harmless); `db.ts` imports the `LeadStatus` type from `services/` (layering, type only).
 - **Leads and the board:** the summary says "Moved ... back to leads (Contacted)" when already Contacted; a snoozed
-  task with no due date is left out of `list_leads`' next task; the Contacts search gives no hint that a person may be
-  under Leads; double-posting Not now with a date adds two check-back tasks; the contact detail is read twice on a
-  deal page.
+  task with no due date is left out of `list_leads`' next task; double-posting Not now with a date adds two check-back
+  tasks; the contact detail is read twice on a deal page.
 - **Import:** a bad custom field value skips the whole merge row (as it does on create).
 - **Email logging:** a quoted local part containing `;` in Cloudflare's header is dropped (fails closed); the end-to-end
   test covers only the drop path (the logged path is unit-tested).
