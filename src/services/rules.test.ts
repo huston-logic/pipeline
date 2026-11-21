@@ -814,6 +814,56 @@ test("previewRuleFor for a lead_followup lists the leads it would catch now, by 
   assert.equal(await countOf(db, "rule_firings"), 0);
 });
 
+test("previewing a saved lead rule leaves out leads it already fired on; previewing by settings still lists them", async () => {
+  const db = await openTestDb();
+  await contactedLead(db, later(-9), "Reminded Example");
+  await contactedLead(db, later(-7), "Waiting Example");
+  const { ruleId } = await addRule(ctxFor(db, "add_rule", later(-8)), { type: "lead_followup", status: "contacted", days: 1 });
+  await runRules(db, later(-8));
+  assert.equal(await countOf(db, "rule_firings"), 1, "only Reminded had waited a day by then");
+
+  const saved = await previewRuleFor(db, NOW, { rule: ruleId });
+  assert.deepEqual(saved.hits.map((h) => h.label), ["Waiting Example"]);
+  assert.equal(saved.leadCount, 1);
+  assert.equal(saved.paused, false);
+  const fresh = await previewRuleFor(db, NOW, { type: "lead_followup", status: "contacted", days: 1 });
+  assert.deepEqual(fresh.hits.map((h) => h.label), ["Reminded Example", "Waiting Example"]);
+});
+
+test("previewing a paused lead rule catches no one and says it is paused", async () => {
+  const db = await openTestDb();
+  await contactedLead(db, later(-9));
+  const { ruleId } = await addRule(ctxFor(db), { type: "lead_followup", status: "contacted", days: 1 });
+  await pauseRule(ctxFor(db, "pause_rule"), ruleId);
+  const preview = await previewRuleFor(db, NOW, { rule: ruleId });
+  assert.equal(preview.paused, true);
+  assert.deepEqual(preview.hits, []);
+  assert.equal(preview.leadCount, 0);
+});
+
+test("a parallel run that fired a lead first is skipped silently: one task, counted as alreadyFired", async () => {
+  const db = await openTestDb();
+  await newLead(db, NOW);
+  await addRule(ctxFor(db), { type: "lead_followup", status: "new", days: 3 });
+  const raced = racing(db, () => runRules(db, later(3)));
+  assert.deepEqual(await runRules(raced, later(3)), { rules: 1, fired: 0, alreadyFired: 1, failed: 0, deferred: 0 });
+  assert.equal(await countOf(db, "tasks"), 1);
+  assert.equal(await countOf(db, "rule_firings"), 1);
+});
+
+test("lead firings over the budget go oldest first: the longest-waiting leads fire in the first run", async () => {
+  const db = await openTestDb();
+  for (let i = 0; i < 26; i++) await newLead(db, later(i / 24), `Lead ${String(i).padStart(2, "0")} Example`);
+  await addRule(ctxFor(db), { type: "lead_followup", status: "new", days: 1, title: "Call {contact}" });
+  await addRule(ctxFor(db), { type: "lead_followup", status: "new", days: 3, title: "Again {contact}" });
+  const run = await runRules(db, later(5));
+  assert.equal(run.fired, 25);
+  assert.equal(run.deferred, 27);
+  const titles = (await rows<{ title: string }>(db, "SELECT title FROM tasks ORDER BY due_at, title")).map((t) => t.title);
+  assert.ok(titles.every((title) => title.startsWith("Call ")), "every 1-day reminder is due before any 3-day one");
+  assert.ok(!titles.includes("Call Lead 25 Example"), "the newest lead waits for the next run");
+});
+
 test("deal firings and lead firings share one run's budget of 25, deals first; none lost or doubled", async () => {
   const db = await openTestDb();
   for (let i = 0; i < 20; i++) await proposal(db, NOW, `Deal ${i} Example`);

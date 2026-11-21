@@ -360,3 +360,23 @@ test("previewLeadRule lists the leads it would catch now, with safe labels, kind
   ]);
   assert.deepEqual(previewLeadRule({ ...params, since: ago(7) }, { now: NOW, leads }).map((h) => h.contactId), ["ct_a"]);
 });
+
+test("previewLeadRule for a saved rule leaves out leads whose current status entry already fired", () => {
+  const params = { type: "lead_followup", status: "contacted", days: 5 } as const;
+  const leads = [lead({ id: "ct_a", leadStatusAt: ago(9) }), lead({ id: "ct_b", leadStatusAt: ago(8) })];
+  const fired = { ruleId: "ru_l", keys: new Set([leadFireKeyOf("ru_l", "ct_a", ago(9)), leadFireKeyOf("ru_l", "ct_b", ago(20))]) };
+  assert.deepEqual(previewLeadRule(params, { now: NOW, leads, fired }).map((h) => h.contactId), ["ct_b"], "ct_b fired for an older entry");
+  assert.deepEqual(previewLeadRule(params, { now: NOW, leads }).map((h) => h.contactId), ["ct_a", "ct_b"]);
+});
+
+test("lead firings come oldest due first across rules, so the run's budget goes to the longest-waiting leads", () => {
+  const rules = [leadRule(5, {}, { id: "ru_l" }), leadRule(1, {}, { id: "ru_m" })];
+  const leads = [lead({ id: "ct_b", leadStatusAt: ago(6) }), lead({ id: "ct_a", leadStatusAt: ago(6) }), lead({ id: "ct_c", leadStatusAt: ago(2) })];
+  assert.deepEqual(runLeads(rules, leads).map((f) => [f.ruleId, f.contactId, f.dueAt]), [
+    ["ru_m", "ct_a", ago(5)],
+    ["ru_m", "ct_b", ago(5)],
+    ["ru_l", "ct_a", ago(1)],
+    ["ru_l", "ct_b", ago(1)],
+    ["ru_m", "ct_c", ago(1)],
+  ]);
+});

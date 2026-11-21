@@ -109,6 +109,14 @@ test("add_rule, update_rule and preview_rule take a lead_followup with its statu
   const none = await ok(c, "preview_rule", { rule: ruleId });
   assert.equal(none.headline, "This rule would not catch any lead now. It shows who it would catch now, not the last 30 days. Nothing was changed.");
 
+  await ok(c, "pause_rule", { rule: ruleId });
+  const paused = await ok(c, "preview_rule", { rule: ruleId });
+  assert.equal(
+    paused.headline,
+    `Rule ${ruleId} is paused, so it would catch no lead until it is resumed, and then only leads whose status changes ` +
+      "after that. Nothing was changed.",
+  );
+
   assert.match(await fails(c, "add_rule", { type: "lead_followup", status: "not_now", days: 5 }), /"status"/);
   assert.match(await fails(c, "add_rule", { type: "lead_followup", status: "new", days: 5, title: "About {deal}" }), /title can use \{contact\} only/);
   assert.match(await fails(c, "add_rule", { type: "lead_followup", days: 5 }), /A lead_followup rule takes status \(new or contacted\) and days, and optionally title\./);

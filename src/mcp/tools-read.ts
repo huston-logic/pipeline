@@ -23,6 +23,12 @@ export const count = (n: number, one: string, many = `${one}s`) => `${n} ${n ===
 /** preview_rule's one line: deal rules look back 30 days, a lead rule shows the present (decision 0026). */
 function previewHeadline(preview: RulePreview): string {
   const times = preview.hits.length;
+  if (preview.scope === "now" && preview.paused) {
+    return (
+      `Rule ${preview.ruleId ?? ""} is paused, so it would catch no lead until it is resumed, and then only leads whose ` +
+      "status changes after that. Nothing was changed."
+    );
+  }
   if (preview.scope === "now") {
     const caught = times === 0 ? "This rule would not catch any lead now." : `This rule would catch ${count(preview.leadCount, "lead")} now.`;
     return `${caught} It shows who it would catch now, not the last 30 days. Nothing was changed.`;
@@ -310,7 +316,8 @@ export function registerReadTools(server: McpServer, deps: ToolDeps): void {
       kind: "read",
       description:
         "Says which deals a rule would have caught in the last 30 days, and when, without changing anything; for a " +
-        "lead_followup rule, which leads it would catch now (scope \"now\"). Give a saved rule's id, or a new rule's " +
+        "lead_followup rule, which leads it would catch now (scope \"now\"; a saved rule leaves out leads it already " +
+        "added a task for, and a paused one catches none). Give a saved rule's id, or a new rule's " +
         "type and settings (the same as add_rule). Preview a new rule before adding it.",
       input: z.strictObject({
         rule: ruleRef().optional(),

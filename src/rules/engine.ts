@@ -202,7 +202,10 @@ function leadDueAt(params: RuleParams, lead: EngineLead, now: Date): number | nu
   return at > now.getTime() ? null : at;
 }
 
-/** The tasks the active lead_followup rules owe now, leaving out status entries already in `firedKeys`. */
+/**
+ * The tasks the active lead_followup rules owe now, leaving out status entries already in `firedKeys`. Oldest due
+ * first (then by person and rule), so a run's budget goes to the leads that have waited longest (decision 0026).
+ */
 export function evaluateLeadRules(input: {
   now: Date;
   rules: EngineRule[];
@@ -222,7 +225,9 @@ export function evaluateLeadRules(input: {
       firings.push({ ruleId: rule.id, contactId: lead.id, fireKey, title, titleUntrusted: untrusted, dueAt: iso(at) });
     }
   }
-  return firings;
+  return firings.sort(
+    (a, b) => a.dueAt.localeCompare(b.dueAt) || a.contactId.localeCompare(b.contactId) || a.ruleId.localeCompare(b.ruleId),
+  );
 }
 
 /** The time a deal's quiet spell is measured from: its last contact, or its creation if there was none. */
@@ -367,12 +372,17 @@ export function previewRule(
 
 /**
  * The leads a lead_followup rule would catch right now (decision 0026): the present, not the last 30 days, because a
- * lead's earlier statuses aren't kept. It honours the rule's `since` but not its past firings, so a lead whose task
- * was already added still shows. Oldest catch first.
+ * lead's earlier statuses aren't kept. It honours the rule's `since`, and for a saved rule (`fired`) it leaves out
+ * leads whose current status entry that rule already fired on. Oldest catch first.
  */
-export function previewLeadRule(params: RuleParams, data: { now: Date; leads: EngineLead[] }): PreviewHit[] {
+export function previewLeadRule(
+  params: RuleParams,
+  data: { now: Date; leads: EngineLead[]; fired?: { ruleId: string; keys: ReadonlySet<string> } },
+): PreviewHit[] {
   const hits: PreviewHit[] = [];
+  const { fired } = data;
   for (const lead of data.leads) {
+    if (fired && fired.keys.has(leadFireKeyOf(fired.ruleId, lead.id, lead.leadStatusAt))) continue;
     const at = leadDueAt(params, lead, data.now);
     if (at === null) continue;
     hits.push({ kind: "lead", dealId: null, contactId: lead.id, label: contactName(lead), wouldFireAt: iso(at) });

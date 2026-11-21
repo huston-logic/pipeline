@@ -687,9 +687,28 @@ export interface RulePreview {
   dealCount: number;
   /** Distinct people among a lead rule's hits (0 for a deal rule). */
   leadCount: number;
+  /**
+   * A saved rule that is paused. A paused lead rule catches no one now (hits are empty); resuming sets `since` to that
+   * moment, so it then catches only status entries from then on. A deal rule's 30-day look back is shown as usual.
+   */
+  paused: boolean;
 }
 
 export type PreviewRequest = { rule?: string } & Partial<RuleInput>;
+
+/**
+ * Who a lead rule would catch now. For a saved rule, its fire keys are read in one query (by rule id, so the bind count
+ * stays fixed however many leads match) and leads it already fired on for their current status are left out.
+ */
+async function leadHits(db: Db, now: Date, params: Extract<RuleParams, { type: "lead_followup" }>, ruleId: string | null): Promise<PreviewHit[]> {
+  const leads = await engineLeads(db, [params.status]);
+  if (ruleId === null) return previewLeadRule(params, { now, leads });
+  const fired = await db
+    .prepare("SELECT fire_key FROM rule_firings WHERE rule_id = ? AND deal_id IS NULL")
+    .bind(ruleId)
+    .all<{ fire_key: string }>();
+  return previewLeadRule(params, { now, leads, fired: { ruleId, keys: new Set(fired.results.map((row) => row.fire_key)) } });
+}
 
 /**
  * What a saved rule (by id) or a new one (by its settings) would have caught in the last 30 days, or for a
@@ -701,10 +720,10 @@ export async function previewRuleFor(db: Db, now: Date, request: PreviewRequest)
   if (ref !== undefined && hasSettings) {
     throw new UserError("Give either a rule id or the rule's settings (type, stage, days, ...), not both.");
   }
-  let preview: Pick<RulePreview, "ruleId" | "description" | "params">;
+  let preview: Pick<RulePreview, "ruleId" | "description" | "params" | "paused">;
   if (ref !== undefined) {
     const row = await findRule(db, ref);
-    preview = { ruleId: row.id, description: row.description, params: readableParams(row) };
+    preview = { ruleId: row.id, description: row.description, params: readableParams(row), paused: row.active === 0 };
   } else {
     if (type === undefined) {
       throw new UserError(
@@ -712,14 +731,14 @@ export async function previewRuleFor(db: Db, now: Date, request: PreviewRequest)
       );
     }
     const { params, stageLabel } = await checkParams(db, type, settings);
-    preview = { ruleId: null, description: cleanDescription(description) ?? describeRule(params, stageLabel), params };
+    preview = { ruleId: null, description: cleanDescription(description) ?? describeRule(params, stageLabel), params, paused: false };
   }
 
   const tz = await ownerTimezone(db);
   const local = (hits: PreviewHit[]) => hits.map((hit) => ({ ...hit, wouldFireAtLocal: formatLocal(hit.wouldFireAt, tz) }));
   const { params } = preview;
   if (params.type === "lead_followup") {
-    const hits = previewLeadRule(params, { now, leads: await engineLeads(db, [params.status]) });
+    const hits = preview.paused ? [] : await leadHits(db, now, params, preview.ruleId);
     return {
       ...preview,
       scope: "now",
