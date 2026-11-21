@@ -6,7 +6,17 @@
 // (decision 0018) are New lead, editing the form lead's contact (ct_seed02, outside values labelled), a new deal for
 // ct_seed07 and editing dl_seed01. ct_lead03 is a Contacted lead (decision 0029).
 
-export type IconName = "today" | "pipeline" | "contacts" | "brief" | "more" | "rules" | "changes" | "export" | "notifications";
+export type IconName =
+  | "today"
+  | "pipeline"
+  | "contacts"
+  | "brief"
+  | "more"
+  | "rules"
+  | "changes"
+  | "report"
+  | "export"
+  | "notifications";
 
 /** `hint` is read out after the label but not shown, where the label alone says too little ("More" alone fails
  * Lighthouse's descriptive-link-text audit). */
@@ -23,6 +33,7 @@ export const boardRoutes: string[] = [
   "/more",
   "/rules",
   "/changes",
+  "/report",
   "/export",
   "/notifications",
   "/deals/dl_seed01",
@@ -41,13 +52,14 @@ export const navItems: NavItem[] = [
   { href: "/pipeline", label: "Pipeline", icon: "pipeline", description: "Open deals by stage." },
   { href: "/contacts", label: "Contacts", icon: "contacts", description: "Everyone you are talking to." },
   { href: "/brief", label: "Brief", icon: "brief", description: "The latest daily brief." },
-  { href: "/more", label: "More", icon: "more", description: "Rules, changes, export and notifications.", hint: " pages" },
+  { href: "/more", label: "More", icon: "more", description: "Rules, changes, the monthly report, export and notifications.", hint: " pages" },
 ];
 
 /** Under More: on the /more page on phones, listed in the side bar on wide screens. */
 export const moreItems: NavItem[] = [
   { href: "/rules", label: "Rules", icon: "rules", description: "Your follow-up rules, and whether each one is on." },
   { href: "/changes", label: "Changes", icon: "changes", description: "Every change from the last 30 days, with its change id." },
+  { href: "/report", label: "What it caught", icon: "report", description: "Last month: what your rules did, and how many nudges you acted on." },
   { href: "/export", label: "Export", icon: "export", description: "Download a copy of everything, as JSON or CSV." },
   { href: "/notifications", label: "Notifications", icon: "notifications", description: "A phone notification when the daily brief is ready." },
 ];
