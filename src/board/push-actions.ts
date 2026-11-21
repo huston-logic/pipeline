@@ -1,9 +1,9 @@
 // The Notifications page's write routes (decision 0030), listed in the route table in actions.ts so post.ts runs the
-// sign-in, origin, body and CSRF checks first (decision 0017). Turn on and Turn off are audited owner changes; Send a
+// sign-in, origin, body and CSRF checks first (decision 0017). Turn on and both Turn offs are audited owner changes; Send a
 // test pushes to every device that is on and comes back with counts only.
 import { isPushId } from "../ids.ts";
 import { sendBriefPush } from "../push/send.ts";
-import { removePush, subscribePush } from "../push/subscriptions.ts";
+import { removePush, removePushByEndpoint, subscribePush } from "../push/subscriptions.ts";
 import { vapidKeys } from "../push/vapid.ts";
 import { UserError } from "../services/errors.ts";
 import { type ActionContext, type ActionResult, asOwner, notFound, page, redirect, refusedPage, type Route } from "./action-kit.ts";
@@ -50,8 +50,20 @@ async function turnOff(ctx: ActionContext, id: string): Promise<ActionResult> {
   }
 }
 
+/** POST /notifications/off: Turn off on this phone, by the endpoint push.js read from this browser. */
+async function turnOffHere(ctx: ActionContext): Promise<ActionResult> {
+  try {
+    const result = await removePushByEndpoint(asOwner(ctx, "push_remove"), ctx.form.get("endpoint") ?? "");
+    return redirect(withChange(NOTIFICATIONS_PATH, result.changeId));
+  } catch (error) {
+    if (!(error instanceof UserError)) throw error;
+    return page(422, refusedPage(ctx, "Notifications weren't turned off", error.message, NOTIFICATIONS_PATH, "", NOTIFICATIONS_PATH));
+  }
+}
+
 export const PUSH_ROUTES: Route[] = [
   { path: /^\/notifications\/(on)$/, handle: (ctx) => turnOn(ctx) },
+  { path: /^\/notifications\/(off)$/, handle: (ctx) => turnOffHere(ctx) },
   { path: /^\/notifications\/(test)$/, handle: (ctx) => sendTest(ctx) },
   { path: /^\/notifications\/([^/]+)\/off$/, handle: turnOff },
 ];

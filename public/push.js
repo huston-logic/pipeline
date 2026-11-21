@@ -1,8 +1,9 @@
 // "Turn on notifications" on the Notifications page (decision 0030). On the tap: ask for permission, register
 // /sw.js, subscribe with this copy's public key, put the subscription in the form's hidden fields and send the form
-// as a normal page load, so the server's checks and the change banner apply as for any board form. Without this
-// script, or without push in this browser, the page's "can't turn notifications on" line stays and the form stays
-// hidden.
+// as a normal page load, so the server's checks and the change banner apply as for any board form. On load, when this
+// browser is already one of the listed devices, it shows "This phone" and Turn off on this phone instead. Without this
+// script, or without push in this browser, the page's "can't turn notifications on" line stays, both forms stay
+// hidden and each device's own Turn off button still works.
 (() => {
   const form = document.querySelector("[data-push-key]");
   if (!form || !("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) return;
@@ -11,6 +12,25 @@
   if (!status || !button) return;
   for (const each of document.querySelectorAll("[data-push-unsupported]")) each.hidden = true;
   form.hidden = false;
+
+  // When this browser's subscription is one the page lists (rows carry the SHA-256 of their endpoint), mark that row
+  // "This phone" and offer Turn off on this phone instead of Turn on. The endpoint goes in that form's hidden field.
+  const offForm = document.querySelector("[data-push-off]");
+  const hexOf = async (text) =>
+    [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text)))]
+      .map((byte) => byte.toString(16).padStart(2, "0"))
+      .join("");
+  (async () => {
+    const registration = await navigator.serviceWorker.getRegistration("/");
+    const current = registration ? await registration.pushManager.getSubscription() : null;
+    if (!current || !offForm) return;
+    const row = document.querySelector(`[data-push-device="${await hexOf(current.endpoint)}"]`);
+    if (!row) return;
+    for (const each of row.querySelectorAll("[data-push-here]")) each.hidden = false;
+    offForm.elements.endpoint.value = current.endpoint;
+    offForm.hidden = false;
+    form.hidden = true;
+  })().catch(() => {});
 
   /** The base64url public key as bytes, the form every browser's subscribe() accepts. */
   const keyBytes = (text) => {

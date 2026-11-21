@@ -79,6 +79,10 @@ test("push.js asks for permission on the tap, subscribes with userVisibleOnly an
   assert.match(push, /const options = \{ userVisibleOnly: true, applicationServerKey: /);
   assert.deepEqual(push.match(/pushManager\.subscribe\([^)]*\)/g), ["pushManager.subscribe(options)", "pushManager.subscribe(options)"]);
   assert.match(push, /form\.submit\(\)/);
+  // Turn off on this phone: found from the browser's own subscription, matched by the SHA-256 the page puts on rows.
+  assert.match(push, /pushManager\.getSubscription\(\)/);
+  assert.match(push, /crypto\.subtle\.digest\("SHA-256"/);
+  assert.match(push, /\[data-push-device=/);
   assert.doesNotMatch(push, /\balert\(|\bconfirm\(|\bprompt\(/);
   // Permission is asked before anything else is awaited, so the phone still counts it as part of the tap.
   assert.ok(push.indexOf("requestPermission") < push.indexOf("serviceWorker.register"));

@@ -169,6 +169,41 @@ test("the test note reads only small numbers from the address; anything else sho
   }
 });
 
+test("Turn off on this phone: rows carry their endpoint's SHA-256 (never the endpoint); the off form removes by endpoint", async () => {
+  const db = await seededDb();
+  const env = await pushEnv(db);
+  await turnOn(env, 1);
+  await turnOn(env, 2);
+  const page = await load(env, "/notifications");
+  assert.match(page.body, /<form class="push-off" method="post" action="\/notifications\/off" data-push-off hidden>/);
+  assert.match(page.body, /<button class="button button-quiet" type="submit">Turn off on this phone<\/button>/);
+  assert.equal(page.body.match(/<span class="tag" data-push-here hidden>This phone<\/span>/g)?.length, 2, "one hidden marker per row");
+  assert.doesNotMatch(page.body, /push\.example\.net/);
+  const [one, two] = await subs(db);
+  assert.ok(one && two);
+  for (const row of [one, two]) {
+    const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(row.endpoint)));
+    const hex = [...digest].map((b) => b.toString(16).padStart(2, "0")).join("");
+    assert.match(page.body, new RegExp(`<li data-push-device="${hex}">`));
+  }
+
+  // What push.js sends once it has filled the endpoint from this browser's own subscription.
+  const fields = formFields(page.body, "/notifications/off");
+  fields.set("endpoint", two.endpoint);
+  const res = await post(env, "/notifications/off", fields, { cookie: page.cookie, token: page.token });
+  assert.equal(res.res.status, 303);
+  const change = await auditOf(db, changeIdOf(res.location));
+  assert.equal(change?.tool, "push_remove");
+  assert.equal(change?.actor, "owner");
+  assert.deepEqual((await subs(db)).filter((row) => row.gone_at === null).map((row) => row.id), [one.id]);
+
+  fields.set("endpoint", "https://push.example.net/send/unknown");
+  const refused = await post(env, "/notifications/off", fields, { cookie: page.cookie, token: page.token });
+  assert.equal(refused.res.status, 422);
+  assert.match(refused.body, /Notifications aren&#39;t on for this device\./);
+  assert.doesNotMatch(refused.body, /push\.example\.net/);
+});
+
 test("Turn off: push_remove by the owner, undoable from the banner; an unknown id is 404", async () => {
   const db = await seededDb();
   const env = await pushEnv(db);
