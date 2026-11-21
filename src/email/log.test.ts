@@ -161,13 +161,17 @@ test("a passing header only in the raw text (none from Cloudflare in Headers) is
   await assertNothingWritten(db);
 });
 
-test("Cloudflare's pass first and another header after it: logged only when every result passes", async () => {
+test("only Cloudflare's own first header decides: what follows it can neither help nor hurt", async () => {
   const { db, env } = await setup();
   const otherPass = "mx.cloudflare.net; spf=pass; dkim=pass; dmarc=pass";
   assert.equal(await send(env, { messageId: "<p1@mail.example.com>" }, { auth: [CLOUDFLARE_PASS, otherPass] }).outcome, "logged");
   const otherFail = "mail.example.net; dkim=fail";
-  assert.equal(await send(env, { messageId: "<p2@mail.example.com>" }, { auth: [CLOUDFLARE_PASS, otherFail] }).outcome, "dropped");
-  assert.equal((await emailActivities(db)).length, 1);
+  assert.equal(await send(env, { messageId: "<p2@mail.example.com>" }, { auth: [CLOUDFLARE_PASS, otherFail] }).outcome, "logged");
+  const real = "mx.cloudflare.net; spf=pass smtp.mailfrom=owner@example.com; dkim=none; dmarc=pass header.from=example.com";
+  assert.equal(await send(env, { messageId: "<p3@mail.example.com>" }, { auth: [real] }).outcome, "logged", "dmarc=pass with dkim=none");
+  const noResults = "mx.cloudflare.net; none";
+  assert.equal(await send(env, { messageId: "<p4@mail.example.com>" }, { auth: [noResults, otherPass] }).outcome, "dropped");
+  assert.equal((await emailActivities(db)).length, 3);
 });
 
 test("only the log address is accepted, ignoring case; without EMAIL_LOG_ADDRESS everything is dropped", async () => {

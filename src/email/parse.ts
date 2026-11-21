@@ -29,8 +29,12 @@ export interface ParsedEmail {
   messageId: string | null;
 }
 
-/** The header split at its top-level semicolons, with comments removed and quoted strings kept whole. */
-function headerParts(value: string): string[] {
+/**
+ * The first Authentication-Results header in a Headers value, split at its top-level semicolons, with comments removed
+ * and quoted strings kept whole. Headers joins repeated headers with ", ", and an RFC 8601 token can't hold a comma, so
+ * the first comma outside a comment or a quoted string ends the first header; everything after it is ignored.
+ */
+function firstHeaderParts(value: string): string[] {
   const parts: string[] = [];
   let current = "";
   let depth = 0;
@@ -51,6 +55,8 @@ function headerParts(value: string): string[] {
     } else if (ch === ";") {
       parts.push(current.trim());
       current = "";
+    } else if (ch === ",") {
+      break;
     } else {
       if (ch === '"') quoted = true;
       current += ch;
@@ -64,7 +70,7 @@ const RESULT = /^([a-z0-9_-]+)(?:\/[0-9]+)?\s*=\s*([a-z0-9_-]+)/i;
 
 /** The authserv-id and each method's results (RFC 8601), for example dmarc → ["pass"]. */
 function readAuthResults(value: string): { authservId: string; results: Map<string, string[]> } {
-  const [first = "", ...rest] = headerParts(value);
+  const [first = "", ...rest] = firstHeaderParts(value);
   const results = new Map<string, string[]>();
   for (const part of rest) {
     const match = RESULT.exec(part);
@@ -78,25 +84,18 @@ function readAuthResults(value: string): { authservId: string; results: Map<stri
 const allPass = (results: string[] | undefined): boolean =>
   results !== undefined && results.length > 0 && results.every((result) => result === "pass");
 
-const VERDICT_METHODS = ["spf", "dkim", "dmarc"] as const;
-
 /**
  * Ruling 3, on `message.headers.get("authentication-results")`: the Headers object Email Routing builds, where it
- * prepends its own header. The value must start with the authserv-id mx.cloudflare.net; anything else (or no header)
- * fails. Pass when dmarc=pass, or, when there is no dmarc result, when both spf=pass and dkim=pass. Headers joins
- * several Authentication-Results headers into one value with ", ", so a header the sender wrote can follow
- * Cloudflare's; every spf, dkim and dmarc result in the value must therefore be a pass, so a forged later result can
- * neither outvote a fail nor add a dmarc=pass that Cloudflare did not give.
+ * prepends its own header. Only the first header in the value counts (a header the sender wrote can follow it, joined
+ * with ", "); its authserv-id must be exactly mx.cloudflare.net. Pass when it says dmarc=pass, or, when it has no dmarc
+ * result, both spf=pass and dkim=pass. A method with two results must pass in both. No header fails.
  */
 export function authPasses(value: string | null): boolean {
   if (value === null) return false;
   const { authservId, results } = readAuthResults(value);
   if (authservId !== CLOUDFLARE_AUTHSERV_ID) return false;
-  for (const method of VERDICT_METHODS) {
-    const found = results.get(method);
-    if (found !== undefined && !allPass(found)) return false;
-  }
-  return results.has("dmarc") || (results.has("spf") && results.has("dkim"));
+  if (results.has("dmarc")) return allPass(results.get("dmarc"));
+  return allPass(results.get("spf")) && allPass(results.get("dkim"));
 }
 
 const CONTROL = /[\u0000-\u0009\u000B-\u001F\u007F-\u009F]/g;
@@ -124,13 +123,37 @@ const cleanBody = (text: string) =>
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 
-/** A crude HTML-to-text, only for a message whose parser gave no text at all. */
+/**
+ * The HTML without its script and style blocks, in one pass: an indexOf walk, not a lazy regular expression, so a body
+ * full of unclosed `<script` stays linear. A block with no closing tag runs to the end.
+ */
+function withoutBlocks(html: string): string {
+  const lower = html.toLowerCase();
+  let out = "";
+  let at = 0;
+  let script = lower.indexOf("<script", at);
+  let style = lower.indexOf("<style", at);
+  for (;;) {
+    if (script !== -1 && script < at) script = lower.indexOf("<script", at);
+    if (style !== -1 && style < at) style = lower.indexOf("<style", at);
+    const open = script === -1 ? style : style === -1 ? script : Math.min(script, style);
+    if (open === -1) return out + html.slice(at);
+    out += html.slice(at, open);
+    const close = lower.indexOf(open === script ? "</script" : "</style", open);
+    const end = close === -1 ? -1 : lower.indexOf(">", close);
+    if (end === -1) return out;
+    at = end + 1;
+  }
+}
+
+/**
+ * HTML read as text: the body of an HTML-only message (postal-mime 4.2.1 gives no text part for one). Crude, and
+ * linear in its input, which is capped first.
+ */
 export function htmlText(html: string): string {
-  return html
-    .slice(0, BODY_INPUT_CHARS)
-    .replace(/<(script|style)[\s\S]*?<\/\1>/gi, "")
+  return withoutBlocks(html.slice(0, BODY_INPUT_CHARS))
     .replace(/<br\s*\/?>|<\/(p|div|li|tr|h[1-6])>/gi, "\n")
-    .replace(/<[^>]*>/g, "")
+    .replace(/<[^<>]*>/g, "")
     .replace(/&nbsp;/g, " ")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")

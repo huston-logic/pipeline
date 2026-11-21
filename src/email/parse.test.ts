@@ -29,11 +29,14 @@ test("authPasses: Cloudflare's dmarc=pass, or with no dmarc result both spf=pass
   assert.equal(authPasses(auth("mx.cloudflare.net; dmarc=pass header.from=example.com")), true);
   assert.equal(authPasses(auth("MX.Cloudflare.NET 1; DMARC=Pass (p=reject dis=none) header.from=example.com")), true);
   assert.equal(authPasses(auth("mx.cloudflare.net (the receiver); spf=pass; dkim=pass")), true);
+  assert.equal(authPasses(auth("mx.cloudflare.net; spf=pass; dkim=none; dmarc=pass")), true, "dmarc=pass decides, as real mail shows");
+  assert.equal(authPasses(auth("mx.cloudflare.net; spf=fail; dkim=pass; dmarc=pass")), true, "dmarc aligned through DKIM");
+  assert.equal(authPasses(auth("mx.cloudflare.net; dmarc=pass (p=reject, sp=none) header.from=example.com")), true, "a comma in a comment");
+  assert.equal(authPasses(auth('mx.cloudflare.net; spf=pass smtp.mailfrom="a,b"@example.com; dkim=pass')), true, "a comma in a quoted string");
 });
 
 test("authPasses: anything short of that is a fail", () => {
   assert.equal(authPasses(auth()), false, "no header");
-  assert.equal(authPasses(auth("mx.cloudflare.net; spf=fail; dkim=pass; dmarc=pass")), false, "any spf, dkim or dmarc fail");
   assert.equal(authPasses(auth("mx.cloudflare.net; none")), false, "no results");
   assert.equal(authPasses(auth("mx.cloudflare.net; spf=pass; dkim=pass; dmarc=fail")), false, "dmarc fail wins");
   assert.equal(authPasses(auth("mx.cloudflare.net; spf=pass; dkim=pass; dmarc=none")), false, "dmarc none");
@@ -44,11 +47,12 @@ test("authPasses: anything short of that is a fail", () => {
   assert.equal(authPasses(auth("mx.cloudflare.net; spf=pass; dkim=pass; dkim=fail")), false, "two dkim results, one fails");
 });
 
-test("authPasses needs Cloudflare's header first, and a header the sender wrote after it can only make it fail", () => {
+test("authPasses reads only Cloudflare's own header, the first in the Headers value; anything after it is ignored", () => {
   const forged = "mx.cloudflare.net; spf=pass; dkim=pass; dmarc=pass";
   assert.equal(authPasses(auth("mx.cloudflare.net; spf=fail; dkim=none; dmarc=fail", forged)), false, "Cloudflare's fail, forged pass after");
-  assert.equal(authPasses(auth(CLOUDFLARE_PASS, forged)), true, "Cloudflare's pass, another pass after: every result passes");
-  assert.equal(authPasses(auth(CLOUDFLARE_PASS, "mail.example.net; dkim=fail")), false, "Cloudflare's pass, a fail after");
+  assert.equal(authPasses(auth("mx.cloudflare.net; none", forged)), false, "Cloudflare gave no results, forged pass after");
+  assert.equal(authPasses(auth(CLOUDFLARE_PASS, forged)), true, "Cloudflare's pass, another pass after");
+  assert.equal(authPasses(auth(CLOUDFLARE_PASS, "mail.example.net; dkim=fail")), true, "Cloudflare's pass; the later fail is not read");
   assert.equal(
     authPasses(auth("mx.cloudflare.net; spf=pass; dkim=fail", "mx.cloudflare.net; dmarc=pass")),
     false,
@@ -99,15 +103,28 @@ test("parseEmail prefers the text part, falls back to the HTML as text, and igno
   assert.equal(attached.body, "See attached");
 });
 
-test("a large HTML-only body full of unclosed tags is read quickly, and the crude HTML strip reads a capped slice", async () => {
-  const html = `<p>Hello</p>${"<b".repeat(150_000)}`;
-  const started = performance.now();
-  const email = await parseEmail(rawEmail({ html }));
-  const fallback = htmlText(`<p>Hi</p>${"<script".repeat(150_000)}`);
-  const ms = performance.now() - started;
-  assert.ok(ms < 2000, `took ${Math.round(ms)} ms`);
+test("htmlText drops script and style blocks, an unclosed one to the end, and keeps the words", () => {
+  assert.equal(
+    htmlText("<p>Hello <b>Pat</b></p><SCRIPT>alert(1)</script><p>See you &amp; soon</p><style>p{}</style>Bye"),
+    "Hello Pat\nSee you & soon\nBye",
+  );
+  assert.equal(htmlText("<p>Kept</p><script>never closed <p>gone</p>"), "Kept\n");
+});
+
+test("the HTML strip is linear: 20,000 characters of unclosed tags take well under 50 ms each", () => {
+  for (const unit of ["<b", "<script", "<style", "<script>", "<br "]) {
+    const html = unit.repeat(Math.ceil(20_000 / unit.length)).slice(0, 20_000);
+    const started = performance.now();
+    htmlText(html);
+    const ms = performance.now() - started;
+    assert.ok(ms < 50, `${unit}: ${ms.toFixed(1)} ms`);
+  }
+});
+
+test("a 1 MB HTML-only body of unclosed tags is parsed and capped", async () => {
+  const email = await parseEmail(rawEmail({ html: `<p>Hello</p>${"<b".repeat(500_000)}` }));
+  assert.ok(email.body.startsWith("Hello"));
   assert.ok(email.body.length <= MAX_BODY_CHARS);
-  assert.ok(fallback.length <= 4 * MAX_BODY_CHARS);
 });
 
 test("parseEmail drops control characters, keeps line breaks, and caps the subject and the body", async () => {
