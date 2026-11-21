@@ -279,14 +279,18 @@ test("a push service that never answers can't hold the email back: it goes first
   t.mock.method(globalThis, "fetch", (url: string, init: RequestInit) => {
     order.push(url);
     if (!isPushUrl(url)) return Promise.resolve(new Response("{}", { status: 200 }));
-    // Hangs until the sender's timeout aborts it, like a host that never answers.
-    return new Promise((_, reject) => init.signal?.addEventListener("abort", () => reject(init.signal?.reason)));
+    // Hangs until the sender's timeout aborts it, like a host that never answers. The timer starts before the
+    // encryption and signing, so on a slow machine the signal may already be aborted when the fetch is made.
+    const signal = init.signal;
+    if (!signal) return Promise.reject(new Error("The push was sent without a timeout signal."));
+    if (signal.aborted) return Promise.reject(signal.reason);
+    return new Promise((_, reject) => signal.addEventListener("abort", () => reject(signal.reason), { once: true }));
   });
   const db = await openTestDb();
   await db.prepare(`UPDATE settings SET brief_enabled = 1, brief_email = 'owner@example.test', owner_emails = '["owner@example.test"]'`).run();
   await addDevice(db, 1);
   const env = envFor(db, { ...READY, ...(await vapidSecrets()) });
-  assert.deepEqual(await runBrief(env, SEVEN, { timeoutMs: 50, timeoutSignal: refTimeout }), {
+  assert.deepEqual(await runBrief(env, SEVEN, { timeoutMs: 250, timeoutSignal: refTimeout }), {
     composed: 1,
     sent: 1,
     failed: 0,

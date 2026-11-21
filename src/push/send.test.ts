@@ -121,6 +121,19 @@ test("404 and 410 mark the subscription gone in a system change; other failures 
   assert.equal(again.length, 4);
 });
 
+test("a timeout that has already fired by the time the push is made counts the device as failed, without hanging", async (t) => {
+  t.mock.method(globalThis, "fetch", (_url: string, init: RequestInit) => {
+    const signal = init.signal;
+    if (!signal) return Promise.reject(new Error("no timeout signal"));
+    if (signal.aborted) return Promise.reject(signal.reason);
+    return new Promise((_, reject) => signal.addEventListener("abort", () => reject(signal.reason), { once: true }));
+  });
+  const db = await openTestDb();
+  await subscribe(db, 1);
+  const aborted = () => AbortSignal.abort(new DOMException("The push timed out.", "TimeoutError"));
+  assert.deepEqual(await sendBriefPush(db, envFor(db, await fakeSecrets()), NOW, { timeoutSignal: aborted }), { sent: 0, gone: 0, failed: 1 });
+});
+
 test("with no subscriptions nothing is sent", async (t) => {
   const calls = mockFetch(t);
   const db = await openTestDb();
