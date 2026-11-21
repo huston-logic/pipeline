@@ -7,6 +7,7 @@ import { auditCount, auditOf, changeIdOf, devEnv, formFields, h1Count, load, pos
 import type { ContactRow, DealRow, TaskRow } from "../db/db.ts";
 import type { Env } from "../env.ts";
 import type { SqliteD1 } from "../db/sqlite-d1.ts";
+import { updateContact } from "../services/contacts.ts";
 
 const contact = (db: SqliteD1, id: string) => db.prepare("SELECT * FROM contacts WHERE id = ?").bind(id).first<ContactRow>();
 const deal = (db: SqliteD1, id: string) => db.prepare("SELECT * FROM deals WHERE id = ?").bind(id).first<DealRow>();
@@ -252,6 +253,56 @@ test("Save status: Not a fit needs no confirmation; a date with another status, 
   assert.equal(await auditCount(db), before);
 });
 
+test("a stale status menu never puts back a status changed since: only a changed select sends it; a date alone still works", async () => {
+  const db = await seededDb();
+  const env = devEnv(db);
+  const id = await addLead(env);
+  const ai = { db, now: new Date(), actor: "ai" as const, tool: "update_contact" };
+  await updateContact(ai, id, { leadStatus: "not_now" });
+  const page = await load(env, `/contacts/${id}`);
+  const path = `/contacts/${id}/lead-status`;
+  const fields = formFields(page.body, path);
+  assert.match(formOf(page.body, path), /<input type="hidden" name="was\.lead_status" value="[A-Za-z0-9_-]{22}">/);
+  const send = (changes: Record<string, string>) => {
+    const body = new URLSearchParams(fields);
+    for (const [name, value] of Object.entries(changes)) body.set(name, value);
+    return post(env, path, body, { cookie: page.cookie, token: page.token });
+  };
+  const tasks = async () => (await db.prepare("SELECT COUNT(*) AS n FROM tasks WHERE contact_id = ?").bind(id).first<{ n: number }>())?.n;
+
+  const dated = await send({ follow_up: "2026-12-04" });
+  assert.equal(dated.res.status, 303, "a check-back date alone, the select left as drawn");
+  assert.match((await auditOf(db, changeIdOf(dated.location)))?.summary ?? "", /^Added task "Check back with Lee Example" for Lee Example, due Fri Dec 4/);
+  assert.equal(await tasks(), 1);
+
+  await updateContact(ai, id, { leadStatus: "contacted" });
+  const before = await auditCount(db);
+  const untouched = await send({ follow_up: "" });
+  assert.equal(untouched.res.status, 422);
+  assert.match(untouched.body, /Nothing to change/);
+  const staleDate = await send({ follow_up: "2026-12-05" });
+  assert.equal(staleDate.res.status, 422, "the lead is Contacted now, so a check-back date is refused");
+  assert.match(staleDate.body, /A check-back date only goes with Not now/);
+  const changed = await send({ lead_status: "bad", follow_up: "" });
+  assert.equal(changed.res.status, 422);
+  assert.match(changed.body, /The lead status was changed while you were saving\./);
+  assert.match(changed.body, /<option value="contacted" selected>Contacted<\/option>/, "the saved status is shown");
+  assert.equal(await auditCount(db), before);
+  assert.equal((await contact(db, id))?.lead_status, "contacted");
+  assert.equal(await tasks(), 1);
+});
+
+test("an archived lead's page has the status line only and goes back to Contacts", async () => {
+  const db = await seededDb();
+  const env = devEnv(db);
+  const id = await addLead(env);
+  db.exec(`UPDATE contacts SET archived = 1 WHERE id = '${id}'`);
+  const main = mainOf((await load(env, `/contacts/${id}`)).body);
+  assert.match(main, /Lead status: New, since/);
+  assert.match(main, /<p class="back"><a href="\/contacts">Back to contacts<\/a><\/p>/);
+  for (const bad of [/lead-status"/, /\/qualify/, /claude\.ai/, /href="\/leads"/]) assert.doesNotMatch(main, bad, String(bad));
+});
+
 test("the Qualify page: Create a deal ticked, the open stages, and the deal's details; named safely", async () => {
   const db = await seededDb();
   const env = devEnv(db);
@@ -338,6 +389,22 @@ test("Back to leads is on open, lost and not now deals that are not archived, ne
   db.exec("UPDATE deals SET archived = 1 WHERE id = 'dl_seed01'");
   assert.equal(await has("dl_seed01"), false, "archived");
   assert.match(formOf((await load(env, "/deals/dl_seed08")).body, "/deals/dl_seed08/return-to-lead"), /<button class="button button-quiet button-small" type="submit">Back to leads<\/button>/);
+});
+
+test("Back to leads is hidden while the person has another open deal, and a post for it is refused without asking first", async () => {
+  const db = await seededDb();
+  const env = devEnv(db);
+  db.exec("UPDATE deals SET contact_id = 'ct_seed01' WHERE id = 'dl_seed03'");
+  assert.equal(formOf((await load(env, "/deals/dl_seed01")).body, "/deals/dl_seed01/return-to-lead"), "");
+  const before = await auditCount(db);
+  const ask = await post(env, "/deals/dl_seed01/return-to-lead", { return_to: "/deals/dl_seed01" });
+  assert.equal(ask.res.status, 422);
+  assert.doesNotMatch(ask.body, /Move back to leads\?/);
+  assert.match(ask.body, /Pat Example has another open deal, so they can&#39;t go back to leads\./);
+  assert.equal(await auditCount(db), before);
+  db.exec("UPDATE deals SET status = 'lost', stage_key = 'lost' WHERE id = 'dl_seed03'");
+  assert.equal(formOf((await load(env, "/deals/dl_seed03")).body, "/deals/dl_seed03/return-to-lead"), "", "a lost deal whose person has an open one");
+  assert.ok(formOf((await load(env, "/deals/dl_seed01")).body, "/deals/dl_seed01/return-to-lead"), "no other open deal now");
 });
 
 test("Back to leads asks first, with a status defaulting to Contacted; confirming is one return_to_lead change, undoable", async () => {

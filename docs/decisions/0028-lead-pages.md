@@ -27,18 +27,25 @@ brief left open.
   checkbox (`allow_duplicate=yes`). The new lead's page opens with the banner.
 - **A lead's page.** Only a person with a lead status gets the "Lead" section (invariant 4). An unqualified lead who is
   not archived gets the status line, the status menu, Qualify, "Back to leads" as the page's back link and the Ask
-  Claude intro. A Qualified or archived person gets the status line only, as history; they are not offered status
-  changes or Qualify (making someone a lead again stays an MCP action in v1, 0022).
-- **The status menu** needs no confirmation (0022). The check-back date is always shown (no script), with its hint; the
-  board refuses a date with any status but Not now in its own words before calling the service. Saving the status a
-  lead already has, with no date, gets the service's "Nothing to change" answer.
+  Claude intro. A Qualified or archived person gets the status line only, as history, and "Back to contacts"; they are
+  not offered status changes or Qualify (making someone a lead again stays an MCP action in v1, 0022).
+- **The status menu** needs no confirmation (0022). The select carries the fingerprint of the status it was drawn with
+  (`was.lead_status`, the 0018 pattern), and the status is sent only when the owner changed the select. So a page left
+  open never puts back a status the AI changed since: left alone, the select sends nothing (a check-back date alone
+  still works); changed while someone else also changed it, the form comes back with the saved status and a message.
+  The check-back date is always shown (no script), with its hint; the board refuses a date unless the status, as sent
+  or as saved, is Not now. Nothing new to save is refused with "Nothing to change".
 - **Qualify.** "Create a deal" is a checkbox, ticked; an unticked box sends nothing, which means no deal. Deal details
   given with no deal are refused (as 0024's service does), in board words. The stage select lists the open stages, the
   first chosen. No notes or custom fields (0024). With a deal it opens the deal page, else the person's page.
-- **Back to leads** is a small quiet button under Move to on open, Lost and Not now deals that are not archived. A post
-  without `confirm=yes` draws the confirm page with a "Lead status" select (Contacted chosen). A post for a Won or
-  archived deal skips the confirm page and gets the service's refusal (it is never offered for them). Confirmed, it
-  opens the person's page.
+- **Back to leads** is a small quiet button under Move to on open, Lost and Not now deals that are not archived and
+  whose person has no other open deal (`return_to_lead` would refuse that after the confirm). It shows for every owner,
+  including one who never adds a lead: an owner with outreach deals from before leads existed needs it to move them
+  back (0022, Consequences), and an optional button is not a new step in the deal flow, so invariant 4 holds. A post
+  without `confirm=yes` draws the confirm page with a "Lead status" select (Contacted chosen). A post for a deal that
+  is not offered it (Won, archived, or a person with another open deal) skips the confirm page and gets the service's
+  refusal, so the owner is never asked to confirm something that would be refused. Confirmed, it opens the person's
+  page.
 - **Where Undo lands.** When an undo removes the record the page was about, the board now looks first: a removed deal
   whose person is still there goes to that person (an undone Qualify, or an undone deal for someone on file, which went
   to Pipeline before); a removed lead goes to Leads; anyone else to Contacts, as before.

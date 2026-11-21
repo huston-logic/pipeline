@@ -1,9 +1,11 @@
 // The board's lead forms (decisions 0022, 0028): where Add a lead and Add a deal go back to, a lead's status line and
 // status menu, the Qualify form's fields, and Back to leads on a deal. Plain forms that work without JavaScript.
-import type { StageRow } from "../db/db.ts";
+import type { Db, DealStatus, StageRow } from "../db/db.ts";
+import { openDealCount } from "../services/lead-change.ts";
 import { LEAD_STATUS_LABELS, UNQUALIFIED_STATUSES } from "../services/lead-status.ts";
 import type { LeadStatus } from "../services/lead-status.ts";
 import { formatLocal } from "../time.ts";
+import { fingerprint } from "./edit-state.ts";
 import { type FormContext, postForm } from "./forms.ts";
 import { type Html, html } from "./html.ts";
 import type { FormState } from "./pages/record-page.ts";
@@ -47,11 +49,18 @@ export const statusSpecs = (): Spec[] => [
   }),
 ];
 
-/** The status menu: one of the five statuses that are not Qualified, an optional check-back date, and Save status. */
-export function statusMenu(contactId: string, current: LeadStatus, form: FormContext, state?: FormState): Html {
+/** The fingerprint of the status a menu was drawn with (`was.lead_status`, the 0018 pattern). */
+export const statusFingerprint = (status: string): Promise<string> => fingerprint(status, "line");
+
+/**
+ * The status menu: one of the five statuses that are not Qualified, an optional check-back date, and Save status. The
+ * select carries the fingerprint of the status it was drawn with, so a post from a stale page sends the status only
+ * when the owner changed the select (lead-actions.ts).
+ */
+export async function statusMenu(contactId: string, current: LeadStatus, form: FormContext, state?: FormState): Promise<Html> {
   const prefix = `status-${contactId}`;
   const specs = statusSpecs();
-  const shown = state?.shown ?? new Map([["lead_status", { value: current, outside: false }]]);
+  const shown = state?.shown ?? new Map([["lead_status", { value: current, was: await statusFingerprint(current), outside: false }]]);
   const inner = postForm(
     "lead-status-form",
     statusAction(contactId),
@@ -76,6 +85,16 @@ export function qualifySpecs(stages: StageRow[]): Spec[] {
 }
 
 export const returnAction = (dealId: string): string => `${dealHref(dealId)}/return-to-lead`;
+
+/**
+ * Back to leads is offered on an open, Lost or Not now deal that is not archived, whose person has no other open deal
+ * (return_to_lead would refuse that after the confirm step).
+ */
+export async function offersBackToLeads(db: Db, deal: { id: string; contactId: string; status: DealStatus; archived: boolean }): Promise<boolean> {
+  if (deal.archived || deal.status === "won") return false;
+  const others = (await openDealCount(db, deal.contactId)) - (deal.status === "open" ? 1 : 0);
+  return others <= 0;
+}
 
 /** Back to leads on a deal page: posting it without confirm=yes asks first. */
 export const backToLeadsForm = (dealId: string, form: FormContext): Html =>

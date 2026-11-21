@@ -26,9 +26,20 @@ import {
 } from "./action-kit.ts";
 import { hidden, postForm, RETURN_FIELD } from "./forms.ts";
 import { html } from "./html.ts";
-import { field } from "./inputs.ts";
+import { compareField } from "./edit-state.ts";
+import { field, WAS_PREFIX } from "./inputs.ts";
 import { renderPage } from "./layout.ts";
-import { addReturn, qualifyPath, qualifySpecs, returnAction, STATUS_OPTIONS, statusMenu, statusSpecs } from "./lead-forms.ts";
+import {
+  addReturn,
+  offersBackToLeads,
+  qualifyPath,
+  qualifySpecs,
+  returnAction,
+  STATUS_OPTIONS,
+  statusFingerprint,
+  statusMenu,
+  statusSpecs,
+} from "./lead-forms.ts";
 import { ALLOW_DUPLICATE, LEAD_PATH, leadPage } from "./pages/lead-new.ts";
 import { canQualify, CREATE_DEAL, qualifyPage } from "./pages/qualify.ts";
 import { contactHref, dealHref } from "./parts.ts";
@@ -72,22 +83,48 @@ async function leadOf(ctx: ActionContext, id: string) {
 
 const NOT_NOW_ONLY = "A check-back date only goes with Not now. Choose Not now, or clear the date.";
 
-/** POST /contacts/<id>/lead-status: update_contact with the status and, for Not now, a check-back date. No confirm. */
+const STATUS_CONFLICT = "The lead status was changed while you were saving. The form now shows the saved status; change it again if you need to.";
+const NOTHING_NEW = "Nothing to change: the lead already has that status. Choose another status, or a check-back date with Not now.";
+
+/**
+ * POST /contacts/<id>/lead-status: update_contact with the status and, for Not now, a check-back date. No confirm.
+ * The status is sent only when the owner changed the select (its fingerprint, `was.lead_status`, differs), so a stale
+ * page never puts back a status someone else changed since; a check-back date alone still works.
+ */
 async function saveStatus(ctx: ActionContext, id: string): Promise<ActionResult> {
   const contact = await leadOf(ctx, id);
   if (contact === null) return notFound(ctx);
   const back = backTo(ctx, contactHref(contact.id));
+  const current = contact.lead_status as LeadStatus;
   const collected = collectNew(statusSpecs(), ctx.form);
-  const input = collected.input as { leadStatus?: LeadStatus; followUpDate?: string };
-  if (collected.errors.length === 0 && input.leadStatus === undefined) fieldError(collected, "lead_status", "Choose a lead status.");
-  if (collected.errors.length === 0 && input.followUpDate !== undefined && input.leadStatus !== "not_now") {
+  const parsed = collected.input as { leadStatus?: LeadStatus; followUpDate?: string };
+  const was = ctx.form.get(`${WAS_PREFIX}lead_status`);
+  const outcome = await compareField(ctx.form.get("lead_status"), was, current, "line");
+  const status = collected.shown.get("lead_status");
+  if (status !== undefined) status.was = was ?? (await statusFingerprint(current));
+  if (collected.errors.length === 0 && outcome === "conflict" && status !== undefined) {
+    // Show the saved status, drawn as new, so saving again starts from it.
+    Object.assign(status, { value: current, was: await statusFingerprint(current) });
+    fieldError(collected, "lead_status", STATUS_CONFLICT);
+  }
+  const input = {
+    ...(outcome === "changed" && parsed.leadStatus !== undefined ? { leadStatus: parsed.leadStatus } : {}),
+    ...(parsed.followUpDate !== undefined ? { followUpDate: parsed.followUpDate } : {}),
+  };
+  if (collected.errors.length === 0 && input.followUpDate !== undefined && (input.leadStatus ?? current) !== "not_now") {
     fieldError(collected, "follow_up", NOT_NOW_ONLY);
   }
-  const current = contact.lead_status as LeadStatus;
-  const refused = () =>
+  if (collected.errors.length === 0 && Object.keys(input).length === 0) collected.errors.push({ message: NOTHING_NEW });
+  const refused = async () =>
     page(
       422,
-      refusedFormPage(ctx, "The lead status wasn't changed", statusMenu(contact.id, current, { csrf: ctx.csrf, here: back }, stateOf(collected)), back, contactHref(contact.id)),
+      refusedFormPage(
+        ctx,
+        "The lead status wasn't changed",
+        await statusMenu(contact.id, current, { csrf: ctx.csrf, here: back }, stateOf(collected)),
+        back,
+        contactHref(contact.id),
+      ),
     );
   if (collected.errors.length > 0) return refused();
   try {
@@ -152,13 +189,14 @@ ${postForm(
 
 /**
  * POST /deals/<id>/return-to-lead: return_to_lead. Without confirm=yes it asks first (it archives the deal). A Won or
- * archived deal is never offered it; a post for one goes straight to the service, which says why not.
+ * archived deal, or one whose person has another open deal, is never offered it; a post for one goes straight to the
+ * service, which says why not, so the owner is never asked to confirm something that would be refused.
  */
 async function backToLeads(ctx: ActionContext, id: string): Promise<ActionResult> {
   const deal = isDealId(id) ? await getDeal(ctx.db, id) : null;
   if (deal === null) return notFound(ctx);
   const back = backTo(ctx, dealHref(deal.id));
-  const offered = deal.archived === 0 && deal.status !== "won";
+  const offered = await offersBackToLeads(ctx.db, { id: deal.id, contactId: deal.contact_id, status: deal.status, archived: deal.archived === 1 });
   if (offered && ctx.form.get("confirm") !== "yes") return page(200, returnConfirmPage(ctx, deal, back));
   try {
     // No status (or a blank one) is the service's default, Contacted.
