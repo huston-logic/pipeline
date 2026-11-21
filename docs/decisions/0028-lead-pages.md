@@ -51,9 +51,10 @@ brief left open.
   to Pipeline before); a removed lead goes to Leads; anyone else to Contacts, as before.
 - **Ask Claude.** One prompt, "Draft an intro in my voice": "Draft an intro to contact ct_… in my voice. Read my
   rulebook first, then the contact." (the id only, 0021). The note says it names this person by their id only.
-- **Screenshots.** The demo seed has no leads until task L8, so `tests/screenshots/leads.screens.ts` adds one through
-  Add a lead, takes the lead's page, Qualify, and the Back to leads confirm page, then undoes the lead. A lead's page
-  and Qualify are not in `boardRoutes` until the seed has a lead with a fixed id.
+- **Screenshots and checks.** `/deals/new` and `/contacts/ct_lead03/qualify` (the demo seed's Contacted lead, 0029)
+  are in `boardRoutes`, so the a11y, Lighthouse and screenshot runs visit them beside the lead's own page.
+  `tests/screenshots/leads.screens.ts` also adds a lead through Add a lead (the refused form, the new lead's page with
+  its banner, Qualify), takes the Back to leads confirm page, then undoes the lead.
 
 ## Why
 
