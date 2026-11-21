@@ -5,6 +5,7 @@ import type { BriefRow, Db, SettingsRow } from "../db/db.ts";
 import { getSettings } from "../db/queries.ts";
 import type { Env } from "../env.ts";
 import { newId } from "../ids.ts";
+import { sendBriefPush } from "../push/send.ts";
 import { untrustedFields } from "../services/labels.ts";
 import { whatsDue } from "../services/read.ts";
 import { listQuietDeals } from "../services/rules.ts";
@@ -14,7 +15,21 @@ import { sendBlocker, sendBrief } from "./send.ts";
 
 const DAY_MS = 86_400_000;
 
-export type BriefRunCounts = { composed: number; sent: number; failed: number };
+/** `sent` and `failed` are the email; the push counts are there only when this copy has push keys (decision 0030). */
+export type BriefRunCounts = { composed: number; sent: number; failed: number } & Partial<PushRunCounts>;
+
+type PushRunCounts = { pushed: number; push_gone: number; push_failed: number };
+
+/** The phone notification for a stored brief. A failure here never stops the brief or its email. */
+async function pushBrief(env: Env, now: Date): Promise<PushRunCounts | null> {
+  try {
+    const result = await sendBriefPush(env.DB, env, now);
+    if (result.skipped === "no_keys") return null;
+    return { pushed: result.sent, push_gone: result.gone, push_failed: result.failed };
+  } catch {
+    return { pushed: 0, push_gone: 0, push_failed: 1 };
+  }
+}
 
 /** True once per owner-local day: at or after the brief hour, and no brief stored for that date or a later one. */
 export function shouldRunBrief(
@@ -77,7 +92,10 @@ async function quietList(db: Db, now: Date): Promise<BriefQuietDeal[]> {
   return [...byDeal.values()].sort((a, b) => b.quietDays - a.quietDays || a.id.localeCompare(b.id));
 }
 
-/** Composes and stores today's brief when it is due, then sends it when sending is on. Returns counts only. */
+/**
+ * Composes and stores today's brief when it is due, pushes the phone notification when push is set up, then emails it
+ * when sending is on. Returns counts only.
+ */
 export async function runBrief(env: Env, now: Date): Promise<BriefRunCounts> {
   const { DB: db } = env;
   const counts: BriefRunCounts = { composed: 0, sent: 0, failed: 0 };
@@ -113,6 +131,9 @@ export async function runBrief(env: Env, now: Date): Promise<BriefRunCounts> {
   // Another run stored today's brief first: it owns the send.
   if (!inserted || inserted.meta.changes === 0) return counts;
   counts.composed = 1;
+  // Only the run that stored the brief gets here, so each device is told once a day.
+  const pushed = await pushBrief(env, now);
+  if (pushed !== null) Object.assign(counts, pushed);
   if (blocker !== null) return counts;
 
   const result = await sendBrief(env, brief, settings);
