@@ -449,8 +449,10 @@ export async function runRules(db: Db, now: Date): Promise<RuleRunCounts> {
       updated_at: at,
     };
     const record = db
-      .prepare("INSERT INTO rule_firings (id, rule_id, deal_id, fire_key, task_id, fired_at) VALUES (?, ?, ?, ?, ?, ?)")
-      .bind(newId("rf"), firing.ruleId, firing.dealId, firing.fireKey, task.id, at);
+      .prepare(
+        "INSERT INTO rule_firings (id, rule_id, deal_id, contact_id, fire_key, task_id, fired_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      )
+      .bind(newId("rf"), firing.ruleId, firing.dealId, firing.contactId, firing.fireKey, task.id, at);
     try {
       await commitChange(ctx, {
         target: { table: "tasks", id: task.id },

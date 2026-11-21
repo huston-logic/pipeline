@@ -50,7 +50,7 @@ CREATE TABLE rule_firings_new (
 
 INSERT INTO rule_firings_new (id, rule_id, deal_id, contact_id, fire_key, task_id, fired_at)
   SELECT f.id, f.rule_id, f.deal_id, d.contact_id, f.fire_key, f.task_id, f.fired_at
-  FROM rule_firings f JOIN deals d ON d.id = f.deal_id;
+  FROM rule_firings f LEFT JOIN deals d ON d.id = f.deal_id;
 
 DROP TABLE rule_firings;
 ALTER TABLE rule_firings_new RENAME TO rule_firings;

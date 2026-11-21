@@ -172,6 +172,9 @@ test("runRules fires once per stage entry as a system change that creates the ta
   const firing = await one<RuleFiringRow>(db, "SELECT * FROM rule_firings");
   assert.equal(firing.fire_key, `${ruleId}:${lead.dealId}:${NOW.toISOString()}`);
   assert.equal(firing.task_id, task?.id);
+  const dealContact = await db.prepare("SELECT contact_id FROM deals WHERE id = ?").bind(lead.dealId).first("contact_id");
+  assert.ok(dealContact);
+  assert.equal(firing.contact_id, dealContact, "the firing carries its deal's contact");
   const audit = await one<AuditRow>(db, "SELECT * FROM audit_log WHERE target_table = 'tasks'");
   assert.equal(audit.actor, "system");
   assert.equal(audit.tool, "rules");
