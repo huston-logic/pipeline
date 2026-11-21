@@ -63,7 +63,7 @@ test("the JSON export holds every table, and an empty table's CSV still has its 
   // Real D1 gives the column names even for an empty result.
   const csv = await fetch(`${server.url}/api/export/rule_firings.csv`);
   assert.equal(csv.status, 200);
-  assert.deepEqual(parseCsv(await csv.text()), [["id", "rule_id", "deal_id", "fire_key", "task_id", "fired_at"]]);
+  assert.deepEqual(parseCsv(await csv.text()), [["id", "rule_id", "deal_id", "contact_id", "fire_key", "task_id", "fired_at"]]);
 
   const contacts = parseCsv(await (await fetch(`${server.url}/api/export/contacts.csv`)).text());
   assert.equal(contacts.length, (body.tables.contacts?.length ?? 0) + 1, "a header and every contact");

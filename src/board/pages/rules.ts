@@ -11,6 +11,7 @@ const TYPE: Record<RuleType, string> = {
   stage_followup: "Follow-up after days in a stage",
   on_stage_enter: "Task when a deal enters a stage",
   gone_quiet: "Gone quiet flag in the brief",
+  lead_followup: "Follow-up on a lead",
 };
 
 const BY: Record<string, string> = { owner: "you", ai: "your AI app", system: "the system" } satisfies Record<Actor, string>;
