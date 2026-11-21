@@ -18,15 +18,17 @@ self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   event.waitUntil(
     (async () => {
-      const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+      // Only windows this worker controls: those are board pages, and only they can be navigated.
+      const windows = await self.clients.matchAll({ type: "window" });
       for (const client of windows) {
-        if (new URL(client.url).origin !== self.location.origin) continue;
         try {
-          const focused = await client.focus();
-          await focused.navigate("/brief");
-          return;
+          const moved = await client.navigate("/brief");
+          if (moved) {
+            await moved.focus();
+            return;
+          }
         } catch {
-          // A window this worker doesn't control can't be navigated: open a new one below.
+          // This window couldn't be moved: try the next one, or open a new one below.
         }
       }
       await self.clients.openWindow("/brief");

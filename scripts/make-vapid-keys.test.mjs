@@ -30,13 +30,15 @@ test("main prints the three secret commands for the copy, with fresh values, and
   assert.equal(pastes[2], "mailto:owner@example.com");
 
   const again = [];
-  await main(["--copy", "acme"], (line) => again.push(line));
+  await main(["--copy", "acme", "--subject", "https://example.com/contact"], (line) => again.push(line));
   assert.notEqual(again.find((line) => line.startsWith("  paste: B")), lines.find((line) => line.startsWith("  paste: B")), "a new pair each run");
-  assert.ok(again.includes("  paste: mailto:<the owner's email>"), "a placeholder subject when none is given");
+  assert.ok(again.includes("  paste: https://example.com/contact"));
 });
 
-test("main refuses a missing copy name or a subject that isn't mailto: or https:", async () => {
-  await assert.rejects(main([], () => {}), UsageError);
-  await assert.rejects(main(["--copy", "../x"], () => {}), UsageError);
-  await assert.rejects(main(["--copy", "acme", "--subject", "owner@example.com"], () => {}), UsageError);
+test("main refuses a missing copy name, and a missing subject or one that isn't mailto: or https:", async () => {
+  await assert.rejects(main(["--subject", "mailto:owner@example.com"], () => {}), UsageError);
+  await assert.rejects(main(["--copy", "../x", "--subject", "mailto:owner@example.com"], () => {}), UsageError);
+  for (const argv of [["--copy", "acme"], ["--copy", "acme", "--subject", "owner@example.com"], ["--copy", "acme", "--subject", "http://example.com"]]) {
+    await assert.rejects(main(argv, () => {}), { name: "Error", message: /starting with mailto: or https:\/\// }, argv.join(" "));
+  }
 });

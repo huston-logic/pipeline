@@ -1,7 +1,7 @@
 // Makes one copy's web push keys (VAPID, RFC 8292; decision 0030) with Node's Web Crypto and prints the three
 // `wrangler secret put` commands with the value to paste at each prompt. It writes no file: the private key exists only
 // in this terminal and then in the copy's Worker secrets. Run by the repo owner, once per copy:
-//   node scripts/make-vapid-keys.mjs --copy <name> [--subject mailto:<the owner's email>]
+//   node scripts/make-vapid-keys.mjs --copy <name> --subject mailto:<the owner's email>
 import { pathToFileURL } from "node:url";
 import { resolve } from "node:path";
 import { parseFlags, UsageError } from "./cli-args.mjs";
@@ -42,12 +42,14 @@ const FLAGS = {
 };
 
 export async function main(argv = process.argv.slice(2), log = console.log) {
-  const flags = parseFlags(argv, FLAGS, "Use --copy <name> and, if you like, --subject mailto:<owner email>.");
+  const flags = parseFlags(argv, FLAGS, "Use --copy <name> --subject mailto:<owner email>.");
   const copy = typeof flags.copy === "string" ? flags.copy : "";
   if (!/^[a-z0-9][a-z0-9-]*$/.test(copy)) throw new UsageError("Give the copy's name, like --copy acme (lower case, digits and dashes).");
-  const subject = typeof flags.subject === "string" ? flags.subject : "mailto:<the owner's email>";
-  if (typeof flags.subject === "string" && !SUBJECT.test(subject)) {
-    throw new UsageError("--subject must start with mailto: or https://, like --subject mailto:owner@example.com.");
+  const subject = typeof flags.subject === "string" ? flags.subject : "";
+  if (!SUBJECT.test(subject)) {
+    throw new UsageError(
+      "Give the contact push services see, starting with mailto: or https://, like --subject mailto:owner@example.com.",
+    );
   }
   for (const line of secretLines(await makeVapidKeys(), { copy, subject })) log(line);
 }

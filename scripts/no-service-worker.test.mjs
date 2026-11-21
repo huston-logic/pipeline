@@ -62,6 +62,9 @@ test("public/sw.js only shows the fixed notification and opens /brief: no fetch 
   assert.match(sw, /showNotification\("Your daily brief is ready", \{\s*body: "Open the Brief tab\.",\s*icon: "\/icons\/icon-192\.png",\s*tag: "brief",\s*\}\)/);
   assert.match(sw, /openWindow\("\/brief"\)/);
   assert.match(sw, /navigate\("\/brief"\)/);
+  assert.match(sw, /matchAll\(\{ type: "window" \}\)/, "controlled windows only");
+  assert.doesNotMatch(sw, /includeUncontrolled/);
+  assert.ok(sw.indexOf('navigate("/brief")') < sw.indexOf(".focus()"), "navigate, then focus");
 });
 
 test("sw.js and push.js stay small and plain: under 3 KB gzipped, no innerHTML, fetch or eval", () => {
