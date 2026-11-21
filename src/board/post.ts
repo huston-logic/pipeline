@@ -63,6 +63,6 @@ export async function handleBoardPost(
     return htmlResponse(outOfDatePage(look, boardReturnPath(form.get(RETURN_FIELD)) ?? "/"), 403);
   }
 
-  const result = await action.run({ db: env.DB, now: new Date(), csrf: cookie, form, look });
+  const result = await action.run({ db: env.DB, env, now: new Date(), csrf: cookie, form, look });
   return result.kind === "redirect" ? seeOther(result.location) : htmlResponse(result.body, result.status);
 }

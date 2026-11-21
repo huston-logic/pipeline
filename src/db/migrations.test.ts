@@ -284,7 +284,8 @@ test("0006 from the previous version keeps every row; firings gain the contact o
   const db = new SqliteD1();
   await applyMigrations(db, 5);
   applySqlFile(db, "seed/defaults.sql");
-  for (const [table, sql] of Object.entries(FAKE_ROWS)) if (table !== "settings") db.exec(sql);
+  // push_subscriptions comes later (0007), so it has no table yet at version 5.
+  for (const [table, sql] of Object.entries(FAKE_ROWS)) if (table !== "settings" && table !== "push_subscriptions") db.exec(sql);
   db.exec(`INSERT INTO contacts (id, name) VALUES ('ct_two', 'Robin Sample');
     INSERT INTO deals (id, contact_id, title, stage_key, stage_entered_at)
       VALUES ('dl_two', 'ct_two', 'Example logo', 'fake_stage', '2026-11-18T17:00:00.000Z');
@@ -365,6 +366,36 @@ test("0006 refuses a firing with neither deal nor contact", async () => {
   await assert.rejects(db.prepare("INSERT INTO rule_firings (id, rule_id, fire_key) VALUES ('rf_a', 'ru_a', 'k')").run(), /CHECK/);
 });
 
+test("0007 from the previous version: every earlier table keeps its rows and push_subscriptions starts empty", async () => {
+  const db = new SqliteD1();
+  await applyMigrations(db, 6);
+  applySqlFile(db, "seed/defaults.sql");
+  await addContact(db, "ct_a", "pat@example.com");
+  await addDeal(db, "dl_a", "ct_a");
+  const before = (await db.prepare("SELECT * FROM deals").all()).results;
+
+  assert.deepEqual(await applyMigrations(db, 7), ["0007_push.sql"]);
+  assert.equal(await count(db, "push_subscriptions"), 0);
+  assert.deepEqual((await db.prepare("SELECT * FROM deals").all()).results, before);
+  assert.equal(await db.prepare("SELECT email FROM contacts WHERE id = 'ct_a'").first("email"), "pat@example.com");
+  assert.deepEqual((await db.prepare("PRAGMA foreign_key_check").all()).results, []);
+});
+
+test("push_subscriptions: one row per endpoint, https only, at most 1,000 characters; version and times default", async () => {
+  const db = await createTestDb();
+  const insert = (id: string, endpoint: string) =>
+    db.prepare("INSERT INTO push_subscriptions (id, endpoint, p256dh, auth) VALUES (?, ?, 'BAAA', 'AAAA')").bind(id, endpoint).run();
+  await insert("ps_a", "https://push.example.net/a");
+  await assert.rejects(insert("ps_b", "https://push.example.net/a"), /UNIQUE constraint failed: push_subscriptions\.endpoint/);
+  await assert.rejects(insert("ps_c", "http://push.example.net/c"), /CHECK/);
+  await assert.rejects(insert("ps_d", `https://push.example.net/${"d".repeat(1000)}`), /CHECK/);
+  const row = await db.prepare("SELECT gone_at, version, created_at, updated_at FROM push_subscriptions").first<Record<string, unknown>>();
+  assert.equal(row?.gone_at, null);
+  assert.equal(row?.version, 1);
+  assert.match(String(row?.created_at), ISO);
+  assert.match(String(row?.updated_at), ISO);
+});
+
 test("leads rulebook text is the same in the migration and the defaults", async () => {
   const fromMigration = new SqliteD1();
   await applyMigrations(fromMigration);
@@ -425,6 +456,8 @@ const FAKE_ROWS: Record<string, string> = {
     "INSERT INTO audit_log (id, at, actor, tool, target_table, target_id, before_json, after_json, summary) VALUES ('chg_fake', '2026-11-18T17:00:00.000Z', 'ai', 'add_lead', 'deals', 'dl_fake', '{}', '{\"deals:dl_fake\":null}', 'Added a fake lead (change chg_fake)')",
   briefs:
     "INSERT INTO briefs (id, local_date, composed_at, text) VALUES ('br_fake', '2026-11-18', '2026-11-18T15:00:00.000Z', 'Fake brief')",
+  push_subscriptions:
+    "INSERT INTO push_subscriptions (id, endpoint, p256dh, auth) VALUES ('ps_fake', 'https://push.example.net/send/fake', 'BAAA', 'AAAA')",
 };
 
 /** Tables that hold no rows between batches or belong to SQLite or wrangler. */

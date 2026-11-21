@@ -33,6 +33,16 @@ right Worker: `npx wrangler secret put <NAME> -c .copies/<name>/wrangler.jsonc`.
 | `ACCESS_JWKS_URL` | That application's Key endpoint (https) | `npx wrangler secret put ACCESS_JWKS_URL` |
 | `INTAKE_SECRET` | The shared secret a website form's server sends in the `X-Intake-Secret` header to `/intake` (task 8, decision 0012). Unset, `/intake` answers 503. | `npx wrangler secret put INTAKE_SECRET` (the owner; use a long random value). Local dev and the e2e tests use the fake `dev-intake-secret` from `--var`. |
 
+| `VAPID_PUBLIC_KEY` | The copy's web push public key (base64url uncompressed P-256 point) for the brief notification (decision 0030). Public by design: the Notifications page hands it to the browser. | `node scripts/make-vapid-keys.mjs --copy <name> --subject mailto:<owner email>` makes a fresh pair and prints the three commands with the value to paste at each prompt: `npx wrangler secret put VAPID_PUBLIC_KEY -c .copies/<name>/wrangler.jsonc` |
+| `VAPID_PRIVATE_KEY` | That key pair's private scalar `d` (base64url). Signs each push; never leaves the Worker. | `npx wrangler secret put VAPID_PRIVATE_KEY -c .copies/<name>/wrangler.jsonc` (the value the script printed) |
+| `VAPID_SUBJECT` | The contact push services see: `mailto:<owner email>` or an `https://` page | `npx wrangler secret put VAPID_SUBJECT -c .copies/<name>/wrangler.jsonc` |
+
+Push stays off until all three `VAPID_*` secrets are set and well formed: the Notifications page then says "This copy
+has no notification keys yet." and the brief sends no notification. The key script writes no file; set the private
+key straight away and clear the terminal. Making a new pair later stops notifications to every device that turned them
+on (their subscriptions belong to the old public key): on each one, Turn off, then Turn on notifications again. `npm run copies:provision`
+does not ask for these: they are optional.
+
 If any of the five `ACCESS_*` secrets is missing (or a URL isn't https), `/authorize` and `/callback` answer 500
 "Sign-in isn't set up yet." and no AI app can connect. No `COOKIE_ENCRYPTION_KEY` is needed: the OAuth library keeps the
 sign-in state in `OAUTH_KV`, encrypted, and binds it to the browser itself.
@@ -52,7 +62,8 @@ stored, and its `send_status` says which switch is off.
 ## Local development
 
 Local development needs no secrets: `npm run dev` runs in development mode (`AUTH_MODE=dev`) with `--var` values and
-fake seed data. A
+fake seed data. They also make a throwaway `VAPID_*` key pair in memory on each start (passed as `--var`, never
+written to a file), so the Notifications page works locally. A
 git-ignored `.dev.vars` file also works for trying a secret locally. CI needs none: tests mock `fetch` and use fake
 values.
 

@@ -22,3 +22,11 @@ test("scripts may come from this site only (the board's own /board.js, decision 
   assert.doesNotMatch(CONTENT_SECURITY_POLICY, /unsafe-inline|unsafe-eval|unsafe-hashes|strict-dynamic|nonce-|sha256-/);
   assert.match(CONTENT_SECURITY_POLICY, /object-src 'none'/);
 });
+
+test("the policy is exactly this: push.js and sw.js are 'self' and the Worker, not the page, calls the push service (decision 0030)", () => {
+  assert.equal(
+    CONTENT_SECURITY_POLICY,
+    "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; " +
+      "object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests",
+  );
+});
