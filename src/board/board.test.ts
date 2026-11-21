@@ -577,7 +577,7 @@ test("the brief page shows the full brief, its date and send status, with outsid
   assert.match(body, /It was not emailed, because sending is off \(brief_enabled is off\)\./);
   assert.match(body, /<h2 id="brief-due_today">Due today<\/h2>/);
   assert.match(body, /<h2 id="brief-gone_quiet">Gone quiet<\/h2>\n<ul class="panel rows"><li>Hardware store website \(Morgan Demo\): 11 days with no contact<\/li>/);
-  assert.match(body, /<h2 id="brief-new_lead">New leads<\/h2>\n<ul class="panel rows"><li><span class="outside">From outside<\/span> <span class="outside-value">Robin Sample: New website for Sample Bakery/);
+  assert.match(body, /<h2 id="brief-new_lead">New inquiries<\/h2>\n<ul class="panel rows"><li><span class="outside">From outside<\/span> <span class="outside-value">Robin Sample: New website for Sample Bakery/);
 });
 
 test("the rules page lists each rule as a card with its status, type, stage and firings", async () => {
