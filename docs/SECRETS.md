@@ -32,6 +32,7 @@ right Worker: `npx wrangler secret put <NAME> -c .copies/<name>/wrangler.jsonc`.
 | `ACCESS_AUTHORIZATION_URL` | That application's Authorization endpoint (https) | `npx wrangler secret put ACCESS_AUTHORIZATION_URL` |
 | `ACCESS_JWKS_URL` | That application's Key endpoint (https) | `npx wrangler secret put ACCESS_JWKS_URL` |
 | `INTAKE_SECRET` | The shared secret a website form's server sends in the `X-Intake-Secret` header to `/intake` (task 8, decision 0012). Unset, `/intake` answers 503. | `npx wrangler secret put INTAKE_SECRET` (the owner; use a long random value). Local dev and the e2e tests use the fake `dev-intake-secret` from `--var`. |
+| `EMAIL_LOG_ADDRESS` | The full email logging address, `log-<32 random hex>@<the log subdomain>` (decision 0031; docs/EMAIL-LOGGING.md). Mail to any other address, or with this unset, is dropped silently, and the board's Email logging page says it isn't set up. | `npx wrangler secret put EMAIL_LOG_ADDRESS -c .copies/<copy>/wrangler.jsonc` (the owner; make the random part with `openssl rand -hex 16`). Local dev and the e2e tests use the fake `log-dev@log.example.test` from `--var`. |
 
 If any of the five `ACCESS_*` secrets is missing (or a URL isn't https), `/authorize` and `/callback` answer 500
 "Sign-in isn't set up yet." and no AI app can connect. No `COOKIE_ENCRYPTION_KEY` is needed: the OAuth library keeps the
