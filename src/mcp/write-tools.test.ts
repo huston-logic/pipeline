@@ -80,6 +80,27 @@ test("update_contact sets a lead status, and Not now with a followUpDate adds th
   assert.match(await fails(c, "update_contact", { contact: "ct_seed01", leadStatus: "contacted" }), /^Pat Example has 1 open deal\. Use return_to_lead on that deal instead/);
 });
 
+test("return_to_lead and qualify_lead each answer one change line with the ids; refusals are plain", async () => {
+  const { c } = await setup();
+  const back = await ok(c, "return_to_lead", { deal: "dl_seed08" });
+  assert.match(
+    back.headline,
+    /^Moved Sam Example back to leads \(Contacted\); archived deal "Auto repair landing page" \(change chg_[a-z0-9]{12}\)$/,
+  );
+  assert.deepEqual(back.data, { changeId: changeIdOf(back.data), contactId: "ct_seed08", dealId: "dl_seed08" });
+
+  const qualified = await ok(c, "qualify_lead", { contact: "ct_seed08", stage: "Replied", dealTitle: "Second try", value: 400 });
+  assert.match(qualified.headline, /^Qualified Sam Example; added deal "Second try" in Replied \(change chg_[a-z0-9]{12}\)$/);
+  const data = qualified.data as { changeId: string; contactId: string; dealId: string | null };
+  assert.equal(data.contactId, "ct_seed08");
+  assert.match(data.dealId ?? "", /^dl_/);
+
+  assert.match(await fails(c, "return_to_lead", { deal: "dl_seed07" }), /^"Salon booking site" is Won, so it was a real opportunity/);
+  assert.match(await fails(c, "return_to_lead", { deal: "dl_seed03", status: "qualified" }), /^Someone moved back to leads can't be Qualified\./);
+  assert.match(await fails(c, "qualify_lead", { contact: "ct_seed01" }), /^Pat Example isn't a lead waiting to be qualified\./);
+  assert.match(await fails(c, "qualify_lead", { contact: "ct_seed01", createDeal: "yes" }), /^Fix the qualify_lead request: /);
+});
+
 test("log_activity refuses a via argument: only the board marks a note as a text", async () => {
   const { c } = await setup();
   const message = await fails(c, "log_activity", { contact: "ct_seed01", type: "note", summary: "Texted.", via: "text" });
