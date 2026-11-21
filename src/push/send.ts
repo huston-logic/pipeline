@@ -19,7 +19,12 @@ export type PushCounts = { sent: number; gone: number; failed: number; skipped?:
 
 type Outcome = "sent" | "gone" | "failed";
 
-async function pushOne(sub: PushSubscriptionRow, keys: VapidKeys, now: Date): Promise<Outcome> {
+/** How long one push service may take to answer before that device counts as failed. */
+export const PUSH_TIMEOUT_MS = 10_000;
+
+export type PushOptions = { timeoutMs?: number };
+
+async function pushOne(sub: PushSubscriptionRow, keys: VapidKeys, now: Date, timeoutMs: number): Promise<Outcome> {
   try {
     const body = await encryptPayload(utf8(BRIEF_PAYLOAD), sub);
     const response = await fetch(sub.endpoint, {
@@ -32,22 +37,28 @@ async function pushOne(sub: PushSubscriptionRow, keys: VapidKeys, now: Date): Pr
         "Content-Type": "application/octet-stream",
       },
       body,
+      // A push service answers directly; a redirect (3xx) counts as a failure and is never followed.
+      redirect: "manual",
+      signal: AbortSignal.timeout(timeoutMs),
     });
     await response.body?.cancel();
     if (response.status === 404 || response.status === 410) return "gone";
-    return response.ok ? "sent" : "failed";
+    return response.status >= 200 && response.status < 300 ? "sent" : "failed";
   } catch {
     return "failed";
   }
 }
 
-/** One push to every subscription that is on. Never throws for a single device's failure. */
-export async function sendBriefPush(db: Db, env: Env, now: Date): Promise<PushCounts> {
+/** One push to every subscription that is on, all at once. Never throws for a single device's failure. */
+export async function sendBriefPush(db: Db, env: Env, now: Date, options: PushOptions = {}): Promise<PushCounts> {
   const counts: PushCounts = { sent: 0, gone: 0, failed: 0 };
   const keys = vapidKeys(env);
   if (keys === null) return { ...counts, skipped: "no_keys" };
-  for (const sub of await listLivePush(db)) {
-    const outcome = await pushOne(sub, keys, now);
+  const subs = await listLivePush(db);
+  const settled = await Promise.allSettled(subs.map((sub) => pushOne(sub, keys, now, options.timeoutMs ?? PUSH_TIMEOUT_MS)));
+  for (const [i, sub] of subs.entries()) {
+    const result = settled[i];
+    const outcome: Outcome = result?.status === "fulfilled" ? result.value : "failed";
     if (outcome === "gone") {
       try {
         await markPushGone({ db, now, actor: "system", tool: "push_send" }, sub.id);

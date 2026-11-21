@@ -259,6 +259,23 @@ test("push failures never break the brief: the email still goes and the counts s
   assert.equal((await briefs(db))[0]?.send_status, "sent");
 });
 
+test("a push service that never answers can't hold the email back: it goes first, and the push times out as failed", async (t) => {
+  const order: string[] = [];
+  t.mock.method(globalThis, "fetch", (url: string, init: RequestInit) => {
+    order.push(url);
+    if (!url.startsWith("https://push.example.net/")) return Promise.resolve(new Response("{}", { status: 200 }));
+    // Hangs until the sender's timeout aborts it, like a host that never answers.
+    return new Promise((_, reject) => init.signal?.addEventListener("abort", () => reject(init.signal?.reason)));
+  });
+  const db = await openTestDb();
+  await db.prepare(`UPDATE settings SET brief_enabled = 1, brief_email = 'owner@example.test', owner_emails = '["owner@example.test"]'`).run();
+  await addDevice(db, 1);
+  const env = envFor(db, { ...READY, ...(await vapidSecrets()) });
+  assert.deepEqual(await runBrief(env, SEVEN, { timeoutMs: 50 }), { composed: 1, sent: 1, failed: 0, pushed: 0, push_gone: 0, push_failed: 1 });
+  assert.deepEqual(order, ["https://api.resend.com/emails", "https://push.example.net/send/device-1"], "the email before the push");
+  assert.equal((await briefs(db))[0]?.send_status, "sent");
+});
+
 test("a push send that throws outright is counted as one failure and the brief is still stored and emailed", async (t) => {
   mockBoth(t);
   const db = await openTestDb();

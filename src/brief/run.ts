@@ -5,7 +5,7 @@ import type { BriefRow, Db, SettingsRow } from "../db/db.ts";
 import { getSettings } from "../db/queries.ts";
 import type { Env } from "../env.ts";
 import { newId } from "../ids.ts";
-import { sendBriefPush } from "../push/send.ts";
+import { type PushOptions, sendBriefPush } from "../push/send.ts";
 import { untrustedFields } from "../services/labels.ts";
 import { whatsDue } from "../services/read.ts";
 import { listQuietDeals } from "../services/rules.ts";
@@ -21,9 +21,9 @@ export type BriefRunCounts = { composed: number; sent: number; failed: number } 
 type PushRunCounts = { pushed: number; push_gone: number; push_failed: number };
 
 /** The phone notification for a stored brief. A failure here never stops the brief or its email. */
-async function pushBrief(env: Env, now: Date): Promise<PushRunCounts | null> {
+async function pushBrief(env: Env, now: Date, options: PushOptions): Promise<PushRunCounts | null> {
   try {
-    const result = await sendBriefPush(env.DB, env, now);
+    const result = await sendBriefPush(env.DB, env, now, options);
     if (result.skipped === "no_keys") return null;
     return { pushed: result.sent, push_gone: result.gone, push_failed: result.failed };
   } catch {
@@ -93,10 +93,10 @@ async function quietList(db: Db, now: Date): Promise<BriefQuietDeal[]> {
 }
 
 /**
- * Composes and stores today's brief when it is due, pushes the phone notification when push is set up, then emails it
- * when sending is on. Returns counts only.
+ * Composes and stores today's brief when it is due, emails it when sending is on, then pushes the phone notification
+ * when push is set up. Returns counts only.
  */
-export async function runBrief(env: Env, now: Date): Promise<BriefRunCounts> {
+export async function runBrief(env: Env, now: Date, push: PushOptions = {}): Promise<BriefRunCounts> {
   const { DB: db } = env;
   const counts: BriefRunCounts = { composed: 0, sent: 0, failed: 0 };
   const settings = await getSettings(db);
@@ -131,17 +131,20 @@ export async function runBrief(env: Env, now: Date): Promise<BriefRunCounts> {
   // Another run stored today's brief first: it owns the send.
   if (!inserted || inserted.meta.changes === 0) return counts;
   counts.composed = 1;
-  // Only the run that stored the brief gets here, so each device is told once a day.
-  const pushed = await pushBrief(env, now);
-  if (pushed !== null) Object.assign(counts, pushed);
-  if (blocker !== null) return counts;
 
-  const result = await sendBrief(env, brief, settings);
-  await db
-    .prepare("UPDATE briefs SET sent_at = ?, send_status = ? WHERE id = ?")
-    .bind(result.sent ? at : null, result.sent ? "sent" : result.reason, id)
-    .run();
-  if (result.sent) counts.sent = 1;
-  else counts.failed = 1;
+  // The email and its status first, so a slow push service can never hold it back or leave it "pending".
+  if (blocker === null) {
+    const result = await sendBrief(env, brief, settings);
+    await db
+      .prepare("UPDATE briefs SET sent_at = ?, send_status = ? WHERE id = ?")
+      .bind(result.sent ? at : null, result.sent ? "sent" : result.reason, id)
+      .run();
+    if (result.sent) counts.sent = 1;
+    else counts.failed = 1;
+  }
+
+  // Only the run that stored the brief gets here, so each device is told once a day.
+  const pushed = await pushBrief(env, now, push);
+  if (pushed !== null) Object.assign(counts, pushed);
   return counts;
 }

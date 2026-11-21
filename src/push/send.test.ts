@@ -27,7 +27,7 @@ async function subscribe(db: Db, n: number) {
   await subscribePush({ db, now: NOW, actor: "owner", tool: "push_subscribe" }, { endpoint: `https://push.example.net/send/device-${n}`, ...(await browserKeys()) });
 }
 
-type Call = { url: string; method: string; headers: Record<string, string>; body: Uint8Array };
+type Call = { url: string; method: string; headers: Record<string, string>; body: Uint8Array; redirect?: string; signal: unknown };
 
 function mockFetch(t: { mock: { method: typeof import("node:test").mock.method } }, statusFor: (url: string) => number | "throw" = () => 201) {
   const calls: Call[] = [];
@@ -37,6 +37,8 @@ function mockFetch(t: { mock: { method: typeof import("node:test").mock.method }
       method: init.method ?? "GET",
       headers: Object.fromEntries(new Headers(init.headers).entries()),
       body: new Uint8Array(init.body as ArrayBuffer),
+      redirect: init.redirect,
+      signal: init.signal,
     });
     const status = statusFor(url);
     if (status === "throw") throw new TypeError("network down");
@@ -72,6 +74,8 @@ test("a test push to two subscriptions: one encrypted POST each, with VAPID, TTL
   assert.deepEqual(calls.map((c) => c.url).toSorted(), ["https://push.example.net/send/device-1", "https://push.example.net/send/device-2"]);
   for (const call of calls) {
     assert.equal(call.method, "POST");
+    assert.equal(call.redirect, "manual", "a redirect is never followed");
+    assert.ok(call.signal instanceof AbortSignal, "each push has a timeout");
     assert.equal(call.headers.ttl, "86400");
     assert.equal(call.headers.urgency, "normal");
     assert.equal(call.headers["content-encoding"], "aes128gcm");
@@ -90,18 +94,19 @@ test("404 and 410 mark the subscription gone in a system change; other failures 
     "https://push.example.net/send/device-3": 500,
     "https://push.example.net/send/device-4": "throw",
     "https://push.example.net/send/device-5": 201,
+    "https://push.example.net/send/device-6": 302,
   };
   const calls = mockFetch(t, (url) => statuses[url] ?? 201);
   const logs: string[] = [];
   t.mock.method(console, "log", (line: string) => logs.push(line));
   t.mock.method(console, "error", (line: string) => logs.push(line));
   const db = await openTestDb();
-  for (const n of [1, 2, 3, 4, 5]) await subscribe(db, n);
-  assert.deepEqual(await sendBriefPush(db, envFor(db, await fakeSecrets()), NOW), { sent: 1, gone: 2, failed: 2 });
-  assert.equal(calls.length, 5);
+  for (const n of [1, 2, 3, 4, 5, 6]) await subscribe(db, n);
+  assert.deepEqual(await sendBriefPush(db, envFor(db, await fakeSecrets()), NOW), { sent: 1, gone: 2, failed: 3 }, "a 302 is a failure");
+  assert.equal(calls.length, 6);
 
   const live = (await db.prepare("SELECT endpoint FROM push_subscriptions WHERE gone_at IS NULL ORDER BY endpoint").all<PushSubscriptionRow>()).results;
-  assert.deepEqual(live.map((r) => r.endpoint.slice(-8)), ["device-3", "device-4", "device-5"]);
+  assert.deepEqual(live.map((r) => r.endpoint.slice(-8)), ["device-3", "device-4", "device-5", "device-6"]);
   const gone = (await db.prepare("SELECT * FROM audit_log WHERE tool = 'push_send' ORDER BY id").all<AuditRow>()).results;
   assert.equal(gone.length, 2);
   for (const row of gone) {
@@ -113,7 +118,7 @@ test("404 and 410 mark the subscription gone in a system change; other failures 
   // The next send skips the gone ones.
   const again = mockFetch(t);
   await sendBriefPush(db, envFor(db, await fakeSecrets()), NOW);
-  assert.equal(again.length, 3);
+  assert.equal(again.length, 4);
 });
 
 test("with no subscriptions nothing is sent", async (t) => {
