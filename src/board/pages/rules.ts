@@ -1,4 +1,5 @@
 import type { Actor, RuleType } from "../../db/db.ts";
+import { LEAD_STATUS_LABELS } from "../../services/lead-status.ts";
 import { ownerTimezone } from "../../services/lookup.ts";
 import { listRules, type RuleView } from "../../services/rules.ts";
 import { formatLocal } from "../../time.ts";
@@ -25,6 +26,7 @@ ${rule.active ? tag("Active") : tag("Paused", true)}
 ${pairs([
   { name: "Type", value: TYPE[rule.type] },
   rule.stageLabel !== null && { name: "Stage", value: rule.stageLabel },
+  rule.params?.type === "lead_followup" && { name: "Lead status", value: LEAD_STATUS_LABELS[rule.params.status] },
   rule.params === null && { name: "Note", value: "Its settings can't be read, so it is skipped." },
   { name: "Fired", value: count(rule.timesFired, "time") },
   { name: "Added", value: html`${when(rule.createdAt, formatLocal(rule.createdAt, tz))} by ${BY[rule.createdBy] ?? rule.createdBy}` },

@@ -1,18 +1,23 @@
 // add_rule, update_rule, pause_rule, resume_rule, list_rules and preview_rule, plus the hourly run (runRules) and the
 // brief's gone-quiet list (listQuietDeals). The rules themselves are pure functions in src/rules/engine.ts; this file
-// loads their data and writes their results. Rules are never deleted, only paused. Decision 0010.
+// loads their data and writes their results. Rules are never deleted, only paused. Decisions 0010 and 0026.
 import { z } from "zod";
 import type { ActivityType, Db, RuleRow, RuleType, StageRow, TaskRow } from "../db/db.ts";
 import { listRules as listRuleRows, listStages } from "../db/queries.ts";
 import { newId } from "../ids.ts";
 import {
   DAY_MS,
+  type DealRuleParams,
   type EngineActivity,
   type EngineDeal,
+  type EngineLead,
   type EngineRule,
+  evaluateLeadRules,
   evaluateRules,
+  LEAD_FOLLOWUP_STATUSES,
   type PreviewHit,
   PREVIEW_DAYS,
+  previewLeadRule,
   previewRule,
   quietDeals,
   type RuleParams,
@@ -21,7 +26,8 @@ import { formatLocal } from "../time.ts";
 import { type ChangeResult, commitChange, type Ctx, isFireKeyFailure, updatedRow } from "./change.ts";
 import { capitalize, joinAnd, rowLabel, short, withArticle } from "./describe.ts";
 import { UserError } from "./errors.ts";
-import { dealLabel, untrustedFields } from "./labels.ts";
+import { contactName, dealLabel, untrustedFields } from "./labels.ts";
+import { LEAD_STATUS_LABELS, type LeadStatus, leadStatusFromText } from "./lead-status.ts";
 import { findStage, ownerTimezone, stageLabels } from "./lookup.ts";
 
 export type { RuleParams };
@@ -29,9 +35,14 @@ export type { RuleParams };
 export interface RuleSettings {
   /** Stage key or label (stage_followup, on_stage_enter). */
   stage?: string;
-  /** stage_followup: days in the stage with no contact; gone_quiet: days with no contact. */
+  /** lead_followup: the lead status to watch, new or contacted (its key or label). */
+  status?: string;
+  /**
+   * stage_followup: days in the stage with no contact; gone_quiet: days with no contact; lead_followup: days in the
+   * status with no contact.
+   */
   days?: number;
-  /** The task title; may use {deal}, {contact} and {stage}. */
+  /** The task title; may use {deal}, {contact} and {stage} ({contact} only for lead_followup). */
   title?: string;
   /** on_stage_enter: the task is due this many days after the deal entered the stage. */
   dueInDays?: number;
@@ -54,6 +65,7 @@ const MAX_TITLE = 200;
 const MAX_DAYS = 365;
 const MAX_DESCRIPTION = 500;
 const PLACEHOLDERS = ["deal", "contact", "stage"];
+const LEAD_PLACEHOLDERS = ["contact"];
 
 const stage = z.string().trim().min(1).max(200);
 const title = z.string().trim().min(1).max(MAX_TITLE);
@@ -68,24 +80,35 @@ const SCHEMAS = {
   stage_followup: z.strictObject({ type: z.literal("stage_followup"), stage, days, title: title.optional(), since: since.optional() }),
   on_stage_enter: z.strictObject({ type: z.literal("on_stage_enter"), stage, title, dueInDays, since: since.optional() }),
   gone_quiet: z.strictObject({ type: z.literal("gone_quiet"), days }),
-} satisfies Record<Exclude<RuleType, "lead_followup">, z.ZodType<RuleParams>>;
+  lead_followup: z.strictObject({
+    type: z.literal("lead_followup"),
+    status: z.enum(LEAD_FOLLOWUP_STATUSES),
+    days,
+    title: title.optional(),
+    since: since.optional(),
+  }),
+} satisfies Record<RuleType, z.ZodType<RuleParams>>;
 
-// lead_followup is allowed in storage (migration 0006) but has no schema until the leads rules task adds one.
-const schemaFor = (type: RuleType): z.ZodType<RuleParams> | undefined =>
-  (SCHEMAS as Partial<Record<RuleType, z.ZodType<RuleParams>>>)[type];
+const isRuleType = (type: string): type is RuleType => Object.hasOwn(SCHEMAS, type);
 
 const HELP: Record<string, string> = {
   stage: "the stage to watch: its key or label",
+  status: `the lead status to watch: ${LEAD_FOLLOWUP_STATUSES.join(" or ")}`,
   days: "a whole number of days from 1 to 365",
   dueInDays: "a whole number of days from 0 to 365",
-  title: `the task title, up to ${MAX_TITLE} characters; it may use {deal}, {contact} and {stage}`,
 };
+
+/** The placeholders a title may use: a lead rule's task is on the person alone, so it has no deal or stage. */
+const placeholdersOf = (type: RuleType): string[] => (type === "lead_followup" ? LEAD_PLACEHOLDERS : PLACEHOLDERS);
+
+const titleHelp = (type: RuleType) =>
+  `the task title, up to ${MAX_TITLE} characters; it may use ${joinAnd(placeholdersOf(type).map((name) => `{${name}}`))}`;
 
 const TAKES: Record<RuleType, string> = {
   stage_followup: "stage and days, and optionally title",
   on_stage_enter: "stage, title and dueInDays",
   gone_quiet: "only days",
-  lead_followup: "nothing yet",
+  lead_followup: `status (${LEAD_FOLLOWUP_STATUSES.join(" or ")}) and days, and optionally title`,
 };
 
 const aRule = (type: RuleType) => `${withArticle(type)} rule`;
@@ -96,7 +119,7 @@ function paramsError(type: RuleType, value: Record<string, unknown>, issues: rea
       return `${capitalize(aRule(type))} doesn't take ${issue.keys.map((key) => `"${key}"`).join(", ")}.`;
     }
     const key = String(issue.path[0] ?? "");
-    const help = HELP[key] ?? "set correctly";
+    const help = key === "title" ? titleHelp(type) : (HELP[key] ?? "set correctly");
     return value[key] === undefined
       ? `${capitalize(aRule(type))} needs "${key}" (${help}).`
       : `"${key}" must be ${help}.`;
@@ -104,13 +127,21 @@ function paramsError(type: RuleType, value: Record<string, unknown>, issues: rea
   return new UserError(`Fix the rule: ${[...new Set(sentences)].join(" ")} ${capitalize(aRule(type))} takes ${TAKES[type]}.`);
 }
 
-function checkTitle(template: string | undefined): void {
+function checkTitle(type: RuleType, template: string | undefined): void {
   if (template === undefined) return;
+  const allowed = placeholdersOf(type);
+  const whose = type === "lead_followup" ? `${capitalize(aRule(type))}'s` : "A rule's";
   for (const [, name] of template.matchAll(/\{([^{}]*)\}/g)) {
-    if (!PLACEHOLDERS.includes(name ?? "")) {
-      throw new UserError(`A rule's title can use {deal}, {contact} and {stage} only; {${name}} isn't one. Change the title.`);
+    if (!allowed.includes(name ?? "")) {
+      const list = joinAnd(allowed.map((p) => `{${p}}`));
+      throw new UserError(`${whose} title can use ${list} only; {${name}} isn't one. Change the title.`);
     }
   }
+}
+
+/** A typed status as its key: "Contacted" and "contacted" both mean contacted. Anything else is left for the schema. */
+function leadStatusKey(value: unknown): unknown {
+  return typeof value === "string" ? (leadStatusFromText(value) ?? value) : value;
 }
 
 /** Only open stages: rules watch open deals, so a closed stage would never fire. */
@@ -130,16 +161,21 @@ const defined = (value: Record<string, unknown>) =>
 
 /** Checked, normalized parameters (the stage as its key), and the stage's label for the description. */
 async function checkParams(db: Db, type: RuleType, settings: RuleSettings): Promise<{ params: RuleParams; stageLabel: string | null }> {
-  const schema = Object.hasOwn(SCHEMAS, type) ? schemaFor(type) : undefined;
-  if (!schema) {
-    throw new UserError(`"${type}" isn't a rule type. Use stage_followup, on_stage_enter or gone_quiet.`);
+  if (!isRuleType(type)) {
+    throw new UserError(`"${String(type)}" isn't a rule type. Use stage_followup, on_stage_enter, gone_quiet or lead_followup.`);
   }
   const value = defined({ type, ...settings });
-  const parsed = schema.safeParse(value);
+  if (type === "lead_followup" && value.status !== undefined) value.status = leadStatusKey(value.status);
+  const parsed = SCHEMAS[type].safeParse(value);
   if (!parsed.success) throw paramsError(type, value, parsed.error.issues);
   const params = parsed.data as RuleParams;
   if (params.type === "gone_quiet") return { params: { type: params.type, days: params.days }, stageLabel: null };
-  checkTitle(params.title);
+  checkTitle(params.type, params.title);
+  if (params.type === "lead_followup") {
+    const normalized: RuleParams = { type: params.type, status: params.status, days: params.days };
+    if (params.title !== undefined) normalized.title = params.title;
+    return { params: normalized, stageLabel: null };
+  }
   const found = await ruleStage(db, params.stage);
   if (params.type === "stage_followup") {
     const normalized: RuleParams = { type: params.type, stage: found.key, days: params.days };
@@ -155,8 +191,13 @@ async function checkParams(db: Db, type: RuleType, settings: RuleSettings): Prom
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 export function describeRule(params: RuleParams, stageLabel: string | null): string {
-  const where = stageLabel ?? (params.type === "gone_quiet" ? "" : params.stage);
+  const where = stageLabel ?? ("stage" in params ? params.stage : "");
   switch (params.type) {
+    case "lead_followup": {
+      const task = params.title === undefined ? "a follow-up task" : `the task "${params.title}"`;
+      const status = LEAD_STATUS_LABELS[params.status];
+      return `When a lead has been ${status} for ${plural(params.days, "day")} with no contact logged, add ${task}.`;
+    }
     case "stage_followup": {
       const task = params.title === undefined ? "a follow-up task" : `the task "${params.title}"`;
       return `When a deal has sat in ${where} for ${plural(params.days, "day")} with no contact logged, add ${task}.`;
@@ -182,12 +223,22 @@ function cleanDescription(text: string | undefined): string | undefined {
 
 /** The stored parameters, or null when they no longer pass the checks (the rule is then skipped, never guessed). */
 export function parseRuleParams(row: Pick<RuleRow, "type" | "params">): RuleParams | null {
+  if (!isRuleType(row.type)) return null;
   try {
-    const parsed = schemaFor(row.type)?.safeParse(JSON.parse(row.params));
-    return parsed?.success ? (parsed.data as RuleParams) : null;
+    const parsed = SCHEMAS[row.type].safeParse(JSON.parse(row.params));
+    return parsed.success ? (parsed.data as RuleParams) : null;
   } catch {
     return null;
   }
+}
+
+/** The stored parameters of a rule the owner asked to change or preview; refused in plain English when unreadable. */
+function readableParams(row: RuleRow): RuleParams {
+  const params = parseRuleParams(row);
+  if (params !== null) return params;
+  throw new UserError(
+    `Rule ${row.id}'s settings can't be read, so it is skipped. Pause it with pause_rule and add a new rule with add_rule.`,
+  );
 }
 
 async function findRule(db: Db, ref: string): Promise<RuleRow> {
@@ -224,13 +275,18 @@ export async function addRule(ctx: Ctx, input: RuleInput): Promise<ChangeResult 
   return { ...result, ruleId: row.id };
 }
 
-const PARAM_LABELS: Record<string, string> = { stage: "stage", days: "days", title: "title", dueInDays: "due in days" };
+const PARAM_LABELS: Record<string, string> = {
+  stage: "stage",
+  status: "status",
+  days: "days",
+  title: "title",
+  dueInDays: "due in days",
+};
 
 export async function updateRule(ctx: Ctx, ref: string, patch: RulePatch): Promise<ChangeResult & { ruleId: string }> {
   const { db } = ctx;
   const before = await findRule(db, ref);
-  const stored = parseRuleParams(before);
-  if (stored === null) throw new Error(`Rule ${before.id} has unreadable parameters.`);
+  const stored = readableParams(before);
   const { description: given, title: newTitle, ...settings } = patch;
   const merged: RuleSettings = { ...stored, ...defined({ ...settings, title: newTitle ?? undefined }) };
   if (newTitle === null) {
@@ -325,7 +381,7 @@ export async function listRules(db: Db): Promise<RuleView[]> {
   );
   return rules.map((row) => {
     const params = parseRuleParams(row);
-    const key = params && params.type !== "gone_quiet" ? params.stage : null;
+    const key = params && "stage" in params ? params.stage : null;
     return {
       id: row.id,
       type: row.type,
@@ -382,6 +438,64 @@ async function engineDeals(db: Db, openOnly: boolean): Promise<EngineDeal[]> {
   }));
 }
 
+/**
+ * What counts as reaching a person, in SQL: the same test as isReach (src/services/lead-change.ts), which a test keeps
+ * in step. activities.data is always a JSON object (a CHECK); the CASE still keeps json_extract away from anything
+ * else, since one bad row would fail the whole query.
+ */
+const REACH_SQL = `(a.type IN ('form', 'email', 'call', 'meeting') OR (a.type = 'note' AND
+  CASE WHEN json_valid(a.data) THEN json_extract(a.data, '$.via') END = 'text'))`;
+
+type LeadJoin = {
+  id: string;
+  name: string;
+  untrusted_fields: string;
+  lead_status: LeadStatus;
+  lead_status_at: string;
+  archived: number;
+  reach_own: string | null;
+  reach_deals: string | null;
+};
+
+const latest = (a: string | null, b: string | null) => (a === null ? b : b === null || a >= b ? a : b);
+
+/**
+ * People in the given lead statuses (not archived, with a status time), shaped for the engine, in one query: the
+ * hourly run's statement count must not grow with the number of leads (decision 0026, docs/PAID-PLAN.md). The last
+ * reach is the latest one on the person or on any of their deals.
+ */
+async function engineLeads(db: Db, statuses: readonly LeadStatus[]): Promise<EngineLead[]> {
+  if (statuses.length === 0) return [];
+  const found = await db
+    .prepare(
+      `SELECT c.id, c.name, c.untrusted_fields, c.lead_status, c.lead_status_at, c.archived,
+         (SELECT MAX(a.occurred_at) FROM activities a WHERE a.contact_id = c.id AND ${REACH_SQL}) AS reach_own,
+         (SELECT MAX(a.occurred_at) FROM deals d JOIN activities a ON a.deal_id = d.id
+           WHERE d.contact_id = c.id AND ${REACH_SQL}) AS reach_deals
+       FROM contacts c
+       WHERE c.archived = 0 AND c.lead_status_at IS NOT NULL AND c.lead_status IN (${statuses.map(() => "?").join(", ")})
+       ORDER BY c.lead_status_at, c.id`,
+    )
+    .bind(...statuses)
+    .all<LeadJoin>();
+  return found.results.map((row) => ({
+    id: row.id,
+    name: row.name,
+    untrusted_fields: row.untrusted_fields,
+    leadStatus: row.lead_status,
+    leadStatusAt: row.lead_status_at,
+    lastReachAt: latest(row.reach_own, row.reach_deals),
+    archived: row.archived === 1,
+  }));
+}
+
+const isLeadRule = (rule: EngineRule) => rule.params.type === "lead_followup";
+
+/** The statuses the lead rules watch, each once. */
+const watchedStatuses = (rules: EngineRule[]): LeadStatus[] => [
+  ...new Set(rules.flatMap((rule) => (rule.params.type === "lead_followup" ? [rule.params.status] : []))),
+];
+
 async function activeRules(db: Db): Promise<EngineRule[]> {
   return (await listRuleRows(db, { activeOnly: true })).flatMap((row) => {
     const params = parseRuleParams(row);
@@ -409,56 +523,80 @@ export type RuleRunCounts = {
  */
 export const MAX_FIRINGS_PER_RUN = 25;
 
-/** The hourly run: one system change per firing, each creating its task with the rule_firings row in `extra`. */
+/**
+ * The fire keys that can still matter, in one query: those of open deals (deal rules) and of people in a watched lead
+ * status (lead rules). Keys of closed deals and of people in other statuses can't match a current entry.
+ */
+async function firedKeys(db: Db, dealRules: boolean, statuses: readonly LeadStatus[]): Promise<Set<string>> {
+  const where: string[] = [];
+  if (dealRules) where.push("deal_id IN (SELECT id FROM deals WHERE status = 'open' AND archived = 0)");
+  if (statuses.length > 0) {
+    where.push(
+      "(deal_id IS NULL AND contact_id IN (SELECT id FROM contacts WHERE archived = 0 AND lead_status IN " +
+        `(${statuses.map(() => "?").join(", ")})))`,
+    );
+  }
+  if (where.length === 0) return new Set();
+  const fired = await db
+    .prepare(`SELECT fire_key FROM rule_firings WHERE ${where.join(" OR ")}`)
+    .bind(...statuses)
+    .all<{ fire_key: string }>();
+  return new Set(fired.results.map((row) => row.fire_key));
+}
+
+type DueTask = { ruleId: string; title: string; titleUntrusted: boolean; dueAt: string };
+
+function ruleTask(firing: DueTask, dealId: string | null, contactId: string, at: string): TaskRow {
+  return {
+    id: newId("tk"),
+    deal_id: dealId,
+    contact_id: contactId,
+    title: firing.title.slice(0, 500),
+    due_at: firing.dueAt,
+    done_at: null,
+    snoozed_until: null,
+    source: firing.ruleId,
+    untrusted_fields: firing.titleUntrusted ? '["title"]' : "[]",
+    version: 1,
+    created_at: at,
+    updated_at: at,
+  };
+}
+
+/**
+ * The hourly run: one system change per firing, each creating its task with the rule_firings row in `extra`. Deal
+ * firings come first, then lead firings, against one MAX_FIRINGS_PER_RUN budget (decision 0026).
+ */
 export async function runRules(db: Db, now: Date): Promise<RuleRunCounts> {
   const rules = await activeRules(db);
   const counts: RuleRunCounts = { rules: rules.length, fired: 0, alreadyFired: 0, failed: 0, deferred: 0 };
-  const stageRules = rules.filter((rule) => rule.params.type !== "gone_quiet");
-  if (stageRules.length === 0) return counts;
+  const dealRules = rules.filter((rule) => rule.params.type !== "gone_quiet" && !isLeadRule(rule));
+  const statuses = watchedStatuses(rules.filter(isLeadRule));
+  if (dealRules.length === 0 && statuses.length === 0) return counts;
 
-  const deals = await engineDeals(db, true);
-  const fired = await db
-    .prepare(
-      `SELECT fire_key FROM rule_firings WHERE deal_id IN (SELECT id FROM deals WHERE status = 'open' AND archived = 0)`,
-    )
-    .all<{ fire_key: string }>();
-  const due = evaluateRules({ now, rules: stageRules, deals, firedKeys: new Set(fired.results.map((r) => r.fire_key)) });
-  if (due.length === 0) return counts;
-  const firings = due.slice(0, MAX_FIRINGS_PER_RUN);
-  counts.deferred = due.length - firings.length;
+  const deals = dealRules.length > 0 ? await engineDeals(db, true) : [];
+  const leads = await engineLeads(db, statuses);
+  const fired = await firedKeys(db, dealRules.length > 0, statuses);
+  const dealDue = evaluateRules({ now, rules: dealRules, deals, firedKeys: fired });
+  const leadDue = evaluateLeadRules({ now, rules, leads, firedKeys: fired });
+  const dealFirings = dealDue.slice(0, MAX_FIRINGS_PER_RUN);
+  const leadFirings = leadDue.slice(0, MAX_FIRINGS_PER_RUN - dealFirings.length);
+  counts.deferred = dealDue.length + leadDue.length - dealFirings.length - leadFirings.length;
+  if (dealFirings.length + leadFirings.length === 0) return counts;
 
   const tz = await ownerTimezone(db);
-  const byId = new Map(deals.map((deal) => [deal.id, deal]));
   const ctx: Ctx = { db, now, actor: "system", tool: "rules" };
   const at = now.toISOString();
-  for (const firing of firings) {
-    const deal = byId.get(firing.dealId);
-    if (!deal) continue;
-    const task: TaskRow = {
-      id: newId("tk"),
-      deal_id: firing.dealId,
-      contact_id: firing.contactId,
-      title: firing.title.slice(0, 500),
-      due_at: firing.dueAt,
-      done_at: null,
-      snoozed_until: null,
-      source: firing.ruleId,
-      untrusted_fields: firing.titleUntrusted ? '["title"]' : "[]",
-      version: 1,
-      created_at: at,
-      updated_at: at,
-    };
+  const write = async (task: TaskRow, firing: { ruleId: string; fireKey: string }, forWhom: string) => {
     const record = db
       .prepare(
         "INSERT INTO rule_firings (id, rule_id, deal_id, contact_id, fire_key, task_id, fired_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
       )
-      .bind(newId("rf"), firing.ruleId, firing.dealId, firing.contactId, firing.fireKey, task.id, at);
+      .bind(newId("rf"), firing.ruleId, task.deal_id, task.contact_id, firing.fireKey, task.id, at);
     try {
       await commitChange(ctx, {
         target: { table: "tasks", id: task.id },
-        summary:
-          `Rule ${firing.ruleId} added ${rowLabel("tasks", task)} for ${dealLabel(deal, deal.contact)}, ` +
-          `due ${formatLocal(task.due_at ?? at, tz)}`,
+        summary: `Rule ${firing.ruleId} added ${rowLabel("tasks", task)} for ${forWhom}, due ${formatLocal(task.due_at ?? at, tz)}`,
         changes: [{ table: "tasks", id: task.id, before: null, after: task }],
         extra: [record],
       });
@@ -467,6 +605,17 @@ export async function runRules(db: Db, now: Date): Promise<RuleRunCounts> {
       if (isFireKeyFailure(error)) counts.alreadyFired += 1;
       else counts.failed += 1;
     }
+  };
+
+  const dealsById = new Map(deals.map((deal) => [deal.id, deal]));
+  for (const firing of dealFirings) {
+    const deal = dealsById.get(firing.dealId);
+    if (deal) await write(ruleTask(firing, firing.dealId, firing.contactId, at), firing, dealLabel(deal, deal.contact));
+  }
+  const leadsById = new Map(leads.map((lead) => [lead.id, lead]));
+  for (const firing of leadFirings) {
+    const lead = leadsById.get(firing.contactId);
+    if (lead) await write(ruleTask(firing, null, firing.contactId, at), firing, contactName(lead));
   }
   return counts;
 }
@@ -517,7 +666,7 @@ const PREVIEW_TYPES: ActivityType[] = ["form", "email", "call", "meeting", "note
  * created_at, so a first stay rebuilt from created_at starts no later than the true one; and the last stage_change's
  * `to` is the deal's stage_key, so the current stay is always the one starting at stage_entered_at.
  */
-function lookbackDays(params: RuleParams): number {
+function lookbackDays(params: DealRuleParams): number {
   return params.type === "on_stage_enter" ? 0 : params.days;
 }
 
@@ -526,16 +675,26 @@ export interface RulePreview {
   ruleId: string | null;
   description: string;
   params: RuleParams;
-  /** The start of the window (UTC ISO): 30 days before now. */
+  /**
+   * What the preview covers: deal rules look back over the last 30 days; a lead_followup rule shows who it would catch
+   * now, because a lead's earlier statuses aren't kept (decision 0026).
+   */
+  scope: "now" | "last_30_days";
+  /** The start of the window (UTC ISO): 30 days before now, or now itself for scope "now". */
   since: string;
   hits: (PreviewHit & { wouldFireAtLocal: string })[];
-  /** Distinct deals among the hits. */
+  /** Distinct deals among the hits (0 for a lead rule). */
   dealCount: number;
+  /** Distinct people among a lead rule's hits (0 for a deal rule). */
+  leadCount: number;
 }
 
 export type PreviewRequest = { rule?: string } & Partial<RuleInput>;
 
-/** What a saved rule (by id) or a new one (by its settings) would have caught in the last 30 days. Writes nothing. */
+/**
+ * What a saved rule (by id) or a new one (by its settings) would have caught in the last 30 days, or for a
+ * lead_followup rule, who it would catch now. Writes nothing.
+ */
 export async function previewRuleFor(db: Db, now: Date, request: PreviewRequest): Promise<RulePreview> {
   const { rule: ref, type, description, ...settings } = request;
   const hasSettings = [type, description, ...Object.values(settings)].some((value) => value !== undefined);
@@ -545,9 +704,7 @@ export async function previewRuleFor(db: Db, now: Date, request: PreviewRequest)
   let preview: Pick<RulePreview, "ruleId" | "description" | "params">;
   if (ref !== undefined) {
     const row = await findRule(db, ref);
-    const params = parseRuleParams(row);
-    if (params === null) throw new Error(`Rule ${row.id} has unreadable parameters.`);
-    preview = { ruleId: row.id, description: row.description, params };
+    preview = { ruleId: row.id, description: row.description, params: readableParams(row) };
   } else {
     if (type === undefined) {
       throw new UserError(
@@ -559,10 +716,23 @@ export async function previewRuleFor(db: Db, now: Date, request: PreviewRequest)
   }
 
   const tz = await ownerTimezone(db);
+  const local = (hits: PreviewHit[]) => hits.map((hit) => ({ ...hit, wouldFireAtLocal: formatLocal(hit.wouldFireAt, tz) }));
+  const { params } = preview;
+  if (params.type === "lead_followup") {
+    const hits = previewLeadRule(params, { now, leads: await engineLeads(db, [params.status]) });
+    return {
+      ...preview,
+      scope: "now",
+      since: now.toISOString(),
+      hits: local(hits),
+      dealCount: 0,
+      leadCount: new Set(hits.map((hit) => hit.contactId)).size,
+    };
+  }
   // A hit in the window comes from a stage stay or a quiet spell that started at most the rule's own `days` before the
   // window (an on_stage_enter hit is the entry itself, inside the window), so older activities cannot change the answer
   // and are not read (decision 0010, narrowed in run 2 R7).
-  const lookback = new Date(now.getTime() - (PREVIEW_DAYS + lookbackDays(preview.params)) * DAY_MS).toISOString();
+  const lookback = new Date(now.getTime() - (PREVIEW_DAYS + lookbackDays(params)) * DAY_MS).toISOString();
   const activities = await db
     .prepare(
       `SELECT deal_id, contact_id, type, occurred_at, data FROM activities
@@ -570,7 +740,7 @@ export async function previewRuleFor(db: Db, now: Date, request: PreviewRequest)
     )
     .bind(...PREVIEW_TYPES, lookback)
     .all<{ deal_id: string | null; contact_id: string | null; type: ActivityType; occurred_at: string; data: string | null }>();
-  const hits = previewRule(preview.params, {
+  const hits = previewRule(params, {
     now,
     deals: await engineDeals(db, false),
     activities: activities.results.map(
@@ -579,8 +749,10 @@ export async function previewRuleFor(db: Db, now: Date, request: PreviewRequest)
   });
   return {
     ...preview,
+    scope: "last_30_days",
     since: new Date(now.getTime() - PREVIEW_DAYS * DAY_MS).toISOString(),
-    hits: hits.map((hit) => ({ ...hit, wouldFireAtLocal: formatLocal(hit.wouldFireAt, tz) })),
+    hits: local(hits),
     dealCount: new Set(hits.map((hit) => hit.dealId)).size,
+    leadCount: 0,
   };
 }

@@ -1,8 +1,10 @@
 // The rules engine: pure functions over plain data, no database. runRules (src/services/rules.ts) loads the data,
-// calls evaluateRules and writes each firing; the daily brief (task 7) calls quietDeals; preview_rule calls
-// previewRule. Decision 0010 explains the rules and the preview's approximations. Import-free apart from labels.ts.
+// calls evaluateRules and evaluateLeadRules and writes each firing; the daily brief (task 7) calls quietDeals;
+// preview_rule calls previewRule or previewLeadRule. Decisions 0010 and 0026 explain the rules and the previews.
+// Import-free apart from labels.ts (and types).
 import type { ActivityType, DealStatus } from "../db/db.ts";
-import { dealLabel, untrustedFields } from "../services/labels.ts";
+import { contactName, dealLabel, untrustedFields } from "../services/labels.ts";
+import type { LeadStatus } from "../services/lead-status.ts";
 
 export const DAY_MS = 86_400_000;
 /** How far back preview_rule looks. */
@@ -18,9 +20,18 @@ const CONTACT_TYPES: ReadonlySet<ActivityType> = new Set(["form", "email", "call
 export type RuleParams =
   | { type: "stage_followup"; stage: string; days: number; title?: string; since?: string }
   | { type: "on_stage_enter"; stage: string; title: string; dueInDays: number; since?: string }
-  | { type: "gone_quiet"; days: number };
+  | { type: "gone_quiet"; days: number }
+  | { type: "lead_followup"; status: LeadFollowupStatus; days: number; title?: string; since?: string };
+
+/** The rules that watch deals; lead_followup watches leads (decision 0022). */
+export type DealRuleParams = Exclude<RuleParams, { type: "lead_followup" }>;
+
+/** The lead statuses a lead_followup rule can watch. */
+export const LEAD_FOLLOWUP_STATUSES = ["new", "contacted"] as const satisfies readonly LeadStatus[];
+export type LeadFollowupStatus = (typeof LEAD_FOLLOWUP_STATUSES)[number];
 
 export const DEFAULT_FOLLOWUP_TITLE = "Follow up with {contact} about {deal}";
+export const DEFAULT_LEAD_TITLE = "Follow up with {contact}";
 
 export interface EngineRule {
   id: string;
@@ -96,7 +107,7 @@ const noContactSinceEntry = (deal: EngineDeal) =>
 /** When the rule fires for the deal's current stage entry (null: not due yet, or never for this entry). */
 function dueFor(rule: EngineRule, deal: EngineDeal, now: Date): { dueAt: string; template: string } | null {
   const { params } = rule;
-  if (params.type === "gone_quiet" || params.stage !== deal.stageKey) return null;
+  if (params.type === "gone_quiet" || params.type === "lead_followup" || params.stage !== deal.stageKey) return null;
   const entered = ms(deal.stageEnteredAt);
   if (params.since !== undefined && entered < ms(params.since)) return null;
   if (params.type === "stage_followup") {
@@ -140,6 +151,80 @@ export function evaluateRules(input: {
   return firings;
 }
 
+/**
+ * A lead (a contact with a lead status, decision 0022) with what the title and the safe label need. Leads whose
+ * lead_status_at is missing are never loaded, so they never fire (decision 0026).
+ */
+export interface EngineLead {
+  id: string;
+  name: string;
+  untrusted_fields: string;
+  leadStatus: LeadStatus;
+  leadStatusAt: string;
+  /** The latest reach (form, email, call, meeting or a text) on the person or any of their deals, or null. */
+  lastReachAt: string | null;
+  archived: boolean;
+}
+
+export interface LeadFiring {
+  ruleId: string;
+  contactId: string;
+  fireKey: string;
+  title: string;
+  /** The title pulled in an outside name: store it with ["title"]. */
+  titleUntrusted: boolean;
+  dueAt: string;
+}
+
+/** Once per rule, person and status entry: a lead that re-enters the status gets a new key. */
+export const leadFireKeyOf = (ruleId: string, contactId: string, leadStatusAt: string) => `${ruleId}:${contactId}:${leadStatusAt}`;
+
+/** Fills {contact}, the only placeholder a lead rule's title takes. */
+function renderLeadTitle(template: string, lead: EngineLead): { title: string; untrusted: boolean } {
+  let untrusted = false;
+  const title = template.replace(/\{contact\}/g, () => {
+    if (untrustedFields(lead).has("name")) untrusted = true;
+    return lead.name;
+  });
+  return { title: title.replace(/\s+/g, " ").trim(), untrusted };
+}
+
+/**
+ * When the rule catches the lead's current status entry, or null. "No contact logged" means no reach strictly after
+ * the status began, so the call that moved a New lead to Contacted (logged at that same moment) doesn't count.
+ */
+function leadDueAt(params: RuleParams, lead: EngineLead, now: Date): number | null {
+  if (params.type !== "lead_followup" || lead.archived || lead.leadStatus !== params.status) return null;
+  const entered = ms(lead.leadStatusAt);
+  if (params.since !== undefined && entered < ms(params.since)) return null;
+  if (lead.lastReachAt !== null && ms(lead.lastReachAt) > entered) return null;
+  const at = entered + params.days * DAY_MS;
+  return at > now.getTime() ? null : at;
+}
+
+/** The tasks the active lead_followup rules owe now, leaving out status entries already in `firedKeys`. */
+export function evaluateLeadRules(input: {
+  now: Date;
+  rules: EngineRule[];
+  leads: EngineLead[];
+  firedKeys: ReadonlySet<string>;
+}): LeadFiring[] {
+  const firings: LeadFiring[] = [];
+  for (const rule of input.rules) {
+    const { params } = rule;
+    if (!rule.active || params.type !== "lead_followup") continue;
+    for (const lead of input.leads) {
+      const fireKey = leadFireKeyOf(rule.id, lead.id, lead.leadStatusAt);
+      if (input.firedKeys.has(fireKey)) continue;
+      const at = leadDueAt(params, lead, input.now);
+      if (at === null) continue;
+      const { title, untrusted } = renderLeadTitle(params.title ?? DEFAULT_LEAD_TITLE, lead);
+      firings.push({ ruleId: rule.id, contactId: lead.id, fireKey, title, titleUntrusted: untrusted, dueAt: iso(at) });
+    }
+  }
+  return firings;
+}
+
 /** The time a deal's quiet spell is measured from: its last contact, or its creation if there was none. */
 const lastContactOf = (deal: { lastActivityAt: string | null; createdAt: string }) => deal.lastActivityAt ?? deal.createdAt;
 
@@ -167,7 +252,9 @@ export function quietDeals(input: {
 }
 
 export interface PreviewHit {
-  dealId: string;
+  /** A deal rule's hit names a deal; a lead_followup hit names only the person. */
+  kind: "deal" | "lead";
+  dealId: string | null;
   contactId: string;
   /** A safe label: outside titles and names become id labels (src/services/labels.ts). */
   label: string;
@@ -230,9 +317,10 @@ export function previewRule(
   params: RuleParams,
   data: { now: Date; deals: EngineDeal[]; activities: EngineActivity[] },
 ): PreviewHit[] {
+  if (params.type === "lead_followup") return [];
   const end = data.now.getTime();
   const start = end - PREVIEW_DAYS * DAY_MS;
-  const hits: PreviewHit[] = [];
+  const hits: (PreviewHit & { dealId: string })[] = [];
   // Grouped once: a deal's own activities, and the contact-only ones (no deal) of its contact.
   const byDeal = new Map<string, EngineActivity[]>();
   const byContact = new Map<string, EngineActivity[]>();
@@ -256,7 +344,7 @@ export function previewRule(
         .map((a) => ms(a.occurredAt))
         .sort((a, b) => a - b));
     const hit = (at: number) =>
-      hits.push({ dealId: deal.id, contactId: deal.contact.id, label: dealLabel(deal, deal.contact), wouldFireAt: iso(at) });
+      hits.push({ kind: "deal", dealId: deal.id, contactId: deal.contact.id, label: dealLabel(deal, deal.contact), wouldFireAt: iso(at) });
 
     if (params.type === "gone_quiet") {
       if (!isLive(deal)) continue;
@@ -275,4 +363,19 @@ export function previewRule(
     }
   }
   return hits.sort((a, b) => a.wouldFireAt.localeCompare(b.wouldFireAt) || a.dealId.localeCompare(b.dealId));
+}
+
+/**
+ * The leads a lead_followup rule would catch right now (decision 0026): the present, not the last 30 days, because a
+ * lead's earlier statuses aren't kept. It honours the rule's `since` but not its past firings, so a lead whose task
+ * was already added still shows. Oldest catch first.
+ */
+export function previewLeadRule(params: RuleParams, data: { now: Date; leads: EngineLead[] }): PreviewHit[] {
+  const hits: PreviewHit[] = [];
+  for (const lead of data.leads) {
+    const at = leadDueAt(params, lead, data.now);
+    if (at === null) continue;
+    hits.push({ kind: "lead", dealId: null, contactId: lead.id, label: contactName(lead), wouldFireAt: iso(at) });
+  }
+  return hits.sort((a, b) => a.wouldFireAt.localeCompare(b.wouldFireAt) || a.contactId.localeCompare(b.contactId));
 }

@@ -2,13 +2,17 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { buildFixtureSeed } from "../../tests/helpers/fixture-seed.ts";
 import { racing } from "../../tests/helpers/race-db.ts";
-import type { AuditRow, Db, RuleFiringRow, RuleRow, TaskRow } from "../db/db.ts";
+import type { ActivityType, AuditRow, Db, RuleFiringRow, RuleRow, TaskRow } from "../db/db.ts";
 import { createTestDb, openTestDb } from "../db/sqlite-d1.ts";
 import { DEFAULT_TZ } from "../time.ts";
 import type { Ctx } from "./change.ts";
 import { updateDeal } from "./deals.ts";
 import { logActivity } from "./activities.ts";
 import { addDeal } from "./add-deal.ts";
+import { updateContact } from "./contacts.ts";
+import { UserError } from "./errors.ts";
+import { isReach, TEXT_DATA } from "./lead-change.ts";
+import { addLead } from "./leads.ts";
 import { listDealsFiltered } from "./read.ts";
 import { addRule, listQuietDeals, listRules, MAX_FIRINGS_PER_RUN, pauseRule, previewRuleFor, resumeRule, runRules, updateRule } from "./rules.ts";
 import { archiveStage } from "./stages.ts";
@@ -282,6 +286,9 @@ test("previewRuleFor finds what a new or saved rule would have caught in the las
   assert.equal(preview.dealCount, 1);
   assert.match(preview.hits[0]?.wouldFireAtLocal ?? "", /^[A-Z][a-z]{2} [A-Z][a-z]{2} \d+, \d+:\d{2} [AP]M$/);
   assert.equal(preview.since, new Date(NOW.getTime() - 30 * DAY).toISOString());
+
+  assert.equal(preview.scope, "last_30_days");
+  assert.equal(preview.hits[0]?.kind, "deal");
 
   const saved = await previewRuleFor(db, NOW, { rule: "ru_seed01" });
   assert.deepEqual(saved.hits.map((h) => h.dealId).sort(), ["dl_seed05", "dl_seed06"]);
@@ -577,4 +584,264 @@ test("preview_rule's lookback boundary: an activity at exactly 30 + days back is
     ],
     "contact at the line or before it: quiet from the window's start either way, so the unread one changes nothing",
   );
+});
+
+// lead_followup (decisions 0022 and 0026).
+
+/** A lead added at `at`, still New. */
+const newLead = async (db: Db, at: Date, name = "Pat Example") => addLead(ctxFor(db, "add_lead", at), { name });
+
+/** A lead added at `at` and made Contacted by an email logged then (the auto-advance). */
+async function contactedLead(db: Db, at: Date, name = "Pat Example") {
+  const added = await newLead(db, at, name);
+  await logActivity(ctxFor(db, "log_activity", at), { contactId: added.contactId, type: "email", summary: "Intro email." });
+  return added;
+}
+
+test("addRule stores a lead_followup with its status and a generated description", async () => {
+  const db = await openTestDb();
+  const result = await addRule(ctxFor(db), { type: "lead_followup", status: "contacted", days: 5 });
+  const description = "When a lead has been Contacted for 5 days with no contact logged, add a follow-up task.";
+  assert.equal(result.summary, `Added rule ${result.ruleId}: ${description} (change ${result.changeId})`);
+  const row = await one<RuleRow>(db, "SELECT * FROM rules WHERE id = ?", result.ruleId);
+  assert.equal(row.type, "lead_followup");
+  assert.deepEqual(JSON.parse(row.params), { type: "lead_followup", status: "contacted", days: 5 });
+
+  const titled = await addRule(ctxFor(db), { type: "lead_followup", status: "New", days: 1, title: "Say hello to {contact}" });
+  assert.match(titled.summary, /: When a lead has been New for 1 day with no contact logged, add the task "Say hello to \{contact\}"\. \(change/);
+  assert.equal(JSON.parse((await one<RuleRow>(db, "SELECT * FROM rules WHERE id = ?", titled.ruleId)).params).status, "new");
+  const [view] = await listRules(db);
+  assert.equal(view?.stageLabel, null);
+  assert.equal(view?.params?.type, "lead_followup");
+});
+
+test("addRule refuses a bad lead_followup in plain English, saying what the type takes", async () => {
+  const db = await openTestDb();
+  const refuse = (input: Parameters<typeof addRule>[1], pattern: RegExp) => assert.rejects(addRule(ctxFor(db), input), { message: pattern });
+  const takes = /A lead_followup rule takes status \(new or contacted\) and days, and optionally title\.$/;
+  await refuse({ type: "lead_followup", status: "contacted", days: 5, title: "Chase {deal}" }, /^A lead_followup rule's title can use \{contact\} only; \{deal\} isn't one\. Change the title\.$/);
+  await refuse({ type: "lead_followup", status: "contacted", days: 5, title: "{stage} again" }, /\{stage\} isn't one/);
+  await refuse({ type: "lead_followup", status: "not_now", days: 5 }, /^Fix the rule: "status" must be the lead status to watch: new or contacted\./);
+  await refuse({ type: "lead_followup", status: "not_now", days: 5 }, takes);
+  await refuse({ type: "lead_followup", days: 5 }, /A lead_followup rule needs "status"/);
+  await refuse({ type: "lead_followup", status: "new" }, /needs "days"/);
+  await refuse({ type: "lead_followup", status: "new", days: 0 }, /"days" must be a whole number of days from 1 to 365/);
+  await refuse({ type: "lead_followup", status: "new", days: 3, stage: "replied" }, /A lead_followup rule doesn't take "stage"\./);
+  await refuse({ type: "stage_followup", stage: "replied", days: 3, status: "new" }, /A stage_followup rule doesn't take "status"\./);
+  await refuse({ type: "nope" as never, days: 3 }, /"nope" isn't a rule type\. Use stage_followup, on_stage_enter, gone_quiet or lead_followup\./);
+  assert.equal(await countOf(db, "rules"), 0);
+});
+
+test("runRules adds a contact-only task and a contact firing once a lead has sat N days; the call that moved it doesn't count", async () => {
+  const db = await openTestDb();
+  const lead = await contactedLead(db, NOW);
+  const contact = await one<{ lead_status: string; lead_status_at: string }>(db, "SELECT * FROM contacts WHERE id = ?", lead.contactId);
+  assert.equal(contact.lead_status, "contacted", "the email moved it to Contacted");
+  const { ruleId } = await addRule(ctxFor(db), { type: "lead_followup", status: "contacted", days: 5 });
+
+  assert.deepEqual(await runRules(db, later(4.9)), { rules: 1, fired: 0, alreadyFired: 0, failed: 0, deferred: 0 });
+  assert.deepEqual(await runRules(db, later(5)), { rules: 1, fired: 1, alreadyFired: 0, failed: 0, deferred: 0 });
+  assert.deepEqual(await runRules(db, later(5.1)), { rules: 1, fired: 0, alreadyFired: 0, failed: 0, deferred: 0 });
+
+  const task = await one<TaskRow>(db, "SELECT * FROM tasks");
+  assert.equal(task.deal_id, null);
+  assert.equal(task.contact_id, lead.contactId);
+  assert.equal(task.title, "Follow up with Pat Example");
+  assert.equal(task.source, ruleId);
+  assert.equal(task.due_at, later(5).toISOString());
+  assert.equal(task.untrusted_fields, "[]");
+  const firing = await one<RuleFiringRow>(db, "SELECT * FROM rule_firings");
+  assert.equal(firing.deal_id, null);
+  assert.equal(firing.contact_id, lead.contactId);
+  assert.equal(firing.fire_key, `${ruleId}:${lead.contactId}:${contact.lead_status_at}`);
+  assert.equal(firing.task_id, task.id);
+  const audit = await one<AuditRow>(db, "SELECT * FROM audit_log WHERE tool = 'rules'");
+  assert.equal(audit.actor, "system");
+  assert.match(audit.summary, new RegExp(`^Rule ${ruleId} added task "Follow up with Pat Example" for Pat Example, due .* \\(change chg_`));
+});
+
+test("reach logged after the status began stops a lead_followup: a call or a text does, a plain note doesn't", async () => {
+  const db = await createTestDb();
+  const called = await contactedLead(db, NOW, "Called Example");
+  const texted = await contactedLead(db, NOW, "Texted Example");
+  const noted = await contactedLead(db, NOW, "Noted Example");
+  const viaDeal = await contactedLead(db, NOW, "Deal Example");
+  await logActivity(ctxFor(db, "log_activity", later(1)), { contactId: called.contactId, type: "call", summary: "Left a message." });
+  await logActivity(ctxFor(db, "log_activity", later(1)), { contactId: texted.contactId, type: "note", summary: "Texted.", via: "text" });
+  await logActivity(ctxFor(db, "log_activity", later(1)), { contactId: noted.contactId, type: "note", summary: "Looked them up." });
+  // An old deal of theirs (closed) carries a meeting logged after the status began, with no contact id on the row.
+  db.exec(`INSERT INTO deals (id, contact_id, title, stage_key, status, stage_entered_at, created_at)
+    VALUES ('dl_old', '${viaDeal.contactId}', 'Old job', 'lost', 'lost', '${NOW.toISOString()}', '${NOW.toISOString()}')`);
+  db.exec(`INSERT INTO activities (id, deal_id, contact_id, type, summary, occurred_at, actor)
+    VALUES ('ac_old', 'dl_old', NULL, 'meeting', 'Met them.', '${later(1).toISOString()}', 'owner')`);
+  await addRule(ctxFor(db), { type: "lead_followup", status: "contacted", days: 3 });
+  assert.equal((await runRules(db, later(3))).fired, 1);
+  assert.equal((await one<TaskRow>(db, "SELECT * FROM tasks")).contact_id, noted.contactId);
+});
+
+test("the hourly run's reach test in SQL agrees with isReach for every activity type and data shape", async () => {
+  const db = await createTestDb();
+  const stamp = later(-5).toISOString();
+  const cases: [type: ActivityType, data: string | null][] = [
+    ["form", null],
+    ["email", null],
+    ["call", null],
+    ["meeting", null],
+    ["note", null],
+    ["note", TEXT_DATA],
+    ["note", '{"via":"call"}'],
+    ["note", '{"via":["text"]}'],
+    ["note", '{"other":"text"}'],
+    ["stage_change", '{"from":"a","to":"b"}'],
+    ["system", null],
+    ["system", TEXT_DATA],
+  ];
+  cases.forEach(([type, data], i) => {
+    db.exec(`INSERT INTO contacts (id, name, lead_status, lead_status_at) VALUES ('ct_case${i}', 'Case ${i} Example', 'new', '${stamp}')`);
+    db.exec(`INSERT INTO activities (id, contact_id, type, summary, data, occurred_at, actor)
+      VALUES ('ac_case${i}', 'ct_case${i}', '${type}', 'Case', ${data === null ? "NULL" : `'${data}'`}, '${later(-2).toISOString()}', 'owner')`);
+  });
+  const preview = await previewRuleFor(db, NOW, { type: "lead_followup", status: "new", days: 1 });
+  const caught = new Set(preview.hits.map((hit) => hit.contactId));
+  cases.forEach(([type, data], i) => {
+    assert.equal(caught.has(`ct_case${i}`), !isReach(type, data), `${type} ${data ?? "null"}`);
+  });
+});
+
+test("a lead whose status time is missing never fires", async () => {
+  const db = await createTestDb();
+  db.exec("INSERT INTO contacts (id, name, lead_status, lead_status_at) VALUES ('ct_nostamp', 'Pat Example', 'new', NULL)");
+  await addRule(ctxFor(db), { type: "lead_followup", status: "new", days: 1 });
+  assert.equal((await runRules(db, later(30))).fired, 0);
+});
+
+test("undoing a lead rule's task never re-fires it; re-entering the status fires again", async () => {
+  const db = await openTestDb();
+  const lead = await newLead(db, NOW);
+  await addRule(ctxFor(db), { type: "lead_followup", status: "new", days: 2 });
+  await runRules(db, later(2));
+  const audit = await one<AuditRow>(db, "SELECT * FROM audit_log WHERE tool = 'rules'");
+  await undoChange(ctxFor(db, "undo_change", later(2.1)), audit.id);
+  assert.equal(await countOf(db, "tasks"), 0);
+  assert.equal((await runRules(db, later(3))).fired, 0);
+
+  await updateContact(ctxFor(db, "update_contact", later(4)), lead.contactId, { leadStatus: "not_now" });
+  await updateContact(ctxFor(db, "update_contact", later(5)), lead.contactId, { leadStatus: "new" });
+  assert.equal((await runRules(db, later(6.9))).fired, 0);
+  assert.equal((await runRules(db, later(7))).fired, 1);
+  assert.equal(await countOf(db, "rule_firings"), 2);
+});
+
+test("undo of add_lead is refused once a lead rule fired on the person, pointing to Bad lead or Not a fit", async () => {
+  const db = await openTestDb();
+  const lead = await newLead(db, NOW);
+  await addRule(ctxFor(db), { type: "lead_followup", status: "new", days: 1 });
+  await runRules(db, later(1));
+  const ruleTask = await one<AuditRow>(db, "SELECT * FROM audit_log WHERE tool = 'rules'");
+  await undoChange(ctxFor(db, "undo_change", later(1.1)), ruleTask.id);
+  await assert.rejects(undoChange(ctxFor(db, "undo_change", later(1.2)), lead.changeId), {
+    message: new RegExp(
+      `^Can't undo ${lead.changeId}: this person has rule history \\(a rule already fired on contact Pat Example\\), so they ` +
+        "can't be removed\\. Mark them Bad lead or Not a fit with update_contact instead\\.$",
+    ),
+  });
+  assert.equal(await countOf(db, "contacts"), 1);
+});
+
+test("pausing and resuming a lead_followup cuts over: leads that became New before the resume never fire", async () => {
+  const db = await openTestDb();
+  await newLead(db, NOW, "Waiting Example");
+  const { ruleId } = await addRule(ctxFor(db, "add_rule", NOW), { type: "lead_followup", status: "new", days: 3 });
+  await pauseRule(ctxFor(db, "pause_rule", later(1)), ruleId);
+  assert.equal((await runRules(db, later(4))).rules, 0);
+  await resumeRule(ctxFor(db, "resume_rule", later(5)), ruleId);
+  const params = JSON.parse((await one<RuleRow>(db, "SELECT * FROM rules WHERE id = ?", ruleId)).params);
+  assert.deepEqual(params, { type: "lead_followup", status: "new", days: 3, since: later(5).toISOString() });
+  assert.equal((await runRules(db, later(5.5))).fired, 0, "overdue since day 3, but New since before the resume");
+  await newLead(db, later(6), "Fresh Example");
+  assert.equal((await runRules(db, later(9))).fired, 1);
+  assert.match((await one<TaskRow>(db, "SELECT * FROM tasks")).title, /Fresh Example/);
+
+  await updateRule(ctxFor(db, "update_rule", later(10)), ruleId, { days: 4 });
+  const kept = JSON.parse((await one<RuleRow>(db, "SELECT * FROM rules WHERE id = ?", ruleId)).params);
+  assert.equal(kept.since, later(5).toISOString(), "an update keeps the cut-over");
+});
+
+test("updateRule changes a lead_followup's status, days and title, and title null puts back the default", async () => {
+  const db = await openTestDb();
+  const { ruleId } = await addRule(ctxFor(db), { type: "lead_followup", status: "new", days: 2, title: "Hi {contact}" });
+  const updated = await updateRule(ctxFor(db, "update_rule"), ruleId, { status: "contacted", days: 4 });
+  assert.match(updated.summary, new RegExp(`^Updated rule ${ruleId}: status and days; now: When a lead has been Contacted for 4 days`));
+  const params = async () => JSON.parse((await one<RuleRow>(db, "SELECT * FROM rules WHERE id = ?", ruleId)).params);
+  assert.deepEqual(await params(), { type: "lead_followup", status: "contacted", days: 4, title: "Hi {contact}" });
+  await updateRule(ctxFor(db, "update_rule"), ruleId, { title: null });
+  assert.deepEqual(await params(), { type: "lead_followup", status: "contacted", days: 4 });
+  await assert.rejects(updateRule(ctxFor(db, "update_rule"), ruleId, { title: "About {deal}" }), /title can use \{contact\} only/);
+  await assert.rejects(updateRule(ctxFor(db, "update_rule"), ruleId, { stage: "Replied" }), /A lead_followup rule doesn't take "stage"/);
+});
+
+test("a rule whose stored settings can't be read is refused in plain English by update and preview", async () => {
+  const db = await createTestDb();
+  db.exec(`INSERT INTO rules (id, type, params, description, created_by) VALUES ('ru_broken', 'lead_followup', '{"type":"lead_followup","days":"x"}', 'Broken', 'owner')`);
+  const unreadable = (error: unknown) =>
+    error instanceof UserError &&
+    error.message === "Rule ru_broken's settings can't be read, so it is skipped. Pause it with pause_rule and add a new rule with add_rule.";
+  await assert.rejects(updateRule(ctxFor(db, "update_rule"), "ru_broken", { days: 2 }), unreadable);
+  await assert.rejects(previewRuleFor(db, NOW, { rule: "ru_broken" }), unreadable);
+  assert.deepEqual(await runRules(db, NOW), { rules: 0, fired: 0, alreadyFired: 0, failed: 0, deferred: 0 });
+});
+
+test("previewRuleFor for a lead_followup lists the leads it would catch now, by id or by settings, and changes nothing", async () => {
+  const db = await openTestDb();
+  await contactedLead(db, later(-9), "Quiet Example");
+  const busy = await contactedLead(db, later(-9), "Busy Example");
+  await logActivity(ctxFor(db, "log_activity", later(-2)), { contactId: busy.contactId, type: "call", summary: "Talked." });
+  await contactedLead(db, later(-2), "Recent Example");
+  const before = await countOf(db, "audit_log");
+
+  const preview = await previewRuleFor(db, NOW, { type: "lead_followup", status: "Contacted", days: 5 });
+  assert.equal(preview.scope, "now");
+  assert.equal(preview.description, "When a lead has been Contacted for 5 days with no contact logged, add a follow-up task.");
+  assert.deepEqual(preview.hits.map((h) => [h.kind, h.dealId, h.label, h.wouldFireAt]), [["lead", null, "Quiet Example", later(-4).toISOString()]]);
+  assert.equal(preview.leadCount, 1);
+  assert.equal(preview.dealCount, 0);
+
+  const { ruleId } = await addRule(ctxFor(db), { type: "lead_followup", status: "contacted", days: 1 });
+  const saved = await previewRuleFor(db, NOW, { rule: ruleId });
+  assert.equal(saved.ruleId, ruleId);
+  assert.equal(saved.leadCount, 2, "Quiet and Recent");
+  assert.equal(await countOf(db, "audit_log"), before + 1, "only add_rule wrote");
+  assert.equal(await countOf(db, "rule_firings"), 0);
+});
+
+test("deal firings and lead firings share one run's budget of 25, deals first; none lost or doubled", async () => {
+  const db = await openTestDb();
+  for (let i = 0; i < 20; i++) await proposal(db, NOW, `Deal ${i} Example`);
+  for (let i = 0; i < 10; i++) await newLead(db, NOW, `Lead ${i} Example`);
+  await addRule(ctxFor(db), { type: "stage_followup", stage: "Proposal sent", days: 3 });
+  await addRule(ctxFor(db), { type: "lead_followup", status: "new", days: 3 });
+
+  assert.deepEqual(await runRules(db, later(3)), { rules: 2, fired: 25, alreadyFired: 0, failed: 0, deferred: 5 });
+  const firstRun = await rows<{ deals: number; leads: number }>(
+    db,
+    "SELECT COUNT(deal_id) AS deals, COUNT(*) - COUNT(deal_id) AS leads FROM rule_firings",
+  );
+  assert.deepEqual(firstRun, [{ deals: 20, leads: 5 }]);
+  assert.deepEqual(await runRules(db, later(3.04)), { rules: 2, fired: 5, alreadyFired: 0, failed: 0, deferred: 0 });
+  assert.equal((await runRules(db, later(3.08))).fired, 0);
+  assert.equal(await countOf(db, "rule_firings"), 30);
+  assert.equal(await countOf(db, "tasks"), 30);
+});
+
+test("the hourly run reads every lead in one query: the statement count doesn't grow with the number of leads", async () => {
+  const statementsFor = async (leads: number) => {
+    const db = await openTestDb();
+    for (let i = 0; i < leads; i++) await newLead(db, NOW, `Lead ${i} Example`);
+    await addRule(ctxFor(db), { type: "lead_followup", status: "new", days: 3 });
+    let prepared = 0;
+    const counting: Db = { prepare: (sql) => ((prepared += 1), db.prepare(sql)), batch: (statements) => db.batch(statements) };
+    await runRules(counting, later(1));
+    return prepared;
+  };
+  assert.equal(await statementsFor(20), await statementsFor(1));
 });
