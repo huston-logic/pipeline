@@ -45,7 +45,7 @@ test("the JSON export's pieces join into the export, one row per line, empty tab
     text.startsWith('{\n  "exportedAt": "2026-11-19T18:00:00.000Z",\n  "tables": {\n    "contacts": [\n      {"id":"ct_0","name":"Line \\"0\\"\\n"},\n'),
   );
   assert.match(text, /\n {4}"deals": \[\],\n/);
-  assert.ok(text.endsWith('\n    "briefs": []\n  }\n}\n'));
+  assert.ok(text.endsWith('\n    "briefs": [],\n    "email_log": []\n  }\n}\n'));
   // The header, each table's opening and closing, the contacts' rows in three pieces, and the end.
   assert.equal(pieces.length, 1 + EXPORT_TABLES.length * 2 + 3 + 1);
 });

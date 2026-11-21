@@ -17,6 +17,7 @@ const TABLE_LABELS: Record<ExportTable, string> = {
   settings: "Settings",
   audit_log: "Change log",
   briefs: "Daily briefs",
+  email_log: "Logged emails",
 };
 
 export async function exportPage(ctx: PageContext): Promise<string> {

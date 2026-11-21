@@ -43,6 +43,11 @@ export type Env = {
   BRIEF_FROM?: string;
   /** Resend API key (a secret: set with `wrangler secret put`, never in the repo). */
   RESEND_API_KEY?: string;
+  /**
+   * The full email logging address, for example "log-<32 random hex>@log.example.com" (a secret; decision 0031). Mail
+   * routed to the Worker for any other address, or with this unset, is dropped silently.
+   */
+  EMAIL_LOG_ADDRESS?: string;
   /** The shared secret a website form's server sends in X-Intake-Secret (a secret). Unset: /intake answers 503. */
   INTAKE_SECRET?: string;
   /** Rate limit for /intake by client IP (binding in wrangler.jsonc). Absent: requests are allowed and a log line says so. */

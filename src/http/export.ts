@@ -17,6 +17,7 @@ export const EXPORT_TABLES = [
   "settings",
   "audit_log",
   "briefs",
+  "email_log",
 ] as const satisfies readonly TableName[];
 
 export type ExportTable = (typeof EXPORT_TABLES)[number];

@@ -103,13 +103,17 @@ export function fakeMessage(raw: string, envelope: { from?: string; to?: string;
   const bytes = new TextEncoder().encode(raw);
   const calls: string[] = [];
   let read = false;
-  const stream = new ReadableStream<Uint8Array>({
-    pull(controller) {
-      read = true;
-      controller.enqueue(bytes);
-      controller.close();
+  // highWaterMark 0: the stream pulls only when the handler reads it.
+  const stream = new ReadableStream<Uint8Array>(
+    {
+      pull(controller) {
+        read = true;
+        controller.enqueue(bytes);
+        controller.close();
+      },
     },
-  });
+    { highWaterMark: 0 },
+  );
   return {
     from: envelope.from ?? OWNER,
     to: envelope.to ?? LOG_ADDRESS,

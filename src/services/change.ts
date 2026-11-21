@@ -195,6 +195,10 @@ export const isDuplicateEmailFailure = (error: unknown) =>
 export const isFireKeyFailure = (error: unknown) =>
   /UNIQUE constraint failed: rule_firings\.fire_key/.test(errorText(error));
 
+/** A logged email whose message key another delivery stored first (decision 0031). */
+export const isEmailLogKeyFailure = (error: unknown) =>
+  /UNIQUE constraint failed: email_log\.message_key/.test(errorText(error));
+
 /** A change as statements: the guards and row writes, then (after any extra statements) the audit row and cleanup. */
 export interface BuiltChange {
   changeId: string;

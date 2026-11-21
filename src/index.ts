@@ -161,4 +161,16 @@ export default {
   async scheduled(controller: ScheduledController, env: Env, _ctx: ExecutionContext): Promise<void> {
     await runScheduled(env, new Date(controller.scheduledTime));
   },
+
+  // Email Routing hands mail for the log address here (decision 0031). Loaded only for an email, so the board never
+  // loads the MIME parser. A failure is logged without any of the message and the mail is dropped: nothing ever
+  // answers the sender.
+  async email(message: ForwardableEmailMessage, env: Env, _ctx: ExecutionContext): Promise<void> {
+    try {
+      const { handleLogEmail } = await import("./email/log.ts");
+      await handleLogEmail(message, env, new Date());
+    } catch {
+      console.error(JSON.stringify({ event: "email_log_failed" }));
+    }
+  },
 };
