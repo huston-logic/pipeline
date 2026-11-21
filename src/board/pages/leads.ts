@@ -2,8 +2,7 @@
 // source filter, a search box and a sort control that work without JavaScript (a GET form). Reads only through
 // listLeads. A name, company or source from outside is labelled and never the text of a link (AGENTS.md).
 import { ownerTimezone } from "../../services/lookup.ts";
-import { LEAD_LIST_LIMIT, LEAD_SORTS, type LeadItem, type LeadSort, type LeadSource, listLeads } from "../../services/leads-read.ts";
-import { businessKey } from "../../services/lead-change.ts";
+import { LEAD_LIST_LIMIT, LEAD_SORTS, type LeadItem, type LeadSort, type LeadSource, leadCounts, listLeads } from "../../services/leads-read.ts";
 import { CLOSED_OUT_STATUSES, type LeadStatus, OPEN_LEAD_STATUSES } from "../../services/lead-status.ts";
 import { formatLocal } from "../../time.ts";
 import { type Html, html } from "../html.ts";
@@ -64,14 +63,29 @@ ${pairs([
 </li>`;
 }
 
-function sourceOptions(sources: LeadSource[], selectedKey: string): Html {
-  return html`<option value="">All sources</option>
-${sources.map(
-  (s) => html`<option value="${s.key}"${s.key === selectedKey ? " selected" : ""}>${s.label} (${s.outside ? `${s.count}, from outside` : s.count})</option>\n`,
-)}`;
+/**
+ * An opaque stand-in for a source key (the lowercased source text, which may come from outside): two FNV-1a hashes in
+ * hex. Option values and links carry only this, never the source text (AGENTS.md, decision 0016).
+ */
+export function sourceToken(key: string): string {
+  let a = 0x811c9dc5;
+  let b = 0x01000193;
+  for (let i = 0; i < key.length; i++) {
+    a = Math.imul(a ^ key.charCodeAt(i), 0x01000193) >>> 0;
+    b = Math.imul(b ^ key.charCodeAt(i), 0x85ebca6b) >>> 0;
+  }
+  return a.toString(16).padStart(8, "0") + b.toString(16).padStart(8, "0");
 }
 
-function searchForm(asked: ReturnType<typeof leadsQuery>, sources: LeadSource[], sourceKey: string): Html {
+function sourceOptions(sources: LeadSource[], selectedToken: string): Html {
+  return html`<option value="">All sources</option>
+${sources.map((s) => {
+  const token = sourceToken(s.key);
+  return html`<option value="${token}"${token === selectedToken ? " selected" : ""}>${s.label} (${s.outside ? `${s.count}, from outside` : s.count})</option>\n`;
+})}`;
+}
+
+function searchForm(asked: ReturnType<typeof leadsQuery>, sources: LeadSource[], selectedToken: string): Html {
   return html`<form class="search search-filters" action="/leads" method="get" role="search" aria-label="Search leads">
 <div class="field field-grow">
 <label for="leads-q">Search leads</label>
@@ -86,7 +100,7 @@ ${STATUS_FILTERS.map((f) => html`<option value="${f.value}"${f.value === asked.f
 <div class="field">
 <label for="leads-source">Source</label>
 <select id="leads-source" name="source">
-${sourceOptions(sources, sourceKey)}</select>
+${sourceOptions(sources, selectedToken)}</select>
 </div>
 <div class="field">
 <label for="leads-sort">Sort</label>
@@ -112,27 +126,34 @@ export async function leadsPage(ctx: PageContext): Promise<string> {
   const tz = await ownerTimezone(db);
   const asked = leadsQuery(params);
   const options = { statuses: [...asked.filter.statuses], query: asked.query, sort: asked.sort, limit: LEAD_LIST_LIMIT };
-  let sourceKey = asked.source === "" ? "" : businessKey(asked.source);
-  let list = await listLeads(db, now, tz, { ...options, ...(sourceKey === "" ? {} : { source: sourceKey }) });
-  if (sourceKey !== "" && !list.sources.some((s) => s.key === sourceKey)) {
-    sourceKey = "";
-    list = await listLeads(db, now, tz, options);
+  // The source filter is an opaque token; the sources come from the same list call, so a token is resolved against
+  // them and only a known one narrows the list (an unknown token means All sources, with no second query).
+  let list = await listLeads(db, now, tz, options);
+  let token = "";
+  const known = asked.source === "" ? undefined : list.sources.find((s) => sourceToken(s.key) === asked.source);
+  if (known) {
+    token = asked.source;
+    list = await listLeads(db, now, tz, { ...options, source: known.key });
   }
-  const plain = asked.filter.value === "open" && asked.query === "" && sourceKey === "";
+  const plain = asked.filter.value === "open" && asked.query === "" && token === "";
 
   const keep = new URLSearchParams();
   if (asked.filter.value !== "open") keep.set("status", asked.filter.value);
-  if (sourceKey !== "") keep.set("source", sourceKey);
+  if (token !== "") keep.set("source", token);
   if (asked.sort !== "next_task") keep.set("sort", asked.sort);
   const clearHref = keep.size === 0 ? "/leads" : `/leads?${keep.toString()}`;
   const clear = asked.query === "" ? "" : html`<p class="search-clear"><a href="${clearHref}">Clear search</a></p>`;
 
   let results: Html;
-  if (list.total === 0 && plain) {
-    results = empty("No leads yet. A lead is someone you plan to approach who hasn't asked for anything yet.");
-  } else if (list.total === 0 && asked.query !== "") {
+  if (list.total === 0 && asked.query !== "") {
     results = html`${empty(`No leads match "${asked.query}".`, "Try part of a name, an email address, a phone number or a company.")}
 ${clear}`;
+  } else if (list.total === 0 && token === "") {
+    // One more query, only here: do any people hold a lead status at all?
+    const held = Object.entries(await leadCounts(db)).some(([status, n]) => status !== "qualified" && n > 0);
+    if (!held) results = empty("No leads yet. A lead is someone you plan to approach who hasn't asked for anything yet.");
+    else if (plain) results = empty("No open leads.", "Choose Closed out under Status to see the rest.");
+    else results = empty("No leads with that status.");
   } else if (list.total === 0) {
     results = empty("No leads in this view.", "Try another status or source.");
   } else {
@@ -147,7 +168,7 @@ ${clear}`;
     frame: ctx,
     body: html`<h1>Leads</h1>
 ${peopleSwitch("leads")}
-${searchForm(asked, list.sources, sourceKey)}
+${searchForm(asked, list.sources, token)}
 ${results}`,
   });
 }

@@ -9,6 +9,7 @@ import { updateDeal } from "../services/deals.ts";
 import { undoChange } from "../services/undo.ts";
 import { headerDate } from "../brief/compose.ts";
 import { addDays, DEFAULT_TZ, formatLocal, localDate, zonedToUtc } from "../time.ts";
+import { sourceToken } from "./pages/leads.ts";
 import { boardRoutes, moreItems, navItems } from "./routes.ts";
 
 const ctx = { waitUntil() {}, passThroughOnException() {}, props: {} } as unknown as ExecutionContext;
@@ -735,9 +736,11 @@ test("the leads page filters by status, source, search and sort, and keeps them 
   assert.deepEqual(leadIds(unknown), open, "unknown falls back to open");
   assert.match(mainOf(unknown), /<option value="open" selected>Open \(New, Contacted, Not now\)<\/option>/);
 
-  const bySource = (await get(db, "/leads?source=trade+show")).body;
+  const token = sourceToken("trade show");
+  const bySource = (await get(db, `/leads?source=${token}`)).body;
   assert.deepEqual(leadIds(bySource), ["ct_seed01"]);
-  assert.match(mainOf(bySource), /<option value="trade show" selected>Trade show/);
+  assert.match(mainOf(bySource), new RegExp(`<option value="${token}" selected>Trade show`));
+  assert.deepEqual(leadIds((await get(db, "/leads?source=trade+show")).body), open, "the source text itself is not a token");
   assert.deepEqual(leadIds((await get(db, "/leads?source=nowhere")).body), open, "unknown source falls back to all");
 
   const found = (await get(db, "/leads?q=+Casey+")).body;
@@ -780,6 +783,33 @@ test("a lead's name from outside is labelled and never the text of a link", asyn
   assert.doesNotMatch(titleOf(body) ?? "", /Robin|Bakery|Fair/);
   assert.doesNotMatch(descriptionOf(body) ?? "", /Robin|Bakery|Fair/);
   for (const text of linkTexts(main)) assert.doesNotMatch(text, /Robin|Bakery|Fair/, "no outside text in a link");
+});
+
+test("an outside source never appears in an option value or a link: only its opaque token does", async () => {
+  const db = await seededDb();
+  setLead(db, "ct_seed02", "new");
+  setLead(db, "ct_seed03", "new");
+  db.exec(`UPDATE contacts SET source = 'Sneaky Expo', untrusted_fields = '["source"]' WHERE id = 'ct_seed02'`);
+  const token = sourceToken("sneaky expo");
+  assert.match(token, /^[0-9a-f]{16}$/);
+  const { body } = await get(db, `/leads?source=${token}&q=Robin&sort=added&status=new`);
+  const main = mainOf(body);
+  assert.match(main, new RegExp(`<option value="${token}" selected>Sneaky Expo \\(1, from outside\\)</option>`));
+  assert.match(main, new RegExp(`<a href="/leads\\?status=new&amp;source=${token}&amp;sort=added">Clear search</a>`));
+  const attrs = [...main.matchAll(/(?:href|value)="([^"]*)"/g)].map((m) => m[1] ?? "");
+  for (const value of attrs) assert.doesNotMatch(value, /sneaky|expo/i, "no outside-derived text in an href or option value");
+});
+
+test("an empty open view says whether closed-out leads exist; no leads at all keeps the first-time message", async () => {
+  const db = await seededDb();
+  setLead(db, "ct_seed01", "bad");
+  const open = mainOf((await get(db, "/leads")).body);
+  assert.match(open, /<p class="empty-title">No open leads\.<\/p><p>Choose Closed out under Status to see the rest\.<\/p>/);
+  assert.doesNotMatch(open, /No leads yet/);
+  assert.match(mainOf((await get(db, "/leads?status=new")).body), /<p class="empty-title">No leads with that status\.<\/p>/);
+  assert.match(mainOf((await get(db, "/leads?status=closed")).body), /Pat Example/);
+  const none = mainOf((await get(await seededDb(), "/leads")).body);
+  assert.match(none, /No leads yet\. A lead is someone you plan to approach/);
 });
 
 test("the leads page shows the first 200 and says how many there are", async () => {
