@@ -21,16 +21,25 @@ are task E1.
 | L4 | `list_leads`, lead status in search, leads line in the summary and brief (0025) | [#34](https://github.com/huston-logic/pipeline/pull/34) | merged |
 | L5 | `lead_followup` rule (0026) | [#35](https://github.com/huston-logic/pipeline/pull/35) | merged |
 | L6 | People tab: Contacts, Leads, Companies; the Leads list (0027) | [#36](https://github.com/huston-logic/pipeline/pull/36) | merged |
-| L7 | Lead pages on the board: status, Qualify, Add a lead or a deal, Back to leads (0028) | [#41](https://github.com/huston-logic/pipeline/pull/41) | open, auto-merge queued |
+| L7 | Lead pages on the board: status, Qualify, Add a lead or a deal, Back to leads (0028) | [#41](https://github.com/huston-logic/pipeline/pull/41) | merged |
 | L8 | Leads in the import, export and demo seed (0029) | [#38](https://github.com/huston-logic/pipeline/pull/38) | merged |
 | L9 | Acceptance sentences 13 to 20, CPU on 2,000 leads | [#40](https://github.com/huston-logic/pipeline/pull/40) | merged |
 | B1 | What it caught, a monthly report (0032) | [#39](https://github.com/huston-logic/pipeline/pull/39) | merged |
-| C1 | Email logging by BCC (0031, migration 0008) | [#37](https://github.com/huston-logic/pipeline/pull/37) | open, auto-merge queued |
+| C1 | Email logging by BCC (0031, migration 0008) | [#37](https://github.com/huston-logic/pipeline/pull/37) | merged |
 | D1 | Phone notification when the brief is ready (0030, migration 0007) | [#32](https://github.com/huston-logic/pipeline/pull/32) | merged |
-| E2 | After you update, closing status, CPU re-measure | this PR | open (the owner enables auto-merge) |
+| E2 | After you update, closing status, CPU re-measure | [#42](https://github.com/huston-logic/pipeline/pull/42) | auto-merge queued |
 
 Every task went through an independent review; fixes were made before merge. CI flakes on the way: `lighthouse`
 `NO_NAVSTART` (re-ran the failed job) on #32 and #36.
+
+Code scanning on the way, each fixed in code (never dismissed):
+- #32 had two High alerts: a URL substring check in a test, and a regular expression in `src/push/vapid.ts` that could
+  run very slowly on some inputs.
+- #37 had High alert 12, `js/incomplete-multi-character-sanitization`, in `src/email/parse.ts`. The HTML-to-text step
+  for an HTML-only email removed one tag at a time with `/<[^<>]*>/g`, so `<scr<b>ipt>` became `<script>`.
+  - The fix: tags are now removed in one forward walk. A `<` before a letter, `/`, `!` or `?` starts a tag that runs to
+    the next `>`. Any other `<` stays as text with the character after it. Entities are decoded once, afterwards.
+  - Tests: nested-tag cases and a seeded fuzz test over 5,000 inputs prove that no `<` left in the text can start a tag.
 
 ### Run 4 rulings (cost if wrong)
 
@@ -61,6 +70,9 @@ Every task went through an independent review; fixes were made before merge. CI 
   mail is dropped; several dmarc results must all pass. Cost: owner mail dropped until adjusted.
 - 14. "Back to leads" shows on open, lost and not-now deals for every owner, so existing outreach deals can be moved.
   Cost: hide it behind "this person has a lead" later.
+- 15. In an email's HTML read as text, a `<` starts a tag only before a letter, `/`, `!` or `?`, as in a browser. Any
+  other `<` is kept with the character after it ("I am < 5 min away"), except one before another `<` or at the end.
+  Cost: a stray character or two lost or kept in odd HTML.
 
 ### Dependencies added in run 4
 
