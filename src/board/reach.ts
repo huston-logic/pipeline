@@ -38,7 +38,8 @@ function logButton(channel: Channel, subject: Subject, form: FormContext): Html 
     "reach-log-form",
     logAction(subject),
     form,
-    html`${hidden("type", channel.type)}${hidden("summary", channel.summary)}<button class="button button-quiet reach-log-button" id="${logId(channel.key)}" type="submit">${channel.log}</button>`,
+    // A text is logged as a note marked via=text, so it counts as reaching a lead (decision 0022).
+    html`${hidden("type", channel.type)}${hidden("summary", channel.summary)}${channel.key === "text" ? hidden("via", "text") : ""}<button class="button button-quiet reach-log-button" id="${logId(channel.key)}" type="submit">${channel.log}</button>`,
   );
 }
 

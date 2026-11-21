@@ -16,9 +16,9 @@ async function setup() {
 
 const changeIdOf = (data: unknown) => (data as { changeId: string }).changeId;
 
-test("add_lead answers one line ending with its change id, then the new ids", async () => {
+test("add_deal answers one line ending with its change id, then the new ids", async () => {
   const { c } = await setup();
-  const answer = await ok(c, "add_lead", {
+  const answer = await ok(c, "add_deal", {
     name: "Lee Example",
     email: "lee@example.com",
     source: "trade fair",
@@ -26,7 +26,7 @@ test("add_lead answers one line ending with its change id, then the new ids", as
     nextStep: "Send a quote",
     nextAt: "2026-11-20T09:00",
   });
-  assert.match(answer.headline, /^Added lead Lee Example with deal "Lee Example inquiry" in New inquiry; next: Send a quote, Fri Nov 20, 9:00 AM/);
+  assert.match(answer.headline, /^Added contact Lee Example with deal "Lee Example inquiry" in New inquiry; next: Send a quote, Fri Nov 20, 9:00 AM/);
   assert.match(answer.headline, CHANGE_LINE);
   const data = answer.data as { changeId: string; contactId: string; dealId: string; matchedExisting: boolean };
   assert.ok(answer.headline.endsWith(`(change ${data.changeId})`));
@@ -38,14 +38,74 @@ test("add_lead answers one line ending with its change id, then the new ids", as
   assert.equal(brief.next.at, "2026-11-20T17:00:00.000Z");
 });
 
-test("add_lead with a contact adds a deal for that contact, with no name or email needed", async () => {
+test("add_deal with a contact adds a deal for that contact, with no name or email needed", async () => {
   const { c } = await setup();
-  const answer = await ok(c, "add_lead", { contact: "ct_seed07", dealTitle: "Gift card page" });
+  const answer = await ok(c, "add_deal", { contact: "ct_seed07", dealTitle: "Gift card page" });
   assert.match(answer.headline, /^Added deal "Gift card page" for existing contact Alex Sample in New inquiry/);
   const data = answer.data as { contactId: string; matchedExisting: boolean };
   assert.equal(data.contactId, "ct_seed07");
   assert.equal(data.matchedExisting, true);
-  assert.match(await fails(c, "add_lead", {}), /^A lead needs a name\. Give the person's name, or an existing contact\.$/);
+  assert.match(await fails(c, "add_deal", {}), /^A new deal needs a person: give their name, or an existing contact\.$/);
+});
+
+test("add_lead adds a person with status New and no deal; add_deal for that lead makes them Qualified", async () => {
+  const { db, c } = await setup();
+  const deals = async () => (await db.prepare("SELECT COUNT(*) AS n FROM deals").first<{ n: number }>())?.n;
+  const before = await deals();
+  const answer = await ok(c, "add_lead", { business: "Acme Plumbing", source: "drove past", contactFields: {} });
+  assert.match(answer.headline, /^Added lead Acme Plumbing \(New\), from drove past \(change chg_[a-z0-9]{12}\)$/);
+  const data = answer.data as { changeId: string; contactId: string; dealId?: string };
+  assert.match(data.contactId, /^ct_/);
+  assert.equal(data.dealId, undefined);
+  assert.equal(await deals(), before, "no deal");
+
+  assert.match(await fails(c, "add_lead", { name: "Jo Example", business: " acme  plumbing" }), /already has that business\. Say allowDuplicate: true/);
+  await ok(c, "add_lead", { name: "Jo Example", business: " acme  plumbing", allowDuplicate: true });
+  assert.match(
+    await fails(c, "add_lead", { name: "Pat", email: "pat@example.com" }),
+    /^Pat Example \(ct_seed01, pat@example\.com\) already uses that email\. Give them a lead status with update_contact, or use add_deal if they want something\.$/,
+  );
+
+  const qualified = await ok(c, "add_deal", { contact: data.contactId, dealTitle: "New van graphics" });
+  assert.match(qualified.headline, /; Acme Plumbing is now Qualified \(change/);
+});
+
+test("update_contact sets a lead status, and Not now with a followUpDate adds the check-back task", async () => {
+  const { c } = await setup();
+  const lead = (await ok(c, "add_lead", { name: "Lee Example" })).data as { contactId: string };
+  const answer = await ok(c, "update_contact", { contact: lead.contactId, leadStatus: "not_now", followUpDate: "2026-12-04" });
+  assert.match(answer.headline, /^Updated Lee Example: lead status to Not now; added task "Check back with Lee Example", due Fri Dec 4 \(change chg_[a-z0-9]{12}\)$/);
+  assert.match(await fails(c, "update_contact", { contact: lead.contactId, leadStatus: "qualified" }), /^Use qualify_lead to make a lead a contact/);
+  assert.match(await fails(c, "update_contact", { contact: lead.contactId, leadStatus: "cold" }), /"leadStatus" must be one of: new, contacted, not_now, not_a_fit, bad, qualified/);
+  assert.match(await fails(c, "update_contact", { contact: "ct_seed01", leadStatus: "contacted" }), /^Pat Example has 1 open deal\. Use return_to_lead on that deal instead/);
+});
+
+test("return_to_lead and qualify_lead each answer one change line with the ids; refusals are plain", async () => {
+  const { c } = await setup();
+  const back = await ok(c, "return_to_lead", { deal: "dl_seed08" });
+  assert.match(
+    back.headline,
+    /^Moved Sam Example back to leads \(Contacted\); archived deal "Auto repair landing page" \(change chg_[a-z0-9]{12}\)$/,
+  );
+  assert.deepEqual(back.data, { changeId: changeIdOf(back.data), contactId: "ct_seed08", dealId: "dl_seed08" });
+
+  const qualified = await ok(c, "qualify_lead", { contact: "ct_seed08", stage: "Replied", dealTitle: "Second try", value: 400 });
+  assert.match(qualified.headline, /^Qualified Sam Example; added deal "Second try" in Replied \(change chg_[a-z0-9]{12}\)$/);
+  const data = qualified.data as { changeId: string; contactId: string; dealId: string | null };
+  assert.equal(data.contactId, "ct_seed08");
+  assert.match(data.dealId ?? "", /^dl_/);
+
+  assert.match(await fails(c, "return_to_lead", { deal: "dl_seed07" }), /^"Salon booking site" is Won, so it was a real opportunity/);
+  assert.match(await fails(c, "return_to_lead", { deal: "dl_seed03", status: "qualified" }), /^Someone moved back to leads can't be Qualified\./);
+  assert.match(await fails(c, "qualify_lead", { contact: "ct_seed01" }), /^Pat Example isn't a lead waiting to be qualified\./);
+  assert.match(await fails(c, "qualify_lead", { contact: "ct_seed01", createDeal: "yes" }), /^Fix the qualify_lead request: /);
+});
+
+test("log_activity refuses a via argument: only the board marks a note as a text", async () => {
+  const { c } = await setup();
+  const message = await fails(c, "log_activity", { contact: "ct_seed01", type: "note", summary: "Texted.", via: "text" });
+  assert.match(message, /^Fix the log_activity request: /);
+  assert.match(message, /Unknown field "via"/);
 });
 
 test("writes are recorded as the ai actor under the tool's name", async () => {
@@ -96,7 +156,7 @@ test("log_activity and add_task each answer one change line", async () => {
 
 test("undo_change reverses one change and refuses a second undo", async () => {
   const { c } = await setup();
-  const added = changeIdOf((await ok(c, "add_lead", { name: "Lee Example" })).data);
+  const added = changeIdOf((await ok(c, "add_deal", { name: "Lee Example" })).data);
   const undone = await ok(c, "undo_change", { changeId: added });
   assert.match(undone.headline, new RegExp(`^Undid ${added}: Removed contact Lee Example and deal "Lee Example inquiry"`));
   assert.match(undone.headline, CHANGE_LINE);
@@ -105,9 +165,9 @@ test("undo_change reverses one change and refuses a second undo", async () => {
   assert.match((await ok(c, "search_contacts", { query: "Lee" })).headline, /^No contacts match/);
 });
 
-test("undo of add_lead after a logged activity refuses in plain English", async () => {
+test("undo of add_deal after a logged activity refuses in plain English", async () => {
   const { c } = await setup();
-  const added = (await ok(c, "add_lead", { name: "Lee Example" })).data as { changeId: string; dealId: string };
+  const added = (await ok(c, "add_deal", { name: "Lee Example" })).data as { changeId: string; dealId: string };
   await ok(c, "log_activity", { deal: added.dealId, type: "note", summary: "Left a voicemail." });
   assert.match(
     await fails(c, "undo_change", { changeId: added.changeId }),
@@ -117,12 +177,13 @@ test("undo of add_lead after a logged activity refuses in plain English", async 
 
 test("bad write input names the field and the shape it needs", async () => {
   const { c } = await setup();
-  const message = await fails(c, "add_lead", { email: "lee@example.com", value: -5, extra: 1 });
-  assert.match(message, /^Fix the add_lead request: /);
+  const message = await fails(c, "add_deal", { email: "lee@example.com", value: -5, extra: 1 });
+  assert.match(message, /^Fix the add_deal request: /);
   assert.match(message, /"value" must be at least 0/);
   assert.match(message, /Unknown field "extra"\. Use only: name, contact, email/);
   assert.match(await fails(c, "add_task", { deal: "dl_seed01" }), /"title" is missing; it needs text \(what to do, in a few words\)\./);
-  assert.match(await fails(c, "add_lead", { name: "Lee", email: "not-an-email" }), /^"not-an-email" doesn't look like an email address/);
+  assert.match(await fails(c, "add_deal", { name: "Lee", email: "not-an-email" }), /^"not-an-email" doesn't look like an email address/);
+  assert.match(await fails(c, "add_lead", { name: "Lee", dealTitle: "Shop" }), /Unknown field "dealTitle"\. Use only: name, business, email, phone, source, notes, contactFields, allowDuplicate/);
 });
 
 test("write lines, undo lines and the change log name outside records by id only", async () => {

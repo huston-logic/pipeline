@@ -4,8 +4,9 @@ import type { ActivityRow, ContactRow, DealRow } from "../db/db.ts";
 import { findContactByEmail } from "../db/queries.ts";
 import type { Env } from "../env.ts";
 import { newId } from "../ids.ts";
-import { commitChange, type Ctx, isDuplicateEmailFailure, oneLine, type RowChange } from "../services/change.ts";
+import { commitChange, type Ctx, isDuplicateEmailFailure, oneLine, type RowChange, StaleWriteError } from "../services/change.ts";
 import { dealLabel, isTrusted } from "../services/labels.ts";
+import { qualifyIfLead } from "../services/lead-change.ts";
 import { firstStageOfKind } from "../services/lookup.ts";
 import { MAX_BODY_BYTES, readCappedBody, secretMatches } from "./limits.ts";
 
@@ -189,9 +190,14 @@ async function store(env: Env, enquiry: Enquiry, now: Date): Promise<"created" |
     created_at: stamp,
   };
   changes.push({ table: "activities", id: activity.id, before: null, after: activity });
+  // A lead who sends the form now has a deal, so they are Qualified in the same change. The system does this; the
+  // form's text never decides it (decision 0022).
+  const qualified = existing === null ? null : qualifyIfLead(existing, now);
+  if (qualified !== null) changes.push(qualified);
 
   const ctx: Ctx = { db, now, actor: "system", tool: "intake" };
-  const summary = `Form submission: ${existing ? "new deal for an existing contact" : "new lead"}, ${dealLabel(deal, contact)} in ${stage.label}`;
+  const who = existing === null ? "new lead" : qualified !== null ? "new deal for an existing lead, now Qualified" : "new deal for an existing contact";
+  const summary = `Form submission: ${who}, ${dealLabel(deal, contact)} in ${stage.label}`;
   await commitChange(ctx, { target: { table: "deals", id: deal.id }, summary, changes });
   return "created";
 }
@@ -221,8 +227,9 @@ async function handle(request: Request, env: Env, now: Date): Promise<Response> 
       const result = await store(env, enquiry, now);
       return result === "created" ? json(201, { ok: true }) : json(200, { ok: true });
     } catch (error) {
-      // Two enquiries from a new email at once: the second finds the first's contact on the retry.
-      if (attempt === 0 && isDuplicateEmailFailure(error)) continue;
+      // Two enquiries from a new email at once: the second finds the first's contact on the retry. A lead whose row
+      // changed between the read and the write is read again too.
+      if (attempt === 0 && (isDuplicateEmailFailure(error) || error instanceof StaleWriteError)) continue;
       throw error;
     }
   }

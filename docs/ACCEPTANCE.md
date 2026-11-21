@@ -35,7 +35,8 @@ the email as an activity.
 - Test: `3. "Tell me everything about [name] before our call."`
 
 ## 4. Add a lead: [name], met at [place], wants [thing].
-- Tools: `add_lead` (source = where met, notes = what they want), then `get_deal` to read it back.
+- Tools: `add_deal` (source = where met, notes = what they want), then `get_deal` to read it back. They want
+  something, so by the sorting rule (decision 0022) this is a deal; someone with no interest yet would be `add_lead`.
 - Asserts: a one-line summary ending in a change id; the contact has the source, and the notes are on the timeline.
 - Test: `4. "Add a lead: [name], met at [place], wants [thing]."`
 

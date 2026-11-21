@@ -107,6 +107,14 @@ this file before changing the repo, and update it when a rule changes.
   outside keys in `untrusted_fields`. Deals and tasks have `untrusted_fields` too (migration 0002). Every write tool acts as the `ai` actor. `instructions.ts`
   holds the server instructions. Adding a tool means adding its name to the tool-list tests (`src/mcp/server.test.ts`,
   `tests/e2e/mcp.test.ts`).
+- **Leads** (decisions 0022, 0023): a lead is a `contacts` row with a `lead_status` and no open deal; there is no
+  leads table. `add_lead` (`src/services/leads.ts`) adds a person with status `new` and no deal; `add_deal`
+  (`src/services/add-deal.ts`, what `add_lead` did before run 4) adds a deal for a new or existing person;
+  `update_contact` (`src/services/contacts.ts`) sets a status. The status keys and labels are in
+  `src/services/lead-status.ts` (the keys never change); the shared pieces are in `src/services/lead-change.ts`. Any
+  write that gives an unqualified lead a deal (`add_deal`, `/intake`, `update_deal` reopening a deal) sets `qualified`
+  in the same change, and logging a reach on a `new` lead sets `contacted` in the same change (`contactedIfNew`).
+  `via: "text"` on a note comes only from the board's Text button, never from an MCP input.
 - **Sign-in:** `src/auth/dev.ts` until task 10. `AUTH_MODE=dev` works only with `ENVIRONMENT=development` on a
   loopback host; anywhere else every route answers 500. Without `AUTH_MODE`, `/mcp` answers 401.
 - **Types:** `src/env.ts` is the `Env` type the code uses. `src/worker-configuration.d.ts` holds the Workers runtime

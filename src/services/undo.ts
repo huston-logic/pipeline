@@ -1,8 +1,10 @@
 // undo_change: reverses exactly one change by writing its `before` snapshot back, as a new audited change. It
 // refuses when the change is unknown, already undone, itself an undo, when a row it would delete now has other
 // records pointing at it (by foreign key or by key inside a JSON column), when putting back a field's choices would
-// drop one records use, or when any row it touched is no longer exactly as the change left it. Decision 0009.
+// drop one records use, when any row it touched is no longer exactly as the change left it, or when it would reopen a
+// deal for someone who is an unqualified lead now (decision 0022, invariant 1). Decision 0009.
 import type { AuditRow, RuleType } from "../db/db.ts";
+import { getContact } from "../db/queries.ts";
 import { newId } from "../ids.ts";
 import {
   type ChangeResult,
@@ -20,6 +22,8 @@ import {
 } from "./change.ts";
 import { capitalize, columnLabel, dealTitleOf, joinAnd, rowLabel, short } from "./describe.ts";
 import { UserError } from "./errors.ts";
+import { contactName, dealLabel } from "./labels.ts";
+import { isUnqualified, LEAD_STATUS_LABELS } from "./lead-status.ts";
 import { parseStringArray, stageLabels } from "./lookup.ts";
 import { resumedParams } from "./rules.ts";
 
@@ -91,6 +95,7 @@ const BOOKKEEPING = new Set([
   "created_at",
   "last_activity_at",
   "stage_entered_at",
+  "lead_status_at",
   "status",
   "untrusted_fields",
 ]);
@@ -139,6 +144,31 @@ function ruleHistoryMessage(changeId: string, entry: Entry): string {
     `Can't undo ${changeId}: this lead has rule history (a rule already fired on ${rowLabel("deals", row)}), so it can't ` +
     "be removed. Close the deal instead: update_deal with status lost or not_now."
   );
+}
+
+const isOpenDeal = (row: Row | null) => row !== null && row.status === "open" && row.archived !== 1;
+
+/**
+ * An undo that would make a deal open again for a person who is an unqualified lead now would break invariant 1
+ * (decision 0022), unless the contact row is part of the same undo. The refusal points to update_deal, which reopens
+ * the deal and makes them Qualified in one change.
+ */
+async function reopenBlocker(ctx: Ctx, changeId: string, entries: Entry[], current: Map<Entry, Row | null>): Promise<string | null> {
+  const contactsInUndo = new Set(entries.filter((entry) => entry.table === "contacts").map((entry) => entry.id));
+  for (const entry of entries) {
+    if (entry.table !== "deals" || !isOpenDeal(entry.before) || isOpenDeal(current.get(entry) ?? null)) continue;
+    const deal = entry.before as Row;
+    const contactId = String(deal.contact_id);
+    if (contactsInUndo.has(contactId)) continue;
+    const contact = await getContact(ctx.db, contactId);
+    if (contact === null || !isUnqualified(contact.lead_status) || contact.lead_status === null) continue;
+    const dealRef = { id: String(deal.id), title: String(deal.title), untrusted_fields: deal.untrusted_fields };
+    return (
+      `Can't undo ${changeId}: it would reopen ${dealLabel(dealRef, contact)}, but ${contactName(contact)} is a lead now ` +
+      `(${LEAD_STATUS_LABELS[contact.lead_status]}). Reopen the deal with update_deal instead, which makes them a contact again.`
+    );
+  }
+  return null;
 }
 
 async function dependents(ctx: Ctx, changeId: string, entries: Entry[]): Promise<string | null> {
@@ -284,6 +314,8 @@ export async function undoChange(ctx: Ctx, changeId: string): Promise<ChangeResu
     const row = current.get(moved) ?? moved.after ?? moved.before;
     throw new UserError(changedMessage(id, row ? rowLabel(moved.table, row) : `${moved.table}:${moved.id}`));
   }
+  const reopening = await reopenBlocker(ctx, id, entries, current);
+  if (reopening !== null) throw new UserError(reopening);
 
   const changes: RowChange[] = [...entries].reverse().map((entry) => {
     const now = current.get(entry) ?? null;

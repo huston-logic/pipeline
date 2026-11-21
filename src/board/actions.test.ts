@@ -10,7 +10,7 @@ import type { Env } from "../env.ts";
 import worker from "../index.ts";
 import type { Ctx } from "../services/change.ts";
 import { updateDeal } from "../services/deals.ts";
-import { addLead } from "../services/leads.ts";
+import { addDeal } from "../services/add-deal.ts";
 import { DEFAULT_TZ } from "../time.ts";
 
 const ctx = { waitUntil() {}, passThroughOnException() {}, props: {} } as unknown as ExecutionContext;
@@ -401,7 +401,7 @@ test("a move to the stage the deal is already in says so, even for a closed stag
 test("an undo that would remove records asks first and writes nothing; confirmed, it removes them", async () => {
   const db = await seededDb();
   const env = devEnv(db);
-  const lead = await addLead({ db, now: new Date(), actor: "ai", tool: "add_lead" }, { name: "Lee Example", dealTitle: "Garage plans" });
+  const lead = await addDeal({ db, now: new Date(), actor: "ai", tool: "add_deal" }, { name: "Lee Example", dealTitle: "Garage plans" });
   const before = await auditCount(db);
   const ask = await post(env, `/changes/${lead.changeId}/undo`, { return_to: "/changes" });
   assert.equal(ask.res.status, 200);

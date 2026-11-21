@@ -1,4 +1,5 @@
-// log_activity. Owner and AI entries never carry untrusted_text: that column is only for text from outside.
+// log_activity. Owner and AI entries never carry untrusted_text: that column is only for text from outside. Reaching a
+// New lead makes them Contacted in the same change (decision 0022).
 import type { ActivityRow, ActivityType, Db, DealRow } from "../db/db.ts";
 import { newId } from "../ids.ts";
 import { parseWhen } from "../time.ts";
@@ -7,6 +8,8 @@ import { short, withArticle } from "./describe.ts";
 import { UserError } from "./errors.ts";
 import { clean } from "./input.ts";
 import { contactName, dealLabel } from "./labels.ts";
+import { contactedIfNew, TEXT_DATA } from "./lead-change.ts";
+import { LEAD_STATUS_LABELS } from "./lead-status.ts";
 import { findSubject, ownerTimezone } from "./lookup.ts";
 
 /** The activity types that count as contact: they move the deal's last_activity_at. */
@@ -21,6 +24,8 @@ export interface ActivityInput {
   summary: string;
   /** When it happened; defaults to now. */
   occurredAt?: string;
+  /** Board only (its Text button): the note was a text, so it counts as reaching the person. Never an MCP input. */
+  via?: "text";
 }
 
 async function openDealsOf(db: Db, contactId: string): Promise<DealRow[]> {
@@ -42,6 +47,10 @@ export async function logActivity(ctx: Ctx, input: ActivityInput): Promise<Chang
   if (!isContactType(input.type)) {
     throw new UserError(`"${input.type}" can't be logged here. Use one of: ${CONTACT_TYPES.join(", ")}.`);
   }
+  if (input.via !== undefined && (input.via !== "text" || input.type !== "note")) {
+    throw new UserError("Only a note can be marked as a text. Log a call, email or meeting without it.");
+  }
+  const data = input.via === "text" ? TEXT_DATA : null;
   const text = clean(input.summary);
   if (text === null) throw new UserError("An activity needs a summary. Say in a few words what happened.");
   const tz = await ownerTimezone(db);
@@ -59,7 +68,7 @@ export async function logActivity(ctx: Ctx, input: ActivityInput): Promise<Chang
     type: input.type,
     summary: text,
     untrusted_text: null,
-    data: null,
+    data,
     occurred_at: occurredAt,
     actor: ctx.actor,
     version: 1,
@@ -78,8 +87,14 @@ export async function logActivity(ctx: Ctx, input: ActivityInput): Promise<Chang
     });
   }
 
+  // The contact row read above is the `before`, so a write that bumped it since fails the whole change as stale.
+  const contacted = contactedIfNew(contact, input.type, data, ctx.now);
+  if (contacted !== null) changes.push({ table: "contacts", id: contact.id, before: contact, after: contacted });
+
   const where = deal ? `on ${dealLabel(deal, contact)}` : `with ${contactName(contact)}`;
-  const summary = `Logged ${withArticle(input.type)} ${where}: ${short(text)}`;
+  const summary =
+    `Logged ${withArticle(input.type)} ${where}: ${short(text)}` +
+    (contacted === null ? "" : `; ${contactName(contact)} is now ${LEAD_STATUS_LABELS.contacted}`);
   const result = await commitChange(ctx, { target: { table: "activities", id: activity.id }, summary, changes });
   return { ...result, activityId: activity.id };
 }

@@ -16,7 +16,7 @@ import {
 import type { ContactRow, DealRow, TaskRow } from "../db/db.ts";
 import type { SqliteD1 } from "../db/sqlite-d1.ts";
 import { addField } from "../services/fields.ts";
-import { updateContact } from "../services/leads.ts";
+import { updateContact } from "../services/contacts.ts";
 import { DEFAULT_TZ, localDate, zonedToUtc } from "../time.ts";
 import { snoozePresets } from "./snooze.ts";
 
@@ -38,7 +38,7 @@ async function editForm(db: SqliteD1, path: string) {
   return { fields: formFields(page.body, path), cookie: page.cookie, token: page.token };
 }
 
-test("New lead: one add_lead change by the owner, then the new deal's page with the banner", async () => {
+test("New lead: one add_deal change by the owner, then the new deal's page with the banner", async () => {
   const db = await seededDb();
   const env = devEnv(db);
   const before = await auditCount(db);
@@ -54,14 +54,14 @@ test("New lead: one add_lead change by the owner, then the new deal's page with 
   });
   assert.equal(res.status, 303);
   assert.match(location, /^\/deals\/dl_[a-z0-9]{12}\?change=chg_[a-z0-9]{12}$/);
-  await assertOneChange(db, before, location, "add_lead");
+  await assertOneChange(db, before, location, "add_deal");
   const id = /^\/deals\/(dl_[a-z0-9]+)/.exec(location)?.[1] ?? "";
   const row = await deal(db, id);
   assert.equal(row?.title, "Garage plans");
   assert.equal(row?.value, 2400);
   assert.equal(row?.next_at, zonedToUtc("2026-12-01T10:30", DEFAULT_TZ).toISOString());
   const shown = (await load(env, location)).body;
-  assert.match(shown, /<p class="banner-text">Added lead Lee Example with deal &quot;Garage plans&quot; in /);
+  assert.match(shown, /<p class="banner-text">Added contact Lee Example with deal &quot;Garage plans&quot; in /);
 });
 
 test("New lead with an email already on file adds the deal to that contact, and the banner says so", async () => {
@@ -237,13 +237,13 @@ test("Edit deal: value and the next date in the owner's time, as update_deal; th
   assert.equal(row?.next_step, "Discovery call");
 });
 
-test("New deal for a contact: add_lead with that contact, then the new deal's page; a missing title is refused", async () => {
+test("New deal for a contact: add_deal with that contact, then the new deal's page; a missing title is refused", async () => {
   const db = await seededDb();
   const env = devEnv(db);
   const before = await auditCount(db);
   const { res, location } = await post(env, "/contacts/ct_seed07/deals/new", { title: "Gift cards page", value: "300" });
   assert.equal(res.status, 303);
-  await assertOneChange(db, before, location, "add_lead");
+  await assertOneChange(db, before, location, "add_deal");
   const id = /^\/deals\/(dl_[a-z0-9]+)/.exec(location)?.[1] ?? "";
   assert.equal((await deal(db, id))?.contact_id, "ct_seed07");
   const refused = await post(env, "/contacts/ct_seed07/deals/new", { title: " ", value: "300" });

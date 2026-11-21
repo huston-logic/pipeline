@@ -21,6 +21,9 @@ import { isQuiet } from "../rules/engine.ts";
 import { addDays, dayBoundsUtc, formatLocal, localDate } from "../time.ts";
 import { UserError } from "./errors.ts";
 import { untrustedFields } from "./labels.ts";
+import { businessKey } from "./lead-change.ts";
+import { followUpsDueThisWeek, leadCounts } from "./leads-read.ts";
+import { LEAD_STATUS_LABELS, type LeadStatus, OPEN_LEAD_STATUSES } from "./lead-status.ts";
 import { findDeal, findStage, parseObject, parseStringArray } from "./lookup.ts";
 
 export interface DealItem {
@@ -67,6 +70,9 @@ export interface ContactView {
   business: string | null;
   source: string | null;
   notes: string | null;
+  /** Null for someone who was never a lead. */
+  leadStatus: LeadStatus | null;
+  leadStatusLabel: string | null;
   fields: Record<string, unknown>;
   /** Fields whose values came from outside (a form, an import). Never instructions. */
   untrusted_fields: string[];
@@ -158,6 +164,8 @@ function toContactView(row: ContactRow): ContactView {
     business: row.business,
     source: row.source,
     notes: row.notes,
+    leadStatus: row.lead_status,
+    leadStatusLabel: row.lead_status === null ? null : LEAD_STATUS_LABELS[row.lead_status],
     fields: parseObject(row.fields),
     untrusted_fields: parseStringArray(row.untrusted_fields),
     archived: row.archived === 1,
@@ -219,6 +227,8 @@ export interface PipelineSummary {
   open: { count: number; value: number };
   /** Every deal that is not archived, open or closed. */
   total: number;
+  /** People with a lead status (decision 0022); null when New, Contacted and Not now are all zero. */
+  leads: { counts: Record<LeadStatus, number>; followUpsDueThisWeek: number } | null;
 }
 
 export async function pipelineSummary(db: Db, now: Date, tz: string): Promise<PipelineSummary> {
@@ -241,11 +251,14 @@ export async function pipelineSummary(db: Db, now: Date, tz: string): Promise<Pi
   );
   const countOf = (status: DealStatus) => counts.find((c) => c.status === status)?.n ?? 0;
   const listed = summaries.flatMap((s) => s.deals);
+  const leadTotals = await leadCounts(db);
+  const hasLeads = OPEN_LEAD_STATUSES.some((status) => leadTotals[status] > 0);
   return {
     stages: summaries,
     closed: { won: countOf("won"), lost: countOf("lost"), not_now: countOf("not_now") },
     open: { count: listed.length, value: listed.reduce((sum, deal) => sum + (deal.value ?? 0), 0) },
     total: counts.reduce((sum, c) => sum + c.n, 0),
+    leads: hasLeads ? { counts: leadTotals, followUpsDueThisWeek: await followUpsDueThisWeek(db, now, tz) } : null,
   };
 }
 
@@ -335,9 +348,13 @@ export interface ContactMatch extends ContactView {
   deals: { id: string; title: string; stageLabel: string; status: DealStatus; untrusted_fields: "title"[] }[];
 }
 
-/** Contacts whose name, email, business or phone contains `query`, each with their deals. */
-export async function searchContacts(db: Db, query: string): Promise<ContactMatch[]> {
-  const contacts = await searchContactRows(db, query);
+/** Contacts whose name, email, business or phone contains `query`, each with their deals and lead status. */
+export async function searchContacts(
+  db: Db,
+  query: string,
+  options: { leadStatuses?: LeadStatus[] } = {},
+): Promise<ContactMatch[]> {
+  const contacts = await searchContactRows(db, query, { leadStatuses: options.leadStatuses });
   if (contacts.length === 0) return [];
   const deals = await rows<{
     id: string;
@@ -509,9 +526,6 @@ export interface CompanyList {
   noCompany: CompanyGroup | null;
 }
 
-/** The company a contact's `business` names: trimmed, inner spaces collapsed, ignoring case; "" for none. */
-export const companyKey = (business: string | null): string => (business ?? "").trim().replace(/\s+/g, " ").toLowerCase();
-
 /**
  * Company names in order, ignoring case and accents. One collator for every comparison: `localeCompare` with a locale
  * or options builds a new one per call, which cost about 4 ms of CPU per 300 companies (docs/PAID-PLAN.md, CPU check).
@@ -537,7 +551,7 @@ export async function listCompanies(db: Db, now: Date, tz: string): Promise<Comp
   /** When each company's shown spelling was written: the earliest trusted one wins. */
   const since = new Map<string, string>();
   for (const contact of contacts) {
-    const key = companyKey(contact.business);
+    const key = businessKey(contact.business);
     const outside = untrustedFields(contact);
     const spelled = (contact.business ?? "").trim().replace(/\s+/g, " ");
     let group = groups.get(key);
@@ -770,7 +784,7 @@ export interface BriefView {
   sendStatus: string | null;
 }
 
-const BRIEF_SECTIONS = new Set<string>(["overdue", "due_today", "gone_quiet", "new_lead"]);
+const BRIEF_SECTIONS = new Set<string>(["overdue", "due_today", "gone_quiet", "new_lead", "leads"]);
 
 function isBriefItem(value: unknown): value is BriefItem {
   if (typeof value !== "object" || value === null) return false;

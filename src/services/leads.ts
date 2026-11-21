@@ -1,150 +1,99 @@
-// add_lead and update_contact.
-import type { ActivityRow, ContactRow, DealRow } from "../db/db.ts";
-import { findContactByEmail } from "../db/queries.ts";
+// add_lead: someone the owner plans to approach, as a person with status New and no deal (decision 0022). Someone who
+// wants something is a deal instead (add-deal.ts). qualify_lead and return_to_lead move a person across the line
+// between leads and deals, each in one change (decisions 0022 and 0024).
+import type { ActivityRow, ContactRow, Db, DealRow, StageRow, TaskRow } from "../db/db.ts";
+import { findContactByEmail, getContact, listStages } from "../db/queries.ts";
 import { newId } from "../ids.ts";
-import {
-  type ChangeInput,
-  type ChangeResult,
-  changedColumns,
-  commitChange,
-  type Ctx,
-  isDuplicateEmailFailure,
-  type Row,
-  type RowChange,
-  updatedRow,
-} from "./change.ts";
-import { checkFieldValues } from "./fields.ts";
-import { capitalize, columnLabel, fieldsLabel, joinAnd, nextPart } from "./describe.ts";
+import { type ChangeResult, commitChange, type Ctx, type RowChange, StaleWriteError, updatedRow } from "./change.ts";
+import { commitWithEmail } from "./contacts.ts";
+import { dealNoun, newDealRow } from "./deal-row.ts";
+import { capitalize, joinAnd, nextPart } from "./describe.ts";
 import { UserError } from "./errors.ts";
+import { checkFieldValues } from "./fields.ts";
 import { checkEmail, checkValue, clean, whenOrNull, withoutNulls } from "./input.ts";
-import { contactName, dealTitle, isTrusted } from "./labels.ts";
-import {
-  type FieldValues,
-  findContact,
-  firstStageOfKind,
-  mergeFields,
-  ownerTimezone,
-  parseObject,
-  parseStringArray,
-} from "./lookup.ts";
+import { contactName, contactRef, dealTitle } from "./labels.ts";
+import { businessKey, openDealCount, withLeadStatus } from "./lead-change.ts";
+import { isUnqualified, LEAD_STATUS_LABELS, type LeadStatus, UNQUALIFIED_STATUSES } from "./lead-status.ts";
+import { type FieldValues, findContact, findDeal, findStage, firstStageOfKind, ownerTimezone } from "./lookup.ts";
 
-/** commitChange, with a duplicate email that another writer got in first turned into a plain answer. */
-async function commitWithEmail(ctx: Ctx, input: ChangeInput, email: string | null): Promise<ChangeResult> {
-  try {
-    return await commitChange(ctx, input);
-  } catch (error) {
-    if (email === null || !isDuplicateEmailFailure(error)) throw error;
-    const other = await findContactByEmail(ctx.db, email);
-    const who = other ? `: contact ${other.id}` : "";
-    throw new UserError(`Another contact already uses that email${who}. Use update_contact on that one instead.`, {
-      cause: error,
-    });
-  }
-}
-
-export interface LeadInput {
-  /** Needed unless `contact` is given. */
+export interface NewLeadInput {
+  /** Needed unless `business` is given; with only a business, the lead is named after it. */
   name?: string;
-  /** An existing contact (id or exact name) to add the deal to; the person's details are then left as they are. */
-  contact?: string;
+  business?: string;
   email?: string;
   phone?: string;
-  business?: string;
   source?: string;
-  /** Logged as a note activity on the new deal. */
+  /** Logged as a note on the person. */
   notes?: string;
-  dealTitle?: string;
-  value?: number;
-  nextStep?: string;
-  nextAt?: string;
+  /** Contact custom field values. */
   fields?: FieldValues;
-  contactFields?: FieldValues;
+  /** Add the lead even though a person on file has the same business. */
+  allowDuplicate?: boolean;
 }
 
 export interface AddLeadResult extends ChangeResult {
   contactId: string;
-  dealId: string;
-  /** The email matched a contact already on file, so only a deal was added. */
-  matchedExisting: boolean;
 }
 
-export async function addLead(ctx: Ctx, input: LeadInput): Promise<AddLeadResult> {
+/** The first person on file (not archived) whose business is the same company, ignoring case and spaces. */
+async function sameBusiness(db: Db, business: string): Promise<ContactRow | null> {
+  const key = businessKey(business);
+  if (key === "") return null;
+  // SQLite's lower() only folds ASCII, so the comparison is done here, the way companies are grouped (read.ts).
+  const found = await db
+    .prepare("SELECT * FROM contacts WHERE archived = 0 AND business IS NOT NULL ORDER BY created_at, id")
+    .all<ContactRow>();
+  return found.results.find((row) => businessKey(row.business) === key) ?? null;
+}
+
+export async function addLead(ctx: Ctx, input: NewLeadInput): Promise<AddLeadResult> {
   const { db } = ctx;
-  const tz = await ownerTimezone(db);
-  const chosen = input.contact === undefined ? null : await findContact(db, input.contact);
-  const name = clean(input.name);
-  if (chosen !== null && chosen.archived === 1) {
-    throw new UserError(`${capitalize(contactName(chosen))} is archived, so no new deal can be added for them.`);
-  }
-  if (name === null && chosen === null) throw new UserError("A lead needs a name. Give the person's name, or an existing contact.");
+  const business = clean(input.business);
+  const name = clean(input.name) ?? business;
+  if (name === null) throw new UserError("A lead needs a name or a business.");
   const email = clean(input.email);
-  if (email !== null && chosen === null) checkEmail(email);
-  const value = input.value === undefined ? null : checkValue(input.value);
-  const nextStep = clean(input.nextStep);
-  const nextAt = whenOrNull(input.nextAt ?? null, tz);
-  const dealFields = withoutNulls(input.fields ?? {});
-  const contactFields = withoutNulls(input.contactFields ?? {});
-  await checkFieldValues(db, "deal", dealFields);
-  await checkFieldValues(db, "contact", contactFields);
-  const stage = await firstStageOfKind(db, "open");
-  if (!stage) throw new UserError("There's no open stage to put a new deal in. Add one with add_stage first.");
+  if (email !== null) {
+    checkEmail(email);
+    const other = await findContactByEmail(db, email);
+    if (other) {
+      throw new UserError(
+        `${capitalize(contactRef(other))} already uses that email. ` +
+          "Give them a lead status with update_contact, or use add_deal if they want something.",
+      );
+    }
+  } else if (business !== null && input.allowDuplicate !== true) {
+    const other = await sameBusiness(db, business);
+    if (other) {
+      throw new UserError(`${capitalize(contactRef(other))} already has that business. Say allowDuplicate: true to add another lead anyway.`);
+    }
+  }
+  const fields = withoutNulls(input.fields ?? {});
+  await checkFieldValues(db, "contact", fields);
 
   const now = ctx.now.toISOString();
-  const changes: RowChange[] = [];
-  const existing = chosen ?? (email === null ? null : await findContactByEmail(db, email));
-  let contact: ContactRow;
-  if (existing) {
-    contact = existing;
-  } else {
-    if (name === null) throw new Error("A new contact needs a name.");
-    contact = {
-      id: newId("ct"),
-      name,
-      email,
-      phone: clean(input.phone),
-      business: clean(input.business),
-      source: clean(input.source),
-      notes: null,
-      fields: JSON.stringify(contactFields),
-      untrusted_fields: "[]",
-      archived: 0,
-      version: 1,
-      created_at: now,
-      updated_at: now,
-      lead_status: null,
-      lead_status_at: null,
-    };
-    changes.push({ table: "contacts", id: contact.id, before: null, after: contact });
-  }
-
-  const notes = clean(input.notes);
-  const title = clean(input.dealTitle);
-  // A default title built from a name that came from outside is outside text too (as /intake does it).
-  const namedFrom = title === null ? chosen : null;
-  const titleOutside = namedFrom !== null && !isTrusted(namedFrom, "name");
-  const deal: DealRow = {
-    id: newId("dl"),
-    contact_id: contact.id,
-    title: title ?? `${namedFrom?.name ?? name} inquiry`,
-    stage_key: stage.key,
-    value,
-    next_step: nextStep,
-    next_at: nextAt,
-    status: "open",
-    fields: JSON.stringify(dealFields),
-    stage_entered_at: now,
-    last_activity_at: notes === null ? null : now,
-    untrusted_fields: titleOutside ? '["title"]' : "[]",
+  const contact: ContactRow = {
+    id: newId("ct"),
+    name,
+    email,
+    phone: clean(input.phone),
+    business,
+    source: clean(input.source),
+    notes: null,
+    fields: JSON.stringify(fields),
+    untrusted_fields: "[]",
     archived: 0,
     version: 1,
     created_at: now,
     updated_at: now,
+    lead_status: "new",
+    lead_status_at: now,
   };
-  changes.push({ table: "deals", id: deal.id, before: null, after: deal });
+  const changes: RowChange[] = [{ table: "contacts", id: contact.id, before: null, after: contact }];
+  const notes = clean(input.notes);
   if (notes !== null) {
     const note: ActivityRow = {
       id: newId("ac"),
-      deal_id: deal.id,
+      deal_id: null,
       contact_id: contact.id,
       type: "note",
       summary: notes,
@@ -157,98 +106,175 @@ export async function addLead(ctx: Ctx, input: LeadInput): Promise<AddLeadResult
     };
     changes.push({ table: "activities", id: note.id, before: null, after: note });
   }
-
-  // With a chosen contact, a name other than theirs is left as it was too.
-  const otherName = chosen !== null && name !== null && name.toLowerCase() !== chosen.name.toLowerCase();
-  const detailsGiven =
-    otherName ||
-    [input.phone, input.business, input.source, chosen === null ? undefined : input.email].some((v) => clean(v) !== null) ||
-    Object.keys(contactFields).length > 0;
-  const ignored = existing !== null && detailsGiven;
-  // "deal \"Garage plans\"" or "deal dl_…"; "contact Pat Example" or "contact ct_…".
-  const dealPart = isTrusted(deal, "title") ? `deal ${dealTitle(deal)}` : dealTitle(deal);
-  const contactPart = existing && isTrusted(existing, "name") ? `contact ${contactName(existing)}` : existing ? contactName(existing) : "";
-  const summary =
-    (existing
-      ? `Added ${dealPart} for existing ${contactPart} in ${stage.label}`
-      : `Added lead ${name} with deal "${deal.title}" in ${stage.label}`) +
-    nextPart(nextStep, nextAt, tz) +
-    (ignored ? "; contact details left as they were (use update_contact to change them)" : "");
-  const result = await commitWithEmail(ctx, { target: { table: "deals", id: deal.id }, summary, changes }, existing ? null : email);
-  return { ...result, contactId: contact.id, dealId: deal.id, matchedExisting: existing !== null };
+  const from = contact.source === null ? "" : `, from ${contact.source}`;
+  const summary = `Added lead ${name} (${LEAD_STATUS_LABELS.new})${from}`;
+  const result = await commitWithEmail(ctx, { target: { table: "contacts", id: contact.id }, summary, changes }, email);
+  return { ...result, contactId: contact.id };
 }
 
-export interface ContactPatch {
-  name?: string;
-  email?: string | null;
-  phone?: string | null;
-  business?: string | null;
-  source?: string | null;
-  notes?: string | null;
-  /** Merged into the stored values; null removes a key. */
-  fields?: FieldValues;
+export interface QualifyInput {
+  /** The lead: their id or exact name. */
+  contact: string;
+  /** Add a deal in the same change (the default), or only set Qualified. */
+  createDeal?: boolean;
+  /** An open stage by key or label; the default is the first open stage. */
+  stage?: string;
+  /** The default is "<name> inquiry". */
+  dealTitle?: string;
+  value?: number;
+  nextStep?: string;
+  nextAt?: string;
 }
 
-const OPTIONAL_COLUMNS = ["email", "phone", "business", "source", "notes"] as const;
+export interface QualifyResult extends ChangeResult {
+  contactId: string;
+  dealId: string | null;
+}
 
-/** Every field this sets is the owner's word from now on, so it leaves `untrusted_fields`. */
-export async function updateContact(ctx: Ctx, contactRef: string, patch: ContactPatch): Promise<ChangeResult> {
+/** The stage named, which must be open, or the first open stage. */
+async function openStage(db: Db, ref: string | undefined): Promise<StageRow> {
+  const stage = ref === undefined ? await firstStageOfKind(db, "open") : await findStage(db, ref);
+  if (stage?.kind === "open") return stage;
+  const open = (await listStages(db)).filter((s) => s.kind === "open").map((s) => s.label);
+  if (stage === null || open.length === 0) {
+    throw new UserError("There's no open stage to put a new deal in. Add one with add_stage first.");
+  }
+  throw new UserError(`${stage.label} isn't an open stage, and a new deal starts in one. The open stages are ${joinAnd(open)}.`);
+}
+
+/** A lead becomes Qualified and, unless asked not to, gets a deal in the same change; nothing is copied (0022). */
+export async function qualifyLead(ctx: Ctx, input: QualifyInput): Promise<QualifyResult> {
   const { db } = ctx;
-  const before = await findContact(db, contactRef);
-  const set: Row = {};
-  const confirmed: string[] = [];
-
-  if (patch.name !== undefined) {
-    const name = clean(patch.name);
-    if (name === null) throw new UserError("A contact's name can't be blank. Give the new name.");
-    set.name = name;
-    confirmed.push("name");
+  const contact = await findContact(db, input.contact);
+  const who = contactName(contact);
+  if (contact.archived === 1) throw new UserError(`${capitalize(who)} is archived, so they can't be qualified.`);
+  if (!isUnqualified(contact.lead_status)) {
+    throw new UserError(`${capitalize(who)} isn't a lead waiting to be qualified. Use add_deal to add a deal for them instead.`);
   }
-  for (const column of OPTIONAL_COLUMNS) {
-    if (patch[column] === undefined) continue;
-    const value = clean(patch[column]);
-    if (column === "email" && value !== null) {
-      checkEmail(value);
-      const other = await findContactByEmail(db, value);
-      if (other && other.id !== before.id) {
-        throw new UserError(
-          `${isTrusted(other, "name") ? `${other.name} (${other.id})` : `contact ${other.id}`} already uses ` +
-            `${isTrusted(other, "email") ? other.email : value}. Use a different email, or update that contact instead.`,
-        );
-      }
+  const qualified: RowChange = {
+    table: "contacts",
+    id: contact.id,
+    before: contact,
+    after: withLeadStatus(contact, "qualified", ctx.now),
+  };
+  const target = { table: "contacts", id: contact.id } as const;
+
+  if (input.createDeal === false) {
+    if ([input.stage, input.dealTitle, input.value, input.nextStep, input.nextAt].some((v) => v !== undefined)) {
+      throw new UserError(
+        "Deal details only go with a deal. Leave out createDeal: false, or leave out the stage, title, value, next step and next date.",
+      );
     }
-    set[column] = value;
-    confirmed.push(column);
+    const result = await commitChange(ctx, { target, summary: `Qualified ${who} (no deal)`, changes: [qualified] });
+    return { ...result, contactId: contact.id, dealId: null };
   }
-  if (patch.fields !== undefined) {
-    await checkFieldValues(db, "contact", patch.fields);
-    set.fields = mergeFields(before.fields, patch.fields);
-    confirmed.push(...Object.keys(patch.fields).map((key) => `fields.${key}`));
-  }
-  const untrusted = parseStringArray(before.untrusted_fields);
-  const remaining = untrusted.filter((field) => !confirmed.includes(field));
-  if (remaining.length !== untrusted.length) set.untrusted_fields = JSON.stringify(remaining);
 
-  const after = updatedRow(before, set as Partial<ContactRow>, ctx.now);
-  const changed = changedColumns(before, after).filter((c) => c !== "version" && c !== "updated_at");
-  if (changed.length === 0) {
-    throw new UserError(`Nothing to change for ${contactName(before)}: every value you gave is already set.`);
-  }
-  const labels = changed
-    .filter((c) => c !== "untrusted_fields")
-    .map((c) => (c === "fields" ? fieldsLabel(parseObject(before.fields), parseObject(after.fields)) : columnLabel(c)));
-  const confirmedOnly = untrusted.filter((field) => confirmed.includes(field));
-  const summary =
-    labels.length > 0
-      ? `Updated ${contactName(after)}: ${joinAnd(labels)}`
-      : `Confirmed ${joinAnd(confirmedOnly.map(columnLabel))} for ${contactName(after)}`;
-  return commitWithEmail(
-    ctx,
+  const tz = await ownerTimezone(db);
+  const value = input.value === undefined ? null : checkValue(input.value);
+  const nextStep = clean(input.nextStep);
+  const nextAt = whenOrNull(input.nextAt ?? null, tz);
+  const stage = await openStage(db, input.stage);
+  const deal = newDealRow(
     {
-      target: { table: "contacts", id: before.id },
-      summary,
-      changes: [{ table: "contacts", id: before.id, before, after }],
+      contactId: contact.id,
+      title: clean(input.dealTitle),
+      namedAfter: contact,
+      stageKey: stage.key,
+      value,
+      nextStep,
+      nextAt,
+      fields: {},
+      lastActivityAt: null,
     },
-    typeof set.email === "string" ? set.email : null,
+    ctx.now,
+  );
+  const summary = `Qualified ${who}; added ${dealNoun(deal)} in ${stage.label}${nextPart(nextStep, nextAt, tz)}`;
+  const result = await commitChange(ctx, {
+    target,
+    summary,
+    changes: [qualified, { table: "deals", id: deal.id, before: null, after: deal }],
+  });
+  return { ...result, contactId: contact.id, dealId: deal.id };
+}
+
+export interface ReturnInput {
+  /** The deal: its id, exact title or its contact's exact name. */
+  deal: string;
+  /** Any status but qualified; the default is contacted. */
+  status?: LeadStatus;
+}
+
+export interface ReturnResult extends ChangeResult {
+  contactId: string;
+  dealId: string;
+}
+
+/**
+ * A deal that was never a real opportunity is archived (its status kept), its open tasks move to the person, and the
+ * person gets a lead status, all in one change (0022). Refused while the person has another open deal (invariant 1),
+ * which the batch checks again so a deal added at the same moment can't slip past.
+ */
+export async function returnToLead(ctx: Ctx, input: ReturnInput): Promise<ReturnResult> {
+  const { db } = ctx;
+  const status = input.status ?? "contacted";
+  if (!isUnqualified(status)) {
+    const what = status === "qualified" ? "Someone moved back to leads can't be Qualified." : `"${String(status)}" isn't a lead status.`;
+    throw new UserError(`${what} Use one of: ${UNQUALIFIED_STATUSES.join(", ")}.`);
+  }
+  const deal = await findDeal(db, input.deal);
+  const title = capitalize(dealTitle(deal));
+  if (deal.archived === 1) throw new UserError(`${title} is archived already. Nothing to do.`);
+  if (deal.status === "won") {
+    throw new UserError(
+      `${title} is Won, so it was a real opportunity and can't go back to leads. If it was marked Won by mistake, ` +
+        "change its status with update_deal first.",
+    );
+  }
+  const contact = await getContact(db, deal.contact_id);
+  if (!contact) throw new Error(`Deal ${deal.id} points at a missing contact.`);
+  const who = contactName(contact);
+  if (contact.archived === 1) throw new UserError(`${capitalize(who)} is archived, so they can't go back to leads.`);
+  await refuseOtherOpenDeal(db, contact, deal);
+
+  const changes: RowChange[] = [{ table: "deals", id: deal.id, before: deal, after: updatedRow(deal, { archived: 1 }, ctx.now) }];
+  const open = await db
+    .prepare("SELECT * FROM tasks WHERE deal_id = ? AND done_at IS NULL ORDER BY created_at, id")
+    .bind(deal.id)
+    .all<TaskRow>();
+  for (const task of open.results) {
+    const moved = updatedRow(task, { deal_id: null, contact_id: contact.id }, ctx.now);
+    changes.push({ table: "tasks", id: task.id, before: task, after: moved });
+  }
+  // The same status again leaves its time alone (decision 0023).
+  if (contact.lead_status !== status) {
+    changes.push({ table: "contacts", id: contact.id, before: contact, after: withLeadStatus(contact, status, ctx.now) });
+  }
+  const noOpenDeal = db
+    .prepare("INSERT INTO write_guard (ok) SELECT COUNT(*) = 0 FROM deals WHERE contact_id = ? AND status = 'open' AND archived = 0")
+    .bind(contact.id);
+  try {
+    const result = await commitChange(ctx, {
+      target: { table: "deals", id: deal.id },
+      summary: `Moved ${who} back to leads (${LEAD_STATUS_LABELS[status]}); archived ${dealNoun(deal)}`,
+      changes,
+      extra: [noOpenDeal],
+    });
+    return { ...result, contactId: contact.id, dealId: deal.id };
+  } catch (error) {
+    // The guard that tripped may be the open-deal one: then say so, not "changed since".
+    if (error instanceof StaleWriteError) await refuseOtherOpenDeal(db, contact, deal);
+    throw error;
+  }
+}
+
+/** Refuses while the person has an open deal other than this one (invariant 1). */
+async function refuseOtherOpenDeal(db: Db, contact: ContactRow, deal: DealRow): Promise<void> {
+  const others = (await openDealCount(db, contact.id)) - (deal.status === "open" && deal.archived === 0 ? 1 : 0);
+  if (others <= 0) return;
+  const who = capitalize(contactName(contact));
+  throw new UserError(
+    others === 1
+      ? `${who} has another open deal, so they can't go back to leads. Close it first, then try again.`
+      : `${who} has ${others} other open deals, so they can't go back to leads. Close them first, then try again.`,
   );
 }

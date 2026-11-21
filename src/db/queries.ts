@@ -75,7 +75,7 @@ const escapeLike = (text: string) => text.replace(/[\\%_]/g, (c) => `\\${c}`);
 export async function searchContacts(
   db: Db,
   query: string,
-  options: { limit?: number; includeArchived?: boolean } = {},
+  options: { limit?: number; includeArchived?: boolean; leadStatuses?: readonly string[] } = {},
 ): Promise<ContactRow[]> {
   const w = where();
   const text = query.trim();
@@ -91,6 +91,8 @@ export async function searchContacts(
     );
   }
   if (!options.includeArchived) add(w, "archived = 0");
+  const statuses = options.leadStatuses ?? [];
+  if (statuses.length > 0) add(w, `lead_status IN (${statuses.map(() => "?").join(", ")})`, ...statuses);
   return all<ContactRow>(db, `SELECT * FROM contacts ${whereSql(w)} ORDER BY name COLLATE NOCASE, id LIMIT ?`, [
     ...w.params,
     options.limit ?? 20,

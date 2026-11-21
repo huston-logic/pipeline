@@ -100,7 +100,32 @@ test("Log the text on a deal: one log_activity change by the owner, a note sayin
   assert.equal(row?.type, "note");
   assert.equal(row?.summary, "Sent a text message.");
   assert.equal(row?.deal_id, "dl_seed01");
+  assert.equal(row?.data, '{"via":"text"}', "the board marks it as a text");
   assert.match((await load(env, location, page.cookie)).body, /<p class="banner-text">/);
+});
+
+test("Log the text on a New lead makes them Contacted; a via other than exactly text is ignored", async () => {
+  const db = await seededDb();
+  const env = devEnv(db);
+  db.exec(`UPDATE contacts SET lead_status = 'new' WHERE id = 'ct_seed03'`);
+  db.exec(`UPDATE deals SET status = 'lost', stage_key = 'lost' WHERE contact_id = 'ct_seed03'`);
+  db.exec(`UPDATE contacts SET lead_status = 'new' WHERE id = 'ct_seed04'`);
+  db.exec(`UPDATE deals SET status = 'lost', stage_key = 'lost' WHERE contact_id = 'ct_seed04'`);
+
+  const odd = await load(env, "/contacts/ct_seed04");
+  const oddFields = oneTapFields(odd.body, "/contacts/ct_seed04/log", "Sent a text message.");
+  oddFields.set("via", "Text");
+  const ignored = await post(env, "/contacts/ct_seed04/log", oddFields, { cookie: odd.cookie, token: odd.token });
+  assert.equal(ignored.res.status, 303);
+  assert.equal((await lastActivity(db))?.data, null);
+  assert.equal((await db.prepare("SELECT lead_status FROM contacts WHERE id = 'ct_seed04'").first<{ lead_status: string }>())?.lead_status, "new");
+
+  const page = await load(env, "/contacts/ct_seed03");
+  const fields = oneTapFields(page.body, "/contacts/ct_seed03/log", "Sent a text message.");
+  const { res, location } = await post(env, "/contacts/ct_seed03/log", fields, { cookie: page.cookie, token: page.token });
+  assert.equal(res.status, 303);
+  assert.match((await auditOf(db, changeIdOf(location)))?.summary ?? "", /is now Contacted \(change/);
+  assert.equal((await db.prepare("SELECT lead_status FROM contacts WHERE id = 'ct_seed03'").first<{ lead_status: string }>())?.lead_status, "contacted");
 });
 
 test("Log the call and Log the email on a contact: one audited change each, of type call and email", async () => {

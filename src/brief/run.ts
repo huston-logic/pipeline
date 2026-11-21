@@ -7,10 +7,11 @@ import type { Env } from "../env.ts";
 import { newId } from "../ids.ts";
 import { type PushOptions, sendBriefPush } from "../push/send.ts";
 import { untrustedFields } from "../services/labels.ts";
+import { leadCounts } from "../services/leads-read.ts";
 import { whatsDue } from "../services/read.ts";
 import { listQuietDeals } from "../services/rules.ts";
 import { localDate, localHour } from "../time.ts";
-import { type BriefLead, type BriefQuietDeal, composeBrief } from "./compose.ts";
+import { type BriefInput, type BriefLead, type BriefQuietDeal, composeBrief } from "./compose.ts";
 import { sendBlocker, sendBrief } from "./send.ts";
 
 const DAY_MS = 86_400_000;
@@ -92,6 +93,13 @@ async function quietList(db: Db, now: Date): Promise<BriefQuietDeal[]> {
   return [...byDeal.values()].sort((a, b) => b.quietDays - a.quietDays || a.id.localeCompare(b.id));
 }
 
+/** New, Contacted and Not now people; null when there are none, so an owner with no leads sees no new line. */
+async function openLeadCounts(db: Db): Promise<BriefInput["leads"]> {
+  const counts = await leadCounts(db);
+  const leads = { new: counts.new, contacted: counts.contacted, notNow: counts.not_now };
+  return leads.new + leads.contacted + leads.notNow === 0 ? null : leads;
+}
+
 /**
  * Composes and stores today's brief when it is due, emails it when sending is on, then pushes the phone notification
  * when push is set up. Returns counts only.
@@ -113,6 +121,7 @@ export async function runBrief(env: Env, now: Date, push: PushOptions = {}): Pro
     tasks: { overdue: due.overdueTasks, today: due.todayTasks },
     quietDeals: await quietList(db, now),
     newLeads: await newLeads(db, previous?.composed_at ?? new Date(now.getTime() - DAY_MS).toISOString(), now),
+    leads: await openLeadCounts(db),
   });
 
   // "pending" is overwritten once the send finishes; it stays only if the Worker dies in between, and the brief is
