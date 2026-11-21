@@ -27,9 +27,16 @@ export function contactLink(id: string, name: string, outside: boolean): Html {
   return html`<a href="${contactHref(id)}">Contact ${id}</a> ${outsideLabel()} <span class="outside-value">${name}</span>`;
 }
 
-/** The primary New lead button on Today, Pipeline and Contacts; `from` is where its Cancel goes back to. */
-export const newLeadButton = (from: "today" | "pipeline" | "contacts"): Html =>
-  html`<p class="page-action"><a class="button" href="/leads/new?from=${from}">New lead</a></p>`;
+const ADD = { deal: { path: "/deals/new", label: "Add a deal" }, lead: { path: "/leads/new", label: "Add a lead" } } as const;
+
+/**
+ * Add a deal and Add a lead under a page's lede (decision 0028), the first as the primary button and any other as a
+ * quiet one. `from` is the page they are on, where Cancel goes back to.
+ */
+export const addButtons = (from: "today" | "pipeline" | "contacts" | "leads", kinds: readonly ("deal" | "lead")[]): Html =>
+  html`<p class="page-action">${kinds.map(
+    (kind, i) => html`<a class="button${i === 0 ? "" : " button-quiet"}" href="${ADD[kind].path}?from=${from}">${ADD[kind].label}</a>`,
+  )}</p>`;
 
 export const when =(iso: string, local: string): Html => html`<time datetime="${iso}">${local}</time>`;
 

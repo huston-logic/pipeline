@@ -11,6 +11,7 @@ import { moveForm, safeDealName } from "../move.ts";
 import { contactHref, empty, formatNumber, labelled, type Pair, pairs, section, tag, when } from "../parts.ts";
 import { logForm } from "../log-form.ts";
 import { askSection } from "../ask-claude.ts";
+import { backToLeadsForm } from "../lead-forms.ts";
 import { reachActions } from "../reach.ts";
 import { customRows, outsideNote, STATUS, taskCard, timelineItem } from "../records.ts";
 import { addTaskForm, type Subject } from "../task-forms.ts";
@@ -63,6 +64,7 @@ ${pairs([
 ${deal.archived ? html`<p class="note">This deal is archived.</p>` : ""}
 <p class="card-actions"><a href="${dealEditPath(deal.id)}">Edit deal</a></p>
 ${deal.archived ? "" : html`<div class="card-move">${moveForm({ id: deal.id, name, stageKey: stage.key }, stages, form)}</div>`}
+${deal.archived || deal.status === "won" ? "" : html`<div class="card-return">${backToLeadsForm(deal.id, form)}</div>`}
 </div>`,
   );
 }

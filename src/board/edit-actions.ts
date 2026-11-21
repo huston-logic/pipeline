@@ -1,15 +1,14 @@
-// The board's editing posts (decision 0018): New lead, a new deal for a contact, Edit contact, Edit deal, Add a task,
-// Done, Snooze and Log. Each calls the service the matching MCP tool calls, as the owner under that tool's name, and
-// answers 303 back with ?change=. A refused post draws its form again (422) with the values kept and the errors.
+// The board's editing posts (decision 0018): Add a deal for a new person, a new deal for a contact, Edit contact, Edit
+// deal, Add a task, Done, Snooze and Log. Each calls the service the matching MCP tool calls, as the owner under that
+// tool's name, and answers 303 back with ?change=. A refused post draws its form again (422) with the values kept and
+// the errors. The lead routes (decision 0028) are in lead-actions.ts.
 import type { ActivityType, FieldDefRow } from "../db/db.ts";
 import { getContact, getDeal, getTask, listFieldDefs } from "../db/queries.ts";
 import { isContactId, isDealId, isTaskId } from "../ids.ts";
 import { logActivity } from "../services/activities.ts";
 import { addDeal, type DealInput } from "../services/add-deal.ts";
-import { StaleWriteError } from "../services/change.ts";
 import { type ContactPatch, updateContact } from "../services/contacts.ts";
 import { type DealPatch, updateDeal } from "../services/deals.ts";
-import { UserError } from "../services/errors.ts";
 import { ownerTimezone } from "../services/lookup.ts";
 import { addTask, completeTask, snoozeTask } from "../services/tasks.ts";
 import {
@@ -18,24 +17,27 @@ import {
   asOwner,
   type Route,
   backTo,
+  fieldError,
   notFound,
   page,
   pageContext,
   redirect,
+  refusal,
   refusedFormPage,
   refusedPage,
+  stateOf,
 } from "./action-kit.ts";
 import { RETURN_FIELD } from "./forms.ts";
 import { html } from "./html.ts";
 import { errorSummary } from "./inputs.ts";
+import { addReturn } from "./lead-forms.ts";
 import { logForm, logSpecs } from "./log-form.ts";
 import { contactEditPage, contactEditPath } from "./pages/contact-edit.ts";
 import { dealEditPage, dealEditPath } from "./pages/deal-edit.ts";
 import { newDealPage, newDealPath, newDealSpecs } from "./pages/deal-new.ts";
-import { LEAD_PATH, leadPage, leadReturn } from "./pages/lead-new.ts";
-import type { FormState } from "./pages/record-page.ts";
+import { PERSON_DEAL_PATH, personDealPage } from "./pages/deal-new-person.ts";
 import { contactHref, dealHref } from "./parts.ts";
-import { type Collected, collectEdit, collectNew, contactSpecs, dealSpecs, leadSpecs, line, parseValue, postedValue } from "./record-form.ts";
+import { collectEdit, collectNew, contactSpecs, dealSpecs, line, parseValue, personDealSpecs, postedValue } from "./record-form.ts";
 import { fieldId } from "./record-fields.ts";
 import { withChange } from "./return-to.ts";
 import { MORNING, snoozePresets } from "./snooze.ts";
@@ -43,39 +45,20 @@ import { addTaskForm, snoozeForms, type Subject, subjectHref, taskSpecs } from "
 
 const NOTHING_TO_SAVE = "Nothing to save: every field is as it was. Change a value, or cancel to go back.";
 
-const stateOf = (collected: Collected, extra: string[] = []): FormState => ({
-  shown: collected.shown,
-  errors: [...collected.errors, ...extra.map((message) => ({ message }))],
-});
-
-/** A service's refusal, in words for the board: a write that lost a race says so without naming tool calls. */
-function refusal(error: unknown, what: string): string {
-  if (error instanceof StaleWriteError) return `This ${what} was changed while you were saving, so nothing was saved. Check the form and save again.`;
-  if (error instanceof UserError) return error.message;
-  throw error;
-}
-
-/** Marks one field of a collected form as wrong. */
-function fieldError(collected: Collected, name: string, message: string): void {
-  collected.errors.push({ name, message });
-  const item = collected.shown.get(name);
-  if (item !== undefined) item.error = message;
-}
-
 const defsOf = (ctx: ActionContext): Promise<FieldDefRow[]> => listFieldDefs(ctx.db);
 
-/** POST /leads/new: add_deal for a new person (task L7 turns this page into the deal form). Then the new deal's page. */
-async function newLead(ctx: ActionContext): Promise<ActionResult> {
-  const collected = collectNew(leadSpecs(await defsOf(ctx)), ctx.form);
-  const cancel = leadReturn(ctx.form.get(RETURN_FIELD));
+/** POST /deals/new: add_deal for a new person (or one whose email is on file). Then the new deal's page. */
+async function newPersonDeal(ctx: ActionContext): Promise<ActionResult> {
+  const collected = collectNew(personDealSpecs(await defsOf(ctx)), ctx.form);
+  const cancel = addReturn(ctx.form.get(RETURN_FIELD), "/pipeline");
   const refused = async (extra: string[] = []) =>
-    page(422, await leadPage(pageContext(ctx, LEAD_PATH), stateOf(collected, extra), cancel));
+    page(422, await personDealPage(pageContext(ctx, PERSON_DEAL_PATH), stateOf(collected, extra), cancel));
   if (collected.errors.length > 0) return refused();
   try {
     const result = await addDeal(asOwner(ctx, "add_deal"), collected.input as DealInput);
     return redirect(withChange(dealHref(result.dealId), result.changeId));
   } catch (error) {
-    return refused([refusal(error, "lead")]);
+    return refused([refusal(error, "deal")]);
   }
 }
 
@@ -255,7 +238,7 @@ async function snooze(ctx: ActionContext, id: string): Promise<ActionResult> {
 }
 
 export const EDIT_ROUTES: Route[] = [
-  { path: /^\/leads\/(new)$/, handle: (ctx) => newLead(ctx), big: true },
+  { path: /^\/deals\/(new)$/, handle: (ctx) => newPersonDeal(ctx), big: true },
   { path: /^\/contacts\/([^/]+)\/deals\/new$/, handle: newDeal, big: true },
   { path: /^\/contacts\/([^/]+)\/edit$/, handle: editContact, big: true },
   { path: /^\/deals\/([^/]+)\/edit$/, handle: editDeal, big: true },

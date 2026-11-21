@@ -14,13 +14,15 @@ import { joinAnd } from "../services/describe.ts";
 import { canUndo, undoAction } from "./banner.ts";
 import { MAX_BODY_BYTES, RECORD_FORM_MAX_BYTES } from "../http/limits.ts";
 import { type ActionContext, type ActionResult, asOwner, backTo, type MatchedAction, notFound, page, redirect, refusedPage, type Route } from "./action-kit.ts";
+import { isUnqualified } from "../services/lead-status.ts";
 import { EDIT_ROUTES } from "./edit-actions.ts";
 import { PUSH_ROUTES } from "./push-actions.ts";
 import { type FormContext, hidden, postForm } from "./forms.ts";
 import { html } from "./html.ts";
 import { renderPage } from "./layout.ts";
+import { LEAD_ROUTES } from "./lead-actions.ts";
 import { moveAction, moveForm, safeDealName } from "./move.ts";
-import { count, dealHref } from "./parts.ts";
+import { contactHref, count, dealHref } from "./parts.ts";
 import { withChange } from "./return-to.ts";
 
 function confirmPage(ctx: ActionContext, deal: DealRow, label: string, stage: StageRow, back: string): string {
@@ -116,21 +118,36 @@ async function undo(ctx: ActionContext, id: string): Promise<ActionResult> {
       const removals = change !== null && canUndo(change) ? await undoRemovals(ctx.db, id) : [];
       if (removals.length > 0) return page(200, undoConfirmPage(ctx, id, removals, back));
     }
+    const home = await homeIfRemoved(ctx, back);
     const result = await undoChange(asOwner(ctx, "undo_change"), id);
-    return redirect(withChange(await stillThere(ctx, back), result.changeId));
+    return redirect(withChange(await home(), result.changeId));
   } catch (error) {
     if (!(error instanceof UserError)) throw error;
     return page(422, refusedPage(ctx, "That change wasn't undone", error.message, back, ""));
   }
 }
 
-/** An undo can remove the record the page was about (a new lead's deal): then go to its list instead of a 404. */
-async function stillThere(ctx: ActionContext, back: string): Promise<string> {
+/**
+ * An undo can remove the record the page was about (a new deal, a new lead). Read before the undo, this says where to
+ * go after it instead of a 404: a removed deal's person when they are still there (an undone Qualify), else Pipeline;
+ * a removed lead's list, Leads; any other removed person, Contacts.
+ */
+async function homeIfRemoved(ctx: ActionContext, back: string): Promise<() => Promise<string>> {
   const record = /^\/(deals|contacts)\/([^/?]+)/.exec(back);
-  if (record === null) return back;
+  if (record === null) return async () => back;
   const [, kind, id = ""] = record;
-  const found = kind === "deals" ? await getDeal(ctx.db, id) : await getContact(ctx.db, id);
-  return found !== null ? back : kind === "deals" ? "/pipeline" : "/contacts";
+  if (kind === "deals") {
+    const deal = await getDeal(ctx.db, id);
+    return async () => {
+      if (deal === null || (await getDeal(ctx.db, id)) !== null) return back;
+      return (await getContact(ctx.db, deal.contact_id)) !== null ? contactHref(deal.contact_id) : "/pipeline";
+    };
+  }
+  const contact = await getContact(ctx.db, id);
+  return async () => {
+    if (contact === null || (await getContact(ctx.db, id)) !== null) return back;
+    return isUnqualified(contact.lead_status) ? "/leads" : "/contacts";
+  };
 }
 
 const ROUTES: Route[] = [
@@ -138,6 +155,7 @@ const ROUTES: Route[] = [
   { path: /^\/changes\/([^/]+)\/undo$/, handle: undo },
   ...EDIT_ROUTES,
   ...PUSH_ROUTES,
+  ...LEAD_ROUTES,
 ];
 
 /** The handler for a board write path and its body cap, or null: every other POST keeps the 405 answer. */

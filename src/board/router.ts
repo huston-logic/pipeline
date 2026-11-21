@@ -15,6 +15,8 @@ import { contactEditPage } from "./pages/contact-edit.ts";
 import { contactsPage } from "./pages/contacts.ts";
 import { dealEditPage } from "./pages/deal-edit.ts";
 import { newDealPage } from "./pages/deal-new.ts";
+import { PERSON_DEAL_PATH, personDealPage } from "./pages/deal-new-person.ts";
+import { qualifyPage } from "./pages/qualify.ts";
 import { dealPage } from "./pages/deal.ts";
 import { exportPage } from "./pages/export.ts";
 import { LEAD_PATH, leadPage } from "./pages/lead-new.ts";
@@ -51,6 +53,7 @@ const PAGES = new Map<string, Page>([
   ["/export", exportPage],
   [NOTIFICATIONS_PATH, (ctx, request) => notificationsPage(ctx, request.pushKey)],
   [LEAD_PATH, (ctx) => leadPage(ctx)],
+  [PERSON_DEAL_PATH, (ctx) => personDealPage(ctx)],
 ]);
 
 /** Anything isDealId or isContactId refuses can't be a record, so it gets the plain 404 without a lookup. */
@@ -60,6 +63,7 @@ const RECORD_PATHS: { path: RegExp; isId: (id: string) => boolean; page: RecordP
   { path: /^\/deals\/([^/]+)\/edit$/, isId: isDealId, page: (ctx, id) => dealEditPage(ctx, id) },
   { path: /^\/contacts\/([^/]+)\/edit$/, isId: isContactId, page: (ctx, id) => contactEditPage(ctx, id) },
   { path: /^\/contacts\/([^/]+)\/deals\/new$/, isId: isContactId, page: (ctx, id) => newDealPage(ctx, id) },
+  { path: /^\/contacts\/([^/]+)\/qualify$/, isId: isContactId, page: (ctx, id) => qualifyPage(ctx, id) },
 ];
 
 async function contextFor({ db, now, url, csrf }: Omit<PageRequest, "pushKey">): Promise<PageContext> {

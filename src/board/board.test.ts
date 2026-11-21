@@ -61,7 +61,8 @@ function assertPage(body: string, path: string) {
   assert.match(body, /<nav class="app-nav" aria-label="Board pages">/, path);
   assert.match(body, /<link rel="stylesheet" href="\/theme.css">/, path);
   // /board.js: dragging on the pipeline board, the phone actions and Copy prompt on deal and contact pages (decision 0021).
-  const scripted = path === "/pipeline" || /^\/deals\/[^/]+$/.test(path) || /^\/contacts\/[^/]+$/.test(path);
+  // /deals/new is the Add a deal form, not a deal page.
+  const scripted = path === "/pipeline" || /^\/deals\/(?!new$)[^/]+$/.test(path) || /^\/contacts\/[^/]+$/.test(path);
   assert.deepEqual(scriptsOf(body), scripted ? [BOARD_JS] : [], `${path}: scripts`);
   assert.doesNotMatch(body, /\sstyle=/i, `${path}: no inline styles (the CSP refuses them)`);
 }
@@ -636,9 +637,9 @@ test("the More page links to Rules, Changes and Export, each with a one-line des
 
 test("board pages answer GET and HEAD only: any other method is 405 (writes have their own paths)", async () => {
   const db = await seededDb();
-  // A record form page (New lead, Edit, New deal) is posted back to its own path (decision 0018), behind the same
-  // checks as every board write: a bare POST (no origin, no cookie, no token) is refused.
-  const formPage = (path: string) => /\/(?:edit|new)$/.test(path);
+  // A record form page (Add a lead or a deal, Edit, New deal, Qualify) is posted back to its own path (decisions 0018,
+  // 0028), behind the same checks as every board write: a bare POST (no origin, no cookie, no token) is refused.
+  const formPage = (path: string) => /\/(?:edit|new|qualify)$/.test(path);
   for (const path of boardRoutes) {
     for (const method of ["POST", "PUT", "DELETE", "PATCH"]) {
       if (method === "POST" && formPage(path)) {

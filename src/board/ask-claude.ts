@@ -1,14 +1,15 @@
-// "Ask Claude" on the deal page (decision 0021): links that open claude.ai with a prompt filled in, and the same prompt
-// to copy into any AI app that has the pipeline connected. The prompts are fixed sentences around the deal id: no
+// "Ask Claude" on the deal page (decision 0021) and a lead's page (decision 0028): links that open claude.ai with a
+// prompt filled in, and the same prompt to copy into any AI app that has the pipeline connected. The prompts are fixed
+// sentences around the deal or contact id: no
 // name, email, title or other record text goes into the URL or the prompt (privacy, and no outside text as
 // instructions). The AI reads the deal itself through the MCP tools. No AI call happens in the product.
-import { isDealId } from "../ids.ts";
+import { isContactId, isDealId } from "../ids.ts";
 import { type Html, html } from "./html.ts";
 import { section } from "./parts.ts";
 
 export const ASK_CLAUDE_URL = "https://claude.ai/new?q=";
 
-export type AskPrompt = { key: "prep" | "follow-up"; label: string; prompt: string };
+export type AskPrompt = { key: "prep" | "follow-up" | "intro"; label: string; prompt: string };
 
 /** The two prompts for a deal, or none when `dealId` can't be a deal id. */
 export function askPrompts(dealId: string): AskPrompt[] {
@@ -48,14 +49,30 @@ function askRow({ key, label, prompt }: AskPrompt): Html {
 </li>`;
 }
 
-/** The Ask Claude section, or nothing when there are no prompts. */
-export function askSection(dealId: string): Html | "" {
-  const prompts = askPrompts(dealId);
+/** The lead page's one prompt (decision 0028), or none when `contactId` can't be a contact id. */
+export function leadAskPrompts(contactId: string): AskPrompt[] {
+  if (!isContactId(contactId)) return [];
+  return [
+    {
+      key: "intro",
+      label: "Draft an intro in my voice",
+      prompt: `Draft an intro to contact ${contactId} in my voice. Read my rulebook first, then the contact.`,
+    },
+  ];
+}
+
+function askList(prompts: AskPrompt[], what: string): Html | "" {
   if (prompts.length === 0) return "";
   return section(
     "ask-heading",
     "Ask Claude",
-    html`<p class="section-note">Opens Claude in a new tab with the question filled in. It names this deal by its id only; Claude reads the rest through your pipeline tools. Copy prompt works in any AI app with your pipeline connected.</p>
+    html`<p class="section-note">Opens Claude in a new tab with the question filled in. It names ${what} only; Claude reads the rest through your pipeline tools. Copy prompt works in any AI app with your pipeline connected.</p>
 <ul class="panel rows ask">${prompts.map(askRow)}</ul>`,
   );
 }
+
+/** The deal page's Ask Claude section, or nothing when there are no prompts. */
+export const askSection = (dealId: string): Html | "" => askList(askPrompts(dealId), "this deal by its id");
+
+/** A lead's Ask Claude section: the intro prompt, naming the person by id only. */
+export const leadAskSection = (contactId: string): Html | "" => askList(leadAskPrompts(contactId), "this person by their id");

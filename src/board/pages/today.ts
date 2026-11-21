@@ -16,7 +16,7 @@ import { type Html, html } from "../html.ts";
 import type { PageContext } from "../context.ts";
 import { renderPage } from "../layout.ts";
 import type { FormContext } from "../forms.ts";
-import { count, dealLink, empty, labelled, newLeadButton, pairs, section, tag, when } from "../parts.ts";
+import { count, dealLink, empty, labelled, addButtons, pairs, section, tag, when } from "../parts.ts";
 import { taskActions } from "../task-forms.ts";
 import { briefDate, briefLine, sendStatusText } from "./brief.ts";
 import { stageCountText, summaryLine } from "./pipeline.ts";
@@ -68,7 +68,7 @@ function dueSections(due: WhatsDue, form: FormContext): Html {
     return section(
       "due-heading",
       "Due today",
-      empty("Nothing due today.", "Add a task on a deal or contact page, or add a new lead."),
+      empty("Nothing due today.", "Add a task on a deal or contact page, or add a deal or a lead."),
     );
   }
   return html`${overdue > 0 ? section("overdue-heading", "Overdue", cards(due.overdueTasks, due.overdueDeals, true, form)) : ""}
@@ -131,7 +131,7 @@ export async function todayPage(ctx: PageContext): Promise<string> {
 <p class="page-date"><time datetime="${date}">${headerDate(date)}</time></p>
 </div>
 <p class="lede">${summaryLine(summary)}</p>
-${newLeadButton("today")}
+${addButtons("today", ["deal", "lead"])}
 <div class="today-columns">
 <div class="today-due">
 ${dueSections(due, ctx)}

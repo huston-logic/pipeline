@@ -283,9 +283,10 @@ The confirm page (closing a deal, or an undo that removes records): the question
 service's message as the lede in `ink`, the form again in a card at most 28rem wide, and "Back to the page".
 
 ### 7.20 Record forms (`.record-form`, `.field`, `.error-summary`; decision 0018)
-New lead, a new deal, Edit contact and Edit deal are pages: a "Back to …" link, the h1, one lede line, the fields in
-one white card (two cards under h2s, Contact and Deal, on New lead), then the primary button ("Add the lead", "Save
-changes") and a Cancel link side by side, 44px or more. Each field: a visible label (600), "(required)" in words in
+Add a lead, Add a deal, a new deal for a contact, Qualify, Edit contact and Edit deal are pages: a "Back to …" link,
+the h1, one lede line, the fields in one white card (two cards under h2s, Contact and Deal, on Add a deal), then the
+primary button ("Add the lead", "Save changes") and a Cancel link side by side, 44px or more. A checkbox ("Create a
+deal", "Add anyway") is a 24px box with its label beside it in one 44px row (`.check`). Each field: a visible label (600), "(required)" in words in
 `ink-2` 500, an optional hint (§7.14), the control (48px, 1px `ink-2` edge, `--r-field`; textareas 7rem, resizable).
 A value that came from outside has the "From outside" pill under its label, at its own width, read with the control
 (`aria-describedby`). A date is a group: a legend, then Date and Time side by side (wrapping on a phone), the time
@@ -299,8 +300,16 @@ At the foot of every task card, on a `--divider` line: Done (a small quiet butto
 (`ink-2` 600, like Move to). Open, it shows two quiet buttons ("Tomorrow morning", "Next week"), one hint line on what
 they mean, and a date and time with a small Snooze button. Add a task and Log are disclosures under their section (the
 summary in `--accent` 600, 44px); open, the form sits in a white bordered box. Hidden words name the task in every
-button, so a screen reader can tell the cards apart. The New lead button (§7.10 primary) sits under the lede on Today,
-Pipeline and Contacts.
+button, so a screen reader can tell the cards apart. Add a deal (§7.10 primary) and Add a lead (quiet) sit side by side
+under the lede on Today, Pipeline and Contacts; Leads has Add a lead alone, as the primary button (decision 0028).
+
+### 7.21a A lead's page (`.lead-card`; decision 0028)
+Only for someone with a lead status. The first section of the left column, an h2 "Lead", holds one white card: the
+status line ("Lead status: Not now, since Thu Nov 19", 600, `ink`), then the status menu (a select and an optional
+check-back date as §7.20 fields, then a small "Save status" button), then, on a `--divider` line, "Qualify" as a
+primary button. A Qualified person's card has the status line only. The Ask Claude section (§7.23) holds one prompt,
+"Draft an intro in my voice", at the top of the right column. On a deal page, "Back to leads" is a small quiet button
+on a `--divider` line under the Move to form; it opens a confirm page (§7.19) with a "Lead status" select.
 
 ### 7.22 Phone actions (`.reach`; decision 0021)
 At the foot of the contact card on the deal page and the Details card on the contact page, on a `--divider` line,
