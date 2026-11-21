@@ -61,15 +61,18 @@ this file before changing the repo, and update it when a rule changes.
   eval, each file at most 3 KB gzipped (tests check). `public/board.js`: drag a pipeline card to another stage, which
   submits the card's Move to form; on deal and contact pages, after Call, Text or Email, focus the matching one-tap
   Log button, and Copy prompt for Ask Claude (decision 0021). `public/push.js` (Notifications page only, decision
-  0030): on the tap, ask for permission, register `/sw.js`, subscribe, fill the form's hidden fields and submit it. No
-  innerHTML, fetch or pop-ups in either.
+  0030): on the tap, ask for permission, register `/sw.js`, subscribe, fill the form's hidden fields and submit it; on
+  load, mark this browser's own row "This phone" and offer Turn off on this phone. No innerHTML, fetch or pop-ups in
+  either.
 - **Brief notification** (decision 0030): `public/sw.js` is the only service worker, registered only by `push.js`. It
   shows one fixed notification on `push` and opens `/brief` on `notificationclick`, nothing else: no `fetch` handler,
   no `caches`, no `importScripts` (`scripts/no-service-worker.test.mjs`). `src/push/` sends each push from the Worker:
   the fixed payload `{"kind":"brief"}` encrypted per RFC 8291 (`encrypt.ts`, tested against the RFC's vector) with a
-  VAPID header (`vapid.ts`), to every row of `push_subscriptions` that is on, after `runBrief` stores the brief.
-  Subscribe, turn off and "gone" (404/410) are audited changes (`subscriptions.ts`); summaries name a device by its
-  `ps_` id, never its endpoint, and no endpoint goes in a log. Off until the three `VAPID_*` secrets exist.
+  VAPID header (`vapid.ts`), to every row of `push_subscriptions` that is on (at most 20), after `runBrief` has stored
+  and emailed the brief; each push has a 10-second timeout and never follows a redirect. Subscribe, turn off and
+  "gone" (404/410) are audited changes (`subscriptions.ts`); summaries name a device by its `ps_` id, never its
+  endpoint, and no endpoint goes in a log, a page or MCP. Off until the three `VAPID_*` secrets exist (`npm run dev`
+  and `npm run preview` make a throwaway pair in memory).
 - **Phone actions and Ask Claude** (decision 0021): `src/board/reach.ts` draws Call, Text and Email (`tel:`, `sms:`,
   `mailto:`) and one-tap Log forms that post to the log route; `src/board/ask-claude.ts` draws the deal page's
   `https://claude.ai/new?q=` links. Their prompts are fixed sentences around the deal id: never put a name, email,

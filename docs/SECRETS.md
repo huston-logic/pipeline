@@ -62,7 +62,8 @@ stored, and its `send_status` says which switch is off.
 ## Local development
 
 Local development needs no secrets: `npm run dev` runs in development mode (`AUTH_MODE=dev`) with `--var` values and
-fake seed data. A
+fake seed data. They also make a throwaway `VAPID_*` key pair in memory on each start (passed as `--var`, never
+written to a file), so the Notifications page works locally. A
 git-ignored `.dev.vars` file also works for trying a secret locally. CI needs none: tests mock `fetch` and use fake
 values.
 

@@ -23,8 +23,8 @@ with no body was not confirmed in the docs read.
   `public/push.js` at `/sw.js` (scope `/`). It handles two events and nothing else:
   - `push`: `showNotification("Your daily brief is ready", { body: "Open the Brief tab.", icon:
     "/icons/icon-192.png", tag: "brief" })`, the same text every time; the payload is not read.
-  - `notificationclick`: close the notification, then focus an open board window and navigate it to `/brief`, or else
-    `clients.openWindow("/brief")`.
+  - `notificationclick`: close the notification, then navigate a board window this worker controls
+    (`clients.matchAll({ type: "window" })`) to `/brief` and focus it, or else `clients.openWindow("/brief")`.
   It caches nothing, has no `fetch` handler, uses no `caches`, no `importScripts` and no other code; every page still
   comes from the Worker behind the sign-in. `scripts/no-service-worker.test.mjs` enforces all of this. The Worker
   serves `/sw.js` (a static file) with `Cache-Control: no-cache`, so the phone checks for a new version on each load.
@@ -39,22 +39,34 @@ with no body was not confirmed in the docs read.
 - **Subscriptions are audited changes.** Turn on (`push_subscribe`), Turn off (`push_remove`, both actor owner) and
   "gone" (actor system, tool `push_send`: the push service answered 404 or 410) are each one change with a one-line
   summary naming the device as "notifications on one device (ps_…)", and each can be undone. Nothing is deleted: off
-  sets `gone_at`. An endpoint that is already on is no change; one that was turned off comes back on as the same row.
-  The endpoint must be https, at most 1,000 characters, with no user name or password; the keys must be a 65-byte
-  P-256 point and a 16-byte secret. Push subscriptions are not in the export (they are delivery addresses for the
-  owner's devices, not pipeline data); their snapshots are in the change log like every other change.
-- **At brief time.** After `runBrief` stores the day's brief (only the run that stored it), every subscription that is
-  on gets one push. A failure never stops the brief or its email; the cron log gets counts only (`pushed`,
-  `push_gone`, `push_failed`, present only when the copy has push keys).
+  sets `gone_at`. An endpoint that is already on with the same keys is no change; with new keys it is a key update (an
+  audited change); one that was turned off comes back on as the same row. At most 20 devices are on at once; a 21st
+  is refused in plain words. The endpoint must be https, at most 1,000 characters, with no user name or password; the
+  keys must be a 65-byte P-256 point and a 16-byte secret.
+- **Where the endpoint and keys live.** In `push_subscriptions`, and, like every change, in the `before`/`after`
+  snapshots of `audit_log`. So they reach the owner's own export through `audit_log` (the `push_subscriptions` table
+  itself is not exported: delivery addresses for the owner's devices, not pipeline data). They are never shown on the
+  board, in a change summary, in a log or through MCP (no MCP tool reads that table, and summaries name a device by its
+  `ps_` id). The board's device rows carry only the endpoint's SHA-256, so push.js can recognise its own row.
+- **At brief time.** After `runBrief` stores the day's brief (only the run that stored it), it emails the brief and
+  records the email's status first, then sends one push to every subscription that is on, all at once
+  (`Promise.allSettled`), each with a 10-second timeout and `redirect: "manual"` (a 3xx counts as failed). A slow or
+  silent push service can't hold back the email or leave the brief "pending". A push failure never stops the brief;
+  the cron log gets counts only (`pushed`, `push_gone`, `push_failed`, present only when the copy has push keys).
 - **The board.** "Notifications" under More (`/notifications`): "Turn on notifications" (push.js, on the tap: ask for
   permission, register `/sw.js`, subscribe with the copy's public key, fill the form's hidden fields and send it as a
   normal page load), the devices that are on with "Turn off" each, and "Send a test" (counts only, shown on the page).
+  On load, when this browser's own subscription (`pushManager.getSubscription()`) is one of the listed rows, push.js
+  marks that row "This phone" and shows "Turn off on this phone" instead of Turn on (POST `/notifications/off` with the
+  browser's endpoint; the same audited remove). Without JavaScript the per-device Turn off buttons are the way.
   The POST routes are in the board route table (sign-in, same origin, form body, CSRF, then the service). Without
   JavaScript or without push in this browser, the page says in one line that this browser can't turn notifications
   on (on an iPhone, add the board to the Home Screen first). `push.js` loads only on this page.
 - **Keys and off switch.** `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` and `VAPID_SUBJECT` are per-copy secrets
-  (docs/SECRETS.md), made by `node scripts/make-vapid-keys.mjs --copy <name>`, which prints the three `wrangler secret
-  put` commands with the values and writes no file. Until all three are set and well formed, the page says "This copy
+  (docs/SECRETS.md), made by `node scripts/make-vapid-keys.mjs --copy <name> --subject mailto:<owner email>` (the
+  subject is required), which prints the three `wrangler secret put` commands with the values and writes no file.
+  `npm run dev` and `npm run preview` make a throwaway pair in memory on each start (passed as `--var`, never written
+  to a file), so local accessibility, Lighthouse and screenshot runs see the page with keys. Until all three are set and well formed, the page says "This copy
   has no notification keys yet." with nothing to tap, and the brief sends no push. The public key reaches the page as a
   data attribute (it is public by design); the private key never leaves the Worker.
 - **CSP unchanged.** `sw.js` and `push.js` are first-party files from `public/` (`script-src 'self'`); the Worker, not
