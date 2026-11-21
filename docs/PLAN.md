@@ -261,3 +261,27 @@ One branch and PR per task, each from a fresh `main`. Look: the Huston Logic v3 
 | R10 | Owner-only proposals | `.proposed` engine reviewers for `.claude/agents/review-*.md` and anything else owner-only, with one hand-copy script, in `.owner-review/proposals/` |
 
 Screenshots of each main page at 375 px and 1280 px go in `.owner-review/screenshots/` (git-ignored).
+
+## Run 4: people and leads, then "it comes to you" (2026-11-20)
+
+Design recorded first in decision 0022 (leads are people with a lead status, not a table). The detailed plan, with
+interfaces and tests per task, is `docs/superpowers/plans/2026-11-20-run4-leads.md`. Leads come first: if the run
+stops early, Part A and B1 are what matter. One branch and PR per task, each from a fresh `main`.
+
+| # | Task | Done when |
+| --- | --- | --- |
+| T0 | Record the design | Decision 0022, spec updated, this table, the plan, STATUS run 4 section |
+| E1 | Install lessons | The ten lessons from the first live install folded into INSTALL.md and ACCESS-SETUP.md |
+| L1 | Leads migration | Migration 0006 (lead status on contacts; rules and rule firings rebuilt), lead status keys and labels, "leads" rulebook document |
+| L2 | Adding leads | `add_lead` (a person with status New), `add_deal` (the old `add_lead`), lead status on `update_contact`, auto-advance on contact, qualify on `/intake` and `add_deal`, sorting rule in the instructions |
+| L3 | Qualify and return | `qualify_lead` and `return_to_lead`, undoable |
+| L4 | Lead reads | `list_leads`, lead status in `search_contacts`, a leads line in `pipeline_summary` and the brief, "New inquiries" |
+| L5 | `lead_followup` rule | Engine, hourly run, preview of the present, undo refusals |
+| L6 | People on the board | People tab with Contacts, Leads and Companies views; Leads list with filters, search and sort |
+| L7 | Lead pages and forms | Status line and menu, Qualify form, Add a lead or a deal, Back to leads, Ask Claude intro |
+| L8 | Import, export, seed | `--as leads`, `lead_status` and custom field columns, round-trip, about 12 seeded leads and a rule |
+| L9 | Acceptance and CPU | Sentences 13 to 20 end to end; CPU on 2,000 leads in PAID-PLAN.md; screenshots |
+| B1 | What it caught | Monthly report page under More and in the brief on the 1st |
+| C1 | Email logging | `email()` handler for a BCC log address; docs and STOP queue for Email Routing |
+| D1 | Brief notification | No-payload web push at brief time, service worker that only notifies, key script; STOP queue for keys |
+| E2 | After you update | UPDATING.md run 4 steps; closing STATUS |
