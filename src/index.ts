@@ -17,6 +17,7 @@ import { MCP_ROUTE } from "./mcp/route.ts";
 import { withSecurityHeaders } from "./security.ts";
 
 const INTAKE_ROUTE = "/intake";
+const SERVICE_WORKER_PATH = "/sw.js";
 
 // A last path segment with an extension (/board.css, /robots.txt) is a static file in out/.
 const FILE_PATH = /\/[^/]+\.[A-Za-z0-9]+$/;
@@ -147,7 +148,12 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
 
   if (FILE_PATH.test(pathname)) {
     const asset = await env.ASSETS.fetch(request);
-    if (asset.status !== 404) return withSecurityHeaders(asset);
+    if (asset.status !== 404) {
+      const secured = withSecurityHeaders(asset);
+      // The service worker is checked for a new version on every load, not after a cached copy expires (decision 0030).
+      if (pathname === SERVICE_WORKER_PATH) secured.headers.set("Cache-Control", "no-cache");
+      return secured;
+    }
   }
   return htmlResponse(notFoundPage(), 404);
 }
