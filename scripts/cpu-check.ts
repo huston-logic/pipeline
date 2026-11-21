@@ -190,6 +190,8 @@ function cases(briefAt: Date): Case[] {
     ),
     fetchCase("mcp list_leads (New)", tool("list_leads", { statuses: ["new"] })),
     fetchCase("mcp list_leads (follow-up due within 7 days)", tool("list_leads", { dueWithinDays: 7 })),
+    fetchCase("/leads", () => new Request(`${ORIGIN}/leads`)),
+    fetchCase("/leads?status=closed", () => new Request(`${ORIGIN}/leads?status=closed`)),
     fetchCase("mcp search_contacts (leadStatus new)", tool("search_contacts", { query: "ab", leadStatus: ["new"] })),
     fetchCase("mcp preview_rule (the saved lead_followup)", tool("preview_rule", { rule: "ru_scale06" })),
     {
