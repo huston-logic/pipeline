@@ -185,22 +185,32 @@ test("htmlText can't rebuild a tag from the pieces of nested ones (CodeQL js/inc
     "<sc<i></i>ript src=x>",
     "<img<b> src=x onerror=alert(1)>",
     "<!<!-- x -->-- hidden -->",
-    "a < b and c <d",
+    "<<b>script>alert(1)<</b>/script>",
+    "<?<b>xml?>",
   ]) {
     assert.doesNotMatch(htmlText(html), /</, html);
   }
 });
 
-test("htmlText: no < from markup survives any mix of tag characters (seeded fuzz, 5,000 inputs)", () => {
-  // With no "&" in the input, a "<" in the output could only be left over from markup.
-  const alphabet = ["<", ">", "/", "!", "-", "s", "c", "r", "i", "p", "t", "b", " ", "=", '"', "\n"];
+test("htmlText keeps a < that is text, as a browser does, and drops one that starts a tag", () => {
+  assert.equal(htmlText("<p>I am < 5 min away. Call me</p>"), "I am < 5 min away. Call me\n");
+  assert.equal(htmlText("x < y <b>bold</b> and 3<4"), "x < y bold and 3<4");
+  assert.equal(htmlText("a < b and c <d"), "a < b and c ");
+  assert.equal(htmlText("ends with <"), "ends with ");
+  assert.equal(htmlText("<<b>script>"), "script>");
+});
+
+test("htmlText: a < left in the text is never followed by a tag start (seeded fuzz, 5,000 inputs)", () => {
+  // With no "&" in the input, any "<" in the output is one the walk kept as text, so it must be followed by a
+  // character that cannot open a tag (not a letter, "/", "!", "?" or another "<") and never end the text.
+  const alphabet = ["<", ">", "/", "!", "?", "-", "s", "c", "r", "i", "p", "t", "b", " ", "=", '"', "5", "\n"];
   let seed = 0x5eed;
-  // A linear congruential generator; its low bits repeat quickly, so the high ones pick the characters.
-  const next = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) >>> 16;
+  // 32-bit LCG kept exact with Math.imul; its low bits repeat quickly, so the high ones pick the characters.
+  const next = () => (seed = (Math.imul(seed, 1103515245) + 12345) >>> 0) >>> 16;
   for (let n = 0; n < 5000; n++) {
     let html = "";
     for (let length = next() % 40; length > 0; length--) html += alphabet[next() % alphabet.length];
-    assert.doesNotMatch(htmlText(html), /</, JSON.stringify(html));
+    assert.doesNotMatch(htmlText(html), /<(?:[a-z/!?<]|$)/i, JSON.stringify(html));
   }
 });
 

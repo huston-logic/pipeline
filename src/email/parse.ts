@@ -189,10 +189,15 @@ function withoutBlocks(html: string): string {
 const LINE_BREAK = /^(?:br\s*\/?|\/(?:p|div|li|tr|h[1-6]))$/i;
 const LONGEST_LINE_BREAK = 8;
 
+/** What makes a "<" start a tag, as in a browser: a letter (a tag), "/" (a closing tag), "!" or "?" (a comment). */
+const TAG_START = /[a-z/!?]/i;
+
 /**
- * The HTML with its tags gone, in one indexOf walk: every "<" starts a tag that runs to the next ">", or to the end when
- * there is none. Only text between tags is kept, so no "<" from the markup is left, and no tag can be pieced together
- * from the parts of others (a regular expression that removes one tag at a time turns "<scr<b>ipt>" into "<script>").
+ * The HTML with its tags gone, in one indexOf walk. A "<" followed by a letter, "/", "!" or "?" starts a tag that runs
+ * to the next ">", or to the end when there is none. Any other "<" is text ("I am < 5 min away") and is kept with the
+ * character after it, apart from a "<" just before another "<" or at the very end, which goes. So every "<" left is
+ * followed by a character that cannot start a tag, and no tag can be pieced together from the parts of others (a
+ * regular expression that removes one tag at a time turns "<scr<b>ipt>" into "<script>").
  */
 function withoutTags(html: string): string {
   let out = "";
@@ -201,6 +206,12 @@ function withoutTags(html: string): string {
     const open = html.indexOf("<", at);
     if (open === -1) return out + html.slice(at);
     out += html.slice(at, open);
+    const next = html.charAt(open + 1);
+    if (!TAG_START.test(next)) {
+      if (next !== "" && next !== "<") out += `<${next}`;
+      at = open + (next === "<" ? 1 : 2);
+      continue;
+    }
     const close = html.indexOf(">", open + 1);
     if (close === -1) return out;
     if (close - open - 1 <= LONGEST_LINE_BREAK && LINE_BREAK.test(html.slice(open + 1, close))) out += "\n";
