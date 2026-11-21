@@ -707,6 +707,33 @@ test("the Contacts and Companies views leave out unqualified leads and keep qual
   assert.match(companies, /Jordan Fake/);
 });
 
+test("a Contacts search that finds people only under Leads says how many leads match and links to Leads with the search (decision 0033)", async () => {
+  const db = await seededDb();
+  setLead(db, "ct_seed01", "new");
+  const one = mainOf((await get(db, "/contacts?q=Pat+Example")).body);
+  assert.match(
+    one,
+    /<p class="empty-title">No contacts match &quot;Pat Example&quot;\.<\/p>[\s\S]*?<\/div>\n<p>1 lead matches\. <a href="\/leads\?q=Pat\+Example">See Leads<\/a><\/p>\n<p class="search-clear">/,
+  );
+
+  setLead(db, "ct_seed02", "contacted");
+  const found = mainOf((await get(db, "/contacts?q=Sample")).body);
+  assert.match(found, /<p class="lede">1 contact matches &quot;Sample&quot;\.<\/p>/);
+  assert.doesNotMatch(found, /See Leads/, "a contact was found, so no hint");
+  setLead(db, "ct_seed07", "not_now");
+  const two = mainOf((await get(db, "/contacts?q=Sample")).body);
+  assert.match(two, /<p>2 leads match\. <a href="\/leads\?q=Sample">See Leads<\/a><\/p>/);
+
+  db.exec(`INSERT INTO contacts (id, name, lead_status, lead_status_at) VALUES ('ct_amp', 'Lee & Co', 'new', '2026-01-01T00:00:00.000Z')`);
+  const amp = mainOf((await get(db, `/contacts?q=${encodeURIComponent("Lee & Co")}`)).body);
+  assert.match(amp, /<p>1 lead matches\. <a href="\/leads\?q=Lee\+%26\+Co">See Leads<\/a><\/p>/);
+
+  setLead(db, "ct_seed01", "bad");
+  const closed = mainOf((await get(db, "/contacts?q=Pat+Example")).body);
+  assert.doesNotMatch(closed, /See Leads/, "only the leads the Leads view shows by default count");
+  assert.doesNotMatch(mainOf((await get(db, "/contacts?q=nobody")).body), /See Leads/);
+});
+
 test("the leads page lists open leads with name, company, status, last contact and next task", async () => {
   const db = await seededDb();
   setLead(db, "ct_seed01", "new");

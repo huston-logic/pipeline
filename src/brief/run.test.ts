@@ -161,6 +161,18 @@ test("logged emails that matched no one since the previous brief are counted onc
   assert.doesNotMatch(third?.text ?? "", /Logged email/);
 });
 
+test("a logged email with no recipient but the owner (matched 0, unmatched 0) is not counted as matching no one", async () => {
+  const db = await openTestDb();
+  await db
+    .prepare("INSERT INTO email_log (message_key, received_at, local_date, matched, unmatched) VALUES (?, ?, '2026-11-19', 0, 0)")
+    .bind("<self@mail.example.com>", new Date(SEVEN.getTime() - HOUR).toISOString())
+    .run();
+  await runBrief(envFor(db), SEVEN);
+  const [row] = await briefs(db);
+  assert.doesNotMatch(row?.text ?? "", /matched no one/);
+  assert.doesNotMatch(row?.text ?? "", /Logged email/);
+});
+
 test("the brief carries a Leads line with the open lead counts, and none without leads", async () => {
   const db = await openTestDb();
   await runBrief(envFor(db), SEVEN);
