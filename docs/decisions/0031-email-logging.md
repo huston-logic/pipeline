@@ -117,17 +117,23 @@ Read on 2026-11-20 (notes in `.superpowers/sdd/2026-11-20-run4-leads/research-em
 - **STOP for the owner (not confirmed in the docs read, check in the dashboard):** whether a subdomain such as
   `log.<domain>` can be its own Email Routing domain, so the owner's own mail records are untouched; the DNS records
   and routing rule for it; and setting `EMAIL_LOG_ADDRESS`. docs/EMAIL-LOGGING.md has the steps.
-- **Not confirmed in a live copy yet, and it matters:** that `message.headers` carries Cloudflare's header first, as
-  the docs say. Locally (`wrangler dev`) `message.headers` is read from the message itself. If production did the same
-  without Cloudflare's header, a header the sender wrote at the top of their message would be the first one, and a
-  forged `mx.cloudflare.net; dmarc=pass` would pass. So going live needs a two-part check (docs/EMAIL-LOGGING.md,
-  step 6): (a) a normal test email from the owner is logged; (b) an email that Cloudflare must fail is not logged, for
-  example one sent from an owner address whose domain has no DMARC record (Cloudflare then says `dmarc=none`), with
-  the Worker log showing `not_authenticated`. If (b) is logged, Cloudflare's verdict is not reaching the Worker as
-  expected: remove the secret (`npx wrangler secret delete EMAIL_LOG_ADDRESS -c .copies/<copy>/wrangler.jsonc`), which
-  makes the Worker drop every email, until this is resolved.
-- The owner's sending domain needs a DMARC record. Without one the verdict is `dmarc=none`, which is not a pass, so
-  the mail is dropped by design (Ruling 3).
+- **The one remaining assumption.** The code trusts that Cloudflare prepends its own `Authentication-Results` header
+  to `message.headers`, as the Email Workers docs say: "Email Routing validates DMARC before invoking your Worker. It
+  prepends a standard `Authentication-Results` header"
+  (https://developers.cloudflare.com/email-service/api/route-emails/email-handler/). Nothing in the Worker can prove it:
+  locally (`wrangler dev`) `message.headers` is read from the message itself, with nothing prepended. If a later
+  Cloudflare change broke this, a header the sender wrote at the top of their message would be the first one, and a
+  forged `mx.cloudflare.net; dmarc=pass` from someone who also forged an owner's From address could pass.
+- **What limits that risk.** A strict DMARC policy (`p=reject` or `p=quarantine`) on the owner's own domain is
+  recommended: Email Routing rejects mail that fails the domain's DMARC policy before the Worker runs
+  (https://developers.cloudflare.com/email-service/reference/postmaster/), so a forged email "from the owner" never
+  reaches the Worker whatever its headers say. The owner's sending domain needs a DMARC record anyway: without one the
+  verdict is `dmarc=none`, which is not a pass, so the mail is dropped by design (Ruling 3).
+- **Go-live check** (docs/EMAIL-LOGGING.md, step 6): (a) a normal test email from the owner is logged; (b) in the
+  Cloudflare dashboard's Email Routing activity log (exact click path: check in the dashboard), that test message shows
+  Cloudflare's SPF, DKIM and DMARC results, with DMARC pass. If (b) shows no such results while (a) logged the email,
+  remove the secret (`npx wrangler secret delete EMAIL_LOG_ADDRESS -c .copies/<copy>/wrangler.jsonc`), which makes the
+  Worker drop every email, until the cause is found.
 - The owner's mail provider must set the envelope sender to the owner's own address. A provider that uses a bounce
   address (some newsletter tools) is dropped as `not_owner`.
 - Mail sent from an alias that is not an owner email is dropped; adding it to the owner emails lets it through.

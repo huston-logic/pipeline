@@ -15,9 +15,11 @@ Steps marked **(check in the dashboard)** were not confirmed in Cloudflare's doc
 - The copy runs the code with email logging: run `npm run copies:update` first (docs/UPDATING.md).
 - The domain is on Cloudflare, in the same account as the copy's Worker.
 - Your sending address is one of the copy's owner emails (the ones that can sign in to the board).
-- Your sending address's domain has a DMARC record (a TXT record at `_dmarc.<your domain>`, for example
-  `v=DMARC1; p=none`). Mail whose domain has none gets `dmarc=none` from Cloudflare and is dropped by design (decision
-  0031, Ruling 3). Check your domain's DNS before you start.
+- Your sending address's domain has a DMARC record (a TXT record at `_dmarc.<your domain>`). Mail whose domain has
+  none gets `dmarc=none` from Cloudflare and is dropped by design (decision 0031, Ruling 3). A strict policy,
+  `p=quarantine` or `p=reject` (for example `v=DMARC1; p=reject`), is recommended: Email Routing then rejects mail that
+  fails your domain's DMARC before the Worker runs, so a forged email "from you" never reaches it at all (decision
+  0031, Consequences). Check your domain's DNS before you start.
 
 ## 1. Pick a subdomain
 
@@ -70,10 +72,9 @@ says "Email logging isn't set up for this copy."
 
 ## 6. Go-live check (both parts, before relying on it)
 
-Do this once, right after setup. It is the only way to know Cloudflare's own checks reach the Worker for this copy.
-The Worker trusts the first `Authentication-Results` header it is handed, which should be Cloudflare's. When you run
-it locally the Worker reads that header from the message itself, so if production ever did the same without adding
-Cloudflare's, a sender could write a passing one into their own email. Part (b) proves that is not happening.
+Do this once, right after setup. The Worker trusts the first `Authentication-Results` header it is handed, which
+Cloudflare's docs say is Cloudflare's own (decision 0031 explains the one assumption this rests on). Part (b) checks
+that Cloudflare really did run its checks on your mail.
 
 Keep the Worker's log open while you test:
 
@@ -89,17 +90,16 @@ npx wrangler tail -c .copies/<copy>/wrangler.jsonc
 3. Open that contact. The timeline shows an email "Logged by BCC", with the subject and body labelled From outside. A
    New lead becomes Contacted.
 
-**(b) An email Cloudflare must fail is not logged.**
+**(b) Cloudflare checked the test email.**
 
-1. Send the same kind of email from an owner address whose domain has **no** DMARC record (Cloudflare then reports
-   `dmarc=none`, which never passes). It must be one of the copy's owner emails, so that the only thing wrong with it is
-   the authentication. If you have no such address, stop here and ask for help before going live; leave step 4's
-   secret unset until then.
-2. It must **not** appear on the contact's timeline, and the log shows
-   `{"event":"email_log_dropped","reason":"not_authenticated"}`.
+1. In the Cloudflare dashboard, open the log subdomain's **Email Routing** and its activity log, and open the test
+   email from (a). **(check in the dashboard)** the exact place: the click path for the activity log and its message
+   details was not confirmed in Cloudflare's docs when this was written.
+2. It must show Cloudflare's SPF, DKIM and DMARC results for the email, with **DMARC: pass**.
 
-**If (b) is logged**, Cloudflare's verdict is not reaching the Worker as expected and a forged one could get through.
-Turn email logging off at once by removing the secret (the Worker then drops every email):
+**If (b) shows no DMARC pass from Cloudflare** (or no SPF/DKIM/DMARC results at all) while (a) logged the email, the
+Worker did not get its verdict from Cloudflare as expected, and a forged one could get through. Turn email logging off
+at once by removing the secret (the Worker then drops every email):
 
 ```bash
 npx wrangler secret delete EMAIL_LOG_ADDRESS -c .copies/<copy>/wrangler.jsonc
