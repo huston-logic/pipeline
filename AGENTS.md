@@ -55,11 +55,21 @@ this file before changing the repo, and update it when a rule changes.
   posted field. Record forms are `novalidate` (the server checks; outside data can break the browser's rules). A
   refused form is a 422 with the values kept. Dates are a date plus an optional time, read in the owner's timezone.
 - **Browser JavaScript** (decision 0014): only first-party files from `public/`, loaded with `defer`, as progressive
-  enhancement, and only on pages that pass `script: true` to `renderPage`. Every action must also work as a plain form
-  with JavaScript off. No framework, no build step, no third-party code, no eval, at most 3 KB gzipped (a test checks).
-  Today that is `public/board.js`: drag a pipeline card to another stage, which submits the card's Move to form; on
-  deal and contact pages, after Call, Text or Email, focus the matching one-tap Log button, and Copy prompt for Ask
-  Claude (decision 0021). No innerHTML, fetch or pop-ups in it.
+  enhancement, and only on pages that pass `script` to `renderPage` (`true` loads `/board.js`, `"push"` loads
+  `/push.js`). Every action must also work as a plain form with JavaScript off, except turning notifications on,
+  which needs the browser (the page then says so in one line). No framework, no build step, no third-party code, no
+  eval, each file at most 3 KB gzipped (tests check). `public/board.js`: drag a pipeline card to another stage, which
+  submits the card's Move to form; on deal and contact pages, after Call, Text or Email, focus the matching one-tap
+  Log button, and Copy prompt for Ask Claude (decision 0021). `public/push.js` (Notifications page only, decision
+  0030): on the tap, ask for permission, register `/sw.js`, subscribe, fill the form's hidden fields and submit it. No
+  innerHTML, fetch or pop-ups in either.
+- **Brief notification** (decision 0030): `public/sw.js` is the only service worker, registered only by `push.js`. It
+  shows one fixed notification on `push` and opens `/brief` on `notificationclick`, nothing else: no `fetch` handler,
+  no `caches`, no `importScripts` (`scripts/no-service-worker.test.mjs`). `src/push/` sends each push from the Worker:
+  the fixed payload `{"kind":"brief"}` encrypted per RFC 8291 (`encrypt.ts`, tested against the RFC's vector) with a
+  VAPID header (`vapid.ts`), to every row of `push_subscriptions` that is on, after `runBrief` stores the brief.
+  Subscribe, turn off and "gone" (404/410) are audited changes (`subscriptions.ts`); summaries name a device by its
+  `ps_` id, never its endpoint, and no endpoint goes in a log. Off until the three `VAPID_*` secrets exist.
 - **Phone actions and Ask Claude** (decision 0021): `src/board/reach.ts` draws Call, Text and Email (`tel:`, `sms:`,
   `mailto:`) and one-tap Log forms that post to the log route; `src/board/ask-claude.ts` draws the deal page's
   `https://claude.ai/new?q=` links. Their prompts are fixed sentences around the deal id: never put a name, email,
@@ -71,7 +81,9 @@ this file before changing the repo, and update it when a rule changes.
 - **Home screen** (decision 0019): the Worker writes `/manifest.webmanifest` from the settings (`src/board/manifest.ts`,
   behind the board sign-in, `JSON.stringify` only); signed-in pages link it with `crossorigin="use-credentials"`. The
   icons in `public/icons/` are generic (never a company's logo) and come from `node scripts/make-icons.mjs`: change the
-  script, rerun it and commit the PNGs (a test fails if they differ). No service worker (a test checks).
+  script, rerun it and commit the PNGs (a test fails if they differ). No service worker for offline use or caching
+  (a test checks); the only one is the brief notification's `public/sw.js` (decision 0030 replaces 0019's "no
+  service worker" for push only).
 - **Styles:** one stylesheet, `public/board.css`, following `docs/STYLE-GUIDE.md` (Huston Logic v3 adapted to the
   board, decision 0015). Colors are the `:root` tokens there (`--silver`, `--ink`, `--ink-2`, `--green`, `--rust`,
   `--tint`, `--line`, `--accent`, ...); never hard-code a color elsewhere. Components use `--accent` for brand accents
@@ -143,7 +155,8 @@ this file before changing the repo, and update it when a rule changes.
 - No secrets in the repo, in tests or in logs. Secrets exist only as Worker secrets that each copy's owner sets;
   `docs/SECRETS.md` lists names only. `.env*` (except `.env.example`) and `.dev.vars*` are git-ignored.
 - Every response carries the headers in `src/security.ts`: CSP `default-src 'self'; script-src 'self'` (the board's own
-  `/board.js`, decisions 0014 and 0017; `public/` holds only scripts written in this repo) (`style-src 'self'`,
+  `/board.js`, `/push.js` and `/sw.js`, decisions 0014, 0017 and 0030; `public/` holds only scripts written in this
+  repo) (`style-src 'self'`,
   `img-src 'self' data:`, `object-src 'none'`, `base-uri 'none'`, `form-action 'self'`, `frame-ancestors 'none'`), `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy`,
   `Permissions-Policy`, HSTS and COOP/CORP. `public/_headers` repeats them for static files and must stay identical
   (a test checks). Never add `'unsafe-inline'` or `'unsafe-eval'`, and never loosen the policy without a decision
