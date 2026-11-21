@@ -68,9 +68,20 @@ says "Email logging isn't set up for this copy."
 3. Action: **Send to a Worker**. Destination: the copy's Worker.
 4. Save. Leave the catch-all off (or dropping): the Worker only logs mail to this one address anyway.
 
-## 6. Try it
+## 6. Go-live check (both parts, before relying on it)
 
-Do this once, right after setup: it is the only way to know Cloudflare's checks reach the Worker for this copy.
+Do this once, right after setup. It is the only way to know Cloudflare's own checks reach the Worker for this copy.
+The Worker trusts the first `Authentication-Results` header it is handed, which should be Cloudflare's. When you run
+it locally the Worker reads that header from the message itself, so if production ever did the same without adding
+Cloudflare's, a sender could write a passing one into their own email. Part (b) proves that is not happening.
+
+Keep the Worker's log open while you test:
+
+```bash
+npx wrangler tail -c .copies/<copy>/wrangler.jsonc
+```
+
+**(a) A normal email is logged.**
 
 1. On the board, open **More > Email logging** and check the address is the one you made.
 2. Send an email from your own address to a test contact who is on the board (their email must be on their contact
@@ -78,13 +89,27 @@ Do this once, right after setup: it is the only way to know Cloudflare's checks 
 3. Open that contact. The timeline shows an email "Logged by BCC", with the subject and body labelled From outside. A
    New lead becomes Contacted.
 
-If nothing shows up within a few minutes, watch the Worker's log while you send another:
+**(b) An email Cloudflare must fail is not logged.**
+
+1. Send the same kind of email from an owner address whose domain has **no** DMARC record (Cloudflare then reports
+   `dmarc=none`, which never passes). It must be one of the copy's owner emails, so that the only thing wrong with it is
+   the authentication. If you have no such address, stop here and ask for help before going live; leave step 4's
+   secret unset until then.
+2. It must **not** appear on the contact's timeline, and the log shows
+   `{"event":"email_log_dropped","reason":"not_authenticated"}`.
+
+**If (b) is logged**, Cloudflare's verdict is not reaching the Worker as expected and a forged one could get through.
+Turn email logging off at once by removing the secret (the Worker then drops every email):
 
 ```bash
-npx wrangler tail -c .copies/<copy>/wrangler.jsonc
+npx wrangler secret delete EMAIL_LOG_ADDRESS -c .copies/<copy>/wrangler.jsonc
 ```
 
-Look for `{"event":"email_log_dropped","reason":"…"}`:
+Leave it off until the cause is found (decision 0031, Consequences).
+
+If (a) shows nothing within a few minutes, look in the log for the drop reason:
+
+`{"event":"email_log_dropped","reason":"…"}`:
 
 - `not_set_up`: the secret from step 4 is missing.
 - `wrong_address`: the routing rule sends a different address than the secret holds.
@@ -92,7 +117,7 @@ Look for `{"event":"email_log_dropped","reason":"…"}`:
 - `not_authenticated`: Cloudflare's authentication result did not pass, or the Worker could not find it. First check
   your sending domain has a DMARC record (see Before you start). If every email from a normal mailbox still gets
   this, Cloudflare's header may not reach the Worker as expected (decision 0031, Consequences); report it before
-  relying on the feature. Nothing is logged in that case.
+  relying on the feature.
 - `too_large`: the email was over 1 MB (attachments count); send it without the attachment.
 
 ## What gets logged

@@ -41,15 +41,16 @@ Read on 2026-11-20 (notes in `.superpowers/sdd/2026-11-20-run4-leads/research-em
      `OWNER_EMAILS`, ignoring case);
   5. **Ruling 3**, read from `message.headers` (the Headers object Email Routing builds and prepends its header to),
      never from the raw text, where any `Authentication-Results` header may be one the sender wrote:
-     `message.headers.get("authentication-results")` must exist and start with the authserv-id `mx.cloudflare.net`
-     (exactly), and say `dmarc=pass`, or, when it has no dmarc result, both `spf=pass` and `dkim=pass`. Headers joins
-     several such headers into one value with ", ", so a header the sender wrote can follow Cloudflare's in that value.
-     So every `spf`, `dkim` and `dmarc` result in the whole value must be a pass: a later, forged result can neither
-     outvote a fail nor add a `dmarc=pass` that Cloudflare did not give. This is stricter than Ruling 3 alone (a
-     `dmarc=pass` with an `spf` fail is dropped); owner mail sent directly from their own domain passes all three.
-     Comments and quoted strings are skipped when reading it. It is checked before the message is read;
-  6. the header From (from the parsed raw text) is an owner email too. This is one check more than the brief names: DMARC authenticates the
-     header From's domain, so this is the address the pass is about.
+     `message.headers.get("authentication-results")` must exist. Headers joins several such headers into one value
+     with ", ", so a header the sender wrote can follow Cloudflare's; only the first header in the value counts. It is
+     cut at the first comma outside a comment or a quoted string (an RFC 8601 token can't hold a comma) and everything
+     after it is ignored. That first header's authserv-id must be exactly `mx.cloudflare.net`, and it must say
+     `dmarc=pass`, or, when it has no dmarc result, both `spf=pass` and `dkim=pass` (a method listed twice must pass
+     both times). So real mail such as `spf=pass; dkim=none; dmarc=pass` is logged, and a later, forged header can
+     neither help nor hurt: it cannot add a `dmarc=pass` to a Cloudflare header that gave none. Comments and quoted
+     strings are skipped when reading it. It is checked before the message is read;
+  6. the header From (from the parsed raw text) is an owner email too. This is one check more than the brief names:
+     DMARC authenticates the header From's domain, so this is the address the pass is about.
 - **Drop silently.** A dropped message is not answered at all: no `setReject` (which would tell the sender the address
   exists), no reply, no forward. The Worker writes one log line, `{"event":"email_log_dropped","reason":"…"}`, with a
   fixed reason (`not_set_up`, `too_large`, `wrong_address`, `not_owner`, `unreadable`, `not_authenticated`) and none of
@@ -67,8 +68,11 @@ Read on 2026-11-20 (notes in `.superpowers/sdd/2026-11-20-run4-leads/research-em
   it removes the activities and puts the deals and lead status back, but keeps the message's `email_log` row (that
   table is not part of the change), so the same message stays a duplicate and is never logged again.
 - **Caps and cleaning.** Subject: one line, control characters dropped, at most 300 characters. Body: the text part,
-  or when there is none the HTML read as text (postal-mime does this; a crude tag strip is the fallback). Only the
-  first 20,000 characters (four times the cap) are cleaned, so no pattern runs long on a 1 MB body of unclosed tags.
+  or when there is none the HTML read as text by a crude strip in `src/email/parse.ts`. postal-mime 4.2.1 gives no
+  text for an HTML-only message, so the strip is the main path for one, not a rare fallback. Only the first 20,000
+  characters (four times the cap) are cleaned, and the strip is linear (script and style blocks are cut with an
+  `indexOf` walk, tags with `<[^<>]*>`), so a 1 MB body of unclosed tags costs a few milliseconds
+  (docs/PAID-PLAN.md).
   CRLF made LF, tabs made spaces, other control characters dropped, runs of blank lines cut to one, at most 5,000
   characters.
   Attachments are ignored, and a whole forwarded message attached to the email is one of them. The activity's time is
@@ -113,9 +117,15 @@ Read on 2026-11-20 (notes in `.superpowers/sdd/2026-11-20-run4-leads/research-em
 - **STOP for the owner (not confirmed in the docs read, check in the dashboard):** whether a subdomain such as
   `log.<domain>` can be its own Email Routing domain, so the owner's own mail records are untouched; the DNS records
   and routing rule for it; and setting `EMAIL_LOG_ADDRESS`. docs/EMAIL-LOGGING.md has the steps.
-- Not confirmed in a live copy yet: that `message.headers` carries Cloudflare's header first, as the docs say. If it
-  does not, every message is dropped as `not_authenticated` (nothing is logged, nothing forged gets through); the
-  owner's first test email shows it (docs/EMAIL-LOGGING.md, step 6).
+- **Not confirmed in a live copy yet, and it matters:** that `message.headers` carries Cloudflare's header first, as
+  the docs say. Locally (`wrangler dev`) `message.headers` is read from the message itself. If production did the same
+  without Cloudflare's header, a header the sender wrote at the top of their message would be the first one, and a
+  forged `mx.cloudflare.net; dmarc=pass` would pass. So going live needs a two-part check (docs/EMAIL-LOGGING.md,
+  step 6): (a) a normal test email from the owner is logged; (b) an email that Cloudflare must fail is not logged, for
+  example one sent from an owner address whose domain has no DMARC record (Cloudflare then says `dmarc=none`), with
+  the Worker log showing `not_authenticated`. If (b) is logged, Cloudflare's verdict is not reaching the Worker as
+  expected: remove the secret (`npx wrangler secret delete EMAIL_LOG_ADDRESS -c .copies/<copy>/wrangler.jsonc`), which
+  makes the Worker drop every email, until this is resolved.
 - The owner's sending domain needs a DMARC record. Without one the verdict is `dmarc=none`, which is not a pass, so
   the mail is dropped by design (Ruling 3).
 - The owner's mail provider must set the envelope sender to the owner's own address. A provider that uses a bounce
