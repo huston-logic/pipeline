@@ -1700,6 +1700,7 @@ button.button {
 .copy-card {
   display: grid;
   gap: 0.75rem;
+  margin-bottom: 1rem;
 }
 
 .copy-status {
