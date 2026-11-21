@@ -1,4 +1,4 @@
-// /companies: the Contacts tab's second view. Contacts grouped by company (their `business`, compared ignoring case and
+// /companies: the People tab's Companies view. Contacts grouped by company (their `business`, compared ignoring case and
 // spaces), each with its people, open deals and open value; "No company" last. A company name from outside is
 // labelled and never becomes a link or part of a URL (decision 0016).
 import { ownerTimezone } from "../../services/lookup.ts";
@@ -7,7 +7,7 @@ import { type Html, html } from "../html.ts";
 import type { PageContext } from "../context.ts";
 import { renderPage } from "../layout.ts";
 import { contactLink, count, dealLink, empty, formatNumber, labelled } from "../parts.ts";
-import { viewSwitch } from "./contacts.ts";
+import { peopleSwitch } from "../people-switch.ts";
 
 /** "2 open deals, value 17,900", "1 open deal", "No open deals". */
 function openLine(group: CompanyGroup): string {
@@ -53,7 +53,7 @@ ${noCompany === null ? "" : html`<ul class="cards cards-wide">${companyCard(noCo
     current: "/companies",
     frame: ctx,
     body: html`<h1>Companies</h1>
-${viewSwitch("/companies")}
+${peopleSwitch("companies")}
 ${body}`,
   });
 }

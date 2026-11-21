@@ -35,7 +35,7 @@ this file before changing the repo, and update it when a rule changes.
   token, the look and the change banner) and return `renderPage({ title, description, body, current, frame: ctx })`
   from `src/board/layout.ts` (the layout appends " · <business name>" to the title and draws the banner). Every board
   path is listed in `src/board/routes.ts` (import-free; the accessibility test, `npm run screenshots` and `lighthouserc.cjs` read it),
-  with the nav (`navItems`: Today, Pipeline, Contacts, Brief, More; `moreItems`: Rules, Changes, Export). Pages are
+  with the nav (`navItems`: Today, Pipeline, People, Brief, More; `moreItems`: Rules, Changes, Export). Pages are
   GET and HEAD with `Cache-Control: no-store`; a page that finds no CSRF cookie sets one.
 - **Board edits** (decisions 0014, 0017): every board write path is in the route table in `src/board/actions.ts`; a
   POST to any other path is 405. `src/board/post.ts` checks, in order, the sign-in, the same origin, a form body

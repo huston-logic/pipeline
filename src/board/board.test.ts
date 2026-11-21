@@ -10,6 +10,7 @@ import { addRule } from "../services/rules.ts";
 import { undoChange } from "../services/undo.ts";
 import { headerDate } from "../brief/compose.ts";
 import { addDays, DEFAULT_TZ, formatLocal, localDate, zonedToUtc } from "../time.ts";
+import { sourceToken } from "./pages/leads.ts";
 import { boardRoutes, moreItems, navItems } from "./routes.ts";
 
 const ctx = { waitUntil() {}, passThroughOnException() {}, props: {} } as unknown as ExecutionContext;
@@ -95,10 +96,10 @@ test("the nav marks the current page with aria-current=page, and its section wit
     assert.equal(nav.match(/aria-current="page"/g)?.length, 1, item.href);
     assert.match(nav, new RegExp(`<a href="${item.href}" aria-current="page">`), item.href);
   }
-  for (const path of ["/companies", "/contacts/ct_seed01"]) {
+  for (const path of ["/companies", "/leads", "/leads?status=closed", "/contacts/ct_seed01"]) {
     const nav = navOf((await get(db, path)).body);
     assert.doesNotMatch(nav, /aria-current="page"/, path);
-    assert.match(nav, /<a href="\/contacts" aria-current="true">/, `${path} is in the Contacts tab`);
+    assert.match(nav, /<a href="\/contacts" aria-current="true">/, `${path} is in the People tab`);
   }
   for (const item of moreItems) assert.match((await get(db, item.href)).body, /<a href="\/more" aria-current="true">/, item.href);
   const deal = (await get(db, "/deals/dl_seed01")).body;
@@ -124,6 +125,7 @@ test("an empty pipeline: every page answers 200 and says there is nothing yet, a
     "/pipeline": [/No deals yet/, /No open deals in this stage/],
     "/contacts": [/No contacts yet\./, /talking to your AI app/],
     "/companies": [/No companies yet\./, /talking to your AI app/],
+    "/leads": [/No leads yet\. A lead is someone you plan to approach who hasn(?:'|&#39;)t asked for anything yet\./],
     "/brief": [/No brief yet\.<\/p><p>The first one is composed at 7:00 \(America\/Los_Angeles time\)/],
     "/rules": [/No rules yet/],
     "/changes": [/No changes in the last 30 days/],
@@ -327,7 +329,7 @@ test("the contacts page has a search form that works without JavaScript: a label
   ]);
   assert.match(body, /<button class="button" type="submit">Show contacts<\/button>/);
   assert.doesNotMatch(body, /Clear search/, "nothing to clear yet");
-  assert.match(body, /<ul class="view-switch" aria-label="Show contacts as">\n<li><a href="\/contacts" aria-current="page">People<\/a><\/li>\n<li><a href="\/companies">Companies<\/a><\/li>\n<\/ul>/);
+  assert.match(body, /<ul class="view-switch" aria-label="Show people as">\n<li><a href="\/contacts" aria-current="page">Contacts<\/a><\/li>\n<li><a href="\/leads">Leads<\/a><\/li>\n<li><a href="\/companies">Companies<\/a><\/li>\n<\/ul>/);
 });
 
 test("searching contacts: the count names the search, the box keeps it, and Clear search keeps the sort", async () => {
@@ -466,7 +468,7 @@ test("the companies page groups people by company with open deals and value; no 
   assert.equal(titleOf(body), "Companies · Pipeline");
   const main = mainOf(body);
   assert.match(main, /<h1>Companies<\/h1>/);
-  assert.match(main, /<li><a href="\/contacts">People<\/a><\/li>\n<li><a href="\/companies" aria-current="page">Companies<\/a><\/li>/);
+  assert.match(main, /<li><a href="\/contacts">Contacts<\/a><\/li>\n<li><a href="\/leads">Leads<\/a><\/li>\n<li><a href="\/companies" aria-current="page">Companies<\/a><\/li>/);
   assert.match(main, /<p class="lede">8 companies, 10 people\.<\/p>/);
   const titles = cardTitles(main);
   assert.deepEqual(titles, [
@@ -666,4 +668,168 @@ test("an archived deal's page has no Move to form and says the deal is archived"
   const main = mainOf((await get(db, "/deals/dl_seed01")).body);
   assert.deepEqual(moveForms(main), []);
   assert.match(main, /<p class="note">This deal is archived\.<\/p>/);
+});
+
+// People views and the Leads list (decision 0027).
+const setLead = (db: SqliteD1, id: string, status: string) =>
+  db.exec(`UPDATE contacts SET lead_status = '${status}', lead_status_at = '2026-01-01T00:00:00.000Z' WHERE id = '${id}'`);
+const leadIds = (body: string) =>
+  cardTitles(mainOf(body))
+    .map((t) => /href="\/contacts\/([^"]+)"/.exec(t)?.[1])
+    .sort();
+
+test("the nav says People, with Contacts, Leads and Companies as the three views", async () => {
+  const db = await seededDb();
+  assert.match(navOf((await get(db, "/")).body), /<span class="nav-label">People<\/span>/);
+  assert.equal(navItems.find((item) => item.href === "/contacts")?.label, "People");
+  for (const path of ["/contacts", "/leads", "/companies"]) {
+    const main = mainOf((await get(db, path)).body);
+    const switcher = /<ul class="view-switch" aria-label="Show people as">[\s\S]*?<\/ul>/.exec(main)?.[0] ?? "";
+    assert.ok(switcher, path);
+    assert.equal(switcher.match(/<li>/g)?.length, 3, path);
+    assert.equal(switcher.match(/aria-current="page"/g)?.length, 1, path);
+  }
+  assert.match(mainOf((await get(db, "/leads")).body), /<li><a href="\/leads" aria-current="page">Leads<\/a><\/li>/);
+});
+
+test("the Contacts and Companies views leave out unqualified leads and keep qualified ones", async () => {
+  const db = await seededDb();
+  setLead(db, "ct_seed01", "new");
+  setLead(db, "ct_seed03", "bad");
+  setLead(db, "ct_seed04", "qualified");
+  const contacts = mainOf((await get(db, "/contacts")).body);
+  assert.match(contacts, /<p class="lede">6 contacts\.<\/p>/);
+  assert.doesNotMatch(contacts, /Pat Example|Casey Placeholder/);
+  assert.match(contacts, /Jordan Fake/, "qualified stays");
+  const companies = mainOf((await get(db, "/companies")).body);
+  assert.doesNotMatch(companies, /Pat Example|Casey Placeholder/);
+  assert.match(companies, /Jordan Fake/);
+});
+
+test("the leads page lists open leads with name, company, status, last contact and next task", async () => {
+  const db = await seededDb();
+  setLead(db, "ct_seed01", "new");
+  setLead(db, "ct_seed03", "contacted");
+  setLead(db, "ct_seed04", "not_a_fit");
+  setLead(db, "ct_seed05", "qualified");
+  db.exec(`INSERT INTO tasks (id, contact_id, title, due_at) VALUES ('tk_lead01', 'ct_seed03', 'Call back', '2020-01-02T17:00:00.000Z')`);
+  db.exec(`INSERT INTO contacts (id, name, lead_status, lead_status_at) VALUES ('ct_nohist', 'Nina Nohistory', 'new', '2026-01-01T00:00:00.000Z')`);
+  const { res, body } = await get(db, "/leads");
+  assert.equal(res.status, 200);
+  assertPage(body, "/leads");
+  assert.equal(titleOf(body), "Leads · Pipeline");
+  const main = mainOf(body);
+  assert.match(main, /<h1>Leads<\/h1>/);
+  assert.match(main, /<p class="lede">3 leads\.<\/p>/);
+  assert.deepEqual(leadIds(body), ["ct_nohist", "ct_seed01", "ct_seed03"]);
+  assert.doesNotMatch(main, /Jordan Fake|Taylor Testcase/, "closed out and qualified are not in the open view");
+  assert.match(main, /<a href="\/contacts\/ct_seed03">Casey Placeholder<\/a><\/h2>[\s\S]*?<dt>Company<\/dt><dd>Placeholder Landscaping<\/dd><\/div><div><dt>Status<\/dt><dd>Contacted<\/dd>/);
+  assert.match(main, /<dt>Last contact<\/dt><dd><time datetime="[^"]+">[^<]+<\/time><\/dd><\/div><div><dt>Next task<\/dt><dd><time datetime="2020-01-02T17:00:00.000Z">[^<]+<\/time><\/dd>/);
+  assert.match(main, /Nina Nohistory<\/a><\/h2>\n<\/div>\n<dl class="pairs"><div><dt>Status<\/dt><dd>New<\/dd><\/div><div><dt>Last contact<\/dt><dd>No contact yet<\/dd><\/div><div><dt>Next task<\/dt><dd>No task<\/dd><\/div><\/dl>/);
+});
+
+test("the leads page filters by status, source, search and sort, and keeps them in the form", async () => {
+  const db = await seededDb();
+  setLead(db, "ct_seed01", "new");
+  setLead(db, "ct_seed03", "contacted");
+  setLead(db, "ct_seed04", "not_now");
+  setLead(db, "ct_seed05", "not_a_fit");
+  setLead(db, "ct_seed06", "bad");
+  db.exec(`UPDATE contacts SET source = 'Trade show' WHERE id IN ('ct_seed01', 'ct_seed05')`);
+  const open = ["ct_seed01", "ct_seed03", "ct_seed04"];
+
+  assert.deepEqual(leadIds((await get(db, "/leads")).body), open);
+  assert.deepEqual(leadIds((await get(db, "/leads?status=new")).body), ["ct_seed01"]);
+  assert.deepEqual(leadIds((await get(db, "/leads?status=contacted")).body), ["ct_seed03"]);
+  assert.deepEqual(leadIds((await get(db, "/leads?status=not_now")).body), ["ct_seed04"]);
+  const closed = (await get(db, "/leads?status=closed")).body;
+  assert.deepEqual(leadIds(closed), ["ct_seed05", "ct_seed06"]);
+  assert.match(mainOf(closed), /<option value="closed" selected>Closed out \(Not a fit, Bad lead\)<\/option>/);
+  const unknown = (await get(db, "/leads?status=nonsense")).body;
+  assert.deepEqual(leadIds(unknown), open, "unknown falls back to open");
+  assert.match(mainOf(unknown), /<option value="open" selected>Open \(New, Contacted, Not now\)<\/option>/);
+
+  const token = sourceToken("trade show");
+  const bySource = (await get(db, `/leads?source=${token}`)).body;
+  assert.deepEqual(leadIds(bySource), ["ct_seed01"]);
+  assert.match(mainOf(bySource), new RegExp(`<option value="${token}" selected>Trade show`));
+  assert.deepEqual(leadIds((await get(db, "/leads?source=trade+show")).body), open, "the source text itself is not a token");
+  assert.deepEqual(leadIds((await get(db, "/leads?source=nowhere")).body), open, "unknown source falls back to all");
+
+  const found = (await get(db, "/leads?q=+Casey+")).body;
+  assert.deepEqual(leadIds(found), ["ct_seed03"]);
+  assert.match(mainOf(found), /<p class="lede">1 lead matches &quot;Casey&quot;\.<\/p>/);
+  assert.match(mainOf(found), /<input id="leads-q" type="search" name="q" value="Casey"/);
+  assert.match(mainOf(found), /<a href="\/leads">Clear search<\/a>/);
+  assert.match(mainOf((await get(db, "/leads?q=nobody")).body), /<p class="empty-title">No leads match &quot;nobody&quot;\.<\/p>/);
+
+  const sorted = (await get(db, "/leads?sort=added")).body;
+  assert.match(mainOf(sorted), /<option value="added" selected>Newest first<\/option>/);
+  assert.match(mainOf((await get(db, "/leads?sort=nonsense")).body), /<option value="next_task" selected>Next task first<\/option>/);
+  for (const label of ["Next task first", "Longest since last contact", "Newest first"]) assert.ok(mainOf(sorted).includes(`>${label}</option>`), label);
+});
+
+test("the leads form is a labelled GET search form that works without JavaScript", async () => {
+  const db = await seededDb();
+  setLead(db, "ct_seed01", "new");
+  const main = mainOf((await get(db, "/leads")).body);
+  assert.match(main, /<form class="search search-filters" action="\/leads" method="get" role="search" aria-label="Search leads">/);
+  for (const [id, label] of [["leads-q", "Search leads"], ["leads-status", "Status"], ["leads-source", "Source"], ["leads-sort", "Sort"]]) {
+    assert.match(main, new RegExp(`<label for="${id}">${label}</label>`), id);
+  }
+  assert.match(main, /<option value="">All sources<\/option>/);
+  assert.match(main, /<button class="button" type="submit">Show leads<\/button>/);
+  for (const label of ["Open (New, Contacted, Not now)", "New", "Contacted", "Not now", "Closed out (Not a fit, Bad lead)"]) {
+    assert.ok(main.includes(`>${label}</option>`), label);
+  }
+});
+
+test("a lead's name from outside is labelled and never the text of a link", async () => {
+  const db = await seededDb();
+  setLead(db, "ct_seed02", "new");
+  db.exec(`UPDATE contacts SET name = '${SCRIPT} Robin', business = '${SCRIPT} Bakery', source = '${SCRIPT} Fair' WHERE id = 'ct_seed02'`);
+  const { body } = await get(db, "/leads");
+  const main = mainOf(body);
+  assert.match(main, /<h2 class="card-title"><a href="\/contacts\/ct_seed02">Contact ct_seed02<\/a> <span class="outside">From outside<\/span> <span class="outside-value">&lt;script&gt;alert\(1\)&lt;\/script&gt; Robin<\/span><\/h2>/);
+  assert.match(main, /<dt>Company<\/dt><dd><span class="outside">From outside<\/span> <span class="outside-value">&lt;script&gt;alert\(1\)&lt;\/script&gt; Bakery<\/span><\/dd>/);
+  assert.doesNotMatch(body, /<script>alert/);
+  assert.doesNotMatch(titleOf(body) ?? "", /Robin|Bakery|Fair/);
+  assert.doesNotMatch(descriptionOf(body) ?? "", /Robin|Bakery|Fair/);
+  for (const text of linkTexts(main)) assert.doesNotMatch(text, /Robin|Bakery|Fair/, "no outside text in a link");
+});
+
+test("an outside source never appears in an option value or a link: only its opaque token does", async () => {
+  const db = await seededDb();
+  setLead(db, "ct_seed02", "new");
+  setLead(db, "ct_seed03", "new");
+  db.exec(`UPDATE contacts SET source = 'Sneaky Expo', untrusted_fields = '["source"]' WHERE id = 'ct_seed02'`);
+  const token = sourceToken("sneaky expo");
+  assert.match(token, /^[0-9a-f]{16}$/);
+  const { body } = await get(db, `/leads?source=${token}&q=Robin&sort=added&status=new`);
+  const main = mainOf(body);
+  assert.match(main, new RegExp(`<option value="${token}" selected>Sneaky Expo \\(1, from outside\\)</option>`));
+  assert.match(main, new RegExp(`<a href="/leads\\?status=new&amp;source=${token}&amp;sort=added">Clear search</a>`));
+  const attrs = [...main.matchAll(/(?:href|value)="([^"]*)"/g)].map((m) => m[1] ?? "");
+  for (const value of attrs) assert.doesNotMatch(value, /sneaky|expo/i, "no outside-derived text in an href or option value");
+});
+
+test("an empty open view says whether closed-out leads exist; no leads at all keeps the first-time message", async () => {
+  const db = await seededDb();
+  setLead(db, "ct_seed01", "bad");
+  const open = mainOf((await get(db, "/leads")).body);
+  assert.match(open, /<p class="empty-title">No open leads\.<\/p><p>Choose Closed out under Status to see the rest\.<\/p>/);
+  assert.doesNotMatch(open, /No leads yet/);
+  assert.match(mainOf((await get(db, "/leads?status=new")).body), /<p class="empty-title">No leads with that status\.<\/p>/);
+  assert.match(mainOf((await get(db, "/leads?status=closed")).body), /Pat Example/);
+  const none = mainOf((await get(await seededDb(), "/leads")).body);
+  assert.match(none, /No leads yet\. A lead is someone you plan to approach/);
+});
+
+test("the leads page shows the first 200 and says how many there are", async () => {
+  const db = await createTestDb();
+  const values = Array.from({ length: 205 }, (_, i) => `('ct_lead${String(i).padStart(3, "0")}', 'Lead ${i}', 'new', '2026-01-01T00:00:00.000Z')`);
+  db.exec(`INSERT INTO contacts (id, name, lead_status, lead_status_at) VALUES ${values.join(", ")}`);
+  const main = mainOf((await get(db, "/leads")).body);
+  assert.match(main, /<p class="lede">Showing the first 200 of 205 leads\. Search to narrow it down\.<\/p>/);
+  assert.equal(cardTitles(main).length, 200);
 });
