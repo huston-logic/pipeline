@@ -111,10 +111,22 @@ test("authPasses compares the message's own headers with folding whitespace even
   assert.equal(authPasses(joined([CLOUDFLARE_PASS, "mail.example.net; spf=pass smtp.mailfrom=owner@example.com"]), [folded]), true);
 });
 
-test("authPasses ignores results hidden in quoted strings and comments", () => {
+test("authPasses fails when a ; sits inside a comment or quoted string: only such a comment can hide a result", () => {
   assert.equal(verdict('mx.cloudflare.net; spf=fail smtp.mailfrom="x;dmarc=pass"@example.com; dkim=fail'), false);
   assert.equal(verdict("mx.cloudflare.net; spf=fail (; dmarc=pass) smtp.mailfrom=owner@example.com"), false);
-  assert.equal(verdict("mx.cloudflare.net; spf=pass (nested (; dmarc=fail)) ; dkim=pass"), true);
+  assert.equal(verdict("mx.cloudflare.net; spf=pass (nested (; dmarc=fail)) ; dkim=pass"), false);
+  assert.equal(verdict('mx.cloudflare.net; spf=pass smtp.mailfrom="a;b"@example.com; dkim=pass'), false, "even a harmless one");
+  // The reviewer's variant 2: two sender values (a DKIM domain and a HELO name) that close the comment between them,
+  // inside Cloudflare's own header, hiding its dmarc=fail and adding a dmarc=pass.
+  const variant2 =
+    "mx.cloudflare.net; spf=pass smtp.mailfrom=owner@example.com; dkim=pass header.d=evil(; dmarc=fail header.from=example.com; smtp.helo=x) ; dmarc=pass";
+  assert.equal(verdict(variant2), false, "variant 2");
+  assert.equal(verdict(variant2, ["mail.example.net; dkim=pass"]), false, "variant 2 with a header of the message's own");
+  // The only ; inside is escaped by the sender's trailing backslash.
+  const escaped = "mx.cloudflare.net; spf=pass; dkim=pass header.d=evil(\\; dmarc=fail header.from=x) ; dmarc=pass";
+  assert.equal(verdict(escaped), false, "an escaped ; in a comment");
+  assert.equal(verdict(escaped.replace("evil(", 'evil"').replace("x)", 'x"')), false, "an escaped ; in a quoted string");
+  assert.equal(verdict("mx.cloudflare.net; dmarc=pass (p=reject, sp=none) header.from=example.com"), true, "a comment with no ;");
 });
 
 test("ownAuthResults lists the message's own Authentication-Results values, top first, a spaced name included", async () => {

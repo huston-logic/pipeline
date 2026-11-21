@@ -53,8 +53,12 @@ Read on 2026-11-20 (notes in `.superpowers/sdd/2026-11-20-run4-leads/research-em
      with an unbalanced `(` or `"` made the parser swallow Cloudflare's own `dmarc=fail` and the ", " joiner, so a
      forged later header's `dmarc=pass` was read as Cloudflare's. Only Cloudflare's header is then read, with comments
      and quoted strings skipped. It fails if it holds a comma outside a comment or quoted string (it would be more than
-     one header, so the subtraction went wrong) or ends inside a comment or quoted string (a sender's value broke it,
-     and could otherwise hide Cloudflare's own `dmarc=fail`). Its authserv-id must be exactly `mx.cloudflare.net`, and
+     one header, so the subtraction went wrong), holds a `;` inside a comment or quoted string, escaped or not, or
+     ends inside a comment or quoted string (a sender's value broke it, and could otherwise hide Cloudflare's own
+     `dmarc=fail`). A comment can hide a result only by covering the `;` that starts it, so the `;` rule refuses two
+     sender values that open and close a comment around Cloudflare's own result inside its header (for example a DKIM
+     `header.d=evil(` and a HELO name `x) ; dmarc=pass`), and also a raw header that postal-mime missed and left in
+     front. A real Cloudflare header has no `;` inside its comments. Its authserv-id must be exactly `mx.cloudflare.net`, and
      it must say `dmarc=pass` (every dmarc result in it, so two that disagree fail), or, when it has no dmarc result,
      both `spf=pass` and `dkim=pass` (each present, every result passing). So real mail such as `spf=pass; dkim=none;
      dmarc=pass` is logged, and the message's own headers can neither help nor hurt: they are taken off before

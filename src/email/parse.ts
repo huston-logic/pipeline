@@ -32,7 +32,9 @@ export interface ParsedEmail {
 /**
  * One Authentication-Results header split at its top-level semicolons, with comments removed and quoted strings kept
  * whole; null when it holds a comma outside a comment or quoted string (an RFC 8601 header never does, so it would be
- * more than one header) or ends inside a comment or quoted string (a sender's value it copied broke it).
+ * more than one header), a ";" inside one (a comment can hide a result only by covering the ";" that starts it, so
+ * sender values that open and close one around Cloudflare's own result are refused), or ends inside one (a sender's
+ * value it copied broke it).
  */
 function headerParts(value: string): string[] | null {
   const parts: string[] = [];
@@ -41,7 +43,10 @@ function headerParts(value: string): string[] | null {
   let quoted = false;
   for (let i = 0; i < value.length; i++) {
     const ch = value.charAt(i);
-    if (quoted) {
+    // An escaped ";" counts too, or a backslash just before Cloudflare's own ";" would carry a comment over it.
+    if ((quoted || depth > 0) && (ch === ";" || (ch === "\\" && value.charAt(i + 1) === ";"))) {
+      return null;
+    } else if (quoted) {
       current += ch;
       if (ch === "\\") current += value.charAt(++i);
       else if (ch === '"') quoted = false;

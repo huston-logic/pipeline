@@ -179,6 +179,9 @@ test("the reviewer's splices: an unbalanced ( or \" from the sender in Cloudflar
   const quote = 'mx.cloudflare.net; dkim=fail header.d=evil".example; dmarc=fail header.from=example.com';
   const quoted = { auth: ['x" ; dmarc=pass'], messageId: "<s2@mail.example.com>" };
   assert.equal(await send(env, quoted, { cloudflare: quote }).outcome, "dropped");
+  const variant2 =
+    "mx.cloudflare.net; spf=pass smtp.mailfrom=owner@example.com; dkim=pass header.d=evil(; dmarc=fail header.from=example.com; smtp.helo=x) ; dmarc=pass";
+  assert.equal(await send(env, { messageId: "<s3@mail.example.com>" }, { cloudflare: variant2 }).outcome, "dropped", "variant 2");
   await assertNothingWritten(db);
 });
 
