@@ -4,19 +4,24 @@ This is for the owner of one copy of the pipeline, in their own Cloudflare accou
 in decision 0006: Cloudflare Access sends you a one-time code by email, the board only opens for your email, and your
 AI app connects to `/mcp` once through a sign-in page and then keeps its own token.
 
-You set up two Access applications, a few bypass rules, five secrets, four settings and one KV namespace. Until they
-exist, the board, `/api` and `/mcp` answer "Sign-in isn't set up yet." That is on purpose: nothing opens without them.
+You set up three Access applications (the AI app's sign-in, the board, and one bypass application for the public
+paths), five secrets, four settings and one KV namespace. Until they exist, the board, `/api` and `/mcp` answer
+"Sign-in isn't set up yet." That is on purpose: nothing opens without them.
 
 Steps marked **check in the dashboard** could not be confirmed from Cloudflare's docs when this was written
 (2026-11-18). The dashboard may name or place them a little differently; the goal of the step is what matters.
 
 Cloudflare Access and KV are on the free plans: Zero Trust Free covers up to 50 users, and a copy needs one or two.
+No paid plan is needed for the steps on this page (docs/PAID-PLAN.md has the free limits).
 
 Throughout, `<copy host>` is the address your copy answers on, for example `pipeline.example.com` (a custom domain) or
 `pipeline-yourname.yourname.workers.dev`.
 
 ## Before you start
 
+- Check which Cloudflare account owns your domain (the account where the domain is listed). Do everything on this
+  page in that account: Access, the Worker and the custom domain must all live there. Access set up in another
+  account does not protect the domain.
 - Your Cloudflare account has Zero Trust turned on (the Zero Trust item in the dashboard's sidebar). The first time,
   Cloudflare asks you to pick a team name and the Free plan.
 - You know `<copy host>`. A custom domain is recommended (see "workers.dev or a custom domain" at the end).
@@ -57,10 +62,12 @@ This is the sign-in your AI app sends you to when it connects.
 This puts the board and its JSON (`/api/...`) behind the one-time code.
 
 1. In **Zero Trust** > **Access controls** > **Applications**, select **Create new application**, then
-   **Self-hosted**. **Check in the dashboard:** the type may be called "Self-hosted" or "Self-hosted and private".
+   **Self-hosted and private** (Cloudflare's docs use this name; an older dashboard may say "Self-hosted").
 2. Name it, for example `Pipeline board`.
-3. Add `<copy host>` as the application's domain (public hostname), with the path left empty so it covers the whole
-   host.
+3. Select **Add public hostname** and choose `<copy host>` (its domain from the **Domain** list), with the path left
+   empty so it covers the whole host. Use the public hostname (public DNS) choice, **not** a Workers choice if the
+   dashboard offers one: the Worker does not exist yet before the first deploy (docs/INSTALL.md step 5), so there is
+   nothing to pick. **Check in the dashboard** for the exact name of the Workers choice.
 4. Add a policy: Action **Allow**, **Include** > **Emails** with the same owner email(s).
 5. Under identity providers, choose **One-time PIN** (and **Apply instant authentication** if offered).
 6. Save the application.
@@ -92,31 +99,32 @@ Access they would get the sign-in page instead of a PNG. The icons are the same 
 nothing private is exposed. This can only be checked on a real phone: at the first install, the home-screen icon must
 be the green board tile, not a blank or a screenshot.
 
-For each path, create one more self-hosted application:
+One self-hosted application covers all eight paths, with one hostname-and-path row per path (this worked on the
+first live copy):
 
-1. **Create new application** > **Self-hosted**.
-2. Name it after the path, for example `Pipeline bypass: intake`.
-3. Add `<copy host>` as the domain, and the path in the **Path** box next to it (`intake`, `mcp`, `authorize`,
-   `callback`, `token`, `register`, `.well-known` or `icons`).
+1. **Create new application** > **Self-hosted and private**, the same type as step 2.
+2. Name it `Pipeline bypass`.
+3. Select **Add public hostname** and choose `<copy host>`, with `intake` in the **Path** box next to it. Then add
+   another public hostname row for each of the other paths, the same host each time: `mcp`, `authorize`,
+   `callback`, `token`, `register`, `.well-known` and `icons`. That is eight rows in all.
 4. Add a policy: Action **Bypass**, **Include** > **Everyone**.
 5. Save.
 
 Access uses the application with the most specific match, so these paths skip the board's sign-in while the rest of the
 host keeps it. **Check in the dashboard:**
 
-- whether one application can hold several hostname-and-path entries. If it can, one application named
-  `Pipeline bypass` with all eight paths and the same Bypass policy does the same job as eight applications;
 - that a path entry also covers what is below it (`.well-known` must cover `.well-known/oauth-protected-resource/mcp`,
   and `icons` must cover `icons/apple-touch-icon.png`);
 - that a path is entered without the leading `/` (the dashboard shows the `/` between host and path).
 
 ## 4. Find the team domain and the AUD tag
 
-- **Team domain:** `<team>.cloudflareaccess.com`. It is the start of the three endpoints you copied in step 1. It is
+- **Team domain:** `<team>.cloudflareaccess.com`, the host only: no `https://` in front and no `/` after it. It is
+  the start of the three endpoints you copied in step 1 (drop the `https://` and everything from `/cdn-cgi`). It is
   also shown in **Zero Trust** > **Settings** (team name and domain). **Check in the dashboard** for the exact place.
-- **AUD tag:** open the board application from step 2 (not the bypass ones, not the SaaS one). Its overview or basic
-  information shows **Application Audience (AUD) Tag**, a long string of letters and digits. **Check in the
-  dashboard** for the exact place.
+- **AUD tag:** open the board application from step 2 (not the bypass one, not the SaaS one). It is the value
+  labelled **Application Audience (AUD) Tag**, a long string of letters and digits. **Check in the dashboard** for
+  where on the application's pages it is shown.
 
 ## 5. The KV namespace
 
@@ -158,12 +166,16 @@ change them). An `OWNER_EMAILS` var, if you add one, also lets its emails in. Ne
 ## 7. Check it
 
 1. Open `https://<copy host>/` in a browser. Access asks for your email and sends a code; after it, the board opens.
-   Another email gets "This account isn't allowed to open this board."
+   Another email gets "This account isn't allowed to open this board." If you get it when you meant to use an owner
+   email, the browser signed in to Access with a different email: sign out at
+   `https://<team>.cloudflareaccess.com/cdn-cgi/access/logout` and try again (docs/INSTALL.md, "Troubleshooting",
+   also shows how to see which email Access has).
 2. `https://<copy host>/.well-known/oauth-authorization-server` shows a short JSON document without asking you to sign
    in (the bypass works).
 3. In your AI app, add a custom connector (remote MCP server) with the address `https://<copy host>/mcp`. The app
    opens a page "Allow <app name> to use your pipeline?". Check that it names your AI app and the place the access goes,
-   then select **Allow**. Access asks for your email and code, and you're sent back to the app, connected.
+   then select **Allow**. Access asks for your email and code, and you're sent back to the app, connected. Sign in
+   with an owner email here; the email of the AI app's own account does not matter.
 4. If your website's form posts to `/intake`, send a test enquiry: it should arrive as a new lead.
 5. `https://<copy host>/icons/icon-192.png` shows the green board tile in a private window, without asking you to
    sign in. Then add the board to your phone's home screen (README, "Install on your phone"): the icon must be the

@@ -68,7 +68,11 @@ const SCHEMAS = {
   stage_followup: z.strictObject({ type: z.literal("stage_followup"), stage, days, title: title.optional(), since: since.optional() }),
   on_stage_enter: z.strictObject({ type: z.literal("on_stage_enter"), stage, title, dueInDays, since: since.optional() }),
   gone_quiet: z.strictObject({ type: z.literal("gone_quiet"), days }),
-} satisfies Record<RuleType, z.ZodType<RuleParams>>;
+} satisfies Record<Exclude<RuleType, "lead_followup">, z.ZodType<RuleParams>>;
+
+// lead_followup is allowed in storage (migration 0006) but has no schema until the leads rules task adds one.
+const schemaFor = (type: RuleType): z.ZodType<RuleParams> | undefined =>
+  (SCHEMAS as Partial<Record<RuleType, z.ZodType<RuleParams>>>)[type];
 
 const HELP: Record<string, string> = {
   stage: "the stage to watch: its key or label",
@@ -81,6 +85,7 @@ const TAKES: Record<RuleType, string> = {
   stage_followup: "stage and days, and optionally title",
   on_stage_enter: "stage, title and dueInDays",
   gone_quiet: "only days",
+  lead_followup: "nothing yet",
 };
 
 const aRule = (type: RuleType) => `${withArticle(type)} rule`;
@@ -125,11 +130,12 @@ const defined = (value: Record<string, unknown>) =>
 
 /** Checked, normalized parameters (the stage as its key), and the stage's label for the description. */
 async function checkParams(db: Db, type: RuleType, settings: RuleSettings): Promise<{ params: RuleParams; stageLabel: string | null }> {
-  if (!Object.hasOwn(SCHEMAS, type)) {
+  const schema = Object.hasOwn(SCHEMAS, type) ? schemaFor(type) : undefined;
+  if (!schema) {
     throw new UserError(`"${type}" isn't a rule type. Use stage_followup, on_stage_enter or gone_quiet.`);
   }
   const value = defined({ type, ...settings });
-  const parsed = SCHEMAS[type].safeParse(value);
+  const parsed = schema.safeParse(value);
   if (!parsed.success) throw paramsError(type, value, parsed.error.issues);
   const params = parsed.data as RuleParams;
   if (params.type === "gone_quiet") return { params: { type: params.type, days: params.days }, stageLabel: null };
@@ -177,7 +183,7 @@ function cleanDescription(text: string | undefined): string | undefined {
 /** The stored parameters, or null when they no longer pass the checks (the rule is then skipped, never guessed). */
 export function parseRuleParams(row: Pick<RuleRow, "type" | "params">): RuleParams | null {
   try {
-    const parsed = SCHEMAS[row.type]?.safeParse(JSON.parse(row.params));
+    const parsed = schemaFor(row.type)?.safeParse(JSON.parse(row.params));
     return parsed?.success ? (parsed.data as RuleParams) : null;
   } catch {
     return null;
@@ -443,8 +449,10 @@ export async function runRules(db: Db, now: Date): Promise<RuleRunCounts> {
       updated_at: at,
     };
     const record = db
-      .prepare("INSERT INTO rule_firings (id, rule_id, deal_id, fire_key, task_id, fired_at) VALUES (?, ?, ?, ?, ?, ?)")
-      .bind(newId("rf"), firing.ruleId, firing.dealId, firing.fireKey, task.id, at);
+      .prepare(
+        "INSERT INTO rule_firings (id, rule_id, deal_id, contact_id, fire_key, task_id, fired_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      )
+      .bind(newId("rf"), firing.ruleId, firing.dealId, firing.contactId, firing.fireKey, task.id, at);
     try {
       await commitChange(ctx, {
         target: { table: "tasks", id: task.id },

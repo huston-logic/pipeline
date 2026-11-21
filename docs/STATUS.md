@@ -3,6 +3,24 @@
 Spec: `docs/SPEC.md`. Plan: `docs/PLAN.md`. Rules: CLAUDE.md, "Autonomous runs". Run 1 started 2026-11-18.
 Updated after every merge, so a fresh chat can pick up where the last one stopped.
 
+## Run 4 (2026-11-20)
+
+People and leads, then the "it comes to you" items (docs/PLAN.md, "Run 4"; decision 0022; plan
+`docs/superpowers/plans/2026-11-20-run4-leads.md`). Updated in this first PR and in the closing PR of the run.
+
+The live install of the first copy was done on 2026-11-19 by the owner, so a real copy now runs this code; its lessons
+are task E1.
+
+| # | Task | PR | State |
+| --- | --- | --- | --- |
+| T0 | Record the design | this PR | |
+| E1 | Install lessons | | |
+| L1 to L9 | People and leads | | |
+| B1 | What it caught | | |
+| C1 | Email logging | | |
+| D1 | Brief notification | | |
+| E2 | After you update | | |
+
 ## Run 3 (2026-11-19)
 
 Short run: land run 2's last two PRs once the owner merged the CI timeout fix and the owner-only proposals
@@ -195,12 +213,11 @@ Files in `docs/decisions/`. Rulings made while running the plan:
 
 ## What's left
 
-After run 3, everything in the spec and the run 2 brief is built and merged. Not yet proven, because it needs a real
-account or the owner:
+After run 3, everything in the spec and the run 2 brief is built and merged. The live install on the first copy was
+done on 2026-11-19 (run 1 STOP 5 and 6). Not yet proven, because it needs a real account or the owner:
 
-1. A live install on a first copy (run 1 STOP 5 and 6): Access sign-in from a real AI app, the board behind Access
-   (including a board edit and its Undo), the first remote migration, deploy and import; the phone checks in run 2
-   STOP 3 and 4.
+1. The phone checks in run 2 STOP 3 and 4 (Access bypass for icons, Add to Home Screen, Ask Claude), if not already
+   done on the first copy.
 2. CPU on real hardware: run 2 measured on this Mac (docs/PAID-PLAN.md, "CPU check"). Confirm in the Cloudflare
    dashboard on the first copy, and settle the D1 statement-count question (run 2 STOP 5).
 3. Minor review findings left from run 2 (none blocks use): the `/companies` page has no row cap (it is fast at 300

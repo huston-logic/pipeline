@@ -34,6 +34,8 @@ export function importChange(plan: ImportPlan, existing: readonly ContactRow[], 
       version: 1,
       created_at: stamp,
       updated_at: stamp,
+      lead_status: null,
+      lead_status_at: null,
     };
     changes.push({ table: "contacts", id: contact.id, before: null, after: contact });
   }

@@ -242,8 +242,8 @@ test("update_rulebook replaces or adds a document that get_rulebook then returns
   const added = await ok(c, "update_rulebook", { name: "pricing", markdown: "Only quote from the price sheet." });
   assert.match(added.headline, /^Added rulebook document "pricing" \(change /);
   const { documents } = dataOf<{ documents: { name: string; markdown: string }[] }>(await ok(c, "get_rulebook"));
-  assert.deepEqual(documents.map((d) => d.name), ["voice", "pipeline", "guardrails", "pricing"]);
-  assert.equal(documents[0]?.markdown, "# Voice\n\nShort and warm.");
+  assert.deepEqual(documents.map((d) => d.name), ["leads", "voice", "pipeline", "guardrails", "pricing"]);
+  assert.equal(documents[1]?.markdown, "# Voice\n\nShort and warm.");
   const undone = await ok(c, "undo_change", { changeId: dataOf<{ changeId: string }>(updated).changeId });
   assert.match(undone.headline, /^Undid chg_[a-z0-9]{12}: Put back the earlier markdown on rulebook "voice"/);
   assert.match(await fails(c, "update_rulebook", { name: "bad name!", markdown: "x" }), /letters, numbers/);
