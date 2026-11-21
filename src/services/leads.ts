@@ -12,7 +12,7 @@ import { UserError } from "./errors.ts";
 import { checkFieldValues } from "./fields.ts";
 import { checkEmail, checkValue, clean, whenOrNull, withoutNulls } from "./input.ts";
 import { contactName, contactRef, dealTitle } from "./labels.ts";
-import { businessKey, openDealCount, withLeadStatus } from "./lead-change.ts";
+import { businessKey, noOpenDeal, openDealCount, withLeadStatus } from "./lead-change.ts";
 import { isUnqualified, LEAD_STATUS_LABELS, type LeadStatus, UNQUALIFIED_STATUSES } from "./lead-status.ts";
 import { type FieldValues, findContact, findDeal, findStage, firstStageOfKind, ownerTimezone } from "./lookup.ts";
 
@@ -263,15 +263,12 @@ export async function returnToLead(ctx: Ctx, input: ReturnInput): Promise<Return
   if (contact.lead_status !== status) {
     changes.push({ table: "contacts", id: contact.id, before: contact, after: withLeadStatus(contact, status, ctx.now) });
   }
-  const noOpenDeal = db
-    .prepare("INSERT INTO write_guard (ok) SELECT COUNT(*) = 0 FROM deals WHERE contact_id = ? AND status = 'open' AND archived = 0")
-    .bind(contact.id);
   try {
     const result = await commitChange(ctx, {
       target: { table: "deals", id: deal.id },
       summary: `Moved ${who} back to leads (${LEAD_STATUS_LABELS[status]}); archived ${dealNoun(deal)}`,
       changes,
-      extra: [noOpenDeal],
+      extra: [noOpenDeal(db, contact.id)],
     });
     return { ...result, contactId: contact.id, dealId: deal.id };
   } catch (error) {

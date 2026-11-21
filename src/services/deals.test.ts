@@ -6,6 +6,7 @@ import type { Ctx } from "./change.ts";
 import { updateDeal } from "./deals.ts";
 import { UserError } from "./errors.ts";
 import { addDeal } from "./add-deal.ts";
+import { returnToLead } from "./leads.ts";
 
 const CREATED = new Date("2026-11-16T18:00:00.000Z");
 const NOW = new Date("2026-11-19T18:00:00.000Z");
@@ -182,4 +183,20 @@ test("moving an open deal, closing it, or reopening one for a person with no lea
   const reopened = await updateDeal(ctxAt(db, NOW), dealId, { stage: "new_inquiry" });
   assert.doesNotMatch(reopened.summary, /Qualified/);
   assert.equal((await leadStatusOf(db, contactId))?.lead_status, null);
+});
+
+test("updateDeal refuses an archived deal, such as one moved back to leads, and writes nothing", async () => {
+  const { db, dealId, contactId } = await setup();
+  await updateDeal(ctxAt(db, CREATED), dealId, { status: "lost" });
+  await returnToLead(ctxAt(db, CREATED, "return_to_lead"), { deal: dealId, status: "not_a_fit" });
+  const changes = async () => (await db.prepare("SELECT COUNT(*) AS n FROM audit_log").first<{ n: number }>())?.n;
+  const before = { deal: await deal(db, dealId), changes: await changes() };
+  await assert.rejects(
+    updateDeal(ctxAt(db, NOW), dealId, { stage: "replied" }),
+    /^UserError: "Website refresh" \(Pat Example\) is archived\. Undo the change that archived it to bring it back\.$/,
+  );
+  await assert.rejects(updateDeal(ctxAt(db, NOW), dealId, { value: 500 }), /is archived\. Undo the change that archived it/);
+  assert.deepEqual(await deal(db, dealId), before.deal);
+  assert.equal(await changes(), before.changes);
+  assert.equal((await leadStatusOf(db, contactId))?.lead_status, "not_a_fit");
 });
