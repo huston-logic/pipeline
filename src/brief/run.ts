@@ -60,6 +60,18 @@ async function newLeads(db: Db, since: string, now: Date): Promise<BriefLead[]> 
   }));
 }
 
+/**
+ * Logged emails received after `since` (and not after now) that matched no one (decision 0031). By received time, the
+ * same window as new leads, so an email that arrives after the brief on the same day is counted in the next one.
+ */
+async function unmatchedEmails(db: Db, since: string, now: Date): Promise<number> {
+  const row = await db
+    .prepare("SELECT COUNT(*) AS n FROM email_log WHERE matched = 0 AND received_at > ? AND received_at <= ?")
+    .bind(since, now.toISOString())
+    .first<{ n: number }>();
+  return row?.n ?? 0;
+}
+
 /** One entry per deal (the longest quiet spell when two rules flag it), longest quiet first. */
 async function quietList(db: Db, now: Date): Promise<BriefQuietDeal[]> {
   const byDeal = new Map<string, BriefQuietDeal>();
@@ -89,12 +101,14 @@ export async function runBrief(env: Env, now: Date): Promise<BriefRunCounts> {
 
   const tz = settings.timezone;
   const due = await whatsDue(db, now, tz);
+  const since = previous?.composed_at ?? new Date(now.getTime() - DAY_MS).toISOString();
   const brief = composeBrief({
     now,
     tz,
     tasks: { overdue: due.overdueTasks, today: due.todayTasks },
     quietDeals: await quietList(db, now),
-    newLeads: await newLeads(db, previous?.composed_at ?? new Date(now.getTime() - DAY_MS).toISOString(), now),
+    newLeads: await newLeads(db, since, now),
+    unmatchedEmails: await unmatchedEmails(db, since, now),
   });
 
   // "pending" is overwritten once the send finishes; it stays only if the Worker dies in between, and the brief is

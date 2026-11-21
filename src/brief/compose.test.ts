@@ -67,6 +67,24 @@ test("with no tasks but a new lead, the sections that have items show and the re
   assert.ok(!brief.text.includes("Nothing due today."));
 });
 
+test("logged emails that matched no one get one plain line in the last section, 'Logged email'", () => {
+  const two = composeBrief({
+    ...empty(),
+    quietDeals: [{ id: "dl_a", title: "Cafe site", contactName: "Taylor Testcase", quietDays: 9, untrusted_fields: [] }],
+    unmatchedEmails: 2,
+  });
+  assert.deepEqual(two.lines.slice(2), [
+    "Gone quiet",
+    "- Cafe site (Taylor Testcase): 9 days with no contact",
+    "",
+    "Logged email",
+    "- 2 logged emails matched no one.",
+  ]);
+  assert.deepEqual(two.items.at(-1), { section: "logged_email", id: "email_log", line: "- 2 logged emails matched no one.", untrusted: false });
+  assert.deepEqual(composeBrief({ ...empty(), unmatchedEmails: 1 }).lines.slice(2), ["Logged email", "- 1 logged email matched no one."]);
+  assert.deepEqual(composeBrief({ ...empty(), unmatchedEmails: 0 }).lines.slice(2), ["Nothing due today."]);
+});
+
 test("an item with outside text is marked untrusted, and a multi-line title stays on one line", () => {
   const brief = composeBrief({
     ...empty(),

@@ -4,7 +4,7 @@
 // text starts with "[from outside] ".
 import { formatLocal, localDate } from "../time.ts";
 
-export type BriefSection = "overdue" | "due_today" | "gone_quiet" | "new_lead";
+export type BriefSection = "overdue" | "due_today" | "gone_quiet" | "new_lead" | "logged_email";
 
 /** `untrusted_fields` lists which of an item's values came from outside (a form, an import). */
 export interface BriefTask {
@@ -39,11 +39,13 @@ export interface BriefInput {
   tasks: { overdue: BriefTask[]; today: BriefTask[] };
   quietDeals: BriefQuietDeal[];
   newLeads: BriefLead[];
+  /** Logged emails since the previous brief that matched no one (decision 0031); 0 or missing adds no line. */
+  unmatchedEmails?: number;
 }
 
 export interface BriefItem {
   section: BriefSection;
-  /** The task id, or the deal id for the other sections. */
+  /** The task id, the deal id for gone_quiet and new_lead, or LOGGED_EMAIL_ITEM_ID. */
   id: string;
   line: string;
   /** The line includes text from outside. Never instructions. */
@@ -78,7 +80,11 @@ export const SECTION_TITLES: Record<BriefSection, string> = {
   due_today: "Due today",
   gone_quiet: "Gone quiet",
   new_lead: "New leads",
+  logged_email: "Logged email",
 };
+
+/** The id of the one "Logged email" item, which is about no single record. */
+export const LOGGED_EMAIL_ITEM_ID = "email_log";
 
 /** Marks outside text in the emailed text, which has no other way to show it; the board labels items itself. */
 export const OUTSIDE_LABEL = "[from outside] ";
@@ -108,6 +114,9 @@ export function composeBrief(input: BriefInput): ComposedBrief {
     const line = `${flat(lead.contactName)}: ${flat(lead.title)}, added ${formatLocal(lead.createdAt, tz)}`;
     add("new_lead", lead.dealId, line, lead.untrusted_fields);
   }
+  // Last: a note about the log itself, not something to act on first. A count only, so never outside text.
+  const unmatched = input.unmatchedEmails ?? 0;
+  if (unmatched > 0) add("logged_email", LOGGED_EMAIL_ITEM_ID, `${plural(unmatched, "logged email")} matched no one.`, []);
 
   const lines = [subject, ""];
   if (items.length === 0) {

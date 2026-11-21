@@ -768,7 +768,7 @@ export interface BriefView {
   sendStatus: string | null;
 }
 
-const BRIEF_SECTIONS = new Set<string>(["overdue", "due_today", "gone_quiet", "new_lead"]);
+const BRIEF_SECTIONS = new Set<string>(["overdue", "due_today", "gone_quiet", "new_lead", "logged_email"]);
 
 function isBriefItem(value: unknown): value is BriefItem {
   if (typeof value !== "object" || value === null) return false;
