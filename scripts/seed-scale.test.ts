@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { before, test } from "node:test";
 import { createTestDb, type SqliteD1 } from "../src/db/sqlite-d1.ts";
 import type { Db } from "../src/db/db.ts";
+import { leadFireKeyOf } from "../src/rules/engine.ts";
 import { MAX_FIRINGS_PER_RUN, type PreviewRequest, previewRuleFor, runRules } from "../src/services/rules.ts";
 import { buildScaleSeed, DUE_FIRINGS, parseScaleArgs, SCALE, scaleSeed } from "./seed-scale.ts";
 
@@ -19,12 +20,13 @@ const count = async (sql: string) => (await db.prepare(sql).first<number>("n")) 
 test("the scale seed has the sizes the CPU check names, with clean foreign keys", async () => {
   assert.deepEqual((await db.prepare("PRAGMA foreign_key_check").all()).results, []);
   assert.equal(await count("SELECT COUNT(*) AS n FROM deals"), SCALE.deals);
-  assert.equal(await count("SELECT COUNT(*) AS n FROM contacts"), SCALE.contacts);
-  assert.equal(await count("SELECT COUNT(*) AS n FROM activities"), SCALE.activities);
-  assert.equal(await count("SELECT COUNT(*) AS n FROM tasks"), SCALE.tasks);
+  assert.equal(await count("SELECT COUNT(*) AS n FROM contacts WHERE lead_status IS NULL"), SCALE.contacts);
+  assert.equal(await count("SELECT COUNT(*) AS n FROM contacts WHERE lead_status IS NOT NULL"), SCALE.leads);
+  assert.equal(await count("SELECT COUNT(*) AS n FROM activities WHERE deal_id IS NOT NULL"), SCALE.activities);
+  assert.equal(await count("SELECT COUNT(*) AS n FROM tasks WHERE deal_id IS NOT NULL"), SCALE.tasks);
   assert.equal(await count("SELECT COUNT(*) AS n FROM briefs"), SCALE.briefs);
-  assert.equal(await count("SELECT COUNT(DISTINCT business) AS n FROM contacts"), SCALE.companies);
-  assert.equal(await count("SELECT COUNT(*) AS n FROM rules"), 5);
+  assert.equal(await count("SELECT COUNT(DISTINCT business) AS n FROM contacts WHERE lead_status IS NULL"), SCALE.companies);
+  assert.equal(await count("SELECT COUNT(*) AS n FROM rules"), 6);
   assert.ok((await count("SELECT COUNT(*) AS n FROM rule_firings")) > 0);
   assert.ok((await count("SELECT COUNT(*) AS n FROM audit_log")) > SCALE.deals);
   assert.equal(await count("SELECT COUNT(*) AS n FROM deals WHERE status = 'open'"), 1_200);
@@ -58,16 +60,45 @@ test("deal dates follow from the activities, the way the services keep them", as
   assert.equal(await count(`SELECT COUNT(*) AS n FROM activities WHERE occurred_at > '${NOW.toISOString()}'`), 0);
 });
 
-test("the next hourly run has 50 firings due: it writes MAX_FIRINGS_PER_RUN and defers the rest", async () => {
+test("the next hourly run has 50 deal firings due: it writes MAX_FIRINGS_PER_RUN and defers the rest, lead firings last", async () => {
   const due = DUE_FIRINGS.replied + DUE_FIRINGS.proposalSent;
   assert.equal(due, 50);
   const local = await createTestDb();
   local.exec(buildScaleSeed(NOW));
   const first = await runRules(local, NOW);
-  assert.deepEqual(first, { rules: 4, fired: MAX_FIRINGS_PER_RUN, alreadyFired: 0, failed: 0, deferred: due - MAX_FIRINGS_PER_RUN });
+  assert.deepEqual(first, { rules: 5, fired: MAX_FIRINGS_PER_RUN, alreadyFired: 0, failed: 0, deferred: due - MAX_FIRINGS_PER_RUN + DUE_FIRINGS.leads });
   const second = await runRules(local, new Date(NOW.getTime() + 3_600_000));
   assert.equal(second.fired, due - MAX_FIRINGS_PER_RUN);
-  assert.equal(second.deferred, 0);
+  assert.equal(second.deferred, DUE_FIRINGS.leads);
+  const third = await runRules(local, new Date(NOW.getTime() + 3_600_000));
+  assert.equal(third.fired, MAX_FIRINGS_PER_RUN, "now the lead firings are written");
+  const fourth = await runRules(local, new Date(NOW.getTime() + 3_600_000));
+  assert.equal(fourth.fired, DUE_FIRINGS.leads - MAX_FIRINGS_PER_RUN);
+  assert.equal(fourth.deferred, 0);
+  const fifth = await runRules(local, new Date(NOW.getTime() + 3_600_000));
+  assert.equal(fifth.fired, 0, "nothing more is owed");
+});
+
+test("the leads: 2,000 people with a status and no deal, five statuses, no deal and fake addresses", async () => {
+  assert.equal(await count("SELECT COUNT(*) AS n FROM contacts WHERE lead_status IS NOT NULL AND id NOT LIKE 'ct_leadscale%'"), 0);
+  assert.equal(await count("SELECT COUNT(*) AS n FROM deals WHERE contact_id LIKE 'ct_leadscale%'"), 0, "a lead has no deal");
+  assert.equal(await count("SELECT COUNT(DISTINCT business) AS n FROM contacts WHERE lead_status IS NOT NULL"), SCALE.leads);
+  const byStatus = (await db.prepare("SELECT lead_status AS s, COUNT(*) AS n FROM contacts WHERE lead_status IS NOT NULL GROUP BY 1").all<{ s: string; n: number }>()).results;
+  assert.deepEqual(byStatus.map((r) => r.s).sort(), ["bad", "contacted", "new", "not_a_fit", "not_now"]);
+  for (const row of byStatus) assert.ok(row.n >= SCALE.leads * 0.03, `${row.s}: ${row.n}`);
+  assert.equal(await count("SELECT COUNT(*) AS n FROM contacts WHERE lead_status IS NOT NULL AND lead_status_at IS NULL"), 0);
+  assert.ok((await count("SELECT COUNT(*) AS n FROM activities WHERE deal_id IS NULL")) > 1_000, "leads have their own reach activities");
+  assert.ok((await count("SELECT COUNT(*) AS n FROM tasks WHERE deal_id IS NULL")) > 300, "and their own tasks");
+  assert.equal(await count("SELECT COUNT(*) AS n FROM audit_log WHERE tool = 'add_lead'"), SCALE.leads + SCALE.deals);
+});
+
+test("the lead_followup rule owes exactly DUE_FIRINGS.leads tasks, and 100 more leads are already fired", async () => {
+  const preview = await previewRuleFor(db, NOW, { rule: "ru_scale06" });
+  assert.equal(preview.leadCount, DUE_FIRINGS.leads);
+  assert.equal(await count("SELECT COUNT(*) AS n FROM rule_firings WHERE rule_id = 'ru_scale06'"), 100);
+  const keyShape = await db.prepare("SELECT fire_key AS k, contact_id AS c, rule_id AS r FROM rule_firings WHERE rule_id = 'ru_scale06' LIMIT 1").first<{ k: string; c: string; r: string }>();
+  const statusAt = await db.prepare("SELECT lead_status_at AS s FROM contacts WHERE id = ?").bind(keyShape?.c).first<string>("s");
+  assert.equal(keyShape?.k, leadFireKeyOf(keyShape?.r ?? "", keyShape?.c ?? "", statusAt ?? ""));
 });
 
 test("preview_rule on the Replied follow-up finds deals on the scaled copy", async () => {
