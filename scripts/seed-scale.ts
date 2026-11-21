@@ -1,5 +1,6 @@
 // A large fake copy for the CPU check (run 2, task R7; docs/PAID-PLAN.md): 2,000 deals, 1,500 contacts at 300
-// companies, 20,000 activities, 3,000 tasks, five rules, rule firings, about 6,000 change-log rows and 60 briefs.
+// companies, 20,000 activities, 3,000 tasks, five rules (run 4, task L9, adds 2,000 leads with their own activities,
+// tasks, firings and a sixth rule, a lead_followup), rule firings, about 6,000 change-log rows and 60 briefs.
 // Made-up people only (example.com, example.org and example.net addresses). Deterministic: the same `now` gives the
 // same SQL, byte for byte (a fixed pseudo-random sequence, no Math.random, no new ids).
 //   node scripts/seed-scale.ts --out <file>
@@ -22,16 +23,22 @@ export const SCALE = {
   activities: 20_000,
   tasks: 3_000,
   briefs: 60,
+  leads: 2_000,
 } as const;
 
 export const SCALE_BUSINESS_NAME = "Scale test copy (demo)";
 
-/** Firings the next hourly run finds due: the Replied follow-up's and the Proposal sent entry rule's. */
-export const DUE_FIRINGS = { replied: 30, proposalSent: 20 } as const;
+/**
+ * Firings the next hourly run finds due: the Replied follow-up's, the Proposal sent entry rule's and (run 4) the lead
+ * follow-up's. Deal firings are written first, so the lead ones wait behind the 25-firing budget.
+ */
+export const DUE_FIRINGS = { replied: 30, proposalSent: 20, leads: 40 } as const;
 
 export interface ScaleSeed {
   fieldDefs: Row[];
   contacts: Row[];
+  /** People with a lead status and no deal (run 4, task L9). */
+  leads: Row[];
   deals: Row[];
   activities: Row[];
   tasks: Row[];
@@ -378,6 +385,8 @@ export function scaleSeed(now: Date, tz: string = DEFAULT_TZ): ScaleSeed {
   }
   audit.sort((a, b) => String(a.at).localeCompare(String(b.at)) || String(a.id).localeCompare(String(b.id)));
 
+  const leads = scaleLeads(now, { activities, tasks, ruleFirings, rules, audit });
+
   const briefs: Row[] = Array.from({ length: SCALE.briefs }, (_, k) => {
     const when = new Date(now.getTime() - (k + 1) * DAY);
     const sample = built.slice(k * 5, k * 5 + 5).map((b) => b.deal);
@@ -403,7 +412,156 @@ export function scaleSeed(now: Date, tz: string = DEFAULT_TZ): ScaleSeed {
     };
   });
 
-  return { fieldDefs, contacts, deals, activities, tasks, rules, ruleFirings, briefs, audit };
+  return { fieldDefs, contacts, leads, deals, activities, tasks, rules, ruleFirings, briefs, audit };
+}
+
+const LEAD_SOURCES = ["trade show", "referral", "drove past", "cold outreach", "website visit", "chamber directory", "import", "phone call"];
+const LEAD_KIND = ["Bakery", "Salon", "Florist", "Dental", "Garage", "Cafe", "Print Shop", "Pet Care"];
+const LEAD_WORDS = ["Bluebird", "Larkspur", "Fernhill", "Alder", "Quillmoor", "Tamarack", "Juniper", "Marlow", "Thistle", "Cobble",
+  "Harrow", "Wicker", "Sparrow", "Ember", "Linden"];
+const LEAD_PLACES = ["Corner", "Row", "Square", "Court", "Yard", "Lane", "Walk", "Mews", "Terrace", "Arcade"];
+const TASK_TITLES = ["Call to ask about a free structural check", "Send the short intro email", "Drop by with a card"];
+
+/** Same as the engine's lead fire key (src/rules/engine.ts `leadFireKeyOf`); a test checks they agree. */
+export const leadFireKey = (ruleId: string, contactId: string, statusAt: string) => `${ruleId}:${contactId}:${statusAt}`;
+
+type LeadParts = { activities: Row[]; tasks: Row[]; ruleFirings: Row[]; rules: Row[]; audit: Row[] };
+
+/**
+ * 2,000 leads (people with a lead status and no deal) and what hangs off them: reach activities, tasks, one add_lead
+ * change each, and a lead_followup rule (Contacted, 5 days) with DUE_FIRINGS.leads leads owing a task and 100 more
+ * already fired. Uses its own random sequence, so the deals above come out the same as before leads existed.
+ * New 40%, Contacted 30%, Not now 15%, Not a fit 10%, Bad lead 5%.
+ */
+function scaleLeads(now: Date, out: LeadParts): Row[] {
+  const rand = prng(20261120);
+  const at = (daysAgo: number) => new Date(now.getTime() - Math.round(daysAgo * DAY)).toISOString();
+  const pick = <T>(list: readonly T[]): T => list[Math.floor(rand() * list.length)] as T;
+  const ruleId = "ru_scale06";
+  out.rules.push(
+    rule(6, "lead_followup", { type: "lead_followup", status: "contacted", days: 5 }, "When a lead has been Contacted for 5 days with no contact logged, add a follow-up task.", 1, at(30)),
+  );
+  let activityN = 0;
+  let taskN = out.tasks.length;
+  const reach = (id: string, type: string, summary: string, daysAgo: number) => {
+    const when = at(daysAgo);
+    out.activities.push({
+      id: `ac_scalelead${pad(activityN++, 6)}`,
+      deal_id: null,
+      contact_id: id,
+      type,
+      summary,
+      untrusted_text: null,
+      data: null,
+      occurred_at: when,
+      actor: "owner",
+      version: 1,
+      created_at: when,
+    });
+  };
+  const task = (id: string, title: string, dueDaysAgo: number, createdDaysAgo: number, extra: Row = {}): Row => {
+    const created = at(createdDaysAgo);
+    const row: Row = {
+      id: `tk_scale${pad(taskN++)}`,
+      deal_id: null,
+      contact_id: id,
+      title,
+      due_at: at(dueDaysAgo),
+      done_at: null,
+      snoozed_until: null,
+      source: "owner",
+      untrusted_fields: "[]",
+      version: 1,
+      created_at: created,
+      updated_at: created,
+      ...extra,
+    };
+    out.tasks.push(row);
+    return row;
+  };
+
+  let contacted = 0;
+  return Array.from({ length: SCALE.leads }, (_, k) => {
+    const first = FIRST[k % FIRST.length] ?? "Avery";
+    const last = LAST[(k * 7 + 3) % LAST.length] ?? "Abbott";
+    const domain = ["example.com", "example.org", "example.net"][k % 3];
+    const id = `ct_leadscale${pad(k)}`;
+    const business = `${LEAD_WORDS[k % LEAD_WORDS.length]} ${LEAD_PLACES[Math.floor(k / LEAD_WORDS.length) % LEAD_PLACES.length]} ${LEAD_KIND[Math.floor(k / 150) % LEAD_KIND.length]}${k >= 1_200 ? " II" : ""}`;
+    const roll = rand();
+    const status = roll < 0.4 ? "new" : roll < 0.7 ? "contacted" : roll < 0.85 ? "not_now" : roll < 0.95 ? "not_a_fit" : "bad";
+    const fromImport = k % 9 === 0;
+
+    // Days ago the status began, and the lead was added (never later than the status).
+    let statusDays = 1 + rand() * 120;
+    let dueNow = false;
+    if (status === "contacted") {
+      const nth = contacted++;
+      if (nth < DUE_FIRINGS.leads) {
+        // Owes a task: 6 or more days in the status with nothing since.
+        statusDays = 6 + rand() * 40;
+        dueNow = true;
+        reach(id, pick(["call", "email"]), "Called and left a message about a free structural check.", statusDays);
+      } else if (nth < DUE_FIRINGS.leads + 100) {
+        // Already fired by an earlier run.
+        statusDays = 6 + rand() * 50;
+        reach(id, "email", "Sent a short intro about free structural checks.", statusDays);
+        const firedAt = new Date(now.getTime() - Math.round(statusDays * DAY) + 5 * DAY + 30 * 60_000).toISOString();
+        const statusAt = at(statusDays);
+        const t = task(id, `Follow up with ${first} ${last}`, statusDays - 5, statusDays - 5, { source: ruleId, created_at: firedAt, updated_at: firedAt, done_at: firedAt, version: 2 });
+        out.ruleFirings.push({
+          id: `rf_scalelead${pad(out.ruleFirings.length)}`,
+          rule_id: ruleId,
+          deal_id: null,
+          contact_id: id,
+          fire_key: leadFireKey(ruleId, id, statusAt),
+          task_id: String(t.id),
+          fired_at: firedAt,
+        });
+      } else if (nth % 3 === 0) {
+        statusDays = 0.2 + rand() * 4.5;
+        reach(id, "call", "Called about a free structural check.", statusDays);
+      } else {
+        statusDays = 6 + rand() * 60;
+        reach(id, "call", "Called about a free structural check.", statusDays);
+        reach(id, pick(["email", "call"]), "They replied and asked for more detail.", rand() * (statusDays - 1));
+      }
+    } else if (status === "not_now") {
+      statusDays = 5 + rand() * 200;
+      reach(id, "call", "Said to try again after the busy season.", statusDays);
+      // Mostly dated ahead; about 4% are late.
+      if (rand() < 0.8) task(id, `Check back with ${first} ${last}`, 5 - rand() * 150, statusDays, {});
+    } else if (status !== "new") {
+      statusDays = 10 + rand() * 300;
+      if (rand() < 0.3) reach(id, "note", "Does only cosmetic work; no structural need.", statusDays);
+    }
+    // A few New and Contacted leads have an open or finished call task of their own.
+    if (!dueNow && (status === "new" || status === "contacted") && rand() < 0.25) {
+      const done = rand() < 0.3;
+      task(id, pick(TASK_TITLES), 3 - rand() * 30, statusDays, done ? { done_at: at(rand() * 5), version: 2 } : {});
+    }
+    const createdDays = statusDays + (status === "new" ? 0 : rand() * 30);
+    const row: Row = {
+      id,
+      name: `${first} ${last}`,
+      email: `${first}.${last}.lead${k}@${domain}`.toLowerCase(),
+      phone: `555-02${pad(k % 100, 2)}`,
+      business,
+      source: pick(LEAD_SOURCES),
+      notes: k % 11 === 0 ? "Found in the directory. Small shop, one building." : null,
+      fields: "{}",
+      untrusted_fields: fromImport ? '["name","email","phone","business","source"]' : "[]",
+      archived: 0,
+      version: 1,
+      created_at: at(createdDays),
+      updated_at: at(statusDays),
+      lead_status: status,
+      lead_status_at: at(statusDays),
+    };
+    out.audit.push(
+      change(out.audit.length, String(row.created_at), "owner", "add_lead", "contacts", id, {}, { [`contacts:${id}`]: row }, `Added lead ${first} ${last} (New)`),
+    );
+    return row;
+  });
 }
 
 function rule(n: number, type: string, params: object, description: string, active: number, created: string): Row {
@@ -445,6 +603,7 @@ export function buildScaleSeed(now: Date, tz: string = DEFAULT_TZ): string {
     `UPDATE settings SET business_name = '${SCALE_BUSINESS_NAME}' WHERE id = 1 AND business_name IS NULL;`,
     ...seed.fieldDefs.map((row) => insert("field_defs", row)),
     ...seed.contacts.map((row) => insert("contacts", row)),
+    ...seed.leads.map((row) => insert("contacts", row)),
     ...seed.deals.map((row) => insert("deals", row)),
     ...seed.activities.map((row) => insert("activities", row)),
     ...seed.rules.map((row) => insert("rules", row)),

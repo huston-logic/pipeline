@@ -1,11 +1,11 @@
-// Acceptance: the spec's twelve owner sentences, in spec order, driven the way an AI app would drive them: MCP tools
+// Acceptance: the spec's twenty owner sentences (1 to 12, then the lead sentences 13 to 20), in spec order, driven the way an AI app would drive them: MCP tools
 // over Streamable HTTP against `wrangler dev --local` with real local D1 and the fake seed. Later sentences build on
-// earlier ones (8 undoes 7's change, 9 sees 4-8, 11 renames a stage after 10 has used the rule). The only other
-// doors are /intake (12) and the cron trigger (10). docs/ACCEPTANCE.md lists the sentences against these tests.
+// earlier ones (8 undoes 7's change, 9 sees 4-8, 11 renames a stage after 10 has used the rule, 17 qualifies the lead
+// 13 added, 18 sends that deal back). The only other doors are /intake (12, 19) and the cron trigger (10, 20). docs/ACCEPTANCE.md lists the sentences against these tests.
 import assert from "node:assert/strict";
 import { after, before, describe, test } from "node:test";
 import type { Client } from "@modelcontextprotocol/client";
-import { addDays, formatLocal, localDate, zonedToUtc } from "../../src/time.ts";
+import { addDays, dayBoundsUtc, formatLocal, localDate, zonedToUtc } from "../../src/time.ts";
 import { CHANGE_LINE, connectHttp, fails, ok, type ToolAnswer } from "../helpers/mcp-client.ts";
 import { type DevServer, startDevServer } from "./harness.ts";
 
@@ -337,5 +337,207 @@ describe("the twelve owner sentences", () => {
     assert.deepEqual(won(after), won(before), "no deal was marked won");
     assert.deepEqual(won(after), ["dl_seed07", "dl_seed12", "dl_seed20"]);
     assert.equal(after.contacts?.at(-1)?.email, "riley@example.com");
+  });
+});
+
+type Tables = Record<string, Record<string, unknown>[]>;
+const snapshot = async () => ((await (await fetch(`${server.url}/api/export.json`)).json()) as { tables: Tables }).tables;
+
+type LeadItem = { id: string; name: string; business: string | null; leadStatus: string; lastContactAt: string | null; nextTaskAt: string | null };
+const leadsWhere = async (args: Record<string, unknown>): Promise<LeadItem[]> =>
+  ((await tool("list_leads", args)).data as { items: LeadItem[] }).items;
+
+const openDeals = (tables: Tables) => tables.deals?.filter((d) => d.status === "open" && d.archived === 0).length;
+
+describe("the eight lead sentences", () => {
+  let freshLeadId = "";
+  let checkBackLeadId = "";
+  let dealId = "";
+  let nextJanuary = "";
+  const FRESH = "Larkspur Dental (demo)";
+
+  test('13. "Add a lead: [business], found on [source], haven\'t talked to them yet." (New, no deal)', async () => {
+    const before = await snapshot();
+    const answer = await tool("add_lead", { business: FRESH, source: "drove past" });
+    assert.match(answer.headline, CHANGE_LINE);
+    freshLeadId = (answer.data as { contactId: string }).contactId;
+
+    const lead = (await leadsWhere({ query: "Larkspur" }))[0];
+    assert.equal(lead?.id, freshLeadId);
+    assert.equal(lead?.leadStatus, "new", "a new lead is New");
+    assert.equal(lead?.lastContactAt, null, "no one has talked to them yet");
+
+    const after = await snapshot();
+    assert.deepEqual(after.deals, before.deals, "no deal was added or changed");
+    assert.equal(after.contacts?.length, (before.contacts?.length ?? 0) + 1);
+    const row = after.contacts?.find((c) => c.id === freshLeadId);
+    assert.equal(row?.source, "drove past");
+    assert.equal(after.tasks?.length, before.tasks?.length, "no task either");
+  });
+
+  test('14. "I walked into [business]. The owner said to come back in January." (Not now, with a follow-up task)', async () => {
+    const year = Number(localDate(new Date(), tz).slice(0, 4)) + 1;
+    nextJanuary = `${year}-01-12`;
+    const added = await tool("add_lead", { business: "Fernhill Bakery (demo)", source: "walked in" });
+    checkBackLeadId = (added.data as { contactId: string }).contactId;
+    const before = await snapshot();
+
+    const answer = await tool("update_contact", { contact: checkBackLeadId, leadStatus: "not_now", followUpDate: nextJanuary });
+    assert.match(answer.headline, CHANGE_LINE);
+
+    const lead = (await leadsWhere({ statuses: ["not_now"], query: "Fernhill" }))[0];
+    assert.equal(lead?.id, checkBackLeadId);
+    assert.equal(lead?.leadStatus, "not_now");
+    assert.equal(localDate(new Date(lead?.nextTaskAt ?? ""), tz), nextJanuary, "the next task is due in January");
+
+    const after = await snapshot();
+    const checkBack = after.tasks?.filter((t) => t.contact_id === checkBackLeadId) ?? [];
+    assert.equal(checkBack.length, 1, "exactly one task on the person");
+    assert.match(String(checkBack[0]?.title), /^Check back with /);
+    assert.equal(checkBack[0]?.deal_id, null, "the task belongs to the person, not to a deal");
+    assert.equal(checkBack[0]?.done_at, null);
+    assert.equal(localDate(new Date(String(checkBack[0]?.due_at)), tz), nextJanuary);
+    assert.deepEqual(after.deals, before.deals, "no deal was touched");
+  });
+
+  test('15. "[Business] isn\'t a fit." (No deal is touched)', async () => {
+    const added = await tool("add_lead", { business: "Alder Auto Glass (demo)", source: "directory" });
+    const id = (added.data as { contactId: string }).contactId;
+    const before = await snapshot();
+
+    const answer = await tool("update_contact", { contact: id, leadStatus: "not_a_fit" });
+    assert.match(answer.headline, CHANGE_LINE);
+
+    const lead = (await leadsWhere({ statuses: ["not_a_fit"], query: "Alder" }))[0];
+    assert.equal(lead?.id, id);
+    assert.equal(lead?.leadStatus, "not_a_fit");
+    assert.ok(!(await leadsWhere({ query: "Alder" })).length, "the default list leaves Not a fit out");
+
+    const after = await snapshot();
+    assert.deepEqual(after.deals, before.deals, "no deal row changed");
+    assert.deepEqual(after.tasks, before.tasks, "no task was added");
+  });
+
+  test('16. "Who should I reach out to this week?" (New leads, and leads with a follow-up due)', async () => {
+    const fresh = await leadsWhere({ statuses: ["new"] });
+    const due = await leadsWhere({ dueWithinDays: 7 });
+    const ids = new Set([...fresh, ...due].map((lead) => lead.id));
+
+    // The untouched New leads: the seed's three and the one sentence 13 added.
+    for (const id of ["ct_lead01", "ct_lead02", "ct_lead07", freshLeadId]) assert.ok(ids.has(id), `${id} is a New lead`);
+    assert.ok(fresh.every((lead) => lead.leadStatus === "new"));
+    assert.deepEqual(fresh.map((l) => l.id).sort(), ["ct_lead01", "ct_lead02", "ct_lead07", freshLeadId].sort(), "only New leads");
+
+    // The follow-ups due by the end of day 7: Omar's check-back is late; Colin's is in ten days; January is far off.
+    const end = dayBoundsUtc(addDays(localDate(new Date(), tz), 7), tz).end.toISOString();
+    assert.ok(due.length > 0);
+    assert.ok(due.every((lead) => lead.nextTaskAt !== null && lead.nextTaskAt < end), "every follow-up is due within the week");
+    assert.ok(due.some((lead) => lead.id === "ct_lead10"), "Omar's overdue check-back is on the list");
+    assert.ok(!ids.has("ct_lead06"), "Colin's check-back is ten days away");
+    assert.ok(!ids.has(checkBackLeadId), "the January check-back is not this week");
+    assert.ok(!due.some((lead) => lead.leadStatus === "not_a_fit" || lead.leadStatus === "bad"));
+  });
+
+  test('17. "[Lead] wants a quote. Make it a deal in Call booked for Thursday at 2." (qualify_lead)', async () => {
+    const thursday = nextWeekday(tz, 4);
+    const expected = formatLocal(zonedToUtc(`${thursday}T14:00`, tz), tz);
+    const openBefore = openDeals(await snapshot());
+    const answer = await tool("qualify_lead", {
+      contact: freshLeadId,
+      stage: "Call booked",
+      nextStep: "Quote call",
+      nextAt: `${thursday}T14:00`,
+    });
+    assert.match(answer.headline, CHANGE_LINE);
+    assert.ok(answer.headline.includes("Call booked"), answer.headline);
+    assert.ok(answer.headline.includes(expected), `${answer.headline} should show ${expected}`);
+    dealId = (answer.data as { dealId: string }).dealId;
+
+    const deal = (await tool("get_deal", { deal: dealId })).data as {
+      stage: { key: string };
+      next: { step: string; at: string; atLocal: string };
+    };
+    assert.equal(deal.stage.key, "call_booked");
+    assert.equal(deal.next.at, zonedToUtc(`${thursday}T14:00`, tz).toISOString(), "Thursday 14:00 in the owner's timezone");
+    assert.equal(deal.next.atLocal, expected);
+    assert.match(expected, /^Thu .*, 2:00 PM$/);
+
+    assert.equal(openDeals(await snapshot()), (openBefore ?? 0) + 1, "one new open deal");
+    assert.ok(!(await leadsWhere({ query: "Larkspur" })).length, "no longer an open lead");
+    const qualified = await leadsWhere({ statuses: ["qualified"], query: "Larkspur" });
+    assert.equal(qualified[0]?.leadStatus, "qualified");
+  });
+
+  test('18. "That deal was never a real opportunity. Put it back in leads." (return_to_lead)', async () => {
+    const openBefore = openDeals(await snapshot());
+    const answer = await tool("return_to_lead", { deal: dealId });
+    assert.match(answer.headline, CHANGE_LINE);
+    assert.match(answer.headline, /^Moved .* back to leads \(Contacted\); archived /);
+
+    const after = await snapshot();
+    assert.equal(after.deals?.find((d) => d.id === dealId)?.archived, 1, "the deal is archived");
+    assert.equal(openDeals(after), (openBefore ?? 1) - 1);
+    const lead = (await leadsWhere({ query: "Larkspur" }))[0];
+    assert.equal(lead?.id, freshLeadId);
+    assert.equal(lead?.leadStatus, "contacted", "the person is a lead again");
+    const listed = ((await tool("list_deals", {})).data as { deals: { id: string }[] }).deals;
+    assert.ok(!listed.some((d) => d.id === dealId), "the deal has left the board");
+  });
+
+  test('19. "A website form from a lead\'s email." (one new deal, Qualified, no second person)', async () => {
+    const added = await tool("add_lead", { name: "Nell Wrenfield", business: "Quillmoor Florist (demo)", email: "nell.wrenfield@example.com", source: "drove past" });
+    const leadId = (added.data as { contactId: string }).contactId;
+    const before = await snapshot();
+
+    const res = await fetch(`${server.url}/intake`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Intake-Secret": "dev-intake-secret" },
+      body: JSON.stringify({ name: "Nell Wrenfield", email: "nell.wrenfield@example.com", message: "Could you quote a new shop sign?" }),
+    });
+    assert.equal(res.status, 201);
+
+    const after = await snapshot();
+    assert.equal(after.contacts?.length, before.contacts?.length, "no second person");
+    assert.equal(after.deals?.length, (before.deals?.length ?? 0) + 1, "one new deal");
+    const deal = after.deals?.at(-1);
+    assert.equal(deal?.contact_id, leadId, "on the lead's own record");
+    assert.equal(deal?.status, "open");
+    assert.equal(deal?.stage_key, "new_inquiry");
+    assert.equal(after.contacts?.find((c) => c.id === leadId)?.lead_status, "qualified");
+    assert.deepEqual(
+      after.contacts?.filter((c) => c.id !== leadId),
+      before.contacts?.filter((c) => c.id !== leadId),
+      "every other person is unchanged",
+    );
+    assert.equal(after.audit_log?.length, (before.audit_log?.length ?? 0) + 1, "one change in all");
+    assert.deepEqual(after.audit_log?.slice(0, before.audit_log?.length), before.audit_log, "earlier changes are unchanged");
+    assert.equal(after.audit_log?.at(-1)?.tool, "intake");
+    assert.equal((await leadsWhere({ query: "Quillmoor" })).length, 0, "no longer an open lead");
+  });
+
+  test('20. "From now on, remind me five days after I contact a lead with no reply." (preview first, then the rule)', async () => {
+    const settings = { type: "lead_followup", status: "contacted", days: 5 };
+    const before = calls.length;
+    const preview = await tool("preview_rule", settings);
+    const added = await tool("add_rule", settings);
+    assert.deepEqual(calls.slice(before), ["preview_rule", "add_rule"], "the preview comes before the rule is added");
+    assert.match(added.headline, CHANGE_LINE);
+
+    assert.match(preview.headline, /Nothing was changed\.$/);
+    const hits = (preview.data as { hits: { contactId: string }[] }).hits.map((hit) => hit.contactId).sort();
+    assert.ok(hits.length > 0, "the seed has contacted leads that have waited more than five days");
+    assert.ok(hits.includes("ct_lead04"), "Dev was called twelve days ago and never answered");
+    assert.ok(!hits.includes("ct_lead05"), "Noor was emailed four days ago");
+    assert.ok(!hits.includes(freshLeadId), "the lead sentence 18 just put back was contacted today");
+
+    const { ruleId } = added.data as { ruleId: string };
+    const ruleTasks = async () => (await snapshot()).tasks?.filter((t) => t.source === ruleId) ?? [];
+    assert.equal((await ruleTasks()).length, 0, "nothing fires until the hourly run");
+    await server.runCron();
+    const made = await ruleTasks();
+    assert.deepEqual(made.map((t) => t.contact_id).sort(), hits, "each lead in the preview gets exactly one task");
+    assert.ok(made.every((t) => t.deal_id === null && t.done_at === null), "the tasks are open and belong to the person");
+    await server.runCron();
+    assert.equal((await ruleTasks()).length, hits.length, "a second run adds none");
   });
 });
