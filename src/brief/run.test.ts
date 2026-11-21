@@ -6,6 +6,7 @@ import { openTestDb } from "../db/sqlite-d1.ts";
 import type { Env } from "../env.ts";
 import type { Ctx } from "../services/change.ts";
 import { addDeal } from "../services/add-deal.ts";
+import { addLead } from "../services/leads.ts";
 import { addRule } from "../services/rules.ts";
 import { addTask } from "../services/tasks.ts";
 import { runBrief, shouldRunBrief } from "./run.ts";
@@ -73,7 +74,7 @@ test("the brief is composed and stored at the brief hour, whatever brief_enabled
       "Due today",
       "- Call back (Pat Example, Website refresh), due Thu Nov 19, 2:00 PM",
       "",
-      "New leads",
+      "New inquiries",
       "- Pat Example: Website refresh, added Thu Nov 19, 2:00 AM",
     ].join("\n"),
   );
@@ -118,17 +119,37 @@ test("new leads are the deals created after the previous brief, or in the last 2
   await addDeal(ctxFor(db, new Date(SEVEN.getTime() - 23 * HOUR)), { name: "Jo Example", dealTitle: "Bakery site" });
   await runBrief(envFor(db), SEVEN);
   let [first] = await briefs(db);
-  assert.match(first?.text ?? "", /New leads\n- Jo Example: Bakery site, added Wed Nov 18, 8:00 AM$/);
+  assert.match(first?.text ?? "", /New inquiries\n- Jo Example: Bakery site, added Wed Nov 18, 8:00 AM$/);
   assert.doesNotMatch(first?.text ?? "", /Too Old/);
 
   await addDeal(ctxFor(db, new Date(SEVEN.getTime() + 2 * HOUR)), { name: "Sam Sample", dealTitle: "Menu design" });
   const nextDay = new Date(SEVEN.getTime() + DAY);
   await runBrief(envFor(db), nextDay);
   const [, second] = await briefs(db);
-  assert.match(second?.text ?? "", /New leads\n- Sam Sample: Menu design, added Thu Nov 19, 9:00 AM$/);
+  assert.match(second?.text ?? "", /New inquiries\n- Sam Sample: Menu design, added Thu Nov 19, 9:00 AM$/);
   assert.doesNotMatch(second?.text ?? "", /Jo Example/);
   first = await one<BriefRow>(db, "SELECT * FROM briefs WHERE local_date = '2026-11-19'");
   assert.match(first.text, /Jo Example/, "the stored brief is not rewritten");
+});
+
+test("the brief carries a Leads line with the open lead counts, and none without leads", async () => {
+  const db = await openTestDb();
+  await runBrief(envFor(db), SEVEN);
+  assert.doesNotMatch((await briefs(db))[0]?.text ?? "", /Leads/);
+
+  const other = await openTestDb();
+  const old = new Date(SEVEN.getTime() - 3 * DAY);
+  for (const [name, status] of [["A", "new"], ["B", "new"], ["C", "contacted"], ["D", "not_a_fit"]] as const) {
+    const { contactId } = await addLead(ctxFor(other, old, "add_lead"), { name: `${name} Example` });
+    await other.prepare("UPDATE contacts SET lead_status = ? WHERE id = ?").bind(status, contactId).run();
+  }
+  await runBrief(envFor(other), SEVEN);
+  const [row] = await briefs(other);
+  assert.match(row?.text ?? "", /\n\nNothing due today\.\n\nLeads\n- 2 new, 1 contacted$/);
+  assert.deepEqual(
+    (JSON.parse(row?.items ?? "[]") as { section: string }[]).map((i) => i.section),
+    ["leads"],
+  );
 });
 
 test("outside text is marked untrusted on its item, and message bodies never appear", async () => {

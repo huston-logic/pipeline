@@ -24,6 +24,7 @@ const READ_TOOLS = [
   "get_settings",
   "list_deals",
   "list_fields",
+  "list_leads",
   "list_rules",
   "list_stages",
   "pipeline_summary",

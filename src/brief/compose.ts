@@ -4,7 +4,7 @@
 // text starts with "[from outside] ".
 import { formatLocal, localDate } from "../time.ts";
 
-export type BriefSection = "overdue" | "due_today" | "gone_quiet" | "new_lead";
+export type BriefSection = "overdue" | "due_today" | "gone_quiet" | "new_lead" | "leads";
 
 /** `untrusted_fields` lists which of an item's values came from outside (a form, an import). */
 export interface BriefTask {
@@ -39,6 +39,8 @@ export interface BriefInput {
   tasks: { overdue: BriefTask[]; today: BriefTask[] };
   quietDeals: BriefQuietDeal[];
   newLeads: BriefLead[];
+  /** Open lead counts (decision 0022); null when New, Contacted and Not now are all zero. */
+  leads: { new: number; contacted: number; notNow: number } | null;
 }
 
 export interface BriefItem {
@@ -77,7 +79,8 @@ export const SECTION_TITLES: Record<BriefSection, string> = {
   overdue: "Overdue",
   due_today: "Due today",
   gone_quiet: "Gone quiet",
-  new_lead: "New leads",
+  new_lead: "New inquiries",
+  leads: "Leads",
 };
 
 /** Marks outside text in the emailed text, which has no other way to show it; the board labels items itself. */
@@ -108,17 +111,19 @@ export function composeBrief(input: BriefInput): ComposedBrief {
     const line = `${flat(lead.contactName)}: ${flat(lead.title)}, added ${formatLocal(lead.createdAt, tz)}`;
     add("new_lead", lead.dealId, line, lead.untrusted_fields);
   }
-
   const lines = [subject, ""];
-  if (items.length === 0) {
-    lines.push("Nothing due today.");
-  } else {
-    for (const section of Object.keys(SECTION_TITLES) as BriefSection[]) {
-      const mine = items.filter((item) => item.section === section);
-      if (mine.length === 0) continue;
-      if (lines.at(-1) !== "") lines.push("");
-      lines.push(SECTION_TITLES[section], ...mine.map(textLine));
-    }
+  // "Nothing due" is about the dated sections; the Leads line is a count and follows either way.
+  if (items.length === 0) lines.push("Nothing due today.");
+  if (input.leads !== null) {
+    const { new: fresh, contacted, notNow } = input.leads;
+    const parts = [[fresh, "new"], [contacted, "contacted"], [notNow, "not now"]] as const;
+    add("leads", "leads", parts.filter(([n]) => n > 0).map(([n, word]) => `${n} ${word}`).join(", "), []);
+  }
+  for (const section of Object.keys(SECTION_TITLES) as BriefSection[]) {
+    const mine = items.filter((item) => item.section === section);
+    if (mine.length === 0) continue;
+    if (lines.at(-1) !== "") lines.push("");
+    lines.push(SECTION_TITLES[section], ...mine.map(textLine));
   }
   return { localDate: date, subject, lines, text: lines.join("\n"), items };
 }
