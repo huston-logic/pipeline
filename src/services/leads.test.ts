@@ -394,6 +394,8 @@ test("undo of returnToLead restores the deal, the task's deal link and the earli
   const db = await openTestDb();
   const kim = await dealWithTasks(db);
   const result = await returnToLead(laterCtx(db, "return_to_lead"), { deal: kim.dealId });
+  // The undo reopens a deal whose person is a lead now; it is allowed because the person's row is in the same undo.
+  assert.equal((await contactRow(db, kim.contactId))?.lead_status, "contacted");
   const undone = await undoChange(laterCtx(db, "undo_change"), result.changeId);
   assert.match(undone.summary, new RegExp(`^Undid ${result.changeId}: `));
   assert.equal((await dealRow(db, kim.dealId))?.archived, 0);
