@@ -1,10 +1,12 @@
 // /contacts: every contact that is not archived, as cards, with a search box and a sort control that work without
-// JavaScript (a GET form). Decision 0016: search, sort, the 200-contact limit and the People/Companies switch.
+// JavaScript (a GET form). Decision 0016: search, sort and the 200-contact limit; the Contacts/Leads/Companies switch
+// is people-switch.ts (decision 0027). Unqualified leads are not listed here: they are on /leads.
 import { ownerTimezone } from "../../services/lookup.ts";
 import { CONTACT_LIST_LIMIT, type ContactListItem, type ContactSort, listContacts } from "../../services/read.ts";
 import { type Html, html } from "../html.ts";
 import type { PageContext } from "../context.ts";
 import { renderPage } from "../layout.ts";
+import { peopleSwitch } from "../people-switch.ts";
 import { contactLink, count, dealLink, empty, formatNumber, labelled, newLeadButton, pairs, when } from "../parts.ts";
 
 type Dir = "asc" | "desc";
@@ -33,16 +35,6 @@ export function contactsQuery(params: URLSearchParams): { query: string; sort: C
   const sortValue = SORTS.some((s) => s.value === asked) ? asked : DEFAULT_SORT;
   const [sort, dir] = sortValue.split("-") as [ContactSort, Dir];
   return { query, sort, dir, sortValue };
-}
-
-/** People / Companies: the two views of the Contacts tab. */
-export function viewSwitch(current: "/contacts" | "/companies"): Html {
-  const item = (href: string, label: string) =>
-    html`<li><a href="${href}"${href === current ? html` aria-current="page"` : ""}>${label}</a></li>`;
-  return html`<ul class="view-switch" aria-label="Show contacts as">
-${item("/contacts", "People")}
-${item("/companies", "Companies")}
-</ul>`;
 }
 
 function contactCard(contact: ContactListItem): Html {
@@ -121,7 +113,7 @@ ${clear}`;
     current: "/contacts",
     frame: ctx,
     body: html`<h1>Contacts</h1>
-${viewSwitch("/contacts")}
+${peopleSwitch("contacts")}
 ${newLeadButton("contacts")}
 ${total === 0 && query === "" ? "" : searchForm(query, sortValue)}
 ${results}`,

@@ -854,6 +854,15 @@ ol.panel {
   grid-column: 1 / -1;
 }
 
+/* The Leads form has three selects: one column on a phone, three from 40rem. */
+.search-filters {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.search-filters .button {
+  justify-self: start;
+}
+
 .field {
   display: flex;
   flex-direction: column;
@@ -1814,6 +1823,14 @@ button.button {
 
   .search .field-grow {
     grid-column: auto;
+  }
+
+  .search.search-filters {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .search.search-filters .field-grow {
+    grid-column: 1 / -1;
   }
 
   .panel {

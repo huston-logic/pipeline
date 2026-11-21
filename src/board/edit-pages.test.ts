@@ -54,7 +54,7 @@ test("New lead: one h1, every field labelled, name required in words, the token,
   assert.match(form, /<a class="form-cancel" href="\/contacts">Cancel<\/a>/);
   assert.match((await load(env, "/leads/new")).body, /<a class="form-cancel" href="\/pipeline">Cancel<\/a>/, "Pipeline by default");
   assert.match((await load(env, "/leads/new?from=//evil.example")).body, /<a class="form-cancel" href="\/pipeline">Cancel<\/a>/);
-  assert.match(body, /<a href="\/pipeline" aria-current="true">/, "a new lead is in the Pipeline section");
+  assert.match(body, /<a href="\/contacts" aria-current="true">/, "a new lead is in the People section");
 });
 
 test("New lead on an empty database still renders, and custom fields appear by their type", async () => {

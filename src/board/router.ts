@@ -19,6 +19,7 @@ import { dealPage } from "./pages/deal.ts";
 import { EMAIL_LOG_PATH, emailLogPage } from "./pages/email-log.ts";
 import { exportPage } from "./pages/export.ts";
 import { LEAD_PATH, leadPage } from "./pages/lead-new.ts";
+import { leadsPage } from "./pages/leads.ts";
 import { morePage } from "./pages/more.ts";
 import { NOTIFICATIONS_PATH, notificationsPage } from "./pages/notifications.ts";
 import { notFoundPage } from "./pages/not-found.ts";
@@ -43,6 +44,7 @@ const PAGES = new Map<string, Page>([
   ["/pipeline", pipelinePage],
   ["/contacts", contactsPage],
   ["/companies", companiesPage],
+  ["/leads", leadsPage],
   ["/brief", briefPage],
   ["/more", morePage],
   ["/rules", rulesPage],

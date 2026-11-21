@@ -11,7 +11,11 @@ import type { Env } from "../src/env.ts";
 import { CRON_JOBS, runScheduled } from "../src/cron.ts";
 import worker from "../src/index.ts";
 import { applyMigrations, applySqlFile, SqliteD1, type SqliteStatement } from "../src/db/sqlite-d1.ts";
-import { buildScaleSeed, lastBriefHour } from "./seed-scale.ts";
+import type { ContactRow, FieldDefRow } from "../src/db/db.ts";
+import { importChange, renderImport } from "../src/import/change.ts";
+import { planImport } from "../src/import/plan.ts";
+import { runRules } from "../src/services/rules.ts";
+import { buildScaleSeed, lastBriefHour, SCALE } from "./seed-scale.ts";
 
 /** A D1 shim that adds up the CPU time spent inside D1 calls, and counts them. */
 export class TimedD1 extends SqliteD1 {
@@ -118,6 +122,29 @@ function resetRun(db: TimedD1): void {
     UPDATE settings SET last_brief_at = NULL;`);
 }
 
+/**
+ * A 2,000-row CSV for `import:contacts --as leads`: 1,600 new businesses, 200 rows for leads already on file (their
+ * email, so they merge or match) and 200 that repeat an existing lead's business with no email (possible duplicates).
+ */
+function leadsCsv(existing: ContactRow[]): string {
+  const known = existing.filter((c) => c.id.startsWith("ct_leadscale"));
+  const lines = ["name,email,phone,business,source,notes"];
+  for (let i = 0; i < 1_600; i++) {
+    lines.push(`Import Person ${i},import.person.${i}@example.com,555-03${String(i % 100).padStart(2, "0")},Imported Trading ${i},trade list,Added from a list`);
+  }
+  for (let i = 0; i < 200; i++) {
+    const c = known[i * 7] as ContactRow;
+    lines.push(`${c.name},${c.email ?? ""},555-0400,${c.business ?? ""},trade list,`);
+  }
+  for (let i = 0; i < 200; i++) {
+    const c = known[i * 7 + 3] as ContactRow;
+    lines.push(`Other Person ${i},,,${c.business ?? ""},trade list,`);
+  }
+  return `${lines.join("\n")}\n`;
+}
+
+let importInput: { existing: ContactRow[]; csv: string; fieldDefs: FieldDefRow[] } | undefined;
+
 function cases(briefAt: Date): Case[] {
   const scheduled = (name: string, at: Date, jobs = CRON_JOBS): Case => ({
     name,
@@ -155,6 +182,63 @@ function cases(briefAt: Date): Case[] {
     fetchCase("/deals/dl_scale00001", () => new Request(`${ORIGIN}/deals/dl_scale00001`)),
     fetchCase("/contacts/ct_scale00001", () => new Request(`${ORIGIN}/contacts/ct_scale00001`)),
     fetchCase("/changes", () => new Request(`${ORIGIN}/changes`)),
+    // Run 4, task L9: 2,000 leads.
+    fetchCase("mcp list_leads (default)", tool("list_leads", {})),
+    fetchCase(
+      "mcp list_leads (Contacted, referral, quiet 7 days, longest quiet first)",
+      tool("list_leads", { statuses: ["contacted"], source: "referral", quietDays: 7, sort: "last_contact" }),
+    ),
+    fetchCase("mcp list_leads (New)", tool("list_leads", { statuses: ["new"] })),
+    fetchCase("mcp list_leads (follow-up due within 7 days)", tool("list_leads", { dueWithinDays: 7 })),
+    fetchCase("mcp search_contacts (leadStatus new)", tool("search_contacts", { query: "ab", leadStatus: ["new"] })),
+    fetchCase("mcp preview_rule (the saved lead_followup)", tool("preview_rule", { rule: "ru_scale06" })),
+    {
+      name: "import plan, 2,000-row CSV as leads (plan only)",
+      run: async (db) => {
+        if (!importInput) {
+          const existing = (await db.prepare("SELECT * FROM contacts ORDER BY rowid").all<ContactRow>()).results;
+          const fieldDefs = (await db.prepare("SELECT * FROM field_defs ORDER BY rowid").all<FieldDefRow>()).results;
+          importInput = { existing, csv: leadsCsv(existing), fieldDefs };
+        }
+        const plan = planImport(importInput.csv, importInput.existing, { asLeads: true, allowDuplicates: false, fieldDefs: importInput.fieldDefs });
+        if (plan.create.length !== 1_600) throw new Error(`The plan creates ${plan.create.length} people, not 1,600.`);
+        return importInput.csv.length;
+      },
+    },
+    {
+      name: "import plan + the audited change for all 2,000 rows (no SQL)",
+      run: async () => {
+        if (!importInput) throw new Error("Run the plan case first.");
+        const plan = planImport(importInput.csv, importInput.existing, { asLeads: true, allowDuplicates: false, fieldDefs: importInput.fieldDefs });
+        const input = importChange(plan, importInput.existing, briefAt);
+        if (input === null) throw new Error("The import has nothing to write.");
+        return 0;
+      },
+    },
+    {
+      // One statement may be 100 KB (src/import/sql.ts), which is about 190 rows: a bigger file must be split.
+      name: "import plan + change + SQL for a 150-row file (as import:contacts --apply)",
+      run: async () => {
+        if (!importInput) throw new Error("Run the plan case first.");
+        const csv = importInput.csv.split("\n").slice(0, 151).join("\n");
+        const plan = planImport(csv, importInput.existing, { asLeads: true, allowDuplicates: false, fieldDefs: importInput.fieldDefs });
+        const input = importChange(plan, importInput.existing, briefAt);
+        if (input === null) throw new Error("The import has nothing to write.");
+        return renderImport(input, briefAt).sql.length;
+      },
+    },
+    {
+      name: `runRules, only the lead_followup active (40 due, 25 written) on ${SCALE.leads} leads`,
+      reset: (db) => {
+        resetRun(db);
+        db.exec("UPDATE rules SET active = 0 WHERE id <> 'ru_scale06'");
+      },
+      run: async (db) => {
+        const counts = await runRules(db, briefAt);
+        if (counts.fired !== 25) throw new Error(`runRules fired ${counts.fired}, not 25.`);
+        return 0;
+      },
+    },
   ];
 }
 
