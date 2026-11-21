@@ -14,7 +14,16 @@ import { LEAD_STATUS_LABELS } from "../services/lead-status.ts";
 import { ownerTimezone } from "../services/lookup.ts";
 import { localDate } from "../time.ts";
 import { logAddressOf } from "./address.ts";
-import { authPasses, MAX_RAW_BYTES, messageKey, occurredAt, type ParsedEmail, parseEmail, untrustedText } from "./parse.ts";
+import {
+  authPasses,
+  MAX_RAW_BYTES,
+  messageKey,
+  occurredAt,
+  ownAuthResults,
+  type ParsedEmail,
+  parseEmail,
+  untrustedText,
+} from "./parse.ts";
 
 export type LogOutcome = "logged" | "duplicate" | "dropped";
 
@@ -158,8 +167,10 @@ export async function handleLogEmail(message: LogEmailMessage, env: LogEmailEnv,
   const db = env.DB;
   const owners = await ownerEmails(db, env);
   if (!owners.has(normalize(message.from))) return drop("not_owner");
-  // From the Headers object, never from the raw text: a header in the raw text may be one the sender wrote.
-  if (!authPasses(message.headers.get("authentication-results"))) return drop("not_authenticated");
+  // Cloudflare's verdict is in the Headers object, never in the raw text, where any such header may be one the sender
+  // wrote; the raw text's own headers are what is taken off the end of the Headers value to find Cloudflare's.
+  const verdict = message.headers.get("authentication-results");
+  if (verdict === null) return drop("not_authenticated");
 
   const raw = await readCapped(message.raw, MAX_RAW_BYTES);
   if (raw === null) return drop("too_large");
@@ -169,6 +180,7 @@ export async function handleLogEmail(message: LogEmailMessage, env: LogEmailEnv,
   } catch {
     return drop("unreadable");
   }
+  if (!authPasses(verdict, ownAuthResults(email))) return drop("not_authenticated");
   if (email.from === null || !owners.has(email.from)) return drop("not_owner");
 
   const key = await messageKey(email);

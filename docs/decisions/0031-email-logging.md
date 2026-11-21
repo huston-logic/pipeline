@@ -41,14 +41,24 @@ Read on 2026-11-20 (notes in `.superpowers/sdd/2026-11-20-run4-leads/research-em
      `OWNER_EMAILS`, ignoring case);
   5. **Ruling 3**, read from `message.headers` (the Headers object Email Routing builds and prepends its header to),
      never from the raw text, where any `Authentication-Results` header may be one the sender wrote:
-     `message.headers.get("authentication-results")` must exist. Headers joins several such headers into one value
-     with ", ", so a header the sender wrote can follow Cloudflare's; only the first header in the value counts. It is
-     cut at the first comma outside a comment or a quoted string (an RFC 8601 token can't hold a comma) and everything
-     after it is ignored. That first header's authserv-id must be exactly `mx.cloudflare.net`, and it must say
-     `dmarc=pass`, or, when it has no dmarc result, both `spf=pass` and `dkim=pass` (a method listed twice must pass
-     both times). So real mail such as `spf=pass; dkim=none; dmarc=pass` is logged, and a later, forged header can
-     neither help nor hurt: it cannot add a `dmarc=pass` to a Cloudflare header that gave none. Comments and quoted
-     strings are skipped when reading it. It is checked before the message is read;
+     `message.headers.get("authentication-results")` must exist (with none the message is dropped before it is read).
+     Headers joins several such headers into one value with ", ": Cloudflare's, then each `Authentication-Results`
+     header of the message itself, which a sender can write. Cloudflare's header is found **by subtraction, not by
+     parsing**: the message's own `Authentication-Results` values are read from the parsed raw text (postal-mime, in
+     order; a name with spaces before its colon counts too), joined with ", ", and the Headers value must end with
+     ", " and that join (when there is at least one); what is in front of it is Cloudflare's header. If the value
+     doesn't end that way, or nothing is left in front, the message is dropped. (Runs of whitespace are evened out on
+     both sides first, so a folded header compares equal however it was unfolded.) Cutting at the first comma instead
+     was not safe: Cloudflare copies values the sender chose (a DKIM `header.d`, a HELO name) into its header, and one
+     with an unbalanced `(` or `"` made the parser swallow Cloudflare's own `dmarc=fail` and the ", " joiner, so a
+     forged later header's `dmarc=pass` was read as Cloudflare's. Only Cloudflare's header is then read, with comments
+     and quoted strings skipped. It fails if it holds a comma outside a comment or quoted string (it would be more than
+     one header, so the subtraction went wrong) or ends inside a comment or quoted string (a sender's value broke it,
+     and could otherwise hide Cloudflare's own `dmarc=fail`). Its authserv-id must be exactly `mx.cloudflare.net`, and
+     it must say `dmarc=pass` (every dmarc result in it, so two that disagree fail), or, when it has no dmarc result,
+     both `spf=pass` and `dkim=pass` (each present, every result passing). So real mail such as `spf=pass; dkim=none;
+     dmarc=pass` is logged, and the message's own headers can neither help nor hurt: they are taken off before
+     anything is read, so they cannot add a `dmarc=pass` to a Cloudflare header that gave none;
   6. the header From (from the parsed raw text) is an owner email too. This is one check more than the brief names:
      DMARC authenticates the header From's domain, so this is the address the pass is about.
 - **Drop silently.** A dropped message is not answered at all: no `setReject` (which would tell the sender the address
@@ -120,10 +130,15 @@ Read on 2026-11-20 (notes in `.superpowers/sdd/2026-11-20-run4-leads/research-em
 - **The one remaining assumption.** The code trusts that Cloudflare prepends its own `Authentication-Results` header
   to `message.headers`, as the Email Workers docs say: "Email Routing validates DMARC before invoking your Worker. It
   prepends a standard `Authentication-Results` header"
-  (https://developers.cloudflare.com/email-service/api/route-emails/email-handler/). Nothing in the Worker can prove it:
-  locally (`wrangler dev`) `message.headers` is read from the message itself, with nothing prepended. If a later
-  Cloudflare change broke this, a header the sender wrote at the top of their message would be the first one, and a
-  forged `mx.cloudflare.net; dmarc=pass` from someone who also forged an owner's From address could pass.
+  (https://developers.cloudflare.com/email-service/api/route-emails/email-handler/). The subtraction also assumes
+  Cloudflare's header is in `message.headers` only, not written into `message.raw` as well: if it were in both, the
+  Headers value would equal the message's own headers with nothing in front, and every email would be dropped as
+  `not_authenticated` (the go-live check's part (a) shows that). Nothing in the Worker can prove the assumption:
+  locally (`wrangler dev`) `message.headers` is read from the message itself, with nothing prepended, so every email
+  is dropped there (tests/e2e/email-log.test.ts checks this; the logged path is tested in src/email/log.test.ts). If a
+  later Cloudflare change broke this so that the Headers value held the message's headers plus one more of the
+  sender's at the top, that header would be taken for Cloudflare's, and a forged `mx.cloudflare.net; dmarc=pass` from
+  someone who also forged an owner's From address could pass.
 - **What limits that risk.** A strict DMARC policy (`p=reject` or `p=quarantine`) on the owner's own domain is
   recommended: Email Routing rejects mail that fails the domain's DMARC policy before the Worker runs
   (https://developers.cloudflare.com/email-service/reference/postmaster/), so a forged email "from the owner" never

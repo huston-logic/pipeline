@@ -16,7 +16,8 @@ export interface FakeMail {
   date?: string;
   /** null leaves the header out. */
   messageId?: string | null;
-  /** Authentication-Results values written into the raw text, top first (none by default): what a sender could forge. */
+  /** Authentication-Results values written into the raw text, top first (none by default): what a sender could forge.
+   * fakeMessage puts them in its Headers object after Cloudflare's, as Email Routing does. */
   auth?: string[];
   /** The text/plain part; with `html` too the message is multipart/alternative. */
   text?: string;
@@ -99,16 +100,35 @@ export interface FakeMessage {
   reply(): Promise<never>;
 }
 
+/** The Authentication-Results values in a raw message's header block, top first, unfolded. */
+function rawAuthResults(raw: string): string[] {
+  const end = raw.indexOf(`${CRLF}${CRLF}`);
+  const block = (end === -1 ? raw : raw.slice(0, end)).replace(/\r\n(?=[ \t])/g, "");
+  return block
+    .split(CRLF)
+    .filter((line) => /^authentication-results\s*:/i.test(line))
+    .map((line) => line.slice(line.indexOf(":") + 1).trim());
+}
+
+export interface FakeEnvelope {
+  from?: string;
+  to?: string;
+  rawSize?: number;
+  /** The header Email Routing prepends: its passing verdict by default, null for none (as under `wrangler dev`). */
+  cloudflare?: string | null;
+  /** Every Authentication-Results value in the Headers object, replacing the production model below. */
+  headers?: string[];
+}
+
 /**
- * `auth` is the Authentication-Results values in the Headers object Email Routing builds, Cloudflare's first: by
- * default its passing verdict alone. Headers joins several into one value with ", ", as in the Workers runtime.
+ * The Headers object as Email Routing builds it: Cloudflare's header, then the message's own Authentication-Results
+ * headers from the raw text. Headers joins them into one value with ", ", as in the Workers runtime.
  */
-export function fakeMessage(
-  raw: string,
-  envelope: { from?: string; to?: string; rawSize?: number; auth?: string[] } = {},
-): FakeMessage {
+export function fakeMessage(raw: string, envelope: FakeEnvelope = {}): FakeMessage {
   const headers = new Headers();
-  for (const value of envelope.auth ?? [CLOUDFLARE_PASS]) headers.append("Authentication-Results", value);
+  const cloudflare = envelope.cloudflare === undefined ? CLOUDFLARE_PASS : envelope.cloudflare;
+  const values = envelope.headers ?? [...(cloudflare === null ? [] : [cloudflare]), ...rawAuthResults(raw)];
+  for (const value of values) headers.append("Authentication-Results", value);
   const bytes = new TextEncoder().encode(raw);
   const calls: string[] = [];
   let read = false;

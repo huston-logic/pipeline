@@ -72,9 +72,9 @@ says "Email logging isn't set up for this copy."
 
 ## 6. Go-live check (both parts, before relying on it)
 
-Do this once, right after setup. The Worker trusts the first `Authentication-Results` header it is handed, which
-Cloudflare's docs say is Cloudflare's own (decision 0031 explains the one assumption this rests on). Part (b) checks
-that Cloudflare really did run its checks on your mail.
+Do this once, right after setup. The Worker trusts the `Authentication-Results` header that Cloudflare's docs say
+Email Routing prepends: the one in front of the email's own such headers (decision 0031 explains the one assumption
+this rests on). Part (b) checks that Cloudflare really did run its checks on your mail.
 
 Keep the Worker's log open while you test:
 
@@ -116,8 +116,9 @@ If (a) shows nothing within a few minutes, look in the log for the drop reason:
 - `not_owner`: the sending address (or the mail provider's envelope sender) is not an owner email.
 - `not_authenticated`: Cloudflare's authentication result did not pass, or the Worker could not find it. First check
   your sending domain has a DMARC record (see Before you start). If every email from a normal mailbox still gets
-  this, Cloudflare's header may not reach the Worker as expected (decision 0031, Consequences); report it before
-  relying on the feature.
+  this, Cloudflare's header may not reach the Worker as expected (decision 0031, Consequences; for example if it is
+  also written into the message itself); report it before relying on the feature. Under `wrangler dev` every email
+  gets this, because nothing prepends Cloudflare's header there.
 - `too_large`: the email was over 1 MB (attachments count); send it without the attachment.
 
 ## What gets logged

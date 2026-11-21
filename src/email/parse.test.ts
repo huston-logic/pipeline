@@ -9,69 +9,118 @@ import {
   MAX_SUBJECT_CHARS,
   messageKey,
   occurredAt,
+  ownAuthResults,
   parseEmail,
   untrustedText,
 } from "./parse.ts";
 
 /** What `message.headers.get("authentication-results")` returns for these headers, top first: null for none, else the
  * values joined with ", " as the Headers object does. */
-const auth = (...values: string[]): string | null => {
+const joined = (values: readonly string[]): string | null => {
   if (values.length === 0) return null;
   const headers = new Headers();
   for (const value of values) headers.append("Authentication-Results", value);
   return headers.get("authentication-results");
 };
+
+/** As in production: Cloudflare's header (null for none) prepended to the message's own headers, which the raw text
+ * holds too. */
+const verdict = (cloudflare: string | null, own: readonly string[] = []): boolean =>
+  authPasses(joined(cloudflare === null ? own : [cloudflare, ...own]), own);
 const NOW = new Date("2026-11-20T18:00:00.000Z");
 
 test("authPasses: Cloudflare's dmarc=pass, or with no dmarc result both spf=pass and dkim=pass (Ruling 3)", () => {
-  assert.equal(authPasses(auth(CLOUDFLARE_PASS)), true);
-  assert.equal(authPasses(auth("mx.cloudflare.net; spf=pass smtp.mailfrom=owner@example.com; dkim=pass header.d=example.com")), true);
-  assert.equal(authPasses(auth("mx.cloudflare.net; dmarc=pass header.from=example.com")), true);
-  assert.equal(authPasses(auth("MX.Cloudflare.NET 1; DMARC=Pass (p=reject dis=none) header.from=example.com")), true);
-  assert.equal(authPasses(auth("mx.cloudflare.net (the receiver); spf=pass; dkim=pass")), true);
-  assert.equal(authPasses(auth("mx.cloudflare.net; spf=pass; dkim=none; dmarc=pass")), true, "dmarc=pass decides, as real mail shows");
-  assert.equal(authPasses(auth("mx.cloudflare.net; spf=fail; dkim=pass; dmarc=pass")), true, "dmarc aligned through DKIM");
-  assert.equal(authPasses(auth("mx.cloudflare.net; dmarc=pass (p=reject, sp=none) header.from=example.com")), true, "a comma in a comment");
-  assert.equal(authPasses(auth('mx.cloudflare.net; spf=pass smtp.mailfrom="a,b"@example.com; dkim=pass')), true, "a comma in a quoted string");
+  assert.equal(verdict(CLOUDFLARE_PASS), true);
+  assert.equal(verdict("mx.cloudflare.net; spf=pass smtp.mailfrom=owner@example.com; dkim=pass header.d=example.com"), true);
+  assert.equal(verdict("mx.cloudflare.net; dmarc=pass header.from=example.com"), true);
+  assert.equal(verdict("MX.Cloudflare.NET 1; DMARC=Pass (p=reject dis=none) header.from=example.com"), true);
+  assert.equal(verdict("mx.cloudflare.net (the receiver); spf=pass; dkim=pass"), true);
+  assert.equal(verdict("mx.cloudflare.net; spf=pass; dkim=none; dmarc=pass"), true, "dmarc=pass decides, as real mail shows");
+  assert.equal(verdict("mx.cloudflare.net; spf=fail; dkim=pass; dmarc=pass"), true, "dmarc aligned through DKIM");
+  assert.equal(verdict("mx.cloudflare.net; dmarc=pass (p=reject, sp=none) header.from=example.com"), true, "a comma in a comment");
+  assert.equal(verdict('mx.cloudflare.net; spf=pass smtp.mailfrom="a,b"@example.com; dkim=pass'), true, "a comma in a quoted string");
 });
 
 test("authPasses: anything short of that is a fail", () => {
-  assert.equal(authPasses(auth()), false, "no header");
-  assert.equal(authPasses(auth("mx.cloudflare.net; none")), false, "no results");
-  assert.equal(authPasses(auth("mx.cloudflare.net; spf=pass; dkim=pass; dmarc=fail")), false, "dmarc fail wins");
-  assert.equal(authPasses(auth("mx.cloudflare.net; spf=pass; dkim=pass; dmarc=none")), false, "dmarc none");
-  assert.equal(authPasses(auth("mx.cloudflare.net; spf=pass")), false, "spf alone");
-  assert.equal(authPasses(auth("mx.cloudflare.net; dkim=pass")), false, "dkim alone");
-  assert.equal(authPasses(auth("mx.cloudflare.net; spf=softfail; dkim=pass")), false, "spf softfail");
-  assert.equal(authPasses(auth("mx.cloudflare.net; dmarc=pass; dmarc=fail")), false, "two dmarc results, one fails");
-  assert.equal(authPasses(auth("mx.cloudflare.net; spf=pass; dkim=pass; dkim=fail")), false, "two dkim results, one fails");
+  assert.equal(verdict(null), false, "no header");
+  assert.equal(authPasses(null, []), false, "no header at all");
+  assert.equal(verdict("mx.cloudflare.net; none"), false, "no results");
+  assert.equal(verdict("mx.cloudflare.net; spf=pass; dkim=pass; dmarc=fail"), false, "dmarc fail wins");
+  assert.equal(verdict("mx.cloudflare.net; spf=pass; dkim=pass; dmarc=none"), false, "dmarc none");
+  assert.equal(verdict("mx.cloudflare.net; spf=pass"), false, "spf alone");
+  assert.equal(verdict("mx.cloudflare.net; dkim=pass"), false, "dkim alone");
+  assert.equal(verdict("mx.cloudflare.net; spf=softfail; dkim=pass"), false, "spf softfail");
+  assert.equal(verdict("mx.cloudflare.net; dmarc=pass; dmarc=fail"), false, "two dmarc results, one fails");
+  assert.equal(verdict("mx.cloudflare.net; spf=pass; dkim=pass; dkim=fail"), false, "two dkim results, one fails");
+  assert.equal(verdict("mail.example.net; spf=pass; dkim=pass; dmarc=pass"), false, "another receiver's verdict");
+  assert.equal(verdict("mx.cloudflare.net.example.org; dmarc=pass"), false, "a look-alike authserv-id");
 });
 
-test("authPasses reads only Cloudflare's own header, the first in the Headers value; anything after it is ignored", () => {
+test("authPasses judges only Cloudflare's header: the Headers value less the message's own headers at its end", () => {
   const forged = "mx.cloudflare.net; spf=pass; dkim=pass; dmarc=pass";
-  assert.equal(authPasses(auth("mx.cloudflare.net; spf=fail; dkim=none; dmarc=fail", forged)), false, "Cloudflare's fail, forged pass after");
-  assert.equal(authPasses(auth("mx.cloudflare.net; none", forged)), false, "Cloudflare gave no results, forged pass after");
-  assert.equal(authPasses(auth(CLOUDFLARE_PASS, forged)), true, "Cloudflare's pass, another pass after");
-  assert.equal(authPasses(auth(CLOUDFLARE_PASS, "mail.example.net; dkim=fail")), true, "Cloudflare's pass; the later fail is not read");
+  assert.equal(verdict("mx.cloudflare.net; spf=fail; dkim=none; dmarc=fail", [forged]), false, "Cloudflare's fail, forged pass after");
+  assert.equal(verdict("mx.cloudflare.net; none", [forged]), false, "Cloudflare gave no results, forged pass after");
+  assert.equal(verdict(CLOUDFLARE_PASS, [forged]), true, "Cloudflare's pass, another pass after");
+  assert.equal(verdict(CLOUDFLARE_PASS, ["mail.example.net; dkim=fail", forged]), true, "Cloudflare's pass; later headers are not read");
   assert.equal(
-    authPasses(auth("mx.cloudflare.net; spf=pass; dkim=fail", "mx.cloudflare.net; dmarc=pass")),
+    verdict("mx.cloudflare.net; spf=pass; dkim=fail", ["mx.cloudflare.net; dmarc=pass"]),
     false,
     "a forged dmarc=pass can't stand in for Cloudflare's missing dmarc result",
   );
-  assert.equal(authPasses(auth("mail.example.net; spf=pass; dkim=pass; dmarc=pass")), false, "another receiver's verdict");
+  assert.equal(verdict("mail.example.net; dmarc=pass", ["mx.cloudflare.net; dmarc=fail"]), false, "another receiver's header first");
+});
+
+test("authPasses fails when the Headers value isn't Cloudflare's header followed by exactly the message's own", () => {
+  assert.equal(verdict(null, [CLOUDFLARE_PASS]), false, "nothing prepended: the Headers value is just the message's own");
+  assert.equal(verdict(null, [CLOUDFLARE_PASS, CLOUDFLARE_PASS]), false, "two of the message's own, nothing prepended");
+  assert.equal(authPasses(joined([CLOUDFLARE_PASS]), ["mail.example.net; dmarc=fail"]), false, "the message's own header is missing");
   assert.equal(
-    authPasses(auth("mail.example.net; dmarc=pass", "mx.cloudflare.net; dmarc=fail")),
+    authPasses(joined([CLOUDFLARE_PASS, "mail.example.net; dkim=pass"]), ["mail.example.net; dkim=fail"]),
     false,
-    "another receiver's pass above Cloudflare's fail",
+    "a suffix that doesn't match the raw text",
   );
-  assert.equal(authPasses(auth("mx.cloudflare.net.example.org; dmarc=pass")), false, "a look-alike authserv-id");
-  assert.equal(authPasses(auth("mail.example.net; dmarc=fail", CLOUDFLARE_PASS)), false, "Cloudflare's header not first");
+  assert.equal(
+    authPasses(joined([CLOUDFLARE_PASS, "a", "b"]), ["b", "a"]),
+    false,
+    "the message's own headers in another order",
+  );
+  assert.equal(authPasses(joined(["x", CLOUDFLARE_PASS]), [CLOUDFLARE_PASS]), false, "what is left isn't Cloudflare's");
+});
+
+test("authPasses: a sender's value with an unbalanced ( or \" in Cloudflare's header can't splice in a later header", () => {
+  const paren = "mx.cloudflare.net; dkim=fail header.d=evil(.example; dmarc=fail header.from=example.com";
+  assert.equal(verdict(paren, ["x) ; dmarc=pass"]), false, "the reviewer's comment splice");
+  const quote = 'mx.cloudflare.net; dkim=fail header.d=evil".example; dmarc=fail header.from=example.com';
+  assert.equal(verdict(quote, ['x" ; dmarc=pass']), false, "the reviewer's quote splice");
+  const swallowed = "mx.cloudflare.net; spf=pass; dkim=pass header.d=evil(.example; dmarc=fail header.from=example.com";
+  assert.equal(verdict(swallowed), false, "an unclosed comment that would hide Cloudflare's own dmarc=fail");
+  assert.equal(verdict(swallowed.replace("(", '"')), false, "an unclosed quoted string likewise");
+});
+
+test("authPasses: a top-level comma left in Cloudflare's header means the subtraction went wrong, so it fails", () => {
+  // As when the raw text holds one Authentication-Results header fewer than the Headers object.
+  assert.equal(
+    authPasses(joined(["mx.cloudflare.net; spf=pass; dkim=fail", "mx.cloudflare.net; dmarc=pass"]), []),
+    false,
+  );
+  assert.equal(authPasses(joined([CLOUDFLARE_PASS, "mx.cloudflare.net; dmarc=pass"]), []), false);
+});
+
+test("authPasses compares the message's own headers with folding whitespace evened out", () => {
+  const folded = "mail.example.net;\tspf=pass  smtp.mailfrom=owner@example.com";
+  assert.equal(authPasses(joined([CLOUDFLARE_PASS, "mail.example.net; spf=pass smtp.mailfrom=owner@example.com"]), [folded]), true);
 });
 
 test("authPasses ignores results hidden in quoted strings and comments", () => {
-  assert.equal(authPasses(auth('mx.cloudflare.net; spf=fail smtp.mailfrom="x;dmarc=pass"@example.com; dkim=fail')), false);
-  assert.equal(authPasses(auth("mx.cloudflare.net; spf=fail (; dmarc=pass) smtp.mailfrom=owner@example.com")), false);
-  assert.equal(authPasses(auth("mx.cloudflare.net; spf=pass (nested (; dmarc=fail)) ; dkim=pass")), true);
+  assert.equal(verdict('mx.cloudflare.net; spf=fail smtp.mailfrom="x;dmarc=pass"@example.com; dkim=fail'), false);
+  assert.equal(verdict("mx.cloudflare.net; spf=fail (; dmarc=pass) smtp.mailfrom=owner@example.com"), false);
+  assert.equal(verdict("mx.cloudflare.net; spf=pass (nested (; dmarc=fail)) ; dkim=pass"), true);
+});
+
+test("ownAuthResults lists the message's own Authentication-Results values, top first, a spaced name included", async () => {
+  const raw = rawEmail({ auth: ["mail.example.net; dkim=pass", "mx.cloudflare.net;\r\n\tdmarc=pass"] });
+  const email = await parseEmail(`Authentication-Results : mail.example.org; spf=none\r\n${raw}`);
+  assert.deepEqual(ownAuthResults(email), ["mail.example.org; spf=none", "mail.example.net; dkim=pass", "mx.cloudflare.net;\tdmarc=pass"]);
 });
 
 test("parseEmail reads the header From, the To and Cc people, the subject, the date, the Message-ID and the text", async () => {
@@ -111,8 +160,14 @@ test("htmlText drops script and style blocks, an unclosed one to the end, and ke
   assert.equal(htmlText("<p>Kept</p><script>never closed <p>gone</p>"), "Kept\n");
 });
 
+test("htmlText finds script tags on the text as given: a letter that grows when lower-cased doesn't shift them", () => {
+  // "İ".toLowerCase() is two UTF-16 units, so positions from a lower-cased copy land one unit late per İ.
+  assert.equal(htmlText("İ<script>secret</script>Kept"), "İKept");
+  assert.equal(htmlText("İİİ<STYLE>p{}</Style><p>Kept</p><Script>x</SCRIPT>"), "İİİKept\n");
+});
+
 test("the HTML strip is linear: 20,000 characters of unclosed tags take well under 50 ms each", () => {
-  for (const unit of ["<b", "<script", "<style", "<script>", "<br "]) {
+  for (const unit of ["<b", "<script", "<style", "<script>", "<br ", "<script></script>", "<style></style>"]) {
     const html = unit.repeat(Math.ceil(20_000 / unit.length)).slice(0, 20_000);
     const started = performance.now();
     htmlText(html);

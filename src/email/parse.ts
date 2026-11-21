@@ -30,11 +30,11 @@ export interface ParsedEmail {
 }
 
 /**
- * The first Authentication-Results header in a Headers value, split at its top-level semicolons, with comments removed
- * and quoted strings kept whole. Headers joins repeated headers with ", ", and an RFC 8601 token can't hold a comma, so
- * the first comma outside a comment or a quoted string ends the first header; everything after it is ignored.
+ * One Authentication-Results header split at its top-level semicolons, with comments removed and quoted strings kept
+ * whole; null when it holds a comma outside a comment or quoted string (an RFC 8601 header never does, so it would be
+ * more than one header) or ends inside a comment or quoted string (a sender's value it copied broke it).
  */
-function firstHeaderParts(value: string): string[] {
+function headerParts(value: string): string[] | null {
   const parts: string[] = [];
   let current = "";
   let depth = 0;
@@ -56,21 +56,24 @@ function firstHeaderParts(value: string): string[] {
       parts.push(current.trim());
       current = "";
     } else if (ch === ",") {
-      break;
+      return null;
     } else {
       if (ch === '"') quoted = true;
       current += ch;
     }
   }
+  if (quoted || depth > 0) return null;
   parts.push(current.trim());
   return parts;
 }
 
 const RESULT = /^([a-z0-9_-]+)(?:\/[0-9]+)?\s*=\s*([a-z0-9_-]+)/i;
 
-/** The authserv-id and each method's results (RFC 8601), for example dmarc → ["pass"]. */
-function readAuthResults(value: string): { authservId: string; results: Map<string, string[]> } {
-  const [first = "", ...rest] = firstHeaderParts(value);
+/** The authserv-id and each method's results (RFC 8601), for example dmarc → ["pass"]; null for a broken header. */
+function readAuthResults(value: string): { authservId: string; results: Map<string, string[]> } | null {
+  const parts = headerParts(value);
+  if (parts === null) return null;
+  const [first = "", ...rest] = parts;
   const results = new Map<string, string[]>();
   for (const part of rest) {
     const match = RESULT.exec(part);
@@ -84,18 +87,47 @@ function readAuthResults(value: string): { authservId: string; results: Map<stri
 const allPass = (results: string[] | undefined): boolean =>
   results !== undefined && results.length > 0 && results.every((result) => result === "pass");
 
+/** Folding whitespace evened out, so a header unfolded one way by Cloudflare and another by postal-mime still match. */
+const evenSpaces = (value: string) => value.replace(/[ \t\r\n]+/g, " ").trim();
+
 /**
- * Ruling 3, on `message.headers.get("authentication-results")`: the Headers object Email Routing builds, where it
- * prepends its own header. Only the first header in the value counts (a header the sender wrote can follow it, joined
- * with ", "); its authserv-id must be exactly mx.cloudflare.net. Pass when it says dmarc=pass, or, when it has no dmarc
- * result, both spf=pass and dkim=pass. A method with two results must pass in both. No header fails.
+ * Cloudflare's own header, by subtraction: the Headers value is Cloudflare's header, then ", " and the message's own
+ * Authentication-Results headers joined with ", " (when it has any). Null unless the value ends exactly that way and
+ * something is left in front.
  */
-export function authPasses(value: string | null): boolean {
+function cloudflareHeader(value: string, own: readonly string[]): string | null {
+  const whole = evenSpaces(value);
+  if (own.length === 0) return whole === "" ? null : whole;
+  const suffix = `, ${own.map(evenSpaces).join(", ")}`;
+  if (!whole.endsWith(suffix)) return null;
+  const header = whole.slice(0, whole.length - suffix.length).trim();
+  return header === "" ? null : header;
+}
+
+/**
+ * Ruling 3, on `message.headers.get("authentication-results")` (the Headers object Email Routing builds and prepends
+ * its own header to) and `own`, the message's own Authentication-Results values from the raw text (ownAuthResults).
+ * Only Cloudflare's header is read, found by taking the message's own headers off the end (cloudflareHeader), never by
+ * parsing where one header stops: a sender's value Cloudflare copies in could hide that. Its authserv-id must be
+ * exactly mx.cloudflare.net. Pass when it says dmarc=pass (every dmarc result in it), or, when it has no dmarc result,
+ * spf=pass and dkim=pass (every result of each). No header, no match, or a broken header fails.
+ */
+export function authPasses(value: string | null, own: readonly string[]): boolean {
   if (value === null) return false;
-  const { authservId, results } = readAuthResults(value);
-  if (authservId !== CLOUDFLARE_AUTHSERV_ID) return false;
-  if (results.has("dmarc")) return allPass(results.get("dmarc"));
-  return allPass(results.get("spf")) && allPass(results.get("dkim"));
+  const header = cloudflareHeader(value, own);
+  if (header === null) return false;
+  const read = readAuthResults(header);
+  if (read === null || read.authservId !== CLOUDFLARE_AUTHSERV_ID) return false;
+  if (read.results.has("dmarc")) return allPass(read.results.get("dmarc"));
+  return allPass(read.results.get("spf")) && allPass(read.results.get("dkim"));
+}
+
+/**
+ * The message's own Authentication-Results values, top first. A name with spaces before its colon counts too: one
+ * counted here that Email Routing did not put in the Headers object makes the subtraction fail, the safe way round.
+ */
+export function ownAuthResults(email: ParsedEmail): string[] {
+  return email.headers.filter((header) => header.key.trim() === "authentication-results").map((header) => header.value);
 }
 
 const CONTROL = /[\u0000-\u0009\u000B-\u001F\u007F-\u009F]/g;
@@ -128,19 +160,21 @@ const cleanBody = (text: string) =>
  * full of unclosed `<script` stays linear. A block with no closing tag runs to the end.
  */
 function withoutBlocks(html: string): string {
-  const lower = html.toLowerCase();
+  // Matched on the text as given (no lower-cased copy, whose positions drift where a letter such as "İ" grows), and
+  // without the u flag, so only ASCII letters match the tag names, as in a browser.
+  const open = /<(script|style)/gi;
+  const close = { script: /<\/script/gi, style: /<\/style/gi };
   let out = "";
   let at = 0;
-  let script = lower.indexOf("<script", at);
-  let style = lower.indexOf("<style", at);
   for (;;) {
-    if (script !== -1 && script < at) script = lower.indexOf("<script", at);
-    if (style !== -1 && style < at) style = lower.indexOf("<style", at);
-    const open = script === -1 ? style : style === -1 ? script : Math.min(script, style);
-    if (open === -1) return out + html.slice(at);
-    out += html.slice(at, open);
-    const close = lower.indexOf(open === script ? "</script" : "</style", open);
-    const end = close === -1 ? -1 : lower.indexOf(">", close);
+    open.lastIndex = at;
+    const start = open.exec(html);
+    if (start === null) return out + html.slice(at);
+    out += html.slice(at, start.index);
+    const closing = start[1]?.toLowerCase() === "style" ? close.style : close.script;
+    closing.lastIndex = start.index;
+    const shut = closing.exec(html);
+    const end = shut === null ? -1 : html.indexOf(">", shut.index);
     if (end === -1) return out;
     at = end + 1;
   }

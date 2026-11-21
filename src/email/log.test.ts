@@ -133,45 +133,67 @@ test("a spoofed sender is dropped: the envelope or the header From must be an ow
 test("an owner email from the settings counts as well as one from OWNER_EMAILS, ignoring case", async () => {
   const { db, env } = await setup();
   await db.prepare(`UPDATE settings SET owner_emails = '["other.owner@example.com"]'`).run();
-  const envelope = { from: "OTHER.owner@example.com", auth: ["mx.cloudflare.net; dmarc=pass header.from=example.com"] };
+  const envelope = { from: "OTHER.owner@example.com", cloudflare: "mx.cloudflare.net; dmarc=pass header.from=example.com" };
   assert.equal(await send(env, { from: "Other.Owner@example.com" }, envelope).outcome, "logged");
 });
 
 test("mail that fails Cloudflare's authentication is dropped, even with a forged pass from the sender after it", async () => {
   const { db, env } = await setup();
   const failing = "mx.cloudflare.net; spf=fail smtp.mailfrom=owner@example.com; dkim=none; dmarc=fail header.from=example.com";
-  const fail = send(env, {}, { auth: [failing] });
-  assert.equal(await fail.outcome, "dropped");
-  assert.equal(fail.message.rawRead, false, "dropped before the message is read");
-  assert.equal(await send(env, { messageId: "<f2@mail.example.com>" }, { auth: [failing, CLOUDFLARE_PASS] }).outcome, "dropped");
-  assert.equal(await send(env, { messageId: "<f3@mail.example.com>" }, { auth: [] }).outcome, "dropped", "no header at all");
+  assert.equal(await send(env, {}, { cloudflare: failing }).outcome, "dropped");
+  const forgedPass = { auth: [CLOUDFLARE_PASS], messageId: "<f2@mail.example.com>" };
+  assert.equal(await send(env, forgedPass, { cloudflare: failing }).outcome, "dropped");
+  const none = send(env, { messageId: "<f3@mail.example.com>" }, { cloudflare: null });
+  assert.equal(await none.outcome, "dropped", "no header at all");
+  assert.equal(none.message.rawRead, false, "dropped before the message is read");
   const noDmarc = "mx.cloudflare.net; spf=pass smtp.mailfrom=owner@example.com; dkim=fail header.d=example.com";
-  const forgedDmarc = "mx.cloudflare.net; dmarc=pass header.from=example.com";
-  assert.equal(await send(env, { messageId: "<f4@mail.example.com>" }, { auth: [noDmarc, forgedDmarc] }).outcome, "dropped");
+  const forgedDmarc = { auth: ["mx.cloudflare.net; dmarc=pass header.from=example.com"], messageId: "<f4@mail.example.com>" };
+  assert.equal(await send(env, forgedDmarc, { cloudflare: noDmarc }).outcome, "dropped");
   await assertNothingWritten(db);
 });
 
-test("a passing header only in the raw text (none from Cloudflare in Headers) is a forgery and is dropped", async () => {
+test("a passing header only in the raw text (nothing prepended by Cloudflare) is a forgery and is dropped", async () => {
   const { db, env } = await setup();
-  const forged = send(env, { auth: [CLOUDFLARE_PASS] }, { auth: [] });
-  assert.equal(await forged.outcome, "dropped");
-  assert.equal(forged.message.rawRead, false);
-  const below = send(env, { auth: [CLOUDFLARE_PASS], messageId: "<f5@mail.example.com>" }, { auth: ["mail.example.net; dmarc=fail"] });
-  assert.equal(await below.outcome, "dropped", "Headers must start with Cloudflare's own verdict");
+  assert.equal(await send(env, { auth: [CLOUDFLARE_PASS] }, { cloudflare: null }).outcome, "dropped", "as under wrangler dev");
+  const two = { auth: [CLOUDFLARE_PASS, CLOUDFLARE_PASS], messageId: "<f5@mail.example.com>" };
+  assert.equal(await send(env, two, { cloudflare: null }).outcome, "dropped");
   await assertNothingWritten(db);
 });
 
-test("only Cloudflare's own first header decides: what follows it can neither help nor hurt", async () => {
+test("a Headers value whose end doesn't match the message's own headers is dropped", async () => {
+  const { db, env } = await setup();
+  const raw = { auth: ["mail.example.net; dkim=fail"], messageId: "<m1@mail.example.com>" };
+  assert.equal(await send(env, raw, { headers: [CLOUDFLARE_PASS] }).outcome, "dropped", "the message's own header is missing");
+  assert.equal(
+    await send(env, raw, { headers: [CLOUDFLARE_PASS, "mail.example.net; dkim=pass"] }).outcome,
+    "dropped",
+    "a different value at the end",
+  );
+  await assertNothingWritten(db);
+});
+
+test("the reviewer's splices: an unbalanced ( or \" from the sender in Cloudflare's header can't pull in a forged pass", async () => {
+  const { db, env } = await setup();
+  const paren = "mx.cloudflare.net; dkim=fail header.d=evil(.example; dmarc=fail header.from=example.com";
+  assert.equal(await send(env, { auth: ["x) ; dmarc=pass"] }, { cloudflare: paren }).outcome, "dropped");
+  const quote = 'mx.cloudflare.net; dkim=fail header.d=evil".example; dmarc=fail header.from=example.com';
+  const quoted = { auth: ['x" ; dmarc=pass'], messageId: "<s2@mail.example.com>" };
+  assert.equal(await send(env, quoted, { cloudflare: quote }).outcome, "dropped");
+  await assertNothingWritten(db);
+});
+
+test("only Cloudflare's own header decides: the message's own headers after it can neither help nor hurt", async () => {
   const { db, env } = await setup();
   const otherPass = "mx.cloudflare.net; spf=pass; dkim=pass; dmarc=pass";
-  assert.equal(await send(env, { messageId: "<p1@mail.example.com>" }, { auth: [CLOUDFLARE_PASS, otherPass] }).outcome, "logged");
+  assert.equal(await send(env, { messageId: "<p1@mail.example.com>", auth: [otherPass] }).outcome, "logged");
   const otherFail = "mail.example.net; dkim=fail";
-  assert.equal(await send(env, { messageId: "<p2@mail.example.com>" }, { auth: [CLOUDFLARE_PASS, otherFail] }).outcome, "logged");
+  assert.equal(await send(env, { messageId: "<p2@mail.example.com>", auth: [otherFail, otherPass] }).outcome, "logged");
   const real = "mx.cloudflare.net; spf=pass smtp.mailfrom=owner@example.com; dkim=none; dmarc=pass header.from=example.com";
-  assert.equal(await send(env, { messageId: "<p3@mail.example.com>" }, { auth: [real] }).outcome, "logged", "dmarc=pass with dkim=none");
+  assert.equal(await send(env, { messageId: "<p3@mail.example.com>" }, { cloudflare: real }).outcome, "logged", "dmarc=pass with dkim=none");
   const noResults = "mx.cloudflare.net; none";
-  assert.equal(await send(env, { messageId: "<p4@mail.example.com>" }, { auth: [noResults, otherPass] }).outcome, "dropped");
-  assert.equal((await emailActivities(db)).length, 3);
+  assert.equal(await send(env, { messageId: "<p4@mail.example.com>", auth: [otherPass] }, { cloudflare: noResults }).outcome, "dropped");
+  assert.equal(await send(env, { messageId: "<p5@mail.example.com>" }).outcome, "logged", "no headers of its own, Cloudflare's pass");
+  assert.equal((await emailActivities(db)).length, 4);
 });
 
 test("only the log address is accepted, ignoring case; without EMAIL_LOG_ADDRESS everything is dropped", async () => {

@@ -20,6 +20,8 @@ export interface DevServer {
   stateDir: string;
   /** Runs the Worker's scheduled() handler once through wrangler's test route. */
   runCron(): Promise<void>;
+  /** The last lines wrangler and the Worker printed. */
+  output(): string;
   /** Stops wrangler and workerd (the whole process group) and removes the temp folder. */
   stop(): Promise<void>;
 }
@@ -165,6 +167,7 @@ export async function startDevServer({ extraVars = [] }: { extraVars?: string[] 
     url,
     stateDir,
     stop,
+    output: () => lines.join(""),
     async runCron() {
       const res = await fetch(`${url}/cdn-cgi/handler/scheduled`);
       const body = await res.text();
