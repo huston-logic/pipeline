@@ -419,6 +419,7 @@ describe("the eight lead sentences", () => {
   });
 
   test('16. "Who should I reach out to this week?" (New leads, and leads with a follow-up due)', async () => {
+    // Relies on the demo seed's dates being relative to when it was made: Omar's check-back is overdue, Colin's is ten days out.
     const fresh = await leadsWhere({ statuses: ["new"] });
     const due = await leadsWhere({ dueWithinDays: 7 });
     const ids = new Set([...fresh, ...due].map((lead) => lead.id));
@@ -469,6 +470,10 @@ describe("the eight lead sentences", () => {
   });
 
   test('18. "That deal was never a real opportunity. Put it back in leads." (return_to_lead)', async () => {
+    const task = await tool("add_task", { deal: dealId, title: "Send the quote" });
+    const taskId = (await snapshot()).tasks?.find((t) => t.title === "Send the quote" && t.deal_id === dealId)?.id;
+    assert.ok(taskId, "an open task sits on the deal");
+    assert.match(task.headline, CHANGE_LINE);
     const openBefore = openDeals(await snapshot());
     const answer = await tool("return_to_lead", { deal: dealId });
     assert.match(answer.headline, CHANGE_LINE);
@@ -476,6 +481,10 @@ describe("the eight lead sentences", () => {
 
     const after = await snapshot();
     assert.equal(after.deals?.find((d) => d.id === dealId)?.archived, 1, "the deal is archived");
+    const moved = after.tasks?.find((t) => t.id === taskId);
+    assert.equal(moved?.deal_id, null, "the open task left the deal");
+    assert.equal(moved?.contact_id, freshLeadId, "and now belongs to the person");
+    assert.equal(moved?.done_at, null);
     assert.equal(openDeals(after), (openBefore ?? 1) - 1);
     const lead = (await leadsWhere({ query: "Larkspur" }))[0];
     assert.equal(lead?.id, freshLeadId);
@@ -499,7 +508,7 @@ describe("the eight lead sentences", () => {
     const after = await snapshot();
     assert.equal(after.contacts?.length, before.contacts?.length, "no second person");
     assert.equal(after.deals?.length, (before.deals?.length ?? 0) + 1, "one new deal");
-    const deal = after.deals?.at(-1);
+    const deal = after.deals?.find((d) => d.contact_id === leadId);
     assert.equal(deal?.contact_id, leadId, "on the lead's own record");
     assert.equal(deal?.status, "open");
     assert.equal(deal?.stage_key, "new_inquiry");

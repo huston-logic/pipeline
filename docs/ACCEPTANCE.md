@@ -135,8 +135,8 @@ checks read every table from `/api/export.json`.
 - Test: `17. "[Lead] wants a quote. Make it a deal in Call booked for Thursday at 2." ...`
 
 ## 18. That deal was never a real opportunity. Put it back in leads.
-- Tools: `return_to_lead` with the deal from 17, `list_leads`, `list_deals`.
-- Asserts: the summary says the person went back to leads (Contacted) and the deal was archived; the deal is archived,
+- Tools: `add_task` on the deal, then `return_to_lead` with the deal from 17, `list_leads`, `list_deals`.
+- Asserts: the open task added to the deal now has no deal and belongs to the person; the summary says the person went back to leads (Contacted) and the deal was archived; the deal is archived,
   off the board, and one fewer deal is open; the person is a Contacted lead again.
 - Test: `18. "That deal was never a real opportunity. Put it back in leads." ...`
 
