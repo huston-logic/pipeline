@@ -17,6 +17,9 @@
 # owner review folder: screenshots and owner-only proposals from autonomous runs (never committed)
 /.owner-review/
 
+# git worktrees made by Claude Code for parallel tasks
+/.claude/worktrees/
+
 # misc
 .DS_Store
 *.pem

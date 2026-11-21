@@ -248,6 +248,20 @@ export function buildChange(ctx: Pick<Ctx, "now" | "actor" | "tool">, input: Cha
   return { changeId, summary, writes: [...guards, ...writes], audit: [audit, { sql: "DELETE FROM write_guard", params: [] }] };
 }
 
+const rowNoun = (table: ChangeTable, id: string) => (table === "settings" ? "The settings" : `${ROW_NOUNS[table]} ${id}`);
+
+/**
+ * The row a failed guard is about: the target when it was read first, else the one row that was (a change that adds
+ * its target, such as a log that also moves a lead's status), else every record the change read.
+ */
+function staleRow(input: ChangeInput): string {
+  const { table, id } = input.target;
+  const read = input.changes.filter((change) => change.before !== null);
+  if (read.length === 0 || read.some((change) => change.table === table && change.id === id)) return rowNoun(table, id);
+  const [only, ...others] = read;
+  return only && others.length === 0 ? rowNoun(only.table, only.id) : "A record this change touches";
+}
+
 export async function commitChange(ctx: Ctx, input: ChangeInput): Promise<ChangeResult> {
   const { db } = ctx;
   const { changeId, summary, writes, audit } = buildChange(ctx, input);
@@ -257,9 +271,7 @@ export async function commitChange(ctx: Ctx, input: ChangeInput): Promise<Change
     await db.batch([...writes.map(prepare), ...(input.extra ?? []), ...audit.map(prepare)]);
   } catch (error) {
     if (isGuardFailure(error)) {
-      const { table, id } = input.target;
-      const what = table === "settings" ? "The settings" : `${ROW_NOUNS[table]} ${id}`;
-      throw new StaleWriteError(`${what} changed since you read it. Read it again and retry.`, { cause: error });
+      throw new StaleWriteError(`${staleRow(input)} changed since you read it. Read it again and retry.`, { cause: error });
     }
     throw error;
   }

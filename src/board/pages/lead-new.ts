@@ -1,4 +1,4 @@
-// /leads/new: a person and their first deal (add_lead), reached from the New lead button on Today, Pipeline and
+// /leads/new: a person and their first deal (add_deal), reached from the New lead button on Today, Pipeline and
 // Contacts. ?from= says which of those Cancel goes back to.
 import { listFieldDefs } from "../../db/queries.ts";
 import type { PageContext } from "../context.ts";

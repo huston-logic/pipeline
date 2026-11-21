@@ -3,7 +3,7 @@ import { test } from "node:test";
 import type { AuditRow, Db, TaskRow } from "../db/db.ts";
 import { openTestDb } from "../db/sqlite-d1.ts";
 import type { Ctx } from "./change.ts";
-import { addLead } from "./leads.ts";
+import { addDeal } from "./add-deal.ts";
 import { whatsDue } from "./read.ts";
 import { addTask, completeTask, snoozeTask } from "./tasks.ts";
 import { undoChange } from "./undo.ts";
@@ -13,7 +13,7 @@ const ctxFor = (db: Db, tool = "add_task", now = NOW): Ctx => ({ db, now, actor:
 
 async function setup() {
   const db = await openTestDb();
-  const lead = await addLead(ctxFor(db, "add_lead"), { name: "Pat Example", dealTitle: "Website refresh" });
+  const lead = await addDeal(ctxFor(db, "add_deal"), { name: "Pat Example", dealTitle: "Website refresh" });
   return { db, ...lead };
 }
 

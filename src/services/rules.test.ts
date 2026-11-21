@@ -8,7 +8,7 @@ import { DEFAULT_TZ } from "../time.ts";
 import type { Ctx } from "./change.ts";
 import { updateDeal } from "./deals.ts";
 import { logActivity } from "./activities.ts";
-import { addLead } from "./leads.ts";
+import { addDeal } from "./add-deal.ts";
 import { listDealsFiltered } from "./read.ts";
 import { addRule, listQuietDeals, listRules, MAX_FIRINGS_PER_RUN, pauseRule, previewRuleFor, resumeRule, runRules, updateRule } from "./rules.ts";
 import { archiveStage } from "./stages.ts";
@@ -37,7 +37,7 @@ const countOf = async (db: Db, table: string) =>
 
 /** A lead moved into Proposal sent at `at`. */
 async function proposal(db: Db, at: Date, name = "Pat Example") {
-  const lead = await addLead(ctxFor(db, "add_lead", at), { name, dealTitle: `${name} website` });
+  const lead = await addDeal(ctxFor(db, "add_deal", at), { name, dealTitle: `${name} website` });
   await updateDeal(ctxFor(db, "update_deal", at), lead.dealId, { stage: "Proposal sent" });
   return lead;
 }
@@ -251,9 +251,9 @@ test("a parallel run that fired first is skipped silently, not counted as a fail
   assert.equal(await countOf(db, "rule_firings"), 1);
 });
 
-test("undo of add_lead is refused once a rule fired on its deal, and undo of add_rule once the rule fired", async () => {
+test("undo of add_deal is refused once a rule fired on its deal, and undo of add_rule once the rule fired", async () => {
   const db = await openTestDb();
-  const lead = await addLead(ctxFor(db, "add_lead"), { name: "Pat Example", dealTitle: "Website refresh" });
+  const lead = await addDeal(ctxFor(db, "add_deal"), { name: "Pat Example", dealTitle: "Website refresh" });
   const rule = await addRule(ctxFor(db), { type: "stage_followup", stage: "new_inquiry", days: 1 });
   await runRules(db, later(1));
   const ruleTask = await one<AuditRow>(db, "SELECT * FROM audit_log WHERE tool = 'rules'");
@@ -305,7 +305,7 @@ test("list_deals' quiet filter and the gone_quiet rules agree on which deals hav
 
 test("pointing an on_stage_enter rule at another stage cuts over: deals already there don't fire, later entries do", async () => {
   const db = await openTestDb();
-  const waiting = await addLead(ctxFor(db, "add_lead", NOW), { name: "Pat Example", dealTitle: "Waiting site" });
+  const waiting = await addDeal(ctxFor(db, "add_deal", NOW), { name: "Pat Example", dealTitle: "Waiting site" });
   await updateDeal(ctxFor(db, "update_deal", later(1)), waiting.dealId, { stage: "Call booked" });
   const { ruleId } = await addRule(ctxFor(db, "add_rule", NOW), { type: "on_stage_enter", stage: "replied", title: "Prepare for {contact}", dueInDays: 1 });
   await updateRule(ctxFor(db, "update_rule", later(2)), ruleId, { stage: "call_booked" });
@@ -313,7 +313,7 @@ test("pointing an on_stage_enter rule at another stage cuts over: deals already 
   assert.deepEqual(params, { type: "on_stage_enter", stage: "call_booked", title: "Prepare for {contact}", dueInDays: 1, since: later(2).toISOString() });
 
   assert.equal((await runRules(db, later(2.5))).fired, 0, "entered Call booked on day 1, before the rule pointed there");
-  const fresh = await addLead(ctxFor(db, "add_lead", later(3)), { name: "Robin Sample", dealTitle: "Fresh site" });
+  const fresh = await addDeal(ctxFor(db, "add_deal", later(3)), { name: "Robin Sample", dealTitle: "Fresh site" });
   await updateDeal(ctxFor(db, "update_deal", later(3)), fresh.dealId, { stage: "Call booked" });
   assert.equal((await runRules(db, later(3.5))).fired, 1);
   assert.equal((await one<TaskRow>(db, "SELECT * FROM tasks WHERE source = ?", ruleId)).deal_id, fresh.dealId);

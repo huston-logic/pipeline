@@ -123,19 +123,21 @@ test("the link text is fixed: the number or address never is a link's text (the 
 
 test("one tap logs it: a POST form per channel to the subject's log route, with a fixed type and summary", () => {
   const deal = reachActions(contact(), { kind: "deal", id: "dl_seed01" }, form).toString();
+  // The text is logged as a note marked via=text, so it counts as reaching a lead (decision 0022).
   const expected = [
-    ["call", "call", "Called.", "Log the call"],
-    ["text", "note", "Sent a text message.", "Log the text"],
-    ["email", "email", "Sent an email.", "Log the email"],
+    ["call", "call", "Called.", "Log the call", ""],
+    ["text", "note", "Sent a text message.", "Log the text", '<input type="hidden" name="via" value="text">'],
+    ["email", "email", "Sent an email.", "Log the email", ""],
   ];
-  for (const [key, type, summary, label] of expected) {
+  for (const [key, type, summary, label, via] of expected) {
     assert.ok(
       deal.includes(
-        `<form class="reach-log-form" method="post" action="/deals/dl_seed01/log"><input type="hidden" name="csrf" value="${form.csrf}"><input type="hidden" name="return_to" value="/deals/dl_seed01"><input type="hidden" name="type" value="${type}"><input type="hidden" name="summary" value="${summary}"><button class="button button-quiet reach-log-button" id="reach-log-${key}" type="submit">${label}</button></form>`,
+        `<form class="reach-log-form" method="post" action="/deals/dl_seed01/log"><input type="hidden" name="csrf" value="${form.csrf}"><input type="hidden" name="return_to" value="/deals/dl_seed01"><input type="hidden" name="type" value="${type}"><input type="hidden" name="summary" value="${summary}">${via}<button class="button button-quiet reach-log-button" id="reach-log-${key}" type="submit">${label}</button></form>`,
       ),
       key,
     );
   }
+  assert.equal(deal.match(/name="via"/g)?.length, 1, "only the text is marked");
   const onContact = reachActions(contact(), { kind: "contact", id: "ct_seed01" }, { ...form, here: "/contacts/ct_seed01" }).toString();
   assert.match(onContact, /action="\/contacts\/ct_seed01\/log"/);
   assert.doesNotMatch(onContact, /\/deals\//);

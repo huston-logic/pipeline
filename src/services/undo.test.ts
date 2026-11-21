@@ -7,7 +7,8 @@ import { logActivity } from "./activities.ts";
 import type { Ctx } from "./change.ts";
 import { updateDeal } from "./deals.ts";
 import { UserError } from "./errors.ts";
-import { addLead, updateContact } from "./leads.ts";
+import { addDeal } from "./add-deal.ts";
+import { updateContact } from "./contacts.ts";
 import { addTask } from "./tasks.ts";
 import { undoChange, undoRemovals } from "./undo.ts";
 
@@ -19,7 +20,7 @@ const undoCtx = (db: Db) => ctxAt(db, LATER, "undo_change");
 
 async function setup() {
   const db = await openTestDb();
-  const lead = await addLead(ctxAt(db, CREATED, "add_lead"), {
+  const lead = await addDeal(ctxAt(db, CREATED, "add_deal"), {
     name: "Pat Example",
     email: "pat@example.com",
     dealTitle: "Website refresh",
@@ -99,7 +100,7 @@ test("undo after a later edit to the same row is refused", async () => {
   assert.equal((await audit(db, move.changeId))?.undone_at, null);
 });
 
-test("undo of add_lead after an activity was logged on the deal refuses in plain English (Review Focus 3)", async () => {
+test("undo of add_deal after an activity was logged on the deal refuses in plain English (Review Focus 3)", async () => {
   const { db, changeId, dealId } = await setup();
   await logActivity(ctxAt(db, NOW, "log_activity"), { dealId, type: "call", summary: "Intro call." });
   const message = await refusal(undoChange(undoCtx(db), changeId));
@@ -113,7 +114,7 @@ test("undo of add_lead after an activity was logged on the deal refuses in plain
   assert.equal(await count(db, "audit_log"), 2);
 });
 
-test("undo of add_lead after a task was added counts the task too", async () => {
+test("undo of add_deal after a task was added counts the task too", async () => {
   const { db, changeId, dealId, contactId } = await setup();
   await addTask(ctxAt(db, NOW, "add_task"), { dealId, title: "Call back" });
   await addTask(ctxAt(db, NOW, "add_task"), { contactId, title: "Find card" });
@@ -121,9 +122,9 @@ test("undo of add_lead after a task was added counts the task too", async () => 
   assert.match(message, /other records now depend on it \(2 tasks\)/);
 });
 
-test("undo of add_lead with nothing added since removes the contact, the deal and the note", async () => {
+test("undo of add_deal with nothing added since removes the contact, the deal and the note", async () => {
   const db = await openTestDb();
-  const lead = await addLead(ctxAt(db, CREATED, "add_lead"), {
+  const lead = await addDeal(ctxAt(db, CREATED, "add_deal"), {
     name: "Robin Sample",
     dealTitle: "Bakery site",
     notes: "Wants a menu page.",
@@ -139,9 +140,9 @@ test("undo of add_lead with nothing added since removes the contact, the deal an
   assert.equal(await count(db, "activities"), 0);
 });
 
-test("undo of add_lead that matched an existing contact keeps the contact", async () => {
+test("undo of add_deal that matched an existing contact keeps the contact", async () => {
   const { db, contactId } = await setup();
-  const second = await addLead(ctxAt(db, NOW, "add_lead"), { name: "Pat Example", email: "pat@example.com", dealTitle: "Logo" });
+  const second = await addDeal(ctxAt(db, NOW, "add_deal"), { name: "Pat Example", email: "pat@example.com", dealTitle: "Logo" });
   await undoChange(undoCtx(db), second.changeId);
   assert.equal(await count(db, "deals"), 1);
   assert.equal((await db.prepare("SELECT id FROM contacts").first("id")), contactId);
@@ -205,4 +206,28 @@ test("undoRemovals counts the records an undo would remove; a move's own stage-c
   const edited = await updateContact(ctxAt(db, NOW, "update_contact"), "Pat Example", { phone: "555-0100" });
   assert.deepEqual(await undoRemovals(db, edited.changeId), []);
   assert.deepEqual(await undoRemovals(db, "chg_nothing0000"), []);
+});
+
+test("undo refuses to reopen a deal for someone who became a lead since, and points to update_deal (invariant 1)", async () => {
+  const { db, dealId, contactId } = await setup();
+  const lost = await updateDeal(ctxAt(db, NOW, "update_deal"), dealId, { status: "lost" });
+  await updateContact(ctxAt(db, NOW, "update_contact"), contactId, { leadStatus: "not_a_fit" });
+  const message = await refusal(undoChange(undoCtx(db), lost.changeId));
+  assert.equal(
+    message,
+    `Can't undo ${lost.changeId}: it would reopen "Website refresh" (Pat Example), but Pat Example is a lead now (Not a fit). ` +
+      "Reopen the deal with update_deal instead, which makes them a contact again.",
+  );
+  assert.equal((await deal(db, dealId))?.status, "lost");
+  assert.equal((await audit(db, lost.changeId))?.undone_at, null);
+
+  const reopened = await updateDeal(ctxAt(db, LATER, "update_deal"), dealId, { stage: "new_inquiry" });
+  assert.match(reopened.summary, /; Pat Example is now Qualified/);
+});
+
+test("undo that reopens a deal for a contact who was never a lead still works (invariant 4)", async () => {
+  const { db, dealId } = await setup();
+  const lost = await updateDeal(ctxAt(db, NOW, "update_deal"), dealId, { status: "lost" });
+  await undoChange(undoCtx(db), lost.changeId);
+  assert.equal((await deal(db, dealId))?.status, "open");
 });

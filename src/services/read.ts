@@ -21,6 +21,7 @@ import { isQuiet } from "../rules/engine.ts";
 import { addDays, dayBoundsUtc, formatLocal, localDate } from "../time.ts";
 import { UserError } from "./errors.ts";
 import { untrustedFields } from "./labels.ts";
+import { businessKey } from "./lead-change.ts";
 import { findDeal, findStage, parseObject, parseStringArray } from "./lookup.ts";
 
 export interface DealItem {
@@ -509,9 +510,6 @@ export interface CompanyList {
   noCompany: CompanyGroup | null;
 }
 
-/** The company a contact's `business` names: trimmed, inner spaces collapsed, ignoring case; "" for none. */
-export const companyKey = (business: string | null): string => (business ?? "").trim().replace(/\s+/g, " ").toLowerCase();
-
 /**
  * Company names in order, ignoring case and accents. One collator for every comparison: `localeCompare` with a locale
  * or options builds a new one per call, which cost about 4 ms of CPU per 300 companies (docs/PAID-PLAN.md, CPU check).
@@ -537,7 +535,7 @@ export async function listCompanies(db: Db, now: Date, tz: string): Promise<Comp
   /** When each company's shown spelling was written: the earliest trusted one wins. */
   const since = new Map<string, string>();
   for (const contact of contacts) {
-    const key = companyKey(contact.business);
+    const key = businessKey(contact.business);
     const outside = untrustedFields(contact);
     const spelled = (contact.business ?? "").trim().replace(/\s+/g, " ");
     let group = groups.get(key);

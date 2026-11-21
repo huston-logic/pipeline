@@ -7,7 +7,8 @@ import type { Ctx } from "./change.ts";
 import { updateDeal } from "./deals.ts";
 import { UserError } from "./errors.ts";
 import { addField, fieldOverview, updateField, validateFieldValues } from "./fields.ts";
-import { addLead, updateContact } from "./leads.ts";
+import { addDeal } from "./add-deal.ts";
+import { updateContact } from "./contacts.ts";
 import { undoChange } from "./undo.ts";
 
 const NOW = new Date("2026-11-19T18:00:00.000Z");
@@ -130,7 +131,7 @@ test("removing a choice that records use is refused with a count; an unused choi
     choices: ["Cold", "Warm", "Hot"],
   });
   for (const name of ["Pat Example", "Robin Sample"]) {
-    const lead = await addLead(ctxFor(db, "add_lead"), { name, fields: { temperature: "Warm" } });
+    const lead = await addDeal(ctxFor(db, "add_deal"), { name, fields: { temperature: "Warm" } });
     assert.ok(lead.dealId);
   }
 
@@ -172,18 +173,18 @@ test("validateFieldValues checks keys and types, and null clears", () => {
   assert.throws(check({ budget: "lots", ghost: 1 }), /Unknown deal field "ghost"/, "keys are checked before values");
 });
 
-test("add_lead, update_contact and update_deal check values against the field types", async () => {
+test("add_deal, update_contact and update_deal check values against the field types", async () => {
   const db = await openTestDb();
   await addField(ctxFor(db, "add_field"), { entity: "deal", label: "Budget", type: "number" });
   await addField(ctxFor(db, "add_field"), { entity: "deal", label: "Temperature", type: "choice", choices: ["Cold", "Hot"] });
   await addField(ctxFor(db, "add_field"), { entity: "contact", label: "Birthday", type: "date" });
 
-  assert.match(await refusal(addLead(ctxFor(db, "add_lead"), { name: "Lee Example", fields: { budget: "lots" } })), /needs a number/);
+  assert.match(await refusal(addDeal(ctxFor(db, "add_deal"), { name: "Lee Example", fields: { budget: "lots" } })), /needs a number/);
   assert.match(
-    await refusal(addLead(ctxFor(db, "add_lead"), { name: "Lee Example", contactFields: { birthday: "1990-13-01" } })),
+    await refusal(addDeal(ctxFor(db, "add_deal"), { name: "Lee Example", contactFields: { birthday: "1990-13-01" } })),
     /needs a date/,
   );
-  const lead = await addLead(ctxFor(db, "add_lead"), { name: "Lee Example", fields: { budget: 900 }, contactFields: { birthday: "1990-04-02" } });
+  const lead = await addDeal(ctxFor(db, "add_deal"), { name: "Lee Example", fields: { budget: 900 }, contactFields: { birthday: "1990-04-02" } });
 
   assert.match(await refusal(updateDeal(ctxFor(db, "update_deal"), lead.dealId, { fields: { temperature: "Warm" } })), /isn't one of the choices/);
   assert.match(await refusal(updateContact(ctxFor(db, "update_contact"), lead.contactId, { fields: { birthday: 5 } })), /needs a date/);
@@ -211,7 +212,7 @@ test("adding and updating a field are each undoable", async () => {
 test("undo of add_field is refused while a record holds a value for it, and allowed once the value is cleared", async () => {
   const db = await openTestDb();
   const field = await addField(ctxFor(db, "add_field"), { entity: "deal", label: "Budget", type: "number" });
-  const lead = await addLead(ctxFor(db, "add_lead"), { name: "Pat Example", dealTitle: "Website refresh" });
+  const lead = await addDeal(ctxFor(db, "add_deal"), { name: "Pat Example", dealTitle: "Website refresh" });
   await updateDeal(ctxFor(db, "update_deal"), lead.dealId, { fields: { budget: 5000 } });
 
   assert.equal(
@@ -235,7 +236,7 @@ test("undo of add_field names outside values by safe label and counts past five"
   const field = await addField(ctxFor(db, "add_field"), { entity: "contact", label: "Referrer", type: "text" });
   const names = ["Pat Example", "Robin Sample", "Sam Sample", "Jo Example", "Lee Example", "Taylor Testcase"];
   for (const [i, name] of names.entries()) {
-    await addLead(ctxFor(db, "add_lead", new Date(NOW.getTime() + i * 1000)), { name, contactFields: { referrer: "A friend" } });
+    await addDeal(ctxFor(db, "add_deal", new Date(NOW.getTime() + i * 1000)), { name, contactFields: { referrer: "A friend" } });
   }
   await db.prepare(`UPDATE contacts SET untrusted_fields = '["name"]' WHERE name = 'Pat Example'`).run();
   const pat = await db.prepare("SELECT id FROM contacts WHERE name = 'Pat Example'").first<{ id: string }>();
@@ -250,7 +251,7 @@ test("undo of an update_field that added a choice is refused while a record uses
   const db = await openTestDb();
   const field = await addField(ctxFor(db, "add_field"), { entity: "deal", label: "Temperature", type: "choice", choices: ["Cold"] });
   const grown = await updateField(ctxFor(db, "update_field"), field.fieldId, { choices: ["Cold", "Hot"] });
-  const lead = await addLead(ctxFor(db, "add_lead"), { name: "Pat Example", dealTitle: "Website refresh", fields: { temperature: "Hot" } });
+  const lead = await addDeal(ctxFor(db, "add_deal"), { name: "Pat Example", dealTitle: "Website refresh", fields: { temperature: "Hot" } });
 
   assert.equal(
     await refusal(undoChange(ctxFor(db, "undo_change", LATER), grown.changeId)),

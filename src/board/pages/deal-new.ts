@@ -1,4 +1,4 @@
-// /contacts/<id>/deals/new: another deal for a contact already on file (add_lead with the contact, decision 0018).
+// /contacts/<id>/deals/new: another deal for a contact already on file (add_deal with the contact, decision 0018).
 import type { FieldDefRow } from "../../db/db.ts";
 import { getContact, listFieldDefs } from "../../db/queries.ts";
 import { contactName } from "../../services/labels.ts";
@@ -9,12 +9,12 @@ import { type FormState, recordFormPage } from "./record-page.ts";
 
 export const newDealPath = (contactId: string): string => `${contactHref(contactId)}/deals/new`;
 
-/** add_lead takes the title as dealTitle. */
+/** add_deal takes the title as dealTitle. */
 export const newDealSpecs = (defs: FieldDefRow[]): Spec[] => dealSpecs(defs, { titleRequired: true, notes: true, titleProp: "dealTitle" });
 
 export async function newDealPage(ctx: PageContext, contactId: string, state?: FormState): Promise<string | null> {
   const contact = await getContact(ctx.db, contactId);
-  // An archived contact gets no new deal (add_lead refuses it too).
+  // An archived contact gets no new deal (add_deal refuses it too).
   if (contact === null || contact.archived === 1) return null;
   const specs = newDealSpecs(await listFieldDefs(ctx.db));
   const name = contactName(contact);

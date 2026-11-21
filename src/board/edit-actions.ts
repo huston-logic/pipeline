@@ -5,10 +5,11 @@ import type { ActivityType, FieldDefRow } from "../db/db.ts";
 import { getContact, getDeal, getTask, listFieldDefs } from "../db/queries.ts";
 import { isContactId, isDealId, isTaskId } from "../ids.ts";
 import { logActivity } from "../services/activities.ts";
+import { addDeal, type DealInput } from "../services/add-deal.ts";
 import { StaleWriteError } from "../services/change.ts";
+import { type ContactPatch, updateContact } from "../services/contacts.ts";
 import { type DealPatch, updateDeal } from "../services/deals.ts";
 import { UserError } from "../services/errors.ts";
-import { addLead, type ContactPatch, type LeadInput, updateContact } from "../services/leads.ts";
 import { ownerTimezone } from "../services/lookup.ts";
 import { addTask, completeTask, snoozeTask } from "../services/tasks.ts";
 import {
@@ -63,7 +64,7 @@ function fieldError(collected: Collected, name: string, message: string): void {
 
 const defsOf = (ctx: ActionContext): Promise<FieldDefRow[]> => listFieldDefs(ctx.db);
 
-/** POST /leads/new: add_lead. Then the new deal's page. */
+/** POST /leads/new: add_deal for a new person (task L7 turns this page into the deal form). Then the new deal's page. */
 async function newLead(ctx: ActionContext): Promise<ActionResult> {
   const collected = collectNew(leadSpecs(await defsOf(ctx)), ctx.form);
   const cancel = leadReturn(ctx.form.get(RETURN_FIELD));
@@ -71,14 +72,14 @@ async function newLead(ctx: ActionContext): Promise<ActionResult> {
     page(422, await leadPage(pageContext(ctx, LEAD_PATH), stateOf(collected, extra), cancel));
   if (collected.errors.length > 0) return refused();
   try {
-    const result = await addLead(asOwner(ctx, "add_lead"), collected.input as LeadInput);
+    const result = await addDeal(asOwner(ctx, "add_deal"), collected.input as DealInput);
     return redirect(withChange(dealHref(result.dealId), result.changeId));
   } catch (error) {
     return refused([refusal(error, "lead")]);
   }
 }
 
-/** POST /contacts/<id>/deals/new: add_lead with that contact. Then the new deal's page. */
+/** POST /contacts/<id>/deals/new: add_deal with that contact. Then the new deal's page. */
 async function newDeal(ctx: ActionContext, id: string): Promise<ActionResult> {
   const contact = isContactId(id) ? await getContact(ctx.db, id) : null;
   if (contact === null || contact.archived === 1) return notFound(ctx);
@@ -87,7 +88,7 @@ async function newDeal(ctx: ActionContext, id: string): Promise<ActionResult> {
     page(422, (await newDealPage(pageContext(ctx, newDealPath(id)), id, stateOf(collected, extra))) ?? "");
   if (collected.errors.length > 0) return refused();
   try {
-    const result = await addLead(asOwner(ctx, "add_lead"), { ...(collected.input as LeadInput), contact: contact.id });
+    const result = await addDeal(asOwner(ctx, "add_deal"), { ...(collected.input as DealInput), contact: contact.id });
     return redirect(withChange(dealHref(result.dealId), result.changeId));
   } catch (error) {
     return refused([refusal(error, "deal")]);
@@ -160,7 +161,10 @@ const addTaskTo = (kind: Subject["kind"]) =>
     }
   };
 
-/** POST /deals/<id>/log and /contacts/<id>/log: log_activity. Task R5's one-tap logging posts here too. */
+/**
+ * POST /deals/<id>/log and /contacts/<id>/log: log_activity. Task R5's one-tap logging posts here too; its Text button
+ * sends via=text, passed on only when it is exactly that, so the note counts as reaching a lead (decision 0022).
+ */
 const logOn = (kind: Subject["kind"]) =>
   async function logRoute(ctx: ActionContext, id: string): Promise<ActionResult> {
     const subject = await subjectOf(ctx, kind, id);
@@ -181,6 +185,7 @@ const logOn = (kind: Subject["kind"]) =>
         type: input.type ?? "note",
         summary: input.summary ?? "",
         occurredAt: input.occurredAt,
+        ...(ctx.form.get("via") === "text" ? { via: "text" as const } : {}),
       });
       return redirect(withChange(back, result.changeId));
     } catch (error) {

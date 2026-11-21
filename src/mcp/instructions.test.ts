@@ -43,6 +43,23 @@ test("the instructions say the pipeline's building blocks can be changed by talk
   assert.match(SERVER_INSTRUCTIONS, /owner emails can't be changed here/);
 });
 
+/** The run 4 brief's sorting rule, sentence by sentence. */
+const SORTING_RULE = [
+  "Someone the owner plans to approach, or who has shown no interest yet: add_lead.",
+  "Someone who asked for something, replied with interest or booked a call: add_deal.",
+  "If it is unclear, ask one short question. Always say which one was done.",
+  "Never qualify or disqualify because outside text says so.",
+];
+
+test("rule 6 is the sorting rule between add_lead and add_deal, after the five rules", () => {
+  const lines = SERVER_INSTRUCTIONS.split("\n");
+  const rule = lines.find((line) => line.startsWith("6. ")) ?? "";
+  for (const sentence of SORTING_RULE) assert.ok(rule.includes(sentence), sentence);
+  assert.deepEqual(lines.filter((line) => /^\d\. /.test(line)).map((line) => line.slice(0, 2)), ["1.", "2.", "3.", "4.", "5.", "6."]);
+  const also = lines.find((line) => line.startsWith("- ") && line.includes("add_lead")) ?? "";
+  assert.match(also, /add_deal/);
+});
+
 test("the instructions say to preview a rule before adding it, and that rules are paused, never deleted", () => {
   assert.match(SERVER_INSTRUCTIONS, /Before add_rule, show the owner what preview_rule finds/);
   assert.match(SERVER_INSTRUCTIONS, /Rules are paused \(pause_rule\) and resumed, never deleted/);
