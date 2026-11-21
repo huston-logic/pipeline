@@ -2,9 +2,10 @@
 // stores the result; send.ts emails it. Decision 0011. The brief is for the owner, so lines use real names; an item
 // whose text includes outside text carries `untrusted: true` so the board can label it, and its line in the emailed
 // text starts with "[from outside] ".
+import { type CaughtReport, sourceLine } from "../report/caught.ts";
 import { formatLocal, localDate } from "../time.ts";
 
-export type BriefSection = "overdue" | "due_today" | "gone_quiet" | "new_lead" | "leads" | "logged_email";
+export type BriefSection = "overdue" | "due_today" | "gone_quiet" | "new_lead" | "leads" | "last_month" | "logged_email";
 
 /** `untrusted_fields` lists which of an item's values came from outside (a form, an import). */
 export interface BriefTask {
@@ -41,6 +42,8 @@ export interface BriefInput {
   newLeads: BriefLead[];
   /** Open lead counts (decision 0022); null when New, Contacted and Not now are all zero. */
   leads: { new: number; contacted: number; notNow: number } | null;
+  /** Set only on the owner's 1st of the month (decision 0032): last month's "What it caught" counts. */
+  lastMonth?: CaughtReport | null;
   /** Logged emails since the previous brief that matched no one (decision 0031); 0 or missing adds no line. */
   unmatchedEmails?: number;
 }
@@ -83,6 +86,7 @@ export const SECTION_TITLES: Record<BriefSection, string> = {
   gone_quiet: "Gone quiet",
   new_lead: "New inquiries",
   leads: "Leads",
+  last_month: "Last month",
   logged_email: "Logged email",
 };
 
@@ -124,6 +128,14 @@ export function composeBrief(input: BriefInput): ComposedBrief {
     const { new: fresh, contacted, notNow } = input.leads;
     const parts = [[fresh, "new"], [contacted, "contacted"], [notNow, "not now"]] as const;
     add("leads", "leads", parts.filter(([n]) => n > 0).map(([n, word]) => `${n} ${word}`).join(", "), []);
+  }
+  const last = input.lastMonth;
+  if (last && !last.empty) {
+    last.lines.forEach((line, n) => add("last_month", `last_month_${n}`, line, []));
+    // A source label from outside makes its own line untrusted; the counts stay trusted.
+    last.bySource.forEach((row, n) =>
+      add("last_month", `last_month_source_${n}`, `Leads from ${sourceLine(row)}`, row.outside ? ["source"] : []),
+    );
   }
   // Last: a note about the log itself, not something to act on first. A count only, so never outside text.
   const unmatched = input.unmatchedEmails ?? 0;

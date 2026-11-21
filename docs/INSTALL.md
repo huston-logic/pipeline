@@ -130,6 +130,15 @@ import it:
 npm run import:contacts -- --file path/to/contacts.csv --copy <name> --apply
 ```
 
+To bring people in as leads (people to approach, not yet talking to), add `--as leads`: the new people get the status
+New. A `lead_status` column can set each new person's status instead (it works without `--as leads` too, so a CSV exported
+from the board comes back with its statuses), but only when it says exactly `new`, `contacted`,
+`not_now`, `not_a_fit`, `bad` or `qualified` (or `New`, `Contacted`, `Not now`, `Not a fit`, `Bad lead`, `Qualified`);
+any other value skips that line. People already on file never have their status changed. A column headed like one of
+your contact custom fields (its name or label) fills that field for the new people. With `--as leads`, a line with no
+email whose business matches someone already on file (or an earlier line) is listed as a possible duplicate and
+skipped; add `--allow-duplicates` to import those anyway.
+
 The import is one change in the change log: the AI app can undo it with the change id it prints. Imported text is
 treated as outside text (like a website form), so the AI never follows instructions written in it. A very large file
 is refused with a message to split it; import the parts one by one.

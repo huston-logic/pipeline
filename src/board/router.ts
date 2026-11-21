@@ -23,6 +23,7 @@ import { morePage } from "./pages/more.ts";
 import { NOTIFICATIONS_PATH, notificationsPage } from "./pages/notifications.ts";
 import { notFoundPage } from "./pages/not-found.ts";
 import { pipelinePage } from "./pages/pipeline.ts";
+import { REPORT_PATH, reportPage } from "./pages/report.ts";
 import { rulesPage } from "./pages/rules.ts";
 import { todayPage } from "./pages/today.ts";
 
@@ -46,6 +47,7 @@ const PAGES = new Map<string, Page>([
   ["/more", morePage],
   ["/rules", rulesPage],
   ["/changes", changesPage],
+  [REPORT_PATH, reportPage],
   ["/export", exportPage],
   [NOTIFICATIONS_PATH, (ctx, request) => notificationsPage(ctx, request.pushKey)],
   [EMAIL_LOG_PATH, (ctx, request) => emailLogPage(ctx, request.emailLogAddress)],

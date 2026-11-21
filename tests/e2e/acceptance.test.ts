@@ -63,12 +63,16 @@ let fieldChangeId = "";
 describe("the twelve owner sentences", () => {
   test('1. "What\'s in my pipeline?"', async () => {
     const summary = await tool("pipeline_summary");
-    assert.equal(summary.headline, "14 open deals (total value 86350) across 5 open stages; 3 won, 2 lost, 1 not now.");
+    assert.equal(
+      summary.headline,
+      "15 open deals (total value 92850) across 5 open stages; 3 won, 2 lost, 1 not now. " +
+        "Leads: 3 new, 4 contacted, 2 not now, 1 not a fit, 1 bad lead; 1 follow-up due this week.",
+    );
     const data = summary.data as { stages: { key: string; count: number; value: number }[] };
     assert.deepEqual(
       data.stages.map((s) => [s.key, s.count, s.value]),
       [
-        ["new_inquiry", 3, 0],
+        ["new_inquiry", 4, 6500],
         ["replied", 3, 16850],
         ["call_booked", 3, 31300],
         ["call_done", 2, 16800],
@@ -80,14 +84,14 @@ describe("the twelve owner sentences", () => {
 
   test('2. "Who needs a follow-up today?"', async () => {
     const answer = await tool("whats_due");
-    assert.match(answer.headline, /^Due by the end of today \(\d{4}-\d{2}-\d{2}\): 2 overdue tasks, 2 tasks due today, 1 overdue deal, 1 deal with a next step today\.$/);
+    assert.match(answer.headline, /^Due by the end of today \(\d{4}-\d{2}-\d{2}\): 3 overdue tasks, 2 tasks due today, 1 overdue deal, 1 deal with a next step today\.$/);
     const due = answer.data as {
       overdueTasks: { id: string }[];
       todayTasks: { id: string }[];
       overdueDeals: { id: string }[];
       todayDeals: { id: string }[];
     };
-    assert.deepEqual(due.overdueTasks.map((t) => t.id), ["tk_seed07", "tk_seed02"], "Chris's photos and Priya's checklist are overdue");
+    assert.deepEqual(due.overdueTasks.map((t) => t.id), ["tk_seed13", "tk_seed07", "tk_seed02"], "Omar's check-back, Chris's photos and Priya's checklist are overdue");
     assert.deepEqual(due.todayTasks.map((t) => t.id), ["tk_seed01", "tk_seed08"], "Dana's call prep and Marcus's check are due today");
     assert.deepEqual(due.overdueDeals.map((d) => d.id), ["dl_seed13"], "Hannah's fee range is late");
     assert.deepEqual(due.todayDeals.map((d) => d.id), ["dl_seed11"], "Ben's call is today");
@@ -299,7 +303,7 @@ describe("the twelve owner sentences", () => {
     const summaryAfter = await tool("pipeline_summary");
     const open = (text: string) => Number(/^(\d+) open deals/.exec(text)?.[1]);
     assert.equal(open(summaryAfter.headline), open(summaryBefore.headline) + 1, "exactly one new lead");
-    assert.match(summaryAfter.headline, /3 won, 2 lost, 1 not now\.$/);
+    assert.match(summaryAfter.headline, /3 won, 2 lost, 1 not now\./);
     assert.equal(((await tool("list_deals", { status: "won" })).data as { deals: unknown[] }).deals.length, wonBefore);
     const leads = ((await tool("list_deals", { stage: "New inquiry" })).data as { deals: { id: string; title: string }[] }).deals;
     const lead = leads.find((d) => d.title === "Riley Formtest inquiry");

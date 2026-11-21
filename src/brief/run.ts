@@ -6,6 +6,9 @@ import { getSettings } from "../db/queries.ts";
 import type { Env } from "../env.ts";
 import { newId } from "../ids.ts";
 import { type PushOptions, sendBriefPush } from "../push/send.ts";
+import { composeCaught } from "../report/caught.ts";
+import { loadCaughtInput } from "../report/load.ts";
+import { isFirstOfMonth, lastMonth } from "../report/month.ts";
 import { untrustedFields } from "../services/labels.ts";
 import { leadCounts } from "../services/leads-read.ts";
 import { whatsDue } from "../services/read.ts";
@@ -112,6 +115,18 @@ async function openLeadCounts(db: Db): Promise<BriefInput["leads"]> {
   return leads.new + leads.contacted + leads.notNow === 0 ? null : leads;
 }
 
+/** Last month's "What it caught" report, on the owner's 1st only (decision 0032); null on every other day. */
+async function lastMonthReport(db: Db, now: Date, tz: string): Promise<BriefInput["lastMonth"]> {
+  if (!isFirstOfMonth(localDate(now, tz))) return null;
+  try {
+    return composeCaught(await loadCaughtInput(db, lastMonth(now, tz), tz));
+  } catch {
+    // The extra section must never cost the owner the day's brief. Logged as a fixed event: no record data, no error text.
+    console.log(JSON.stringify({ event: "brief_last_month_failed" }));
+    return null;
+  }
+}
+
 /**
  * Composes and stores today's brief when it is due, emails it when sending is on, then pushes the phone notification
  * when push is set up. Returns counts only.
@@ -135,6 +150,7 @@ export async function runBrief(env: Env, now: Date, push: PushOptions = {}): Pro
     quietDeals: await quietList(db, now),
     newLeads: await newLeads(db, since, now),
     leads: await openLeadCounts(db),
+    lastMonth: await lastMonthReport(db, now, tz),
     unmatchedEmails: await unmatchedEmails(db, since, now),
   });
 

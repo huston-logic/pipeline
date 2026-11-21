@@ -2,7 +2,7 @@
 // never write. Item fields are camelCase, except `untrusted_fields` and `untrusted_text`, which keep the names the
 // spec uses to label outside text: every item that carries text from outside lists those keys in `untrusted_fields`
 // ([] when there are none). An empty database gives empty lists and zero counts.
-import type { BriefItem } from "../brief/compose.ts";
+import { type BriefItem, SECTION_TITLES } from "../brief/compose.ts";
 import type {
   ActivityRow,
   ActivityType,
@@ -784,7 +784,8 @@ export interface BriefView {
   sendStatus: string | null;
 }
 
-const BRIEF_SECTIONS = new Set<string>(["overdue", "due_today", "gone_quiet", "new_lead", "leads", "logged_email"]);
+// Built from the compose module's own list, so a new section can never be dropped when a stored brief is read.
+const BRIEF_SECTIONS = new Set<string>(Object.keys(SECTION_TITLES));
 
 function isBriefItem(value: unknown): value is BriefItem {
   if (typeof value !== "object" || value === null) return false;
