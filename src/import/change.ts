@@ -39,12 +39,14 @@ export function importChange(plan: ImportPlan, existing: readonly ContactRow[], 
     };
     changes.push({ table: "contacts", id: contact.id, before: null, after: contact });
   }
-  for (const { id, changes: filled } of plan.merge) {
+  for (const { id, changes: filled, fields: filledFields } of plan.merge) {
     const before = existing.find((contact) => contact.id === id);
     if (!before) throw new Error(`The import plan names contact ${id}, which wasn't read.`);
     const untrusted = new Set(JSON.parse(before.untrusted_fields) as string[]);
-    for (const column of Object.keys(filled)) untrusted.add(column);
-    const after = updatedRow(before, { ...filled, untrusted_fields: JSON.stringify([...untrusted]) }, now);
+    for (const column of [...Object.keys(filled), ...Object.keys(filledFields ?? {})]) untrusted.add(column);
+    const patch: Partial<ContactRow> = { ...filled, untrusted_fields: JSON.stringify([...untrusted]) };
+    if (filledFields) patch.fields = JSON.stringify({ ...(JSON.parse(before.fields) as object), ...filledFields });
+    const after = updatedRow(before, patch, now);
     changes.push({ table: "contacts", id, before, after });
   }
   const first = changes[0];

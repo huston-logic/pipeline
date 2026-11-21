@@ -157,6 +157,28 @@ test("a leads import writes lead_status, lead_status_at, custom fields and their
   assert.equal((await contacts(db)).length, 1);
 });
 
+test("round trip: a merge fills an empty custom field into fields and untrusted_fields, and undo restores it", async () => {
+  const db = await withPat();
+  db.exec(`INSERT INTO contacts (id, name, email, fields, untrusted_fields, created_at, updated_at)
+    VALUES ('ct_set', 'Sam Set', 'sam@example.com', '{"role":"Owner"}', '[]', '2026-11-01T00:00:00.000Z', '2026-11-01T00:00:00.000Z')`);
+  const t = NOW.toISOString();
+  const fieldDefs = [
+    { id: "fd_1", entity: "contact" as const, key: "role", label: "Role", type: "text" as const, choices: null, archived: 0 as const, version: 1, created_at: t, updated_at: t },
+  ];
+  const existing = await contacts(db);
+  const csv = "name,email,Role\r\nPat,pat@example.com,Manager\r\nSam,sam@example.com,Boss\r\n";
+  const input = importChange(planImport(csv, existing, { asLeads: false, allowDuplicates: false, fieldDefs }), existing, NOW);
+  assert.ok(input);
+  runFile(db, renderImport({ ...input, changeId: "chg_fieldmerge01" }, NOW).sql);
+  const rows = await contacts(db);
+  const pat = rows.find((row) => row.id === "ct_pat");
+  assert.deepEqual(JSON.parse(pat?.fields ?? ""), { role: "Manager" });
+  assert.deepEqual(JSON.parse(pat?.untrusted_fields ?? ""), ["role"]);
+  assert.equal(rows.find((row) => row.id === "ct_set")?.fields, '{"role":"Owner"}', "a set field is left alone");
+  await undoChange({ db, now: LATER, actor: "ai", tool: "undo_change" }, "chg_fieldmerge01");
+  assert.equal((await contacts(db)).find((row) => row.id === "ct_pat")?.fields, "{}");
+});
+
 test("a CSV round trip keeps lead_status; lead_status and lead_status_at are in the export", async () => {
   const source = await createTestDb();
   source.exec(`INSERT INTO contacts (id, name, email, untrusted_fields, lead_status, lead_status_at) VALUES

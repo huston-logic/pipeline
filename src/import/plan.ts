@@ -36,6 +36,8 @@ export type ExistingContact = {
   business: string | null;
   source: string | null;
   notes: string | null;
+  /** The stored JSON object of custom field values. */
+  fields?: string;
 };
 
 export type ImportValues = { name: string } & { [K in Exclude<ImportColumn, "name">]: string | null };
@@ -72,6 +74,8 @@ export interface MergeRow {
   id: string;
   line: number;
   changes: Partial<Record<FillColumn, string>>;
+  /** Custom fields that were empty on the contact and are filled from the file, by field key. */
+  fields?: Record<string, string | number>;
 }
 
 export interface ImportPlan {
@@ -165,6 +169,17 @@ function fieldProblem(def: FieldDefRow): string {
   }
 }
 
+function storedFields(contact: ExistingContact): Record<string, unknown> {
+  try {
+    const value: unknown = JSON.parse(contact.fields ?? "{}");
+    return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
+}
+
+const isEmptyField = (value: unknown) => value === undefined || value === null || (typeof value === "string" && value.trim() === "");
+
 const NUMBER = /^-?\d+(\.\d+)?$/;
 
 export function planImport(
@@ -210,35 +225,24 @@ export function planImport(
       skip("no name");
       continue;
     }
-    let leadStatus: LeadStatus | null = options.asLeads ? "new" : null;
-    if (status !== undefined) {
-      const text = cleanValue("source", fields[status] ?? "");
-      if (text !== null) {
-        leadStatus = leadStatusFromText(text);
-        if (leadStatus === null) {
-          skip(`${STATUS_COLUMN} isn't a lead status. Use new, contacted, not_now, not_a_fit, bad or qualified (or the same in words).`);
-          continue;
-        }
-      }
-    }
-    const custom: CreateRow["fields"] = {};
-    let badColumn: string | null = null;
-    for (const { def, header: columnName, index } of fieldColumns) {
+    // What each custom column holds in this row; checked below, only for the fields a row actually fills.
+    const given = fieldColumns.flatMap(({ def, header: columnName, index }) => {
       const text = cleanValue("source", fields[index] ?? "");
-      if (text === null) continue;
-      const value = def.type === "number" && NUMBER.test(text) ? Number(text) : text;
-      try {
-        validateFieldValues([def], "contact", { [def.key]: value });
-      } catch {
-        badColumn = `the "${columnName}" column ${fieldProblem(def)}`;
-        break;
+      return text === null ? [] : [{ def, columnName, text }];
+    });
+    const checked = (list: typeof given): { fields: CreateRow["fields"]; problem: string | null } => {
+      const out: CreateRow["fields"] = {};
+      for (const { def, columnName, text } of list) {
+        const value = def.type === "number" && NUMBER.test(text) ? Number(text) : text;
+        try {
+          validateFieldValues([def], "contact", { [def.key]: value });
+        } catch {
+          return { fields: out, problem: `the "${columnName}" column ${fieldProblem(def)}` };
+        }
+        out[def.key] = value;
       }
-      custom[def.key] = value;
-    }
-    if (badColumn !== null) {
-      skip(badColumn);
-      continue;
-    }
+      return { fields: out, problem: null };
+    };
     if (email !== null) {
       if (!EMAIL.test(email)) {
         skip("the email doesn't look like an email address");
@@ -259,13 +263,38 @@ export function planImport(
           const current = match[column];
           if (value !== null && (current === null || current.trim() === "")) changes[column] = value;
         }
-        if (Object.keys(changes).length > 0) plan.merge.push({ id: match.id, line, changes });
+        const stored = storedFields(match);
+        const { fields: filled, problem } = checked(given.filter(({ def }) => isEmptyField(stored[def.key])));
+        if (problem !== null) {
+          skip(problem);
+          continue;
+        }
+        const row: MergeRow = { id: match.id, line, changes };
+        if (Object.keys(filled).length > 0) row.fields = filled;
+        if (Object.keys(changes).length > 0 || row.fields) plan.merge.push(row);
         else plan.unchanged.push({ line, id: match.id });
         continue;
       }
     }
+    // A new person: the status column (a merge never uses it) and every custom value must be usable.
+    let leadStatus: LeadStatus | null = options.asLeads ? "new" : null;
+    if (status !== undefined) {
+      const text = cleanValue("source", fields[status] ?? "");
+      if (text !== null) {
+        leadStatus = leadStatusFromText(text);
+        if (leadStatus === null) {
+          skip(`${STATUS_COLUMN} isn't a lead status. Use new, contacted, not_now, not_a_fit, bad or qualified (or the same in words).`);
+          continue;
+        }
+      }
+    }
+    const { fields: custom, problem } = checked(given);
+    if (problem !== null) {
+      skip(problem);
+      continue;
+    }
     const business = businessKey(values.business);
-    if (email === null && options.asLeads && !options.allowDuplicates && business !== "") {
+    if (email === null && leadStatus !== null && !options.allowDuplicates && business !== "") {
       const onFile = byBusiness.get(business);
       const earlier = seenBusinesses.get(business);
       if (onFile) {

@@ -229,7 +229,7 @@ test("twelve made-up leads across every status, on example domains, with reach, 
 test("the leads rule would catch a contacted lead now", async () => {
   const db = await seeded();
   const preview = await previewRuleFor(db, NOW, { type: "lead_followup", status: "contacted", days: 5 });
-  assert.ok(preview.hits.length >= 1);
+  assert.deepEqual([...new Set(preview.hits.map((hit) => hit.contactId))].sort(), ["ct_lead03", "ct_lead04", "ct_lead11"]);
 });
 
 test("one brief, for yesterday, with an outside line, so the cron still composes today's", async () => {

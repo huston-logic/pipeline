@@ -87,7 +87,7 @@ function showPlan(plan: ImportPlan, log: (line: string) => void): void {
   };
   list("New contacts", plan.create, (row) => `line ${row.line}: ${row.name}${row.email ? ` <${row.email}>` : ""}`);
   list("Details filled in on contacts already on file (nothing is overwritten)", plan.merge, (row) =>
-    `line ${row.line}: contact ${row.id} gets ${Object.keys(row.changes).join(", ")}`,
+    `line ${row.line}: contact ${row.id} gets ${[...Object.keys(row.changes), ...Object.keys(row.fields ?? {})].join(", ")}`,
   );
   list("Matched, nothing to fill in", plan.unchanged, (row) => `line ${row.line}: contact ${row.id}`);
   list("Skipped", plan.skipped, (row) => `line ${row.line}: ${row.reason}`);

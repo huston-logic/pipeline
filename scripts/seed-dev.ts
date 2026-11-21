@@ -228,7 +228,8 @@ export function devSeed(now: Date, tz: string): DevSeed {
       notes: "Phone disconnected; the shop has closed.",
     }),
     lead(10, "Omar Rashid", "omar.rashid@example.com", "Rashid Mobile Detailing", "referral", "not_now", 15, 20),
-    lead(11, "Sasha Lindgren", "sasha.lindgren@example.org", "Lindgren Landscape Design", "chamber directory", "contacted", 7, 9),
+    // Set to Contacted by hand (update_contact) with only a plain note, so the lead_followup rule catches it too.
+    lead(11,"Sasha Lindgren", "sasha.lindgren@example.org", "Lindgren Landscape Design", "chamber directory", "contacted", 7, 9),
     lead(12, "Gwen Ashby", "gwen.ashby@example.net", "Ashby Veterinary Hospital", "referral", "qualified", 3, 10, {
       version: 3,
     }),

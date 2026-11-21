@@ -189,6 +189,31 @@ test("a value that does not fit its field skips the row, naming the column and n
   assert.throws(() => planImport("name,Role,role\r\nA,b,c\r\n", [], { ...LEADS, fieldDefs: defs([{}]) }), /twice/);
 });
 
+test("a merge fills only EMPTY custom fields, leaves a set one alone, and ignores the status column", () => {
+  const fieldDefs = defs([{ key: "role", label: "Role" }, { key: "size", label: "Team size", type: "number" }]);
+  const withRole: ExistingContact = { ...pat, fields: '{"role":"Owner"}' };
+  const csv = "name,email,Role,Team size,lead_status,phone\r\nPat,pat@example.com,Manager,7,nonsense,555 0101\r\n";
+  const plan = planImport(csv, [withRole], { ...LEADS, fieldDefs });
+  assert.deepEqual(plan.merge, [{ id: "ct_pat", line: 2, changes: { phone: "555 0101" }, fields: { size: 7 } }]);
+  assert.deepEqual(plan.skipped, [], "a status the merge would not use does not skip the row");
+  const none = planImport("name,email,Role\r\nPat,pat@example.com,Manager\r\n", [withRole], { ...LEADS, fieldDefs });
+  assert.deepEqual(none.unchanged, [{ line: 2, id: "ct_pat" }]);
+  const bad = planImport("name,email,Team size,phone\r\nPat,pat@example.com,lots,555 0101\r\n", [withRole], { ...LEADS, fieldDefs });
+  assert.deepEqual(bad.skipped, [{ line: 2, reason: 'the "Team size" column needs a number' }]);
+  const set: ExistingContact = { ...withRole, fields: '{"size":3}' };
+  const ignored = planImport("name,email,Team size,phone\r\nPat,pat@example.com,lots,555 0101\r\n", [set], { ...LEADS, fieldDefs });
+  assert.equal(ignored.skipped.length, 0, "a value for a field that is already set is not checked");
+});
+
+test("a plain import whose rows get a status from the column also skips possible duplicates", () => {
+  const csv = "name,business,lead_status\r\nA One,Sample Bakery,new\r\nB Two,Sample Bakery,\r\n";
+  const plain = { asLeads: false, allowDuplicates: false, fieldDefs: [] as FieldDefRow[] };
+  const plan = planImport(csv, [pat], plain);
+  assert.deepEqual(plan.duplicates, [{ line: 2, ofId: "ct_pat", ofLine: null }]);
+  assert.deepEqual(plan.create.map((row) => row.line), [3], "the row with no status is a plain contact");
+  assert.equal(planImport(csv, [pat], { ...plain, allowDuplicates: true }).create.length, 2);
+});
+
 test("possible duplicates (no email, same business as someone on file or an earlier row) are listed and skipped unless allowed", () => {
   const csv = [
     "name,email,business",

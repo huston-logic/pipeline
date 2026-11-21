@@ -27,8 +27,10 @@ covers, and how the seed stays consistent with 0016.
 - **Custom fields.** A header equal to a contact field's key or label (case-insensitive, trimmed, not archived) fills
   `fields.<key>` on created rows. The built-in columns and `lead_status` win over a field with the same name. Values
   are checked with the field rules (`validateFieldValues`); a bad value skips the row with a reason naming the column
-  and its kind of value, never the value itself. Merges do not fill custom fields in v1. Every filled field is listed
-  in the contact's `untrusted_fields`.
+  and its kind of value, never the value itself. A merge fills only custom fields that are empty on the contact (never overwriting), and only
+  those values are checked; the dry run lists them with the other fills. Every filled field is listed in the
+  contact's `untrusted_fields`. The status column is read only for new people, and a plain import whose new rows get
+  a status from the column also runs the possible-duplicate check.
 - **Export.** Unchanged code: `SELECT *` already carries `lead_status`, `lead_status_at` and `rule_firings.contact_id`
   in the JSON and in every CSV. Tests now pin that and the CSV round trip.
 - **Seed.** Twelve fake leads (`ct_lead01` to `ct_lead12`, example.com/org/net addresses, 555-01xx phones) in every
