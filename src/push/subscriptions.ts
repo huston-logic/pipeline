@@ -7,7 +7,7 @@ import { type ChangeResult, commitChange, type Ctx, updatedRow } from "../servic
 import { capitalize } from "../services/describe.ts";
 import { UserError } from "../services/errors.ts";
 import { pushLabel } from "../services/labels.ts";
-import { base64UrlBytes } from "./bytes.ts";
+import { base64UrlBytes, utf8 } from "./bytes.ts";
 
 export type PushInput = { endpoint: string; p256dh: string; auth: string };
 
@@ -38,29 +38,56 @@ const byEndpoint = (db: Db, endpoint: string) =>
 
 const byId = (db: Db, id: string) => db.prepare("SELECT * FROM push_subscriptions WHERE id = ?").bind(id).first<PushSubscriptionRow>();
 
+/**
+ * The endpoint's SHA-256 in hex: what the board page puts on a device's row so push.js, which hashes its own
+ * subscription's endpoint the same way, can mark "This phone". One-way, so the page never shows an endpoint.
+ */
+export async function deviceTag(endpoint: string): Promise<string> {
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", utf8(endpoint)));
+  return [...digest].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
 /** The subscriptions notifications go to, oldest first. */
 export async function listLivePush(db: Db): Promise<PushSubscriptionRow[]> {
   const found = await db.prepare("SELECT * FROM push_subscriptions WHERE gone_at IS NULL ORDER BY created_at, id").all<PushSubscriptionRow>();
   return found.results;
 }
 
+/** More devices than one owner uses; the cap keeps each brief's pushes few and quick. */
+export const MAX_LIVE_SUBSCRIPTIONS = 20;
+
+const liveCount = async (db: Db) =>
+  (await db.prepare("SELECT COUNT(*) AS n FROM push_subscriptions WHERE gone_at IS NULL").first<{ n: number }>())?.n ?? 0;
+
+async function checkRoom(db: Db): Promise<void> {
+  if ((await liveCount(db)) >= MAX_LIVE_SUBSCRIPTIONS) {
+    throw new UserError(
+      `Notifications are on for ${MAX_LIVE_SUBSCRIPTIONS} devices already, the most this board allows. Turn one off on the Notifications page first.`,
+    );
+  }
+}
+
 /**
- * Turns notifications on for one browser. Null when that endpoint is already on (no change). An endpoint that was
- * turned off comes back on as the same row, with the browser's current keys.
+ * Turns notifications on for one browser. Null when that endpoint is already on with the same keys (no change); new
+ * keys for it are stored as a change. An endpoint that was turned off comes back on as the same row, with the
+ * browser's current keys. At most MAX_LIVE_SUBSCRIPTIONS devices are on at once.
  */
 export async function subscribePush(ctx: Ctx, raw: PushInput): Promise<ChangeResult | null> {
   const input = checkInput(raw);
   const known = await byEndpoint(ctx.db, input.endpoint);
-  if (known !== null && known.gone_at === null) return null;
+  if (known !== null && known.gone_at === null && known.p256dh === input.p256dh && known.auth === input.auth) return null;
   const at = ctx.now.toISOString();
   if (known !== null) {
+    const wasOn = known.gone_at === null;
+    if (!wasOn) await checkRoom(ctx.db);
     const after = updatedRow(known, { p256dh: input.p256dh, auth: input.auth, gone_at: null }, ctx.now);
     return commitChange(ctx, {
       target: { table: "push_subscriptions", id: known.id },
-      summary: `Turned on ${pushLabel(known.id)}`,
+      summary: wasOn ? `Updated the keys of ${pushLabel(known.id)}` : `Turned on ${pushLabel(known.id)}`,
       changes: [{ table: "push_subscriptions", id: known.id, before: known, after }],
     });
   }
+  await checkRoom(ctx.db);
   const id = newId("ps");
   const row: PushSubscriptionRow = { id, ...input, created_at: at, gone_at: null, version: 1, updated_at: at };
   return commitChange(ctx, {
@@ -84,6 +111,18 @@ export async function removePush(ctx: Ctx, id: string): Promise<ChangeResult> {
   const row = await byId(ctx.db, id);
   if (row === null) throw new UserError("There's no device with that id. Reload the Notifications page and try again.");
   if (row.gone_at !== null) throw new UserError(`${capitalize(pushLabel(row.id))} is already off. Nothing to do.`);
+  return turnOff(ctx, row, `Turned off ${pushLabel(row.id)}`);
+}
+
+/**
+ * The owner turns off the browser they are using (the board's "Turn off on this phone"): found by the endpoint
+ * push.js read from that browser, then the same audited change as removePush.
+ */
+export async function removePushByEndpoint(ctx: Ctx, endpoint: string): Promise<ChangeResult> {
+  const row = endpoint === "" ? null : await byEndpoint(ctx.db, endpoint);
+  if (row === null || row.gone_at !== null) {
+    throw new UserError("Notifications aren't on for this device. Reload the Notifications page to see which devices are on.");
+  }
   return turnOff(ctx, row, `Turned off ${pushLabel(row.id)}`);
 }
 

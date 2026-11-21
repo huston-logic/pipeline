@@ -5,7 +5,7 @@ import { openTestDb } from "../db/sqlite-d1.ts";
 import type { Ctx } from "../services/change.ts";
 import { UserError } from "../services/errors.ts";
 import { undoChange } from "../services/undo.ts";
-import { listLivePush, markPushGone, removePush, subscribePush } from "./subscriptions.ts";
+import { listLivePush, MAX_LIVE_SUBSCRIPTIONS, markPushGone, removePush, removePushByEndpoint, subscribePush } from "./subscriptions.ts";
 
 const NOW = new Date("2026-11-19T15:00:00.000Z");
 const owner = (db: Db, tool: string, now = NOW): Ctx => ({ db, now, actor: "owner", tool });
@@ -50,6 +50,47 @@ test("an endpoint that is already on is no change; one that was turned off comes
   assert.equal(back?.gone_at, null);
   assert.equal(back?.auth, "B".repeat(22), "the browser's new keys are kept");
   assert.equal(back?.version, 3);
+});
+
+test("the same endpoint with new keys is an audited key update, still one row and still on", async () => {
+  const db = await openTestDb();
+  await subscribePush(owner(db, "push_subscribe"), sub());
+  const updated = await subscribePush(owner(db, "push_subscribe"), { ...sub(), auth: "B".repeat(22) });
+  assert.ok(updated);
+  const [row, ...others] = await rows(db);
+  assert.equal(others.length, 0);
+  assert.equal(row?.auth, "B".repeat(22));
+  assert.equal(row?.gone_at, null);
+  assert.equal(updated.summary, `Updated the keys of notifications on one device (${row?.id}) (change ${updated.changeId})`);
+  const undone = await undoChange(owner(db, "undo_change"), updated.changeId);
+  assert.ok(undone);
+  assert.equal((await rows(db))[0]?.auth, AUTH, "undo puts the earlier keys back");
+});
+
+test("at most 20 devices are on at once; a 21st is refused in plain words, and turning one off makes room", async () => {
+  const db = await openTestDb();
+  for (let n = 1; n <= MAX_LIVE_SUBSCRIPTIONS; n++) assert.ok(await subscribePush(owner(db, "push_subscribe"), sub(n)));
+  assert.equal(MAX_LIVE_SUBSCRIPTIONS, 20);
+  await assert.rejects(subscribePush(owner(db, "push_subscribe"), sub(21)), /on for 20 devices already, the most this board allows/);
+  const first = (await rows(db)).find((row) => row.endpoint === sub(1).endpoint);
+  assert.ok(first);
+  await removePush(owner(db, "push_remove"), first.id);
+  assert.ok(await subscribePush(owner(db, "push_subscribe"), sub(21)), "room again after one is off");
+  await assert.rejects(subscribePush(owner(db, "push_subscribe"), sub(1)), UserError, "full again: turning an old one back on is refused too");
+  assert.ok(await subscribePush(owner(db, "push_subscribe"), { ...sub(2), auth: "B".repeat(22) }), "a key update is not a new device");
+});
+
+test("removePushByEndpoint turns off this browser's row as push_remove; an unknown or off endpoint is refused", async () => {
+  const db = await openTestDb();
+  await subscribePush(owner(db, "push_subscribe"), sub(1));
+  await subscribePush(owner(db, "push_subscribe"), sub(2));
+  const result = await removePushByEndpoint(owner(db, "push_remove"), sub(2).endpoint);
+  assert.match(result.summary, /^Turned off notifications on one device \(ps_[a-z2-7]+\)/);
+  assert.doesNotMatch(result.summary, /example\.net/);
+  assert.deepEqual((await listLivePush(db)).map((r) => r.endpoint), [sub(1).endpoint]);
+  for (const endpoint of [sub(2).endpoint, sub(9).endpoint, ""]) {
+    await assert.rejects(removePushByEndpoint(owner(db, "push_remove"), endpoint), /aren't on for this device/);
+  }
 });
 
 test("subscribePush refuses anything but an https endpoint up to 1,000 characters and well-formed keys", async () => {
