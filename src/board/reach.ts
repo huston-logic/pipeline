@@ -25,7 +25,7 @@ export function mailable(email: string | null): string | null {
   return EMAIL.test(email) ? email : null;
 }
 
-export type ReachContact = { id: string; phone: string | null; email: string | null; untrusted_fields: readonly string[] };
+export type ReachContact = { id: string; phone: string | null; email: string | null };
 
 type Channel = { key: "call" | "text" | "email"; href: string; link: string; type: string; summary: string; log: string };
 

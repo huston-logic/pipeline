@@ -163,6 +163,25 @@ test("a followUpDate alone on a Not now lead adds the task and leaves the status
   assert.equal((await tasks(db)).length, 1);
 });
 
+test("the same Not now request twice adds one check-back task; a different date or a done one still adds another", async () => {
+  const db = await openTestDb();
+  const lead = await addLead(ctxFor(db, "add_lead"), { name: "Lee Example" });
+  const request = { leadStatus: "not_now", followUpDate: "2026-12-04" } as const;
+  await updateContact(ctxFor(db), lead.contactId, request);
+  await assert.rejects(
+    updateContact(ctxFor(db), lead.contactId, request),
+    /^UserError: Nothing to change for Lee Example: every value you gave is already set\./,
+  );
+  assert.equal((await tasks(db)).length, 1);
+
+  await updateContact(ctxFor(db), lead.contactId, { followUpDate: "2026-12-11" });
+  assert.equal((await tasks(db)).length, 2, "another date is a new check-back");
+
+  await db.prepare("UPDATE tasks SET done_at = ? WHERE due_at = ?").bind(NOW.toISOString(), "2026-12-04T08:00:00.000Z").run();
+  await updateContact(ctxFor(db), lead.contactId, { followUpDate: "2026-12-04" });
+  assert.equal((await tasks(db)).length, 3, "a done check-back does not block a new one for the same day");
+});
+
 test("a followUpDate alone guards the contact row: a status changed meanwhile fails the change and adds no task", async () => {
   const db = await openTestDb();
   const lead = await addLead(ctxFor(db, "add_lead"), { name: "Lee Example" });

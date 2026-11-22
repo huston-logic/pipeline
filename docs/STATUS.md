@@ -5,12 +5,12 @@ file is the repo's status: update it in place at the end of every run (CLAUDE.md
 Spec: `docs/SPEC.md`. Plan: `docs/PLAN.md`. Decisions: `docs/decisions/`. Dates are in the owner's timezone
 (America/Los_Angeles), taken from the PR merge times in `gh`.
 
-Last checked against the repo and `gh` on 2026-11-21, at `main` commit `07a3c74` (#43).
+Last checked against the repo and `gh` on 2026-11-21, at `main` commit `a6f4dd0` (#44).
 
 ## Current state
 
-**Merged.** Everything in the spec and in the run 2 and run 4 briefs is built and merged: 43 PRs (#1 to #43), no
-open PRs, no open code-scanning alerts, and CI and CodeQL green on the latest `main` commit. Run 4 added people and
+**Merged.** Everything in the spec and in the run 2 and run 4 briefs is built and merged: 44 PRs (#1 to #44), no
+other PR open, no open code-scanning alerts, and CI and CodeQL green on the latest `main` commit. Run 4 added people and
 leads, email logging by BCC, phone notification for the brief, and the monthly "What it caught" report. The repo has
 migrations 0001 to 0008 and decisions 0001 to 0033.
 
@@ -21,13 +21,13 @@ PR #29 ("install lessons from the first live copy") corroborates, and its config
 git-ignored `.copies/`. What that copy runs now can't be checked from the repo or `gh`: whether it has been updated to
 run 4's code (migrations 0006 to 0008) is open until you confirm it (Needs Grant 1).
 
-**Open.** Nothing is open in the repo. What is left is in "Needs Grant" and in "Minor findings left" below.
+**Open.** One PR (the minor findings, see the Changelog). What is left is in "Needs Grant" and in "Minor findings" below.
 
 **Dependencies** (exact-pinned in `package.json`): runtime `agents` 0.33.0, `@modelcontextprotocol/server` 2.4.0,
 `@cloudflare/workers-oauth-provider` 1.2.4, `postal-mime` 4.2.1, `zod` 4.6.7. Development: `@playwright/test` 1.65.0,
 `@modelcontextprotocol/client` 2.4.0, `typescript-eslint` 8.72.2. Added in run 4: `postal-mime` (PR #37).
 
-**Tests.** `npm run check` on this branch passes: 1,072 unit and 42 end-to-end tests, 0 failures. Local a11y does not
+**Tests.** `npm run check` on this branch passes: 1,078 unit and 42 end-to-end tests, 0 failures. Local a11y does not
 run on this Mac (Needs Grant 5); CI runs it.
 
 ## Changelog
@@ -42,7 +42,9 @@ run on this Mac (Needs Grant 5); CI runs it.
   reads, lead rule, People tab, lead pages, import and seed, acceptance), then "it comes to you" (phone
   notification, email logging, What it caught), closing status, final-review fixes. #28 to #43.
 - 2026-11-21, status format: STATUS.md reshaped into Current state, Changelog, Needs Grant and For the master, facts
-  re-checked against the repo and `gh`; "Status and source of truth" added to CLAUDE.md. This PR.
+  re-checked against the repo and `gh`; "Status and source of truth" added to CLAUDE.md. #44.
+- 2026-11-21, minor findings: seven of the run 4 minor findings fixed with tests first; the rest sorted into "wording"
+  and "your call" in the section below. This PR.
 
 ## Needs Grant
 
@@ -179,33 +181,57 @@ Code scanning on the way, each fixed in code (never dismissed):
   other `<` is kept with the character after it ("I am < 5 min away"), except one before another `<` or at the end.
   Cost: a stray character or two lost or kept in odd HTML.
 
-### Minor findings left after run 4 (none blocks use)
+### Minor findings from run 4 and earlier (none blocks use)
 
 Not built: replies from leads are not logged (they reach your own inbox, not the log address), so email logging
 covers only mail you send with the Bcc; forwarded mail is not parsed for the original sender.
 
-- **Rules and undo:** a paused deal rule still shows its 30-day look-back in a preview (`paused: true`); the fire-key
-  read in a lead preview covers all the rule's keys (bounded); the rulebook order differs between a fresh and an
-  upgraded copy (harmless); `db.ts` imports the `LeadStatus` type from `services/` (layering, type only).
-- **Leads and the board:** the summary says "Moved ... back to leads (Contacted)" when already Contacted; a snoozed
-  task with no due date is left out of `list_leads`' next task; double-posting Not now with a date adds two check-back
-  tasks; the contact detail is read twice on a deal page.
-- **Import:** a bad custom field value skips the whole merge row (as it does on create).
-- **Email logging:** a quoted local part containing `;` in Cloudflare's header is dropped (fails closed); the end-to-end
-  test covers only the drop path (the logged path is unit-tested).
-- **Notifications:** `wrangler dev` may echo the throwaway keys in the local terminal; the 20-device cap is not atomic;
-  a failure while marking a device gone loses the counts (cosmetic).
+**Fixed on 2026-11-21 (branch `fix/run4-minor-findings`), each with a test written first:**
+
+- `list_leads` and the leads page left a snoozed task with no due date out of a person's next task; it now counts from
+  the day it wakes (an undated task that is not snoozed still shows none).
+- Posting the same Not now with a check-back date twice added two identical "Check back" tasks; the second is now
+  refused with "Nothing to change ... every value you gave is already set" (a different date, or a done task, still adds one).
+- `src/db/db.ts` imported the `LeadStatus` type from `src/services/`; the status definitions now live in
+  `src/db/lead-status.ts` (re-exported from `src/services/lead-status.ts`, so no other import moved), and a test fails
+  if anything in `src/db` imports from `src/services`.
+- The deal page read the contact twice (a join, then `SELECT *`); `getDealBrief` now reads it once.
+- A failure other than a refusal while turning a gone device off lost the push counts (and could fail the brief step);
+  the counts now stand, the device stays on to be tried next time, and one log line names the device by id.
+- The 20-device notification cap was checked before the write, so two devices turning on together could pass the
+  check; a guard inside the same batch now refuses the loser with the usual message.
+- `ReachContact.untrusted_fields` in `src/board/reach.ts` was unused; removed (the test fixture no longer carries it).
+
+**Left because fixing it changes wording users see (your call, nothing changed):**
+
+- The summary says "Moved ... back to leads (Contacted)" when the person is already Contacted.
+- The nbsp phone refusal note doesn't say why (hidden character).
+- Docs: ACCESS-SETUP's "worked on the first live copy" history note; the Access item "Add public hostname" is not
+  flagged "check in the dashboard".
+- `/companies` has no row cap (a cap needs a "showing the first N" line; fast at 300 companies).
+
+**Left on purpose or because it needs your call (not wording):**
+
+- A paused deal rule still shows its 30-day look-back in a preview (`paused: true`). The code comment says this is
+  meant; a paused lead rule shows nothing. Say if you want them to match.
+- Ask Claude's "Prep me for this call" also shows on closed deals (hiding it is a product call; decision 0021 says
+  nothing either way).
+- A bad custom field value skips the whole import merge row, as it does on create (a row-level choice).
+- A quoted local part containing `;` in Cloudflare's header is dropped. This fails closed on purpose (ruling 12 and 13);
+  loosening it would weaken the sender check.
+- The fire-key read in a lead preview covers all the rule's keys (bounded); the rulebook order differs between a fresh
+  and an upgraded copy (harmless; a fix would rewrite stored data).
+- `wrangler dev` may echo the throwaway keys in the local terminal (they exist only in memory and for local runs;
+  hiding them would mean writing them to a file).
+- The end-to-end email test covers only the drop path: locally nothing prepends Cloudflare's header, so the logged path
+  stays unit-tested.
+- board.js's focus move and Copy prompt are only text-checked (a browser test needs the Chromium install in Needs
+  Grant 5); a double tap on a Log button logs twice (decision 0021 accepts this).
+- The company sort on /contacts (SQLite NOCASE) and the grouping on /companies (a collator) treat tabs and accents
+  slightly differently; the Contacts search echoes the query in the page (escaped, as intended); the CSV export of a
+  very large copy still needs `copies:export`.
 - **Performance:** narrow the contact read in the brief and in the deal reads to the people the request needs, if the
   CPU items in Needs Grant 7 bite on a real copy.
-- **Docs:** ACCESS-SETUP has a "worked on the first live copy" history note; one Access item ("Add public hostname")
-  is not flagged "check in the dashboard".
-- **From run 2:** the `/companies` page has no row cap (fast at 300 companies); the Contacts search echoes the query in
-  the page (escaped); the company sort on /contacts and the grouping on /companies treat tabs and accents slightly
-  differently; the CSV export of a very large copy still needs `copies:export`.
-- **From #24 (skipped by the owner's choice in run 3):** `ReachContact.untrusted_fields` in `src/board/reach.ts` is
-  unused; a phone with a non-breaking space is refused with a note that doesn't say why (hidden character); board.js's
-  focus move and Copy prompt are only text-checked, with no browser test; Ask Claude's "Prep me for this call" also
-  shows on closed deals; a double tap on a Log button logs twice (0021 accepts this).
 
 ## Run 3 (2026-11-19)
 

@@ -1,5 +1,5 @@
 // update_contact, and the duplicate-email answer every write that adds or changes an email shares.
-import type { ContactRow, TaskRow } from "../db/db.ts";
+import type { ContactRow, Db, TaskRow } from "../db/db.ts";
 import { findContactByEmail } from "../db/queries.ts";
 import { formatLocal, localWhen, parseWhen } from "../time.ts";
 import {
@@ -67,6 +67,15 @@ async function checkLeadStatus(ctx: Ctx, contact: ContactRow, status: LeadStatus
       ? `${who} has 1 open deal. Use return_to_lead on that deal instead, or close it first.`
       : `${who} has ${open} open deals. Close them first, or close all but one and use return_to_lead on that one.`,
   );
+}
+
+/** True when the person already has an open "Check back" task with this title and due time. */
+async function openCheckBack(db: Db, contactId: string, task: TaskRow): Promise<boolean> {
+  const found = await db
+    .prepare("SELECT 1 AS one FROM tasks WHERE contact_id = ? AND deal_id IS NULL AND title = ? AND due_at = ? AND done_at IS NULL LIMIT 1")
+    .bind(contactId, task.title, task.due_at)
+    .first<{ one: number }>();
+  return found !== null;
 }
 
 /** "Fri Dec 4" for a date given without a time (midnight), else "Fri Dec 4, 10:30 AM". */
@@ -138,7 +147,9 @@ export async function updateContact(ctx: Ctx, contactRef: string, patch: Contact
 
   const after = updatedRow(before, set as Partial<ContactRow>, ctx.now);
   // Built from the updated row, so a rename in the same call names the task (and its trust) after the new name.
-  const task: TaskRow | null = due === null ? null : followUpTask(after, due, ctx.now);
+  let task: TaskRow | null = due === null ? null : followUpTask(after, due, ctx.now);
+  // The same request twice (a double post) must not stack a second identical check-back.
+  if (task !== null && (await openCheckBack(db, before.id, task))) task = null;
   const changed = changedColumns(before, after).filter((c) => !["version", "updated_at", "lead_status_at"].includes(c));
   if (changed.length === 0 && task === null) {
     throw new UserError(`Nothing to change for ${contactName(before)}: every value you gave is already set.`);

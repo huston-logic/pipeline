@@ -1,7 +1,7 @@
 // The database type every module takes, and one row type per table in migrations/. SQLite has no boolean or JSON
 // column types: flags are INTEGER 0/1 and JSON is TEXT (parse it where it is used). Times are UTC ISO strings.
 
-import type { LeadStatus } from "../services/lead-status.ts";
+import type { LeadStatus } from "./lead-status.ts";
 
 /** The part of D1 the code uses, so tests can pass the node:sqlite shim (src/db/sqlite-d1.ts). */
 export type Db = Pick<D1Database, "prepare" | "batch">;

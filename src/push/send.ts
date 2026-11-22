@@ -71,8 +71,9 @@ export async function sendBriefPush(db: Db, env: Env, now: Date, options: PushOp
       try {
         await markPushGone({ db, now, actor: "system", tool: "push_send" }, sub.id);
       } catch (error) {
-        // Turned off or changed by the owner a moment ago: it is not sent to again either way.
-        if (!(error instanceof UserError)) throw error;
+        // Turned off or changed by the owner a moment ago: it is not sent to again either way. Any other failure
+        // leaves the device on, to be tried again next time; the counts still stand and no raw error is logged.
+        if (!(error instanceof UserError)) console.error(JSON.stringify({ event: "push_mark_gone_failed", subscription: sub.id }));
       }
     }
     counts[outcome] += 1;

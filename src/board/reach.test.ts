@@ -99,11 +99,11 @@ test("an email address with a query, an encoded character, quotes, spaces, slash
   assert.equal(mailable(null), null);
 });
 
-const contact = (over: Partial<{ phone: string | null; email: string | null; untrusted_fields: string[] }> = {}) => ({
+// The exact shape reachActions needs: no untrusted_fields (the link text is fixed, so it never reads them).
+const contact = (over: Partial<{ phone: string | null; email: string | null }> = {}) => ({
   id: "ct_seed01",
   phone: "+1 (555) 010-0123",
   email: "pat@example.com",
-  untrusted_fields: [],
   ...over,
 });
 
@@ -115,7 +115,7 @@ test("usable values give Call, Text and Email links with fixed text, and the nor
 });
 
 test("the link text is fixed: the number or address never is a link's text (the contact card shows it, labelled)", () => {
-  const out = reachActions(contact({ untrusted_fields: ["phone", "email"] }), { kind: "deal", id: "dl_seed01" }, form).toString();
+  const out = reachActions(contact(), { kind: "deal", id: "dl_seed01" }, form).toString();
   const texts = [...out.matchAll(/<a [^>]*>([^<]*)<\/a>/g)].map((m) => m[1]);
   assert.deepEqual(texts, ["Call", "Text", "Email"]);
   assert.doesNotMatch(out, /010-0123|>pat@example/);
@@ -167,7 +167,7 @@ test("no phone and no email: nothing at all", () => {
 
 test("an outside value with markup never reaches an href or the actions' markup (the card's rows show it, escaped)", () => {
   const out = reachActions(
-    contact({ phone: '<img src=x onerror="alert(1)">', email: "x@example.com?body=<b>", untrusted_fields: ["phone", "email"] }),
+    contact({ phone: '<img src=x onerror="alert(1)">', email: "x@example.com?body=<b>" }),
     { kind: "deal", id: "dl_seed01" },
     form,
   ).toString();
