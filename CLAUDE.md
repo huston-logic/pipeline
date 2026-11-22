@@ -157,6 +157,20 @@ are still open and unmerged, update it only in the first PR and one closing PR s
 - Board look: the palette tokens in `public/board.css`; check pages at 375 px and 1280 px wide.
 - If a source and the code disagree, or a rule isn't clearly covered by either, tell me.
 
+## Status and source of truth
+- Business priorities live in the Google Doc "00 Huston Logic: Source of Truth". This repo's status lives in docs/STATUS.md, and the master links to it.
+- Read docs/STATUS.md before starting a run.
+- At the end of every run, update docs/STATUS.md in place:
+  - Current state: what's live, what's merged, what's open
+  - Changelog: one dated line per batch, with PR numbers
+  - Needs Grant: steps only Grant can do (secrets, deploys, approvals), in order
+  - For the master: any change to scope, product or a decision, one line each
+- Don't create dated handoff files. Update STATUS.md instead.
+- Check the facts against the repo and `gh` (PR states, open alerts, migrations, pinned versions) when you update it,
+  not against the old text. Where something can't be checked from here (a client copy's live state), say so.
+- In an autonomous run, the "Autonomous runs" rule on when STATUS.md is edited (first PR and one closing PR while PRs
+  are open) still decides which PR carries the update.
+
 ## Secrets
 - No secrets in code, ever. Names only in `docs/SECRETS.md`.
 - `.env` and `.dev.vars` files are never committed (only `.env.example`). If a command would
