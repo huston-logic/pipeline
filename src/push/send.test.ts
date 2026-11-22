@@ -121,6 +121,24 @@ test("404 and 410 mark the subscription gone in a system change; other failures 
   assert.equal(again.length, 4);
 });
 
+test("a database failure while marking a device gone keeps the counts and leaves the device on", async (t) => {
+  mockFetch(t, (url) => (url.endsWith("device-1") ? 410 : 201));
+  const logs: string[] = [];
+  t.mock.method(console, "error", (line: string) => logs.push(line));
+  const db = await openTestDb();
+  await subscribe(db, 1);
+  await subscribe(db, 2);
+  const failing: Db = {
+    prepare: (sql) => db.prepare(sql),
+    batch: () => Promise.reject(new Error("D1 is down")),
+  };
+  assert.deepEqual(await sendBriefPush(failing, envFor(failing, await fakeSecrets()), NOW), { sent: 1, gone: 1, failed: 0 });
+  const live = (await db.prepare("SELECT id FROM push_subscriptions WHERE gone_at IS NULL").all()).results;
+  assert.equal(live.length, 2, "nothing was written, so the device is tried again next time");
+  assert.doesNotMatch(logs.join("\n"), /example\.net|D1 is down/, "no endpoint and no raw error in the log");
+  assert.equal(logs.length, 1);
+});
+
 test("a timeout that has already fired by the time the push is made counts the device as failed, without hanging", async (t) => {
   t.mock.method(globalThis, "fetch", (_url: string, init: RequestInit) => {
     const signal = init.signal;

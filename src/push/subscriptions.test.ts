@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { AuditRow, Db, PushSubscriptionRow } from "../db/db.ts";
+import { racing } from "../../tests/helpers/race-db.ts";
 import { openTestDb } from "../db/sqlite-d1.ts";
 import type { Ctx } from "../services/change.ts";
 import { UserError } from "../services/errors.ts";
@@ -78,6 +79,18 @@ test("at most 20 devices are on at once; a 21st is refused in plain words, and t
   assert.ok(await subscribePush(owner(db, "push_subscribe"), sub(21)), "room again after one is off");
   await assert.rejects(subscribePush(owner(db, "push_subscribe"), sub(1)), UserError, "full again: turning an old one back on is refused too");
   assert.ok(await subscribePush(owner(db, "push_subscribe"), { ...sub(2), auth: "B".repeat(22) }), "a key update is not a new device");
+});
+
+test("two devices racing for the last place: the loser is refused in plain words and nothing is stored for it", async () => {
+  const db = await openTestDb();
+  for (let n = 1; n < MAX_LIVE_SUBSCRIPTIONS; n++) assert.ok(await subscribePush(owner(db, "push_subscribe"), sub(n)));
+  // The rival takes the 20th place after this device's room check and before its write.
+  const rival = racing(db, () => subscribePush(owner(db, "push_subscribe"), sub(30)));
+  await assert.rejects(subscribePush(owner(rival, "push_subscribe"), sub(31)), /on for 20 devices already, the most this board allows/);
+  const live = (await listLivePush(db)).map((row) => row.endpoint);
+  assert.equal(live.length, MAX_LIVE_SUBSCRIPTIONS);
+  assert.ok(live.includes(sub(30).endpoint));
+  assert.ok(!live.includes(sub(31).endpoint));
 });
 
 test("removePushByEndpoint turns off this browser's row as push_remove; an unknown or off endpoint is refused", async () => {

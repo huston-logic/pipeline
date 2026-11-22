@@ -75,13 +75,14 @@ const REACH = `(a.type IN ('form', 'email', 'call', 'meeting') OR
 
 /**
  * Each person's soonest open task with a due date, by its effective time: a task snoozed past now counts from the day
- * it wakes (the later of its due date and the snooze). One `?`: now.
+ * it wakes (the later of its due date and the snooze; a snoozed task with no due date counts from the snooze). Two
+ * `?`: now, now.
  */
 const NEXT_TASK_CTE = `next_task AS (
   SELECT COALESCE(t.contact_id, d.contact_id) AS contact_id,
-    MIN(CASE WHEN t.snoozed_until > ? THEN MAX(t.due_at, t.snoozed_until) ELSE t.due_at END) AS at
+    MIN(CASE WHEN t.snoozed_until > ? THEN MAX(COALESCE(t.due_at, t.snoozed_until), t.snoozed_until) ELSE t.due_at END) AS at
   FROM tasks t LEFT JOIN deals d ON d.id = t.deal_id
-  WHERE t.done_at IS NULL AND t.due_at IS NOT NULL
+  WHERE t.done_at IS NULL AND (t.due_at IS NOT NULL OR t.snoozed_until > ?)
   GROUP BY 1
 )`;
 
@@ -201,7 +202,7 @@ export async function listLeads(db: Db, now: Date, tz: string, options: LeadList
        ORDER BY ${ORDER[options.sort ?? "next_task"]}, c.name COLLATE NOCASE, c.id
        LIMIT ?`,
     )
-    .bind(now.toISOString(), ...params, Math.min(Math.max(options.limit ?? LEAD_LIST_LIMIT, 1), LEAD_LIST_LIMIT))
+    .bind(now.toISOString(), now.toISOString(), ...params, Math.min(Math.max(options.limit ?? LEAD_LIST_LIMIT, 1), LEAD_LIST_LIMIT))
     .all<LeadRow>();
   const items = found.results.map((row): LeadItem => {
     const outside = untrustedFields(row);
@@ -243,7 +244,7 @@ export async function followUpsDueThisWeek(db: Db, now: Date, tz: string): Promi
        SELECT COUNT(*) AS n FROM contacts c JOIN next_task n ON n.contact_id = c.id
        WHERE c.archived = 0 AND c.lead_status IN (${marks(OPEN_LEAD_STATUSES.length)}) AND n.at < ?`,
     )
-    .bind(now.toISOString(), ...OPEN_LEAD_STATUSES, end)
+    .bind(now.toISOString(), now.toISOString(), ...OPEN_LEAD_STATUSES, end)
     .first<{ n: number }>();
   return row?.n ?? 0;
 }

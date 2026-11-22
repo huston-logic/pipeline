@@ -312,15 +312,14 @@ export interface DealBrief {
 /** A pre-call brief. `dealRef` is a deal id, title or contact name. */
 export async function getDealBrief(db: Db, dealRef: string, tz: string, now: Date): Promise<DealBrief> {
   const found = await findDeal(db, dealRef);
-  const [row] = await rows<DealJoin & { stage_kind: StageKind }>(
+  const [stageRow] = await rows<DealRow & { stage_label: string; stage_kind: StageKind }>(
     db,
-    `SELECT d.*, c.name AS contact_name, c.untrusted_fields AS contact_untrusted, s.label AS stage_label,
-       s.kind AS stage_kind
-     FROM deals d JOIN contacts c ON c.id = d.contact_id JOIN stages s ON s.key = d.stage_key WHERE d.id = ?`,
+    `SELECT d.*, s.label AS stage_label, s.kind AS stage_kind FROM deals d JOIN stages s ON s.key = d.stage_key WHERE d.id = ?`,
     [found.id],
   );
   const contact = await db.prepare("SELECT * FROM contacts WHERE id = ?").bind(found.contact_id).first<ContactRow>();
-  if (!row || !contact) throw new Error(`Deal ${found.id} points at a missing contact or stage.`);
+  if (!stageRow || !contact) throw new Error(`Deal ${found.id} points at a missing contact or stage.`);
+  const row = { ...stageRow, contact_name: contact.name, contact_untrusted: contact.untrusted_fields };
   const timeline = await rows<ActivityRow>(
     db,
     `SELECT * FROM activities WHERE deal_id = ? OR (deal_id IS NULL AND contact_id = ?)

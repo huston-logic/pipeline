@@ -111,7 +111,8 @@ this file before changing the repo, and update it when a rule changes.
   leads table. `add_lead` (`src/services/leads.ts`) adds a person with status `new` and no deal; `add_deal`
   (`src/services/add-deal.ts`, what `add_lead` did before run 4) adds a deal for a new or existing person;
   `update_contact` (`src/services/contacts.ts`) sets a status. The status keys and labels are in
-  `src/services/lead-status.ts` (the keys never change); the shared pieces are in `src/services/lead-change.ts`. Any
+  `src/db/lead-status.ts`, re-exported by `src/services/lead-status.ts` (the keys never change; `src/db` imports
+  nothing from `src/services`, a test checks); the shared pieces are in `src/services/lead-change.ts`. Any
   write that gives an unqualified lead a deal (`add_deal`, `/intake`, `update_deal` reopening a deal) sets `qualified`
   in the same change, and logging a reach on a `new` lead sets `contacted` in the same change (`contactedIfNew`).
   `via: "text"` on a note comes only from the board's Text button, never from an MCP input.

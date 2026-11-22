@@ -148,6 +148,17 @@ test("a lead whose only task is snoozed shows the day it wakes and sorts there, 
   assert.equal((await pipelineSummary(db, NOW, TZ)).leads?.followUpsDueThisWeek, 2, "a snoozed task is not due this week");
 });
 
+test("a snoozed task with no due date shows the day it wakes; an undated task that is not snoozed still shows none", async () => {
+  const { db, c } = await seeded();
+  const d = await lead(db, "Dee Example", "new", "2026-11-09");
+  const undated = (await addTask(ctxFor(db, NOW, "add_task"), { contactId: c, title: "Someday" })).taskId;
+  assert.equal((await listLeads(db, NOW, TZ)).items.find((i) => i.id === c)?.nextTaskAt, null);
+  await snoozeTask(ctxFor(db, NOW, "snooze_task"), undated, "2026-11-30T09:00");
+  const list = await listLeads(db, NOW, TZ);
+  assert.equal(list.items.find((i) => i.id === c)?.nextTaskAt, "2026-11-30T17:00:00.000Z");
+  assert.ok(ids(list.items).indexOf(c) < ids(list.items).indexOf(d), "it sorts by the wake day, ahead of the no-task leads");
+});
+
 test("a task on one of the lead's deals counts as theirs", async () => {
   const { db, c } = await seeded();
   const deal = await addDeal(ctxFor(db, day("2026-11-12"), "add_deal"), { name: "Ida Example", dealTitle: "Menu" });

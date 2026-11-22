@@ -3,7 +3,7 @@
 // a subscription by id only: the endpoint is never put in a summary, an error or a log.
 import type { Db, PushSubscriptionRow } from "../db/db.ts";
 import { newId } from "../ids.ts";
-import { type ChangeResult, commitChange, type Ctx, updatedRow } from "../services/change.ts";
+import { type ChangeInput, type ChangeResult, commitChange, type Ctx, StaleWriteError, updatedRow } from "../services/change.ts";
 import { capitalize } from "../services/describe.ts";
 import { UserError } from "../services/errors.ts";
 import { pushLabel } from "../services/labels.ts";
@@ -68,6 +68,20 @@ async function checkRoom(db: Db): Promise<void> {
 }
 
 /**
+ * Runs inside the change's batch, after its write: fails it if that write took the live count past the cap, so two
+ * devices turning on at once cannot both take the last place. On that failure the room check refuses in plain words.
+ */
+async function withRoomGuard(db: Db, commit: (extra: D1PreparedStatement[]) => Promise<ChangeResult>): Promise<ChangeResult> {
+  const guard = db.prepare("INSERT INTO write_guard (ok) SELECT COUNT(*) <= ? FROM push_subscriptions WHERE gone_at IS NULL").bind(MAX_LIVE_SUBSCRIPTIONS);
+  try {
+    return await commit([guard]);
+  } catch (error) {
+    if (error instanceof StaleWriteError) await checkRoom(db);
+    throw error;
+  }
+}
+
+/**
  * Turns notifications on for one browser. Null when that endpoint is already on with the same keys (no change); new
  * keys for it are stored as a change. An endpoint that was turned off comes back on as the same row, with the
  * browser's current keys. At most MAX_LIVE_SUBSCRIPTIONS devices are on at once.
@@ -81,20 +95,24 @@ export async function subscribePush(ctx: Ctx, raw: PushInput): Promise<ChangeRes
     const wasOn = known.gone_at === null;
     if (!wasOn) await checkRoom(ctx.db);
     const after = updatedRow(known, { p256dh: input.p256dh, auth: input.auth, gone_at: null }, ctx.now);
-    return commitChange(ctx, {
+    const change: ChangeInput = {
       target: { table: "push_subscriptions", id: known.id },
       summary: wasOn ? `Updated the keys of ${pushLabel(known.id)}` : `Turned on ${pushLabel(known.id)}`,
       changes: [{ table: "push_subscriptions", id: known.id, before: known, after }],
-    });
+    };
+    return wasOn ? commitChange(ctx, change) : withRoomGuard(ctx.db, (extra) => commitChange(ctx, { ...change, extra }));
   }
   await checkRoom(ctx.db);
   const id = newId("ps");
   const row: PushSubscriptionRow = { id, ...input, created_at: at, gone_at: null, version: 1, updated_at: at };
-  return commitChange(ctx, {
-    target: { table: "push_subscriptions", id },
-    summary: `Turned on ${pushLabel(id)}`,
-    changes: [{ table: "push_subscriptions", id, before: null, after: row }],
-  });
+  return withRoomGuard(ctx.db, (extra) =>
+    commitChange(ctx, {
+      target: { table: "push_subscriptions", id },
+      summary: `Turned on ${pushLabel(id)}`,
+      changes: [{ table: "push_subscriptions", id, before: null, after: row }],
+      extra,
+    }),
+  );
 }
 
 async function turnOff(ctx: Ctx, row: PushSubscriptionRow, summary: string): Promise<ChangeResult> {

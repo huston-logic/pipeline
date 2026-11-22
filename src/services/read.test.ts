@@ -113,6 +113,15 @@ test("whatsDue splits overdue and today in the owner's timezone and skips done a
   assert.equal(task?.dueAtLocal, "Wed Nov 18, 9:00 AM");
 });
 
+test("getDealBrief reads the contact once", async () => {
+  const db = await seededDb();
+  const seen: string[] = [];
+  const counting: Db = { prepare: (sql) => (seen.push(sql), db.prepare(sql)), batch: (statements) => db.batch(statements) };
+  const brief = await getDealBrief(counting, "dl_seed02", TZ, NOW);
+  assert.equal(brief.contact.name, "Robin Sample");
+  assert.equal(seen.filter((sql) => /FROM contacts|JOIN contacts c ON c\.id = d\.contact_id/.test(sql)).length, 1, seen.join("\n"));
+});
+
 test("getDealBrief has the contact with untrusted_fields, the timeline newest first with untrusted_text, and open tasks", async () => {
   const db = await seededDb();
   const robin = await getDealBrief(db, "dl_seed02", TZ, NOW);
