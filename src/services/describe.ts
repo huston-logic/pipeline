@@ -60,6 +60,8 @@ export function rowLabel(table: ChangeTable, row: Row): string {
       return `person status ${text(row.label)}`;
     case "person_substatuses":
       return `sub-status ${text(row.label)}`;
+    case "views":
+      return `view ${text(row.name)}`;
   }
 }
 
