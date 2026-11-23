@@ -285,3 +285,32 @@ stops early, Part A and B1 are what matter. One branch and PR per task, each fro
 | C1 | Email logging | `email()` handler for a BCC log address; docs and STOP queue for Email Routing |
 | D1 | Brief notification | No-payload web push at brief time, service worker that only notifies, key script; STOP queue for keys |
 | E2 | After you update | UPDATING.md run 4 steps; closing STATUS |
+
+## Run 5: import and people (2026-11-22)
+
+The owner's brief is the approved design. The detailed plan, with interfaces and tests per task, is
+`docs/superpowers/plans/2026-11-22-run5-import-and-people.md`. Work in order; Part 1 is merged before Part 2 starts. If
+the run gets long, tasks are queued from the bottom of the list up. One branch and PR per task, each from a fresh
+`main`.
+
+**Part 1: import from the board.** An owner imports a CSV into any module from the board, on a phone or a laptop, with
+no terminal.
+
+| # | Task | Done when |
+| --- | --- | --- |
+| I1 | One import engine | `src/import` is an engine plus one definition per module; People (contacts and leads) runs on it with no change in behaviour; the CLI import uses the same engine |
+| I2 | One change at any size | A 2,000-row import is one audited change and one undo, written in chunks (migration 0009, audit parts); a hard cap with a plain message; CPU measured against the free plan in PAID-PLAN.md |
+| I3 | Board import for People | Import on Contacts, Leads and under More; choose or paste a CSV, match columns (built-in, custom, New field, Add to notes, Don't import), leads or contacts, preview, apply with Undo; the file held server-side with an expiry (migration 0010); no JavaScript needed |
+| I4 | Deals and Tasks | Import on Pipeline and Today; deals match or create the person and keep invariant 1; closed deals are counted and confirmed; tasks match a person or a deal; every module's board CSV imports back |
+| I5 | "This is my own list" | One board-only choice on the preview: short single-line identity values are stored as confirmed; everything else stays outside text; never through MCP |
+| I6 | MCP import | `import_rows` builds and previews an import from rows in batches; `apply_import` writes it only when asked; server instructions updated |
+
+**Part 2: people.** The owner adds a new kind of person or a view of them by talking, with no new code per kind.
+
+| # | Task | Done when |
+| --- | --- | --- |
+| P7 | Person status | Migration 0011: every person has a Person status (Lead, Contact, Partner seeded) and a sub-status from that status's own list; existing people migrated; the app's own moves (Contacted, Contact on a deal, Client on Won); lead rule, `list_leads`, brief, What it caught, export and import keep working |
+| P8 | Tools and board | `add_contact`; `update_contact` sets status and sub-status; tools for statuses and sub-statuses; `search_contacts` filters; three-way sort in the instructions and the leads rulebook; Add contact on the board; status fields on the person form |
+| P9 | Saved views | Migration 0013: views (name, module, filters, sort, layout, columns); `list_views`, `add_view`, `update_view`, `archive_view`; a default view per Person status; views in the People switch |
+| P10 | Table layout | Cards or a table for every list (People views, Pipeline List): real table markup, first column pinned, sideways scroll on a phone, sortable headers, no JavaScript |
+| C11 | Closing docs | INSTALL.md section 8, UPDATING.md "Run 5: after you update", acceptance sentences for import, undo, add a contact, add a Person status and add a view, STATUS.md |
