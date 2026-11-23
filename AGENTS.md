@@ -136,7 +136,8 @@ this file before changing the repo, and update it when a rule changes.
   (`planImport`) and `change.ts` (`importChange`) are People wrappers; `change.ts` also renders the change, and
   `sql.ts` renders its bound values as literal SQL for `wrangler d1 execute --file`. Imported fields are listed in `untrusted_fields`; a merge never overwrites a value.
   One import is one change at any size (decision 0035): `readCsv` refuses more than `IMPORT_MAX_ROWS` (2,000) data
-  rows or `IMPORT_MAX_BYTES` (1 MB), and the change is `bulk` (`ChangeInput.bulk`): set-based statements with one JSON
+  rows or `IMPORT_MAX_BYTES` (1 MB), `mapRows` a value or row over 40 KB (`IMPORT_MAX_VALUE_BYTES`,
+  `IMPORT_MAX_ROW_BYTES`), and the change is `bulk` (`ChangeInput.bulk`): set-based statements with one JSON
   parameter of at most `CHUNK_BYTES` each (`src/services/bulk.ts`), its snapshot in `audit_parts` (migration 0009),
   so no statement nears D1's 100 KB or 100 bound parameters. Read a snapshot only with `readSnapshot`.
 - **Email logging** (decision 0031): the `email` handler in `src/index.ts` loads `src/email/log.ts` with a dynamic

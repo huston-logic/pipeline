@@ -20,10 +20,17 @@ in the Worker (bound values) and from the Mac (rendered SQL).
 - **Bulk changes.** `ChangeInput.bulk` makes `buildChange` write set by set. Per table and operation it emits guards
   (`INSERT INTO write_guard (ok) SELECT COUNT(*) = <n> FROM <t> JOIN json_each(?) ...` on id and version), inserts
   (`INSERT INTO <t> (<cols>) SELECT json_extract(...) ... FROM json_each(?)`), updates (`UPDATE <t> SET ... FROM
-  json_each(?)`) and deletes (`DELETE ... WHERE <pk> IN (SELECT ... FROM json_each(?))`). Inserts go parents first
-  (stages, field_defs, contacts, deals, tasks, activities); updates come next; deletes go children first. Each
-  statement binds exactly one JSON parameter. Only tables with a `version` column can be written this way (not
-  `rule_firings`); anything else throws.
+  json_each(?)`) and deletes (`DELETE ... WHERE <pk> IN (SELECT ... FROM json_each(?))`). Inserts go parents first,
+  in `BULK_ORDER` (`src/services/change.ts`): settings, stages, field_defs, contacts, deals, tasks, activities, rules,
+  rulebook, push_subscriptions. Updates come next; deletes go children first (the same list reversed). Each statement
+  binds exactly one JSON parameter. Only tables with a `version` column can be written this way (not `rule_firings`);
+  anything else throws.
+- **Size of one row.** `mapRows` refuses, before any change is built, a value over `IMPORT_MAX_VALUE_BYTES` (40 KB)
+  or a row whose values add up to more than `IMPORT_MAX_ROW_BYTES` (40 KB), measured as stored (JSON inside JSON, then
+  as a SQL literal): "Line 14's "notes" value is 95 KB; one value can be at most 40 KB. Shorten it and try again." An
+  undo's snapshot part holds a row twice (before and after), so a row under 40 KB always fits a 90 KB chunk. A record
+  too large for one statement still throws a plain error in `chunkBy`, as a backstop for writes that don't come from
+  an import.
 - **Chunks.** A JSON parameter is at most `CHUNK_BYTES = 90_000`, measured as UTF-8 bytes plus one per apostrophe
   (`sqlBytes` in `src/services/bulk.ts`), because that is its size as a quoted SQL literal. With the statement text
   around it, every statement stays under 100 KB whether it is bound or rendered. `chunkRows` and `chunkBy` cut lists in
@@ -38,7 +45,11 @@ in the Worker (bound values) and from the Mac (rendered SQL).
   2,000-row undo makes as many reads as a 100-row one. The refusals and their order are unchanged (dependents, then
   "changed since", then the invariant 1 checks), word for word. An undo of a change with parts, or of more than 50
   rows, is itself a bulk change, and its summary gives counts: "Undid chg_…: Removed 1,960 contacts and put back the
-  earlier values on 40 contacts". Smaller undos are written and described exactly as before.
+  earlier values on 40 contacts". A change of more than 50 rows that touched a table without bulk support
+  (`rule_firings`) is undone row by row, still with the counts summary. Smaller undos are written and described
+  exactly as before.
+- **A stale bulk write** names no single row: its guards check many rows at once, so with more than one row read the
+  answer is "A record this change touches changed since you read it. Read it again and retry."
 - **The import** builds its change with `bulk: true`. `renderImport` renders those statements, each checked against
   `MAX_STATEMENT_BYTES`, so the CLI applies a 2,000-row file in one `wrangler d1 execute --file`.
 
