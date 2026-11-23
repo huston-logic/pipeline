@@ -12,9 +12,11 @@ import { CRON_JOBS, runScheduled } from "../src/cron.ts";
 import worker from "../src/index.ts";
 import { applyMigrations, applySqlFile, SqliteD1, type SqliteStatement } from "../src/db/sqlite-d1.ts";
 import type { ContactRow, FieldDefRow } from "../src/db/db.ts";
-import { importChange, renderImport } from "../src/import/change.ts";
+import { IMPORT_ACTOR, importChange, renderImport } from "../src/import/change.ts";
 import { planImport } from "../src/import/plan.ts";
+import { commitChange } from "../src/services/change.ts";
 import { runRules } from "../src/services/rules.ts";
+import { undoChange } from "../src/services/undo.ts";
 import { buildScaleSeed, lastBriefHour, SCALE } from "./seed-scale.ts";
 
 /** A D1 shim that adds up the CPU time spent inside D1 calls, and counts them. */
@@ -100,7 +102,7 @@ const mcpRequest = (body: object) =>
 const tool = (name: string, args: object = {}) => () => mcpRequest({ method: "tools/call", params: { name, arguments: args } });
 
 /** `run` answers the response body's size in bytes. */
-type Case = { name: string; run: (db: TimedD1, env: Env) => Promise<number>; reset?: (db: TimedD1) => void };
+type Case = { name: string; run: (db: TimedD1, env: Env) => Promise<number>; reset?: (db: TimedD1) => void | Promise<void> };
 
 const fetchCase = (name: string, request: () => Request): Case => ({
   name,
@@ -116,6 +118,7 @@ const fetchCase = (name: string, request: () => Request): Case => ({
 /** Removes what one hourly run wrote, so every timed run finds the same 50 firings due and composes the brief. */
 function resetRun(db: TimedD1): void {
   db.exec(`DELETE FROM rule_firings WHERE id NOT LIKE 'rf_scale%';
+    DELETE FROM audit_parts WHERE change_id NOT LIKE 'chg_scale%';
     DELETE FROM tasks WHERE id NOT LIKE 'tk_scale%';
     DELETE FROM audit_log WHERE id NOT LIKE 'chg_scale%';
     DELETE FROM briefs WHERE id NOT LIKE 'br_scale%';
@@ -144,6 +147,32 @@ function leadsCsv(existing: ContactRow[]): string {
 }
 
 let importInput: { existing: ContactRow[]; csv: string; fieldDefs: FieldDefRow[] } | undefined;
+
+/** The import the bulk-change case applied last and nothing has undone yet. */
+let appliedImport: string | undefined;
+
+/**
+ * What the board's import will do in the Worker (run 5): read the contacts and fields, plan the 2,000-row file and
+ * write it as one bulk change. Answers the change id.
+ */
+async function applyLeadsImport(db: TimedD1, at: Date): Promise<string> {
+  if (!importInput) throw new Error("Run the plan case first.");
+  const existing = (await db.prepare("SELECT * FROM contacts ORDER BY rowid").all<ContactRow>()).results;
+  const fieldDefs = (await db.prepare("SELECT * FROM field_defs ORDER BY rowid").all<FieldDefRow>()).results;
+  const plan = planImport(importInput.csv, existing, { asLeads: true, allowDuplicates: false, fieldDefs });
+  const input = importChange(plan, existing, at);
+  if (input === null || plan.create.length !== 1_600) throw new Error("The import should create 1,600 people.");
+  const { changeId } = await commitChange({ db, now: at, ...IMPORT_ACTOR }, input);
+  appliedImport = changeId;
+  return changeId;
+}
+
+/** Undoes the import the last case left applied, so every run starts from the same people. */
+async function undoAppliedImport(db: TimedD1, at: Date): Promise<void> {
+  if (appliedImport === undefined) return;
+  await undoChange({ db, now: at, actor: "owner", tool: "undo_change" }, appliedImport);
+  appliedImport = undefined;
+}
 
 function cases(briefAt: Date): Case[] {
   const scheduled = (name: string, at: Date, jobs = CRON_JOBS): Case => ({
@@ -218,15 +247,39 @@ function cases(briefAt: Date): Case[] {
       },
     },
     {
-      // One statement may be 100 KB (src/import/sql.ts), which is about 190 rows: a bigger file must be split.
-      name: "import plan + change + SQL for a 150-row file (as import:contacts --apply)",
+      // A bulk change (decision 0035): the whole file renders as statements under D1's 100 KB each.
+      name: "import plan + change + SQL for the 2,000-row file (as import:contacts --apply)",
       run: async () => {
         if (!importInput) throw new Error("Run the plan case first.");
-        const csv = importInput.csv.split("\n").slice(0, 151).join("\n");
-        const plan = planImport(csv, importInput.existing, { asLeads: true, allowDuplicates: false, fieldDefs: importInput.fieldDefs });
+        const plan = planImport(importInput.csv, importInput.existing, { asLeads: true, allowDuplicates: false, fieldDefs: importInput.fieldDefs });
         const input = importChange(plan, importInput.existing, briefAt);
         if (input === null) throw new Error("The import has nothing to write.");
         return renderImport(input, briefAt).sql.length;
+      },
+    },
+    {
+      // Run 5, task I2: the import in the Worker. Each run first undoes the one before (not timed).
+      name: "import plan + bulk change, 2,000 rows (read contacts, plan, one batch)",
+      reset: (db) => undoAppliedImport(db, briefAt),
+      run: async (db) => {
+        await applyLeadsImport(db, briefAt);
+        return 0;
+      },
+    },
+    {
+      name: "undo of that import (1,600 people removed, one batch)",
+      reset: async (db) => {
+        await undoAppliedImport(db, briefAt);
+        await applyLeadsImport(db, briefAt);
+      },
+      run: async (db) => {
+        if (appliedImport === undefined) throw new Error("No import to undo.");
+        const { summary } = await undoChange({ db, now: briefAt, actor: "owner", tool: "undo_change" }, appliedImport);
+        if (!/: Removed 1,600 contacts /.test(summary)) {
+          throw new Error(`The undo said: ${summary}`);
+        }
+        appliedImport = undefined;
+        return 0;
       },
     },
     {
@@ -274,7 +327,7 @@ async function main(): Promise<void> {
     let calls = "";
     let size = 0;
     for (let i = 0; i < 5 + runs; i++) {
-      c.reset?.(db);
+      await c.reset?.(db);
       db.reset();
       console.log = () => {};
       const started = performance.now();
