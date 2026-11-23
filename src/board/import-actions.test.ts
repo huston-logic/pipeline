@@ -196,35 +196,71 @@ const RACES: [string, string, Record<number, string | [string, string]>][] = [
   ["a New field", "Name,Budget\r\nNadia Fenwick,5000\r\n", { 1: ["new_field", "Budget"] }],
   ["emails", "name,email\r\nNadia Fenwick,nadia@example.net\r\n", {}],
 ];
+
+/**
+ * Where the rival apply lands in the loser's apply: on its read of the file (the parts are gone after it), on its read
+ * of the fields (the winner's new field is live after it), or just before its write.
+ */
+type RacePoint = "file" | "fields" | "write";
+
+const RACE_READS: Record<Exclude<RacePoint, "write">, string> = {
+  file: "SELECT * FROM import_draft_parts",
+  fields: "SELECT * FROM field_defs",
+};
+
+/** `db`, with `rival` run once just before the loser's read or write at `point`. */
+function racingDb(db: SqliteD1, point: RacePoint, rival: () => Promise<void>): Db {
+  let fired = false;
+  const fire = async () => {
+    if (fired) return;
+    fired = true;
+    await rival();
+  };
+  const read = point === "write" ? null : RACE_READS[point];
+  type Statement = ReturnType<SqliteD1["prepare"]>;
+  const wrap = (statement: Statement): D1PreparedStatement =>
+    ({
+      bind: (...values: unknown[]) => wrap(statement.bind(...values)),
+      all: async () => (await fire(), statement.all()),
+      first: async (column?: string) => (await fire(), column === undefined ? statement.first() : statement.first(column)),
+      run: async () => (await fire(), statement.run()),
+    }) as unknown as D1PreparedStatement;
+  return {
+    prepare: (sql) => (read !== null && sql.startsWith(read) ? wrap(db.prepare(sql)) : db.prepare(sql)),
+    async batch(statements) {
+      if (point === "write" && statements.length > 3) await fire();
+      return db.batch(statements);
+    },
+  };
+}
+
 for (const [kind, csv, choices] of RACES) {
-  test(`two applies racing write one change (${kind}): the loser shows the winner's result, never a 500 or a false refusal`, async () => {
-    const db = await seededDb();
-    const env = devEnv(db);
-    const { location, session } = await upload(env, { csv });
-    const id = draftIdOf(location);
-    assert.equal((await matchColumns(env, session, id, choices)).res.status, 303);
-    const page = await load(env, `/import/${id}/preview`, session.cookie);
-    const fields = formFields(page.body, `/import/${id}/apply`);
-    let rival: Awaited<ReturnType<typeof post>> | null = null;
-    // A whole second apply of the same draft lands between this one's reads and its write.
-    const racingDb: Db = {
-      prepare: (sql) => db.prepare(sql),
-      async batch(statements) {
-        if (rival === null && statements.length > 3) rival = await post(env, `/import/${id}/apply`, fields, session);
-        return db.batch(statements);
-      },
-    };
-    const count = (await auditRows(db)).length;
-    const res = await post({ ...env, DB: racingDb }, `/import/${id}/apply`, fields, session);
-    const winner = rival as Awaited<ReturnType<typeof post>> | null;
-    assert.ok(winner);
-    assert.equal(winner.res.status, 303);
-    assert.match(winner.location, new RegExp(`^/import/${id}\\?change=chg_[a-z2-7]{12}$`));
-    assert.equal(res.res.status, 303, "the loser redirects too");
-    assert.equal(res.location, winner.location, "to the winner's result");
-    assert.equal((await auditRows(db)).length, count + 1, "one change in all");
-    assert.equal(await db.prepare("SELECT COUNT(*) AS n FROM contacts WHERE name = 'Nadia Fenwick'").first("n"), 1);
-  });
+  for (const point of ["file", "fields", "write"] as const) {
+    test(`two applies racing write one change (${kind}, the rival lands on the loser's ${point === "write" ? "write" : `${point} read`}): the loser shows the winner's result`, async () => {
+      const db = await seededDb();
+      const env = devEnv(db);
+      const { location, session } = await upload(env, { csv });
+      const id = draftIdOf(location);
+      assert.equal((await matchColumns(env, session, id, choices)).res.status, 303);
+      const page = await load(env, `/import/${id}/preview`, session.cookie);
+      const fields = formFields(page.body, `/import/${id}/apply`);
+      let winner: Awaited<ReturnType<typeof post>> | null = null;
+      // A whole second apply of the same draft, through the real database.
+      const rival = async () => {
+        winner = await post(env, `/import/${id}/apply`, fields, session);
+      };
+      const count = (await auditRows(db)).length;
+      const res = await post({ ...env, DB: racingDb(db, point, rival) }, `/import/${id}/apply`, fields, session);
+      const won = winner as Awaited<ReturnType<typeof post>> | null;
+      assert.ok(won, "the rival ran");
+      assert.equal(won.res.status, 303);
+      assert.match(won.location, new RegExp(`^/import/${id}\\?change=chg_[a-z2-7]{12}$`));
+      assert.equal(res.res.status, 303, "the loser redirects too");
+      assert.equal(res.location, won.location, "to the winner's result");
+      assert.equal((await auditRows(db)).length, count + 1, "one change in all");
+      assert.equal(await db.prepare("SELECT COUNT(*) AS n FROM contacts WHERE name = 'Nadia Fenwick'").first("n"), 1);
+    });
+  }
 }
 
 test("an expired draft says start again, on every import path, and is deleted", async () => {
@@ -392,21 +428,23 @@ test("every import route sits behind the same checks: a cross-site or null origi
   assert.equal((await matchColumns(env, session, id, {})).res.status, 303);
   const state = async () => ({
     drafts: await db.prepare("SELECT id, mapping, options, result, change_id, version FROM import_drafts ORDER BY id").all().then((r) => r.results.map((row) => ({ ...row }))),
-    parts: await draftCount(db),
+    parts: await db.prepare("SELECT COUNT(*) AS n FROM import_draft_parts").first("n"),
     audits: (await auditRows(db)).length,
     contacts: await db.prepare("SELECT COUNT(*) AS n FROM contacts").first("n"),
   });
   const before = await state();
   const version = String((await getDraft(db, id, new Date()))?.version);
-  const cases: [string, { origin?: string; csrf?: string }][] = [
+  // csrf: undefined sends the page's token, null leaves the field out, a string sends that string.
+  const cases: [string, { origin?: string; csrf?: string | null }][] = [
     ["cross-site", { origin: "https://evil.example" }],
     ["Origin null", { origin: "null" }],
-    ["no token", { csrf: "" }],
+    ["no token", { csrf: null }],
+    ["an empty token", { csrf: "" }],
     ["wrong token", { csrf: "not-the-token" }],
   ];
   for (const [name, { origin, csrf }] of cases) {
     const form = new FormData();
-    form.set("csrf", csrf ?? session.token);
+    if (csrf !== null) form.set("csrf", csrf ?? session.token);
     form.set("as", "contacts");
     form.set("file", new File(["name\r\nOscar Lind\r\n"], "people.csv", { type: "text/csv" }));
     form.set("paste", "");
@@ -421,8 +459,16 @@ test("every import route sits behind the same checks: a cross-site or null origi
       [`/import/${id}/map`, { "col.0": "skip", "col.1": "builtin:name", as: "leads", version }],
       [`/import/${id}/apply`, { version }],
     ] as const) {
-      const sent = await post(env, path, csrf === undefined ? fields : { ...fields, csrf }, { ...session, origin: origin ?? ORIGIN });
-      assert.equal(sent.res.status, 403, `${path}, ${name}`);
+      // Sent by hand, so a missing token stays missing (the post helper fills one in).
+      const body = new URLSearchParams(fields);
+      if (csrf !== null) body.set("csrf", csrf ?? session.token);
+      const sent = await send(env, path, {
+        method: "POST",
+        headers: { Origin: origin ?? ORIGIN, Cookie: session.cookie, "Content-Type": "application/x-www-form-urlencoded" },
+        body: body.toString(),
+        redirect: "manual",
+      });
+      assert.equal(sent.status, 403, `${path}, ${name}`);
     }
   }
   assert.deepEqual(await state(), before, "no draft, no mapping change, no audit row, no contact");

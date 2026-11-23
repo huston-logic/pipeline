@@ -44,8 +44,10 @@ outside text that must not leak into an address, a cookie, a log or a page.
 - **Apply once.** The apply batch starts with a guard that the draft is still unapplied, unexpired and at the version
   the preview showed (`ChangeInput.leading`, before any row write), and ends with the result, the change id and the
   deletion of the file. A second apply (a double tap, the back button) sees the result and redirects to it. Two applies
-  racing write one change: the loser's batch fails at the guard, and whatever made it fail, the loser reads the draft
-  again and shows the winner's result. An import that would write nothing is marked applied with its counts and no change. Apply refuses, as a 422
+  racing write one change, wherever the winner lands in the loser's apply: when the loser's plan fails (its file is
+  gone, or the winner's new field is live), its no-change mark finds the draft applied, or its batch fails (at the
+  guard or anywhere else), the loser reads the draft again and shows the winner's result, or the gone page if the draft
+  is gone, before giving any refusal of its own. An import that would write nothing is marked applied with its counts and no change. Apply refuses, as a 422
   page with nothing written: a mapping that no longer fits (a field archived since), a person changed or an email added
   while importing, and a person on file too large to fill in one statement (`RecordTooLargeError` from `chunkBy`,
   carried from 0035), never a 500.

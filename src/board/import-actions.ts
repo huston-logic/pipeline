@@ -156,6 +156,17 @@ async function map(ctx: ActionContext, id: string): Promise<ActionResult> {
   return redirect(previewPath(draft.id));
 }
 
+/**
+ * After an apply step failed or lost: another apply of the same draft may have won the race at any point after this
+ * one read the draft (its file deleted, its new field live, its change written). The winner's result if it is
+ * applied, the gone page if it is gone, else null (the failure is this apply's own).
+ */
+async function settled(ctx: ActionContext, id: string): Promise<ActionResult | null> {
+  const latest = await getDraft(ctx.db, id, ctx.now);
+  if (latest === null) return page(404, importGonePage(pageContext(ctx, startPath(false))));
+  return latest.result === null ? null : redirect(doneHref(latest));
+}
+
 /** POST /import/<id>/apply: plans the file once against the data now and writes it, marking the draft applied. */
 async function apply(ctx: ActionContext, id: string): Promise<ActionResult> {
   const found = await draftFor(ctx, id);
@@ -172,13 +183,15 @@ async function apply(ctx: ActionContext, id: string): Promise<ActionResult> {
   try {
     planned = await planDraft(ctx.db, draft, await draftText(ctx.db, draft.id), ctx.now, allowDuplicates);
   } catch (error) {
+    const answer = await settled(ctx, draft.id);
+    if (answer !== null) return answer;
     if (error instanceof UserError) return refused(error.message);
     throw error;
   }
   const input = fileChange(peopleModule, planned.plan, planned.contacts, ctx.now, planned.mapped.newFields);
   if (input === null) {
-    await markApplied(ctx.db, draft, resultOf(planned, false), ctx.now);
-    return redirect(draftPath(draft.id));
+    if (await markApplied(ctx.db, draft, resultOf(planned, false), ctx.now)) return redirect(draftPath(draft.id));
+    return (await settled(ctx, draft.id)) ?? refused("This import changed while it was saving. Check the import again.");
   }
   const changeId = newId("chg");
   try {
@@ -193,9 +206,8 @@ async function apply(ctx: ActionContext, id: string): Promise<ActionResult> {
     );
   } catch (error) {
     // Another apply of this draft may have won the race: whatever failed, show its result rather than an error.
-    const latest = await getDraft(ctx.db, draft.id, ctx.now);
-    if (latest?.result) return redirect(doneHref(latest));
-    if (latest === null) return page(404, importGonePage(pageContext(ctx, startPath(false))));
+    const answer = await settled(ctx, draft.id);
+    if (answer !== null) return answer;
     if (error instanceof StaleWriteError) {
       return refused("Someone in this file was changed while it was importing, so nothing was saved. Check the import again.");
     }
