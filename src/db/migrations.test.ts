@@ -515,8 +515,10 @@ const FAKE_ROWS: Record<string, string> = {
   rulebook: "INSERT INTO rulebook (name, markdown) VALUES ('fake', '# Fake')",
   audit_log:
     "INSERT INTO audit_log (id, at, actor, tool, target_table, target_id, before_json, after_json, summary) VALUES ('chg_fake', '2026-11-18T17:00:00.000Z', 'ai', 'add_lead', 'deals', 'dl_fake', '{}', '{\"deals:dl_fake\":null}', 'Added a fake lead (change chg_fake)')",
+  // A bulk change of its own (decision 0035): '{}' in the audit row, parts = 1, the snapshot in its one part.
   audit_parts:
-    "INSERT INTO audit_parts (change_id, seq, before_json, after_json) VALUES ('chg_fake', 1, '{\"contacts:ct_fake\":null}', '{\"contacts:ct_fake\":{\"id\":\"ct_fake\"}}')",
+    "INSERT INTO audit_log (id, at, actor, tool, target_table, target_id, before_json, after_json, summary, parts) VALUES ('chg_fakebulk', '2026-11-18T18:00:00.000Z', 'owner', 'import', 'contacts', 'ct_fake', '{}', '{}', 'Imported 1 contact and filled details on 0 (change chg_fakebulk)', 1); " +
+    "INSERT INTO audit_parts (change_id, seq, before_json, after_json) VALUES ('chg_fakebulk', 1, '{\"contacts:ct_fake\":null}', '{\"contacts:ct_fake\":{\"id\":\"ct_fake\"}}')",
   briefs:
     "INSERT INTO briefs (id, local_date, composed_at, text) VALUES ('br_fake', '2026-11-18', '2026-11-18T15:00:00.000Z', 'Fake brief')",
   push_subscriptions:

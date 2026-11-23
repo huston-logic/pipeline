@@ -8,7 +8,9 @@ import { renderImport } from "./change.ts";
 import {
   autoMatch,
   IMPORT_MAX_BYTES,
+  IMPORT_MAX_ROW_BYTES,
   IMPORT_MAX_ROWS,
+  IMPORT_MAX_VALUE_BYTES,
   type ImportModule,
   type ImportOptions,
   mapRows,
@@ -208,4 +210,27 @@ test("readCsv takes at most 2,000 data rows and 1 MB, and says how to split a bi
   const justOver = `name\r\n${"é".repeat(IMPORT_MAX_BYTES / 2)}`;
   refused(justOver, "This file is 1.1 MB. One import takes at most 1 MB. Split it into smaller files and import each one.");
   assert.doesNotThrow(() => readCsv(`name\r\n${"x".repeat(IMPORT_MAX_BYTES - 6)}`), "exactly 1 MB is fine");
+});
+
+test("a value or a row too large for one statement is refused in plain English, naming the line", () => {
+  assert.equal(IMPORT_MAX_VALUE_BYTES, 40_000);
+  assert.equal(IMPORT_MAX_ROW_BYTES, 40_000);
+  const refused = (csv: string, message: string) =>
+    assert.throws(
+      () => planCsv(peopleModule, csv, [], PLAIN),
+      (error: unknown) => error instanceof UserError && error.message === message,
+    );
+  refused(
+    `name,notes\r\nPat,short\r\nRobin,${"n".repeat(49_990)}\r\n`,
+    `Line 3's "notes" value is 50 KB; one value can be at most 40 KB. Shorten it and try again.`,
+  );
+  refused(
+    `name,business,notes\r\nPat,${"b".repeat(25_000)},${"n".repeat(25_000)}\r\n`,
+    "Line 2 is 51 KB; one row can be at most 40 KB. Shorten its longest values and try again.",
+  );
+  // A quote is stored escaped twice (4 bytes): 12,000 of them are over the cap although only 12,000 characters long.
+  refused(`name,notes\r\nPat,"${'""'.repeat(12_000)}"\r\n`, `Line 2's "notes" value is 49 KB; one value can be at most 40 KB. Shorten it and try again.`);
+  // The longest notes the plan accepts (10,000 characters, three bytes each) still fit.
+  const plan = planCsv(peopleModule, `name,notes\r\nPat,${"漢".repeat(10_000)}\r\n`, [], PLAIN);
+  assert.equal(plan.create.length, 1);
 });

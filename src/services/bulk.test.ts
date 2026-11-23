@@ -10,7 +10,8 @@ import { planImport } from "../import/plan.ts";
 import { MAX_STATEMENT_BYTES, renderStatement } from "../import/sql.ts";
 import { addDeal } from "./add-deal.ts";
 import { CHUNK_BYTES, chunkRows, sqlBytes } from "./bulk.ts";
-import { buildChange, type ChangeInput, commitChange, readSnapshot, type Row } from "./change.ts";
+import { racing } from "../../tests/helpers/race-db.ts";
+import { buildChange, type ChangeInput, commitChange, readSnapshot, type Row, StaleWriteError } from "./change.ts";
 import { updateContact } from "./contacts.ts";
 import { UserError } from "./errors.ts";
 import { undoChange } from "./undo.ts";
@@ -352,4 +353,52 @@ test("a 2,000-row import renders as SQL with no statement over 100 KB", async ()
   const undo = await undoChange(undoCtx(db), "chg_bulkfile0001");
   assert.match(undo.summary, /^Undid chg_bulkfile0001: Removed 1,960 contacts and put back the earlier values on 40 contacts/);
   assert.equal(await count(db, "contacts"), 40);
+});
+
+const plainContact = (i: number): Row => ({
+  id: `ct_g${String(i).padStart(10, "0")}`, name: `Person ${i}`, email: `p${i}@example.com`, untrusted_fields: "[]",
+  version: 1, created_at: NOW.toISOString(), updated_at: NOW.toISOString(),
+});
+
+test("a row edited between read and commit stops a bulk change across chunks: nothing written, no audit row", async () => {
+  const db = await freshDb();
+  const ctx = { db, now: NOW, ...IMPORT_ACTOR };
+  const rows = Array.from({ length: 3_000 }, (_, i) => plainContact(i));
+  await commitChange(ctx, {
+    target: { table: "contacts", id: String(rows[0]?.id) },
+    summary: "Added people",
+    changes: rows.map((row) => ({ table: "contacts", id: String(row.id), before: null, after: row })),
+    bulk: true,
+  });
+  const update: ChangeInput = {
+    target: { table: "contacts", id: String(rows[0]?.id) },
+    summary: "Renamed people",
+    changes: rows.map((row) => ({ table: "contacts", id: String(row.id), before: row, after: { ...row, name: `Renamed ${String(row.id)}`, version: 2 } })),
+    bulk: true,
+  };
+  const guards = buildChange(ctx, update).writes.filter((statement) => statement.sql.startsWith("INSERT INTO write_guard"));
+  assert.ok(guards.length >= 2, `${guards.length} guard statements`);
+  // Someone edits a row the second guard chunk covers.
+  db.exec(`UPDATE contacts SET version = 2 WHERE id = '${String(rows[2_900]?.id)}'`);
+  const snapshot = await everything(db);
+
+  await assert.rejects(commitChange(ctx, update), (error: unknown) => {
+    assert.ok(error instanceof StaleWriteError);
+    assert.equal((error as Error).message, "A record this change touches changed since you read it. Read it again and retry.");
+    return true;
+  });
+  assert.deepEqual(await everything(db), snapshot, "no row and no audit row written");
+});
+
+test("two undos of a bulk change at once: one wins, the other is told it was already undone", async () => {
+  const db = await freshDb();
+  const done = await imported(db, 200);
+  const rival = racing(db, () => undoChange(undoCtx(db), done.changeId));
+
+  const message = await refusal(undoChange(undoCtx(rival), done.changeId));
+
+  assert.match(message, new RegExp(`^${done.changeId} was already undone \\(by chg_[a-z2-7]{12}\\)\\. Nothing to do\\.$`));
+  assert.equal(await count(db, "contacts"), 0, "removed once");
+  assert.equal(await count(db, "audit_log"), 2, "the import and one undo");
+  assert.equal(await count(db, "write_guard"), 0);
 });

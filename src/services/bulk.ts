@@ -8,7 +8,7 @@ import type { Row } from "./change.ts";
 export const CHUNK_BYTES = 90_000;
 
 const encoder = new TextEncoder();
-const NON_ASCII = /[\u0080-￿]/;
+const NON_ASCII = /[\u0080-\uffff]/;
 
 /** The size of `text` as a quoted SQL literal's content: UTF-8 bytes, plus one for each apostrophe SQL doubles. */
 export function sqlBytes(text: string): number {

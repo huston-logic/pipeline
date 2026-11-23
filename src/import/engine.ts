@@ -5,6 +5,7 @@
 import type { FieldDefRow } from "../db/db.ts";
 import { type CsvRecord, parseCsvRecords } from "../http/csv.ts";
 import type { ChangeInput } from "../services/change.ts";
+import { sqlBytes } from "../services/bulk.ts";
 import { UserError } from "../services/errors.ts";
 
 export type { CsvRecord };
@@ -198,17 +199,75 @@ export function mapRows(
   return records.map(({ line, fields: cells }) => {
     const values: Record<string, string | null> = Object.fromEntries(module.columns.map((column) => [column.key, null]));
     const fields: MappedField[] = [];
+    const sizes = new RowSize(line);
     targets.forEach((target, index) => {
       const raw = cells[index] ?? "";
+      const column = (header[index] ?? "").trim();
       if (target.kind === "builtin") {
-        values[target.key] = cleanValue(raw, columns.get(target.key)?.multiline ?? false);
+        values[target.key] = sizes.add(cleanValue(raw, columns.get(target.key)?.multiline ?? false), column);
       } else if (target.kind === "field") {
-        const text = cleanValue(raw, false);
-        if (text !== null) fields.push({ key: target.key, column: (header[index] ?? "").trim(), text });
+        const text = sizes.add(cleanValue(raw, false), column);
+        if (text !== null) fields.push({ key: target.key, column, text });
       }
     });
+    sizes.check();
     return { line, values, fields };
   });
+}
+
+/**
+ * The most one imported value may take, and the most one row's values may take together, measured as stored (decision
+ * 0035): JSON inside JSON for a custom field, then as a SQL literal. A row is written into a statement of at most
+ * CHUNK_BYTES (90 KB), and an undo's snapshot holds it twice (before and after), so a row must stay under half of that
+ * with room for its ids and times. Within these, every bulk statement fits D1's 100 KB.
+ */
+export const IMPORT_MAX_VALUE_BYTES = 40_000;
+export const IMPORT_MAX_ROW_BYTES = 40_000;
+
+const kb = (bytes: number) => `${Math.ceil(bytes / 1000)} KB`;
+
+/** A value's stored size, worst case: written as JSON inside JSON (a custom field), then as a SQL literal. */
+const storedBytes = (text: string) => sqlBytes(JSON.stringify(JSON.stringify(text)));
+
+/** Adds up one row's values and refuses, in plain English, a value or a row too large to write in one statement. */
+class RowSize {
+  readonly #line: number;
+  readonly #texts: string[] = [];
+  #bound = 0;
+
+  constructor(line: number) {
+    this.#line = line;
+  }
+
+  add(text: string | null, column: string): string | null {
+    if (text === null) return null;
+    // Stored, one UTF-16 unit takes at most 7 bytes (a lone surrogate, \\uXXXX escaped twice), so a short value
+    // needs no measuring.
+    const bound = 7 * text.length + 6;
+    if (bound > IMPORT_MAX_VALUE_BYTES) {
+      const bytes = storedBytes(text);
+      if (bytes > IMPORT_MAX_VALUE_BYTES) {
+        throw new UserError(
+          `Line ${this.#line}'s ${column === "" ? "unnamed" : `"${column}"`} value is ${kb(bytes)}; one value can be at most ` +
+            `${kb(IMPORT_MAX_VALUE_BYTES)}. Shorten it and try again.`,
+        );
+      }
+    }
+    this.#texts.push(text);
+    this.#bound += bound;
+    return text;
+  }
+
+  check(): void {
+    if (this.#bound <= IMPORT_MAX_ROW_BYTES) return;
+    const total = this.#texts.reduce((sum, text) => sum + storedBytes(text), 0);
+    if (total > IMPORT_MAX_ROW_BYTES) {
+      throw new UserError(
+        `Line ${this.#line} is ${kb(total)}; one row can be at most ${kb(IMPORT_MAX_ROW_BYTES)}. ` +
+          "Shorten its longest values and try again.",
+      );
+    }
+  }
 }
 
 /** readCsv, autoMatch and mapRows in one: the rows a module plans, and the header names not imported. */

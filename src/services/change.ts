@@ -475,11 +475,13 @@ const rowNoun = (table: ChangeTable, id: string) => (table === "settings" ? "The
 
 /**
  * The row a failed guard is about: the target when it was read first, else the one row that was (a change that adds
- * its target, such as a log that also moves a lead's status), else every record the change read.
+ * its target, such as a log that also moves a lead's status), else every record the change read. A bulk change
+ * guards its rows together, so with more than one row read it can't say which one moved.
  */
 function staleRow(input: ChangeInput): string {
   const { table, id } = input.target;
   const read = input.changes.filter((change) => change.before !== null);
+  if (input.bulk && read.length > 1) return "A record this change touches";
   if (read.length === 0 || read.some((change) => change.table === table && change.id === id)) return rowNoun(table, id);
   const [only, ...others] = read;
   return only && others.length === 0 ? rowNoun(only.table, only.id) : "A record this change touches";
