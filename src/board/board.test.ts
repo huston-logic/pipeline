@@ -64,8 +64,8 @@ function assertPage(body: string, path: string) {
   assert.match(body, /<nav class="app-nav" aria-label="Board pages">/, path);
   assert.match(body, /<link rel="stylesheet" href="\/theme.css">/, path);
   // /board.js: dragging on the pipeline board, the phone actions and Copy prompt on deal and contact pages (decision 0021).
-  // /deals/new is the Add a deal form, not a deal page.
-  const scripted = path === "/pipeline" || /^\/deals\/(?!new$)[^/]+$/.test(path) || /^\/contacts\/[^/]+$/.test(path);
+  // /deals/new and /contacts/new are the Add a deal and Add contact forms, not record pages.
+  const scripted = path === "/pipeline" || /^\/deals\/(?!new$)[^/]+$/.test(path) || /^\/contacts\/(?!new$)[^/]+$/.test(path);
   assert.deepEqual(scriptsOf(body), scripted ? [BOARD_JS] : [], `${path}: scripts`);
   assert.doesNotMatch(body, /\sstyle=/i, `${path}: no inline styles (the CSP refuses them)`);
 }

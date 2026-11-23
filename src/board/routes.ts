@@ -3,8 +3,8 @@
 // and of TypeScript-only syntax beyond type annotations.
 // The two deal pages and the contact page are fixed ids from the fake seed (scripts/seed-dev.ts): dl_seed02 came in
 // through the website form, so its page shows outside text; ct_seed07 has an open and a won deal. The form pages
-// (decisions 0018, 0028) are Add a lead, Add a deal, editing the form lead's contact (ct_seed02, outside values
-// labelled), a new deal for ct_seed07, editing dl_seed01 and Qualify for ct_lead03. ct_lead03 is a Contacted lead
+// (decisions 0018, 0028, 0041) are Add a lead, Add a deal, Add contact, editing the form lead's contact (ct_seed02,
+// outside values labelled), a new deal for ct_seed07, editing dl_seed01 and Qualify for ct_lead03. ct_lead03 is a Contacted lead
 // (decision 0029). The import pages (decision 0036) are the seed's drafts: im_seed01 at the matching step, im_seed02
 // at the check step, im_seed03 applied; the deals and tasks imports' first steps are their own pages (decision 0037).
 
@@ -49,6 +49,7 @@ export const boardRoutes: string[] = [
   "/contacts/ct_lead03",
   "/leads/new",
   "/deals/new",
+  "/contacts/new",
   "/contacts/ct_seed02/edit",
   "/contacts/ct_seed07/deals/new",
   "/contacts/ct_lead03/qualify",

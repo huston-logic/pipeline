@@ -27,7 +27,11 @@ export function contactLink(id: string, name: string, outside: boolean): Html {
   return html`<a href="${contactHref(id)}">Contact ${id}</a> ${outsideLabel()} <span class="outside-value">${name}</span>`;
 }
 
-const ADD = { deal: { path: "/deals/new", label: "Add a deal" }, lead: { path: "/leads/new", label: "Add a lead" } } as const;
+const ADD = {
+  deal: { path: "/deals/new", label: "Add a deal" },
+  lead: { path: "/leads/new", label: "Add a lead" },
+  contact: { path: "/contacts/new", label: "Add contact" },
+} as const;
 
 /**
  * The board import's start (decisions 0036, 0037): deals from Pipeline, tasks from Today, people from People (and
@@ -41,10 +45,14 @@ const IMPORT_FROM = {
 } as const;
 
 /**
- * Add a deal and Add a lead under a page's lede (decision 0028), the first as the primary button and any other as a
- * quiet one. `from` is the page they are on, where Cancel goes back to. "import" is the Import button (decision 0036).
+ * Add a deal, Add a lead and Add contact (decision 0041) under a page's lede (decision 0028), the first as the primary
+ * button and any other as a quiet one. `from` is the page they are on, where Cancel goes back to. "import" is the Import
+ * button (decision 0036).
  */
-export const addButtons = (from: "today" | "pipeline" | "contacts" | "leads", kinds: readonly ("deal" | "lead" | "import")[]): Html =>
+export const addButtons = (
+  from: "today" | "pipeline" | "contacts" | "leads",
+  kinds: readonly ("deal" | "lead" | "contact" | "import")[],
+): Html =>
   html`<p class="page-action">${kinds.map((kind, i) => {
     const className = `button${i === 0 ? "" : " button-quiet"}`;
     if (kind === "import") return html`<a class="${className}" href="${IMPORT_FROM[from]}">Import</a>`;
