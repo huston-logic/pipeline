@@ -5,6 +5,9 @@
 // Leads (decision 0022): `asLeads` gives created rows the status New; a `lead_status` column is used only when it is
 // exactly a status key or label; a column named like a contact custom field fills that field on created rows; and
 // a leads import skips people who look like ones already on file (no email, same business) unless told not to.
+// Person status (decision 0040): `person_status` and `sub_status` columns (the key or label of a live status, and of
+// one of its sub-statuses) say what a new person is; `lead_status` still works (Lead with that sub-status, or Contact
+// for Qualified). The status columns are read for new people only: a merge never moves anyone.
 // Ids (decision 0037): an `id` column that names a contact on file matches it before the email does; a well-formed
 // contact id that matches nobody is kept for the new contact, so the board's export imports into another copy.
 // Own list (decision 0038): with the board's box ticked, short single-line names, emails, phones, businesses and sources
@@ -13,7 +16,15 @@ import type { ContactRow } from "../../db/db.ts";
 import { isContactId, newId } from "../../ids.ts";
 import { type ChangeInput, type RowChange, updatedRow } from "../../services/change.ts";
 import { businessKey } from "../../services/lead-change.ts";
-import { type LeadStatus, leadStatusFromText } from "../../services/lead-status.ts";
+import { isUnqualified, type LeadStatus, leadStatusFromText } from "../../services/lead-status.ts";
+import {
+  CONTACT,
+  LEAD,
+  liveByRef,
+  newPersonColumns,
+  SEEDED_STATUSES,
+  type StatusEntry,
+} from "../../services/person-move.ts";
 import type { ColumnDef, ImportModule, ImportOptions, MappedRow } from "../engine.ts";
 import { confirmedColumns, OWN_LIST_COLUMNS, type OwnListColumn } from "../own-list.ts";
 import {
@@ -45,8 +56,12 @@ export const IMPORT_LIMITS: Record<ImportColumn, number> = {
   notes: 10_000,
 };
 
-/** The header that names the optional status column. */
+/** The header that names the optional lead status column. */
 export const STATUS_COLUMN = "lead_status";
+
+/** The headers of the person status columns (decision 0040), as the board's export writes them. */
+export const PERSON_STATUS_COLUMN = "person_status";
+export const SUB_STATUS_COLUMN = "sub_status";
 
 /** The header that names a contact's id, as the board's export writes it. */
 export const ID_COLUMN = "id";
@@ -63,6 +78,8 @@ export interface PeopleOptions extends ImportOptions {
   asLeads: boolean;
   /** Create rows that look like someone already on file (leads imports only). */
   allowDuplicates: boolean;
+  /** The copy's person statuses, archived ones included; the seeded three when left out. */
+  statuses?: readonly StatusEntry[];
 }
 
 const LABELS: Record<ImportColumn, string> = {
@@ -87,6 +104,8 @@ const PEOPLE_COLUMNS: readonly ColumnDef[] = [
     required: key === "name",
   })),
   { key: STATUS_COLUMN, label: "Lead status", aliases: [], multiline: false },
+  { key: PERSON_STATUS_COLUMN, label: "Person status", aliases: [], multiline: false },
+  { key: SUB_STATUS_COLUMN, label: "Sub-status", aliases: [], multiline: false },
   { key: FIELDS_COLUMN, label: "Field values (from an export)", aliases: [], multiline: false },
   { key: ARCHIVED_COLUMN, label: "Archived (from an export)", aliases: [], multiline: false },
 ];
@@ -108,7 +127,10 @@ export interface CreateRow extends ImportValues {
   line: number;
   /** A well-formed contact id from the file that matches nobody, kept for the new contact; null for a new id. */
   id: string | null;
-  /** The status the new contact starts with; null for a contact who is not a lead. */
+  /** The person status and sub-status the new contact starts with (decision 0040). */
+  personStatus: string;
+  subStatus: string | null;
+  /** The lead status that goes with them: the sub-status of a Lead, Qualified as history, or null. */
   leadStatus: LeadStatus | null;
   /** Custom field values by field key, for the contact fields the file has columns for. */
   fields: Record<string, string | number>;
@@ -269,16 +291,13 @@ export function planPeople(
       else plan.unchanged.push({ line, id: match.id });
       continue;
     }
-    // A new person: the status column (a merge never uses it) and every custom value must be usable.
-    let leadStatus: LeadStatus | null = options.asLeads ? "new" : null;
-    const statusText = row.values[STATUS_COLUMN] ?? null;
-    if (statusText !== null) {
-      leadStatus = leadStatusFromText(statusText);
-      if (leadStatus === null) {
-        skip(`${STATUS_COLUMN} isn't a lead status. Use new, contacted, not_now, not_a_fit, bad or qualified (or the same in words).`);
-        continue;
-      }
+    // A new person: the status columns (a merge never uses them) and every custom value must be usable.
+    const person = personOf(row, options);
+    if ("problem" in person) {
+      skip(person.problem);
+      continue;
     }
+    const { leadStatus } = person;
     const { fields: custom, problem } = checked(given);
     if (problem !== null) {
       skip(problem);
@@ -303,12 +322,82 @@ export function planPeople(
       continue;
     }
     if (business !== "" && !seenBusinesses.has(business)) seenBusinesses.set(business, line);
-    const created: CreateRow = { line, id, ...values, notes, name, leadStatus, fields: custom };
+    const created: CreateRow = {
+      line,
+      id,
+      ...values,
+      notes,
+      name,
+      personStatus: person.status,
+      subStatus: person.sub,
+      leadStatus,
+      fields: custom,
+    };
     const confirmed = confirmedColumns(options.ownList, values, OWN_LIST_COLUMNS);
     if (confirmed.length > 0) created.confirmed = confirmed;
     plan.create.push(created);
   }
   return plan;
+}
+
+type Person = { status: string; sub: string | null; leadStatus: LeadStatus | null };
+
+const keysOf = (list: readonly { key: string; archived: boolean }[]) =>
+  list
+    .filter((entry) => !entry.archived)
+    .map((entry) => entry.key)
+    .join(", ");
+
+/**
+ * The status a new person starts with, from the person_status, sub_status and lead_status columns, else the import's
+ * choice (as leads: Lead, New; else Contact). A reason names the column and the live keys, never the file's value.
+ */
+function personOf(row: MappedRow, options: PeopleOptions): Person | { problem: string } {
+  const statuses = options.statuses ?? SEEDED_STATUSES;
+  const statusText = row.values[PERSON_STATUS_COLUMN] ?? null;
+  const subText = row.values[SUB_STATUS_COLUMN] ?? null;
+  const leadText = row.values[STATUS_COLUMN] ?? null;
+  const lead = statuses.find((entry) => entry.key === LEAD);
+  const fromLead = leadText === null ? null : (leadStatusFromText(leadText) ?? leadByLabel(lead, leadText));
+  if (leadText !== null && fromLead === null) {
+    return { problem: `${STATUS_COLUMN} isn't a lead status. Use new, contacted, not_now, not_a_fit, bad or qualified (or the same in words).` };
+  }
+  let status: StatusEntry | null | undefined;
+  if (statusText !== null) {
+    status = liveByRef(statuses, statusText);
+    if (status === null) {
+      return { problem: `${PERSON_STATUS_COLUMN} isn't a person status. Use one of: ${keysOf(statuses)} (or the same in words).` };
+    }
+  } else {
+    const key = fromLead !== null ? (isUnqualified(fromLead) ? LEAD : CONTACT) : options.asLeads ? LEAD : CONTACT;
+    status = statuses.find((entry) => entry.key === key);
+  }
+  if (!status) throw new Error("The Lead and Contact statuses are missing. Run the migrations.");
+  let sub: string | null = null;
+  if (subText !== null) {
+    const found = liveByRef(status.subs, subText);
+    if (found === null) {
+      const keys = keysOf(status.subs);
+      return {
+        problem:
+          keys === ""
+            ? `${SUB_STATUS_COLUMN} is set, but that person status has no sub-statuses. Leave ${SUB_STATUS_COLUMN} empty.`
+            : `${SUB_STATUS_COLUMN} isn't a sub-status of that person status. Use one of: ${keys} (or the same in words).`,
+      };
+    }
+    sub = found.key;
+  } else if (status.key === LEAD) {
+    sub = fromLead !== null && isUnqualified(fromLead) ? fromLead : "new";
+  }
+  // A Lead's lead status is its sub-status; anyone else who the file says was a lead keeps Qualified as history.
+  const leadStatus = status.key === LEAD ? (sub as LeadStatus) : fromLead !== null ? "qualified" : null;
+  return { status: status.key, sub, leadStatus };
+}
+
+/** A lead status by the label the owner gave its sub-status (a renamed "Bad lead"), exactly, after trimming. */
+function leadByLabel(lead: StatusEntry | undefined, text: string): LeadStatus | null {
+  const found = lead?.subs.find((entry) => entry.label === text.trim());
+  return found !== undefined && isUnqualified(found.key) ? (found.key as LeadStatus) : null;
 }
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
@@ -339,8 +428,7 @@ export function peopleChange(plan: PeoplePlan, existing: readonly ContactRow[], 
       version: 1,
       created_at: stamp,
       updated_at: stamp,
-      lead_status: row.leadStatus,
-      lead_status_at: row.leadStatus === null ? null : stamp,
+      ...personColumns(row, now),
     };
     changes.push({ table: "contacts", id: contact.id, before: null, after: contact });
   }
@@ -365,6 +453,15 @@ export function peopleChange(plan: PeoplePlan, existing: readonly ContactRow[], 
     // One change at any size (decision 0035): up to IMPORT_MAX_ROWS rows in one batch and one undo.
     bulk: true,
   };
+}
+
+/** The status columns of a created row, through newPersonColumns; Qualified from the file is kept as history. */
+function personColumns(row: CreateRow, now: Date): ReturnType<typeof newPersonColumns> {
+  const columns = newPersonColumns({ status: row.personStatus, sub: row.subStatus }, now);
+  if (row.leadStatus === "qualified" && columns.lead_status === null) {
+    return { ...columns, lead_status: "qualified", lead_status_at: now.toISOString() };
+  }
+  return columns;
 }
 
 /** Contacts and leads, matched by id, then email. The ctx is every contact on file. */

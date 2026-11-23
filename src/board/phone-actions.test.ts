@@ -107,9 +107,9 @@ test("Log the text on a deal: one log_activity change by the owner, a note sayin
 test("Log the text on a New lead makes them Contacted; a via other than exactly text is ignored", async () => {
   const db = await seededDb();
   const env = devEnv(db);
-  db.exec(`UPDATE contacts SET lead_status = 'new' WHERE id = 'ct_seed03'`);
+  db.exec(`UPDATE contacts SET lead_status = 'new', person_status = 'lead', sub_status = 'new' WHERE id = 'ct_seed03'`);
   db.exec(`UPDATE deals SET status = 'lost', stage_key = 'lost' WHERE contact_id = 'ct_seed03'`);
-  db.exec(`UPDATE contacts SET lead_status = 'new' WHERE id = 'ct_seed04'`);
+  db.exec(`UPDATE contacts SET lead_status = 'new', person_status = 'lead', sub_status = 'new' WHERE id = 'ct_seed04'`);
   db.exec(`UPDATE deals SET status = 'lost', stage_key = 'lost' WHERE contact_id = 'ct_seed04'`);
 
   const odd = await load(env, "/contacts/ct_seed04");

@@ -32,6 +32,7 @@ import { UserError } from "./errors.ts";
 import { contactName, dealLabel } from "./labels.ts";
 import { isUnqualified, LEAD_STATUS_LABELS, type LeadStatus } from "./lead-status.ts";
 import { parseStringArray, stageLabels } from "./lookup.ts";
+import { migratedPersonColumns } from "./person-move.ts";
 import { resumedParams } from "./rules.ts";
 
 type Entry = { table: ChangeTable; id: string; before: Row | null; after: Row | null };
@@ -56,6 +57,13 @@ const DEPENDENTS: Partial<Record<ChangeTable, Dependent[]>> = {
   ],
   stages: [{ table: "deals", column: "stage_key", one: "deal", many: "deals" }],
   rules: [{ table: "rule_firings", column: "rule_id", one: "rule firing", many: "rule firings" }],
+  // No foreign keys (migration 0011): a person names their status by key, and their sub-status by key within it, so
+  // the sub-status's id is matched as "<person_status>.<sub_status>".
+  person_statuses: [
+    { table: "contacts", column: "person_status", one: "person", many: "people" },
+    { table: "person_substatuses", column: "status_key", one: "sub-status", many: "sub-statuses" },
+  ],
+  person_substatuses: [{ table: "contacts", column: "person_status || '.' || sub_status", one: "person", many: "people" }],
 };
 
 /**
@@ -337,6 +345,27 @@ async function leadAgainBlocker(ctx: Ctx, changeId: string, entries: Entry[], cu
   return null;
 }
 
+/**
+ * An undo that would archive a person status or sub-status again (undoing its bring-back) while someone has it would
+ * leave them on a status the board can't offer, which archiving refuses too (decision 0040).
+ */
+async function archiveAgainBlocker(ctx: Ctx, changeId: string, entries: Entry[], current: Map<Entry, Row | null>): Promise<string | null> {
+  for (const entry of entries) {
+    if (entry.table !== "person_statuses" && entry.table !== "person_substatuses") continue;
+    if (entry.before?.archived !== 1 || current.get(entry)?.archived !== 0) continue;
+    const row = entry.before;
+    const sql =
+      entry.table === "person_statuses"
+        ? "SELECT COUNT(*) AS n FROM contacts WHERE archived = 0 AND person_status = ?"
+        : "SELECT COUNT(*) AS n FROM contacts WHERE archived = 0 AND person_status || '.' || sub_status = ?";
+    const n = (await ctx.db.prepare(sql).bind(entry.id).first<number>("n")) ?? 0;
+    if (n === 0) continue;
+    const people = n === 1 ? "1 person has it" : `${n} people have it`;
+    return `Can't undo ${changeId}: it would archive ${rowLabel(entry.table, row)} again, but ${people} now. Move them first, or leave the change.`;
+  }
+  return null;
+}
+
 async function dependents(ctx: Ctx, changeId: string, entries: Entry[]): Promise<string | null> {
   const deleting = entries.filter((entry) => entry.before === null);
   const found = await pointers(ctx.db, deleting);
@@ -465,6 +494,8 @@ function describeUndo(entries: Entry[], labels: Map<string, string>): string {
       parts.push(`restored ${rowLabel(table, before)}`);
     } else if (before !== null && after !== null) {
       let columns = changedColumns(before, after).filter((c) => !BOOKKEEPING.has(c));
+      // A person's status moves with their lead status (decision 0040); the lead status says it once.
+      if (columns.includes("lead_status")) columns = columns.filter((c) => c !== "person_status" && c !== "sub_status");
       if (table === "deals" && columns.includes("stage_key")) {
         const stage = String(before.stage_key);
         parts.push(`moved ${dealTitleOf(before)} back to ${labels.get(stage) ?? stage}`);
@@ -493,6 +524,8 @@ const NOUNS: Record<ChangeTable, [string, string]> = {
   rule_firings: ["rule firing", "rule firings"],
   rulebook: ["rulebook document", "rulebook documents"],
   push_subscriptions: ["notification device", "notification devices"],
+  person_statuses: ["person status", "person statuses"],
+  person_substatuses: ["sub-status", "sub-statuses"],
 };
 
 /** "2,000 contacts and 3 fields": the entries counted by table, in the order the tables first appear. */
@@ -557,7 +590,10 @@ export async function undoChange(ctx: Ctx, changeId: string): Promise<ChangeResu
     const row = current.get(moved) ?? moved.after ?? moved.before;
     throw new UserError(changedMessage(id, row ? rowLabel(moved.table, row) : `${moved.table}:${moved.id}`));
   }
-  const reopening = (await reopenBlocker(ctx, id, entries, current)) ?? (await leadAgainBlocker(ctx, id, entries, current));
+  const reopening =
+    (await reopenBlocker(ctx, id, entries, current)) ??
+    (await leadAgainBlocker(ctx, id, entries, current)) ??
+    (await archiveAgainBlocker(ctx, id, entries, current));
   if (reopening !== null) throw new UserError(reopening);
 
   const changes: RowChange[] = [...entries].reverse().map((entry) => {
@@ -567,6 +603,11 @@ export async function undoChange(ctx: Ctx, changeId: string): Promise<ChangeResu
       restored = { ...restored };
       if (typeof now.version === "number") restored.version = now.version + 1;
       if ("updated_at" in restored) restored.updated_at = ctx.now.toISOString();
+      if (entry.table === "contacts" && !("person_status" in restored)) {
+        // A snapshot from before migration 0011 has no status columns: put back what the migration would have given
+        // its lead status, so the status and the lead status still agree (decision 0040).
+        Object.assign(restored, migratedPersonColumns(restored.lead_status));
+      }
       if (entry.table === "rules" && restored.active === 1 && now.active === 0) {
         // An undone pause is a resume, with the same cut-over (decision 0010).
         restored.params = resumedParams({ type: restored.type as RuleType, params: String(restored.params) }, ctx.now);

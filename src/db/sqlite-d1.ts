@@ -196,11 +196,25 @@ export function applySqlFile(db: SqliteD1, path: string): void {
   db.exec(readFileSync(join(ROOT, path), "utf8"));
 }
 
-/** A fresh in-memory database with every migration and seed/defaults.sql, with exec() for extra test SQL. */
+// The person status invariant (decision 0040) as a guard: a contact row whose person_status and lead_status disagree
+// fails the statement that wrote it, whether a service or a test's own SQL wrote it. Test databases only: production
+// relies on personStatusPatch, and src/services/person-status-invariant.test.ts checks every writer.
+const DISAGREE = `(NEW.person_status = 'lead') <> (COALESCE(NEW.lead_status, '') IN ('new', 'contacted', 'not_now', 'not_a_fit', 'bad'))
+  OR (NEW.person_status = 'lead' AND NEW.sub_status IS NOT NEW.lead_status)`;
+const RAISE = "SELECT RAISE(ABORT, 'person_status and lead_status disagree (decision 0040): use tests/helpers/people.ts')";
+const PERSON_GUARD = `
+CREATE TRIGGER test_person_guard_insert AFTER INSERT ON contacts WHEN ${DISAGREE} BEGIN ${RAISE}; END;
+CREATE TRIGGER test_person_guard_update AFTER UPDATE ON contacts WHEN ${DISAGREE} BEGIN ${RAISE}; END;`;
+
+/**
+ * A fresh in-memory database with every migration and seed/defaults.sql, with exec() for extra test SQL. Any write
+ * that leaves a person's status and lead status disagreeing fails (the guard above).
+ */
 export async function createTestDb(): Promise<SqliteD1> {
   const db = new SqliteD1();
   await applyMigrations(db);
   applySqlFile(db, "seed/defaults.sql");
+  db.exec(PERSON_GUARD);
   return db;
 }
 

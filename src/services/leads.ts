@@ -15,6 +15,7 @@ import { contactName, contactRef, dealTitle } from "./labels.ts";
 import { businessKey, noOpenDeal, openDealCount, withLeadStatus } from "./lead-change.ts";
 import { isUnqualified, LEAD_STATUS_LABELS, type LeadStatus, UNQUALIFIED_STATUSES } from "./lead-status.ts";
 import { type FieldValues, findContact, findDeal, findStage, firstStageOfKind, ownerTimezone } from "./lookup.ts";
+import { LEAD, newPersonColumns } from "./person-move.ts";
 
 export interface NewLeadInput {
   /** Needed unless `business` is given; with only a business, the lead is named after it. */
@@ -99,8 +100,7 @@ export async function addLead(ctx: Ctx, input: NewLeadInput): Promise<AddLeadRes
     version: 1,
     created_at: now,
     updated_at: now,
-    lead_status: "new",
-    lead_status_at: now,
+    ...newPersonColumns({ status: LEAD, sub: "new" }, ctx.now),
   };
   const changes: RowChange[] = [{ table: "contacts", id: contact.id, before: null, after: contact }];
   const notes = clean(input.notes);

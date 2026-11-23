@@ -46,6 +46,7 @@ import { type PlannedImport, plannedChange, plannedResult } from "../import/plan
 import { RecordTooLargeError } from "./bulk.ts";
 import { commitChange, isDuplicateEmailFailure, isDuplicateIdFailure, StaleWriteError } from "./change.ts";
 import { UserError } from "./errors.ts";
+import { statusEntries } from "./person-status.ts";
 
 /** The most rows one import_rows call takes. */
 export const IMPORT_ROWS_PER_CALL = 500;
@@ -120,7 +121,7 @@ async function planDraft(db: Db, module: ImportModuleKey, text: string, mapping:
     case "people": {
       const mapped = mapDraft(peopleModule, text, mapping, fieldDefs, now);
       const ctx = await contactsOnFile(db);
-      const options = { asLeads: choices.asLeads, allowDuplicates: choices.allowDuplicates, fieldDefs: mapped.fieldDefs };
+      const options = { asLeads: choices.asLeads, allowDuplicates: choices.allowDuplicates, fieldDefs: mapped.fieldDefs, statuses: await statusEntries(db) };
       return { module, ctx, newFields: mapped.newFields, plan: planRows(peopleModule, mapped.rows, ctx, options) };
     }
     case "deals": {

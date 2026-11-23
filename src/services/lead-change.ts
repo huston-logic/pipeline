@@ -6,13 +6,22 @@ import { newId } from "../ids.ts";
 import { type RowChange, updatedRow } from "./change.ts";
 import { isTrusted } from "./labels.ts";
 import { isUnqualified, type LeadStatus } from "./lead-status.ts";
+import { moveForLeadStatus, type PersonMove, personStatusPatch } from "./person-move.ts";
 
 /** The company a contact's `business` names: trimmed, inner spaces collapsed, ignoring case; "" for none. */
 export const businessKey = (business: string | null): string => (business ?? "").trim().replace(/\s+/g, " ").toLowerCase();
 
-/** The contact with a new lead status, stamped now, ready to be a RowChange's `after`. */
+/** The contact moved to another person status (decision 0040), ready to be a RowChange's `after`. */
+export function withPersonStatus(contact: ContactRow, to: PersonMove, now: Date): ContactRow {
+  return updatedRow(contact, personStatusPatch(contact, to, now), now);
+}
+
+/**
+ * The contact with a new lead status, stamped now, ready to be a RowChange's `after`: an unqualified status makes them
+ * a Lead with it as the sub-status, Qualified makes a lead a Contact (decision 0040).
+ */
 export function withLeadStatus(contact: ContactRow, status: LeadStatus, now: Date): ContactRow {
-  return updatedRow(contact, { lead_status: status, lead_status_at: now.toISOString() }, now);
+  return withPersonStatus(contact, moveForLeadStatus(contact, status), now);
 }
 
 /** Qualified, when the contact is an unqualified lead: what a write that gives them a deal adds to its change. */

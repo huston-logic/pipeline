@@ -1,6 +1,6 @@
 // update_deal. The stage and the status move together: a won, lost or not_now stage sets that status, a closed
 // status moves the deal to the first stage of that kind, and an open stage reopens the deal.
-import type { ActivityRow, DealRow, DealStatus, StageRow } from "../db/db.ts";
+import type { ActivityRow, ContactRow, DealRow, DealStatus, StageRow } from "../db/db.ts";
 import { getContact } from "../db/queries.ts";
 import { newId } from "../ids.ts";
 import { type ChangeResult, changedColumns, commitChange, type Ctx, type RowChange, updatedRow } from "./change.ts";
@@ -9,8 +9,10 @@ import { UserError } from "./errors.ts";
 import { checkFieldValues } from "./fields.ts";
 import { checkValue, clean, whenOrNull } from "./input.ts";
 import { contactName, dealLabel, dealTitle, withoutUntrusted } from "./labels.ts";
-import { qualifyIfLead } from "./lead-change.ts";
+import { qualifyIfLead, withPersonStatus } from "./lead-change.ts";
 import { LEAD_STATUS_LABELS } from "./lead-status.ts";
+import { CLIENT, CONTACT } from "./person-move.ts";
+import { clientIfWon, clientLabel } from "./person-status.ts";
 import {
   type FieldValues,
   findDeal,
@@ -107,9 +109,23 @@ export async function updateDeal(ctx: Ctx, dealRef: string, patch: DealPatch): P
   }
 
   const changes: RowChange[] = [{ table: "deals", id: before.id, before, after }];
-  // Reopening a closed deal gives its person an open deal again, so a lead among them is Qualified (decision 0022).
-  const qualified = before.status !== "open" && after.status === "open" ? qualifyIfLead(contact, ctx.now) : null;
-  if (qualified !== null) changes.push(qualified);
+  // Reopening a closed deal, or marking a Lost or Not now deal Won, makes it a real opportunity again, so a lead
+  // among its people is Qualified (invariant 1, decisions 0022 and 0040).
+  const wasClosed = before.status !== "open" && before.status !== "won";
+  const realAgain = (before.status !== "open" && after.status === "open") || (wasClosed && after.status === "won");
+  const qualified = realAgain ? qualifyIfLead(contact, ctx.now) : null;
+  // A deal marked Won makes a Contact a Client in the same change, so undo puts both back (decision 0040). A lead
+  // Qualified by this same change is a Contact by then, so they become a Client too, in one move of their row.
+  const markedWon = before.status !== "won" && after.status === "won";
+  const asContact = qualified === null ? contact : (qualified.after as ContactRow);
+  const client = markedWon ? await clientIfWon(db, asContact, ctx.now) : null;
+  if (client !== null && qualified !== null) {
+    changes.push({ ...qualified, after: withPersonStatus(contact, { status: CONTACT, sub: CLIENT }, ctx.now) });
+  } else if (client !== null) {
+    changes.push(client);
+  } else if (qualified !== null) {
+    changes.push(qualified);
+  }
   const labels = await stageLabels(db);
   if (moved) {
     const activity: ActivityRow = {
@@ -137,7 +153,12 @@ export async function updateDeal(ctx: Ctx, dealRef: string, patch: DealPatch): P
     .filter((c) => ["title", "value", "fields"].includes(c))
     .map((c) => (c === "fields" ? fieldsLabel(parseObject(before.fields), parseObject(after.fields)) : columnLabel(c)));
   if (others.length > 0) parts.push(`changed ${joinAnd(others)}`);
-  if (qualified !== null) parts.push(`${contactName(contact)} is now ${LEAD_STATUS_LABELS.qualified}`);
+  const clientWord = client === null ? null : withArticle(await clientLabel(db));
+  if (qualified !== null) {
+    parts.push(`${contactName(contact)} is now ${LEAD_STATUS_LABELS.qualified}${clientWord === null ? "" : ` and ${clientWord}`}`);
+  } else if (clientWord !== null) {
+    parts.push(`${contactName(contact)} is now ${clientWord}`);
+  }
   const summary = moved
     ? [`Moved ${who} to ${stage.label}`, ...parts].join("; ")
     : `Updated ${who}: ${parts.join("; ") || (changed.includes("untrusted_fields") ? "confirmed the title" : `set the status to ${STATUS_WORDS[after.status]}`)}`;

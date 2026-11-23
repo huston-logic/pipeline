@@ -3,6 +3,9 @@
 
 INSERT OR IGNORE INTO settings (id) VALUES (1);
 
+-- The person statuses (Lead, Contact, Partner) and their sub-statuses are seeded by migration 0011, not here: this
+-- file is also loaded at earlier versions by the migration tests, before those tables exist (decision 0040).
+
 INSERT OR IGNORE INTO stages (key, label, position, kind) VALUES
   ('new_inquiry', 'New inquiry', 1, 'open'),
   ('replied', 'Replied', 2, 'open'),

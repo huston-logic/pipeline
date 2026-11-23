@@ -13,6 +13,7 @@ import { checkEmail, checkValue, clean, whenOrNull, withoutNulls } from "./input
 import { contactName, isTrusted } from "./labels.ts";
 import { qualifyIfLead } from "./lead-change.ts";
 import { type FieldValues, findContact, firstStageOfKind, ownerTimezone } from "./lookup.ts";
+import { CONTACT, newPersonColumns } from "./person-move.ts";
 
 export interface DealInput {
   /** Needed unless `contact` is given. */
@@ -85,8 +86,7 @@ export async function addDeal(ctx: Ctx, input: DealInput): Promise<AddDealResult
       version: 1,
       created_at: now,
       updated_at: now,
-      lead_status: null,
-      lead_status_at: null,
+      ...newPersonColumns({ status: CONTACT, sub: null }, ctx.now),
     };
     changes.push({ table: "contacts", id: contact.id, before: null, after: contact });
   }

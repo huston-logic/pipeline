@@ -11,6 +11,7 @@ import { type ChangeInput, type RowChange, updatedRow } from "../../services/cha
 import { withArticle } from "../../services/describe.ts";
 import { businessKey, qualifyIfLead } from "../../services/lead-change.ts";
 import { isUnqualified } from "../../services/lead-status.ts";
+import { CONTACT, newPersonColumns } from "../../services/person-move.ts";
 import type { ColumnDef, ImportModule, ImportOptions, MappedRow, PlanBase } from "../engine.ts";
 import { confirmedColumns, type OwnListColumn } from "../own-list.ts";
 import {
@@ -360,8 +361,7 @@ export function dealsChange(plan: DealsPlan, ctx: DealsCtx, now: Date): ChangeIn
       version: 1,
       created_at: stamp,
       updated_at: stamp,
-      lead_status: null,
-      lead_status_at: null,
+      ...newPersonColumns({ status: CONTACT, sub: null }, now),
     };
     changes.push({ table: "contacts", id: contact.id, before: null, after: contact });
     return contact.id;

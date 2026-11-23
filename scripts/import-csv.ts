@@ -8,11 +8,12 @@
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import type { ContactRow, FieldDefRow } from "../src/db/db.ts";
+import type { ContactRow, FieldDefRow, PersonStatusRow, PersonSubstatusRow } from "../src/db/db.ts";
 import { renderImport } from "../src/import/change.ts";
 import { type FilePlan, planCsv } from "../src/import/engine.ts";
 import { peopleModule } from "../src/import/modules/index.ts";
 import type { PeoplePlan } from "../src/import/modules/people.ts";
+import { statusEntriesOf } from "../src/services/person-move.ts";
 import { parseFlags, UsageError } from "./cli-args.mjs";
 import { copyNameProblem, copyPaths, databaseTarget, isCopyName, makeRunner, query } from "./copies.mjs";
 import { ROOT, run as defaultRun, type RunOptions, type RunResult } from "./wrangler-run.mjs";
@@ -100,6 +101,22 @@ function showPlan(plan: FilePlan<PeoplePlan>, log: (line: string) => void): void
   if (plan.skippedColumns.length > 0) log(`Columns not imported: ${plan.skippedColumns.join(", ")}`);
 }
 
+/** Said when the copy has no person status tables yet: it was made before migration 0011 (decision 0040). */
+export const NOT_UPDATED = "This copy hasn't been updated yet. Run npm run copies:update first, then import.";
+
+/** The copy's person statuses; a copy without migration 0011 gets a plain answer instead of SQLite's error. */
+function personStatuses(runner: Parameters<typeof query>[0], target: Parameters<typeof query>[1]) {
+  try {
+    return statusEntriesOf(
+      query(runner, target, "SELECT * FROM person_statuses ORDER BY rowid") as PersonStatusRow[],
+      query(runner, target, "SELECT * FROM person_substatuses ORDER BY rowid") as PersonSubstatusRow[],
+    );
+  } catch (error) {
+    if (error instanceof Error && /no such table/i.test(error.message)) throw new UsageError(NOT_UPDATED, { cause: error });
+    throw error;
+  }
+}
+
 export async function importContacts(options: ImportOptions, deps: ImportDeps): Promise<number> {
   const { root = ROOT, now = () => new Date() } = deps;
   let csv: string;
@@ -112,7 +129,8 @@ export async function importContacts(options: ImportOptions, deps: ImportDeps): 
   const runner = makeRunner(deps, target.accountId);
   const existing = query(runner, target, "SELECT * FROM contacts ORDER BY rowid") as ContactRow[];
   const fieldDefs = query(runner, target, "SELECT * FROM field_defs ORDER BY rowid") as FieldDefRow[];
-  const plan = planCsv(peopleModule, csv, existing, { asLeads: options.asLeads, allowDuplicates: options.allowDuplicates, fieldDefs });
+  const statuses = personStatuses(runner, target);
+  const plan = planCsv(peopleModule, csv, existing, { asLeads: options.asLeads, allowDuplicates: options.allowDuplicates, fieldDefs, statuses });
   deps.log(`Import plan for ${options.local ? "the local dev database" : `the copy "${options.copy}"`}:`);
   showPlan(plan, deps.log);
   if (!options.apply) {

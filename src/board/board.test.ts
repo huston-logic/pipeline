@@ -13,6 +13,8 @@ import { addDays, DEFAULT_TZ, formatLocal, localDate, zonedToUtc } from "../time
 import { sourceToken } from "./pages/leads.ts";
 import { boardRoutes, moreItems, navItems } from "./routes.ts";
 import { addStandInDrafts } from "../../tests/helpers/import-drafts.ts";
+import { personSql, setLeadStatus } from "../../tests/helpers/people.ts";
+import type { LeadStatus } from "../services/lead-status.ts";
 
 const ctx = { waitUntil() {}, passThroughOnException() {}, props: {} } as unknown as ExecutionContext;
 const SCRIPT = "<script>alert(1)</script>";
@@ -71,8 +73,8 @@ function assertPage(body: string, path: string) {
 test("every board route answers 200 with the seed: one <h1>, landmarks, a unique title and description", async () => {
   const db = await seededDb();
   // The fixture seed has no lead; the demo seed's lead page (boardRoutes) is stood in for by one fake row.
-  db.exec(`INSERT INTO contacts (id, name, email, untrusted_fields, lead_status, lead_status_at)
-    VALUES ('ct_lead03', 'Imani Okoye', 'imani.okoye@example.org', '[]', 'contacted', '2026-01-01T00:00:00.000Z')`);
+  db.exec(`INSERT INTO contacts (id, name, email, untrusted_fields, lead_status, lead_status_at, person_status, sub_status)
+    VALUES ('ct_lead03', 'Imani Okoye', 'imani.okoye@example.org', '[]', 'contacted', '2026-01-01T00:00:00.000Z', ${personSql("contacted")})`);
   await addStandInDrafts(db);
   const titles = new Set<string>();
   const descriptions = new Set<string>();
@@ -625,7 +627,7 @@ test("the export page links to the JSON file and one CSV per table, as downloads
   const db = await createTestDb();
   const { body } = await get(db, "/export");
   assert.match(body, /<a class="button" href="\/api\/export.json" download><svg [^>]*aria-hidden="true"[\s\S]*?<\/svg>Download everything \(JSON\)<\/a>/);
-  assert.equal(body.match(/<a class="download-row" href="\/api\/export\/[a-z_]+\.csv" download>/g)?.length, 14);
+  assert.equal(body.match(/<a class="download-row" href="\/api\/export\/[a-z_]+\.csv" download>/g)?.length, 16);
 });
 
 test("the More page links to Rules, Changes and Export, each with a one-line description", async () => {
@@ -675,8 +677,7 @@ test("an archived deal's page has no Move to form and says the deal is archived"
 });
 
 // People views and the Leads list (decision 0027).
-const setLead = (db: SqliteD1, id: string, status: string) =>
-  db.exec(`UPDATE contacts SET lead_status = '${status}', lead_status_at = '2026-01-01T00:00:00.000Z' WHERE id = '${id}'`);
+const setLead = (db: SqliteD1, id: string, status: LeadStatus) => setLeadStatus(db, id, status, "2026-01-01T00:00:00.000Z");
 const leadIds = (body: string) =>
   cardTitles(mainOf(body))
     .map((t) => /href="\/contacts\/([^"]+)"/.exec(t)?.[1])
@@ -698,9 +699,9 @@ test("the nav says People, with Contacts, Leads and Companies as the three views
 
 test("the Contacts and Companies views leave out unqualified leads and keep qualified ones", async () => {
   const db = await seededDb();
-  setLead(db, "ct_seed01", "new");
-  setLead(db, "ct_seed03", "bad");
-  setLead(db, "ct_seed04", "qualified");
+  await setLead(db, "ct_seed01", "new");
+  await setLead(db, "ct_seed03", "bad");
+  await setLead(db, "ct_seed04", "qualified");
   const contacts = mainOf((await get(db, "/contacts")).body);
   assert.match(contacts, /<p class="lede">6 contacts\.<\/p>/);
   assert.doesNotMatch(contacts, /Pat Example|Casey Placeholder/);
@@ -712,26 +713,26 @@ test("the Contacts and Companies views leave out unqualified leads and keep qual
 
 test("a Contacts search that finds people only under Leads says how many leads match and links to Leads with the search (decision 0033)", async () => {
   const db = await seededDb();
-  setLead(db, "ct_seed01", "new");
+  await setLead(db, "ct_seed01", "new");
   const one = mainOf((await get(db, "/contacts?q=Pat+Example")).body);
   assert.match(
     one,
     /<p class="empty-title">No contacts match &quot;Pat Example&quot;\.<\/p>[\s\S]*?<\/div>\n<p>1 lead matches\. <a href="\/leads\?q=Pat\+Example">See Leads<\/a><\/p>\n<p class="search-clear">/,
   );
 
-  setLead(db, "ct_seed02", "contacted");
+  await setLead(db, "ct_seed02", "contacted");
   const found = mainOf((await get(db, "/contacts?q=Sample")).body);
   assert.match(found, /<p class="lede">1 contact matches &quot;Sample&quot;\.<\/p>/);
   assert.doesNotMatch(found, /See Leads/, "a contact was found, so no hint");
-  setLead(db, "ct_seed07", "not_now");
+  await setLead(db, "ct_seed07", "not_now");
   const two = mainOf((await get(db, "/contacts?q=Sample")).body);
   assert.match(two, /<p>2 leads match\. <a href="\/leads\?q=Sample">See Leads<\/a><\/p>/);
 
-  db.exec(`INSERT INTO contacts (id, name, lead_status, lead_status_at) VALUES ('ct_amp', 'Lee & Co', 'new', '2026-01-01T00:00:00.000Z')`);
+  db.exec(`INSERT INTO contacts (id, name, lead_status, lead_status_at, person_status, sub_status) VALUES ('ct_amp', 'Lee & Co', 'new', '2026-01-01T00:00:00.000Z', ${personSql("new")})`);
   const amp = mainOf((await get(db, `/contacts?q=${encodeURIComponent("Lee & Co")}`)).body);
   assert.match(amp, /<p>1 lead matches\. <a href="\/leads\?q=Lee\+%26\+Co">See Leads<\/a><\/p>/);
 
-  setLead(db, "ct_seed01", "bad");
+  await setLead(db, "ct_seed01", "bad");
   const closed = mainOf((await get(db, "/contacts?q=Pat+Example")).body);
   assert.doesNotMatch(closed, /See Leads/, "only the leads the Leads view shows by default count");
   assert.doesNotMatch(mainOf((await get(db, "/contacts?q=nobody")).body), /See Leads/);
@@ -739,12 +740,12 @@ test("a Contacts search that finds people only under Leads says how many leads m
 
 test("the leads page lists open leads with name, company, status, last contact and next task", async () => {
   const db = await seededDb();
-  setLead(db, "ct_seed01", "new");
-  setLead(db, "ct_seed03", "contacted");
-  setLead(db, "ct_seed04", "not_a_fit");
-  setLead(db, "ct_seed05", "qualified");
+  await setLead(db, "ct_seed01", "new");
+  await setLead(db, "ct_seed03", "contacted");
+  await setLead(db, "ct_seed04", "not_a_fit");
+  await setLead(db, "ct_seed05", "qualified");
   db.exec(`INSERT INTO tasks (id, contact_id, title, due_at) VALUES ('tk_lead01', 'ct_seed03', 'Call back', '2020-01-02T17:00:00.000Z')`);
-  db.exec(`INSERT INTO contacts (id, name, lead_status, lead_status_at) VALUES ('ct_nohist', 'Nina Nohistory', 'new', '2026-01-01T00:00:00.000Z')`);
+  db.exec(`INSERT INTO contacts (id, name, lead_status, lead_status_at, person_status, sub_status) VALUES ('ct_nohist', 'Nina Nohistory', 'new', '2026-01-01T00:00:00.000Z', ${personSql("new")})`);
   const { res, body } = await get(db, "/leads");
   assert.equal(res.status, 200);
   assertPage(body, "/leads");
@@ -761,11 +762,11 @@ test("the leads page lists open leads with name, company, status, last contact a
 
 test("the leads page filters by status, source, search and sort, and keeps them in the form", async () => {
   const db = await seededDb();
-  setLead(db, "ct_seed01", "new");
-  setLead(db, "ct_seed03", "contacted");
-  setLead(db, "ct_seed04", "not_now");
-  setLead(db, "ct_seed05", "not_a_fit");
-  setLead(db, "ct_seed06", "bad");
+  await setLead(db, "ct_seed01", "new");
+  await setLead(db, "ct_seed03", "contacted");
+  await setLead(db, "ct_seed04", "not_now");
+  await setLead(db, "ct_seed05", "not_a_fit");
+  await setLead(db, "ct_seed06", "bad");
   db.exec(`UPDATE contacts SET source = 'Trade show' WHERE id IN ('ct_seed01', 'ct_seed05')`);
   const open = ["ct_seed01", "ct_seed03", "ct_seed04"];
 
@@ -802,7 +803,7 @@ test("the leads page filters by status, source, search and sort, and keeps them 
 
 test("the leads form is a labelled GET search form that works without JavaScript", async () => {
   const db = await seededDb();
-  setLead(db, "ct_seed01", "new");
+  await setLead(db, "ct_seed01", "new");
   const main = mainOf((await get(db, "/leads")).body);
   assert.match(main, /<form class="search search-filters" action="\/leads" method="get" role="search" aria-label="Search leads">/);
   for (const [id, label] of [["leads-q", "Search leads"], ["leads-status", "Status"], ["leads-source", "Source"], ["leads-sort", "Sort"]]) {
@@ -817,7 +818,7 @@ test("the leads form is a labelled GET search form that works without JavaScript
 
 test("a lead's name from outside is labelled and never the text of a link", async () => {
   const db = await seededDb();
-  setLead(db, "ct_seed02", "new");
+  await setLead(db, "ct_seed02", "new");
   db.exec(`UPDATE contacts SET name = '${SCRIPT} Robin', business = '${SCRIPT} Bakery', source = '${SCRIPT} Fair' WHERE id = 'ct_seed02'`);
   const { body } = await get(db, "/leads");
   const main = mainOf(body);
@@ -831,8 +832,8 @@ test("a lead's name from outside is labelled and never the text of a link", asyn
 
 test("an outside source never appears in an option value or a link: only its opaque token does", async () => {
   const db = await seededDb();
-  setLead(db, "ct_seed02", "new");
-  setLead(db, "ct_seed03", "new");
+  await setLead(db, "ct_seed02", "new");
+  await setLead(db, "ct_seed03", "new");
   db.exec(`UPDATE contacts SET source = 'Sneaky Expo', untrusted_fields = '["source"]' WHERE id = 'ct_seed02'`);
   const token = sourceToken("sneaky expo");
   assert.match(token, /^[0-9a-f]{16}$/);
@@ -846,7 +847,7 @@ test("an outside source never appears in an option value or a link: only its opa
 
 test("an empty open view says whether closed-out leads exist; no leads at all keeps the first-time message", async () => {
   const db = await seededDb();
-  setLead(db, "ct_seed01", "bad");
+  await setLead(db, "ct_seed01", "bad");
   const open = mainOf((await get(db, "/leads")).body);
   assert.match(open, /<p class="empty-title">No open leads\.<\/p><p>Choose Closed out under Status to see the rest\.<\/p>/);
   assert.doesNotMatch(open, /No leads yet/);
@@ -858,8 +859,8 @@ test("an empty open view says whether closed-out leads exist; no leads at all ke
 
 test("the leads page shows the first 200 and says how many there are", async () => {
   const db = await createTestDb();
-  const values = Array.from({ length: 205 }, (_, i) => `('ct_lead${String(i).padStart(3, "0")}', 'Lead ${i}', 'new', '2026-01-01T00:00:00.000Z')`);
-  db.exec(`INSERT INTO contacts (id, name, lead_status, lead_status_at) VALUES ${values.join(", ")}`);
+  const values = Array.from({ length: 205 }, (_, i) => `('ct_lead${String(i).padStart(3, "0")}', 'Lead ${i}', 'new', '2026-01-01T00:00:00.000Z', ${personSql("new")})`);
+  db.exec(`INSERT INTO contacts (id, name, lead_status, lead_status_at, person_status, sub_status) VALUES ${values.join(", ")}`);
   const main = mainOf((await get(db, "/leads")).body);
   assert.match(main, /<p class="lede">Showing the first 200 of 205 leads\. Search to narrow it down\.<\/p>/);
   assert.equal(cardTitles(main).length, 200);

@@ -37,8 +37,8 @@ function seedMonth(db: SqliteD1, month: string) {
     INSERT INTO rule_firings (id, rule_id, deal_id, fire_key, task_id, fired_at) VALUES ('rf_rep001', 'rl_rep001', 'dl_rep001', 'k', 'tk_rep001', '${day(3)}');
     INSERT INTO contacts (id, name, source, lead_status, lead_status_at, created_at, updated_at)
       VALUES ('ct_rep002', 'Lead One', 'Referral', 'qualified', '${day(10)}', '${day(1)}', '${day(1)}');
-    INSERT INTO contacts (id, name, source, untrusted_fields, lead_status, lead_status_at, created_at, updated_at)
-      VALUES ('ct_rep003', 'Lead Two', '<b>Web form</b>', '["source"]', 'new', '${day(2)}', '${day(2)}', '${day(2)}');
+    INSERT INTO contacts (id, name, source, untrusted_fields, lead_status, lead_status_at, created_at, updated_at, person_status, sub_status)
+      VALUES ('ct_rep003', 'Lead Two', '<b>Web form</b>', '["source"]', 'new', '${day(2)}', '${day(2)}', '${day(2)}', 'lead', 'new');
     INSERT INTO activities (id, contact_id, type, summary, occurred_at, actor) VALUES ('ac_rep001', 'ct_rep002', 'call', 'Called', '${day(5)}', 'owner');
   `);
 }

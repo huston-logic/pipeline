@@ -11,6 +11,7 @@ import { leadCounts, listLeads } from "./leads-read.ts";
 import type { LeadStatus } from "./lead-status.ts";
 import { pipelineSummary, searchContacts } from "./read.ts";
 import { addTask, snoozeTask } from "./tasks.ts";
+import { setLeadStatus } from "../../tests/helpers/people.ts";
 
 // Thu Nov 19, 2026, 10:00 AM in Los Angeles.
 const NOW = new Date("2026-11-19T18:00:00.000Z");
@@ -27,7 +28,7 @@ async function lead(
   extra: { business?: string; source?: string; email?: string; phone?: string } = {},
 ): Promise<string> {
   const { contactId } = await addLead(ctxFor(db, day(created)), { name, allowDuplicate: true, ...extra });
-  await db.prepare("UPDATE contacts SET lead_status = ? WHERE id = ?").bind(status, contactId).run();
+  await setLeadStatus(db, contactId, status);
   return contactId;
 }
 
@@ -54,7 +55,7 @@ async function seeded() {
   await reach(db, a, "call", "2026-11-10");
   await reach(db, b, "note", "2026-11-15", "text");
   await reach(db, b, "note", "2026-11-18");
-  await db.prepare("UPDATE contacts SET lead_status = 'new' WHERE id = ?").bind(a).run();
+  await db.prepare("UPDATE contacts SET lead_status = 'new', person_status = 'lead', sub_status = 'new' WHERE id = ?").bind(a).run();
   await task(db, a, "2026-11-25T09:00");
   await task(db, b, "2026-11-18T09:00");
   return { db, a, b, c, d, e, f, g };
@@ -110,7 +111,7 @@ test("lastContactAt counts calls and texts, ignores a plain note, and reaches th
   const deal = await addDeal(ctxFor(db, day("2026-11-12"), "add_deal"), { name: "Ida Example", dealTitle: "Menu" });
   await logActivity(ctxFor(db, day("2026-11-12"), "log_activity"), { dealId: deal.dealId, type: "call", summary: "Called", occurredAt: "2026-11-12T12:00" });
   await db.prepare("UPDATE deals SET archived = 1 WHERE id = ?").bind(deal.dealId).run();
-  await db.prepare("UPDATE contacts SET lead_status = 'contacted' WHERE id = ?").bind(deal.contactId).run();
+  await db.prepare("UPDATE contacts SET lead_status = 'contacted', person_status = 'lead', sub_status = 'contacted' WHERE id = ?").bind(deal.contactId).run();
   const ida = (await listLeads(db, NOW, TZ)).items.find((item) => item.id === deal.contactId);
   assert.equal(ida?.lastContactAt, "2026-11-12T20:00:00.000Z");
 });
@@ -162,7 +163,7 @@ test("a snoozed task with no due date shows the day it wakes; an undated task th
 test("a task on one of the lead's deals counts as theirs", async () => {
   const { db, c } = await seeded();
   const deal = await addDeal(ctxFor(db, day("2026-11-12"), "add_deal"), { name: "Ida Example", dealTitle: "Menu" });
-  await db.prepare("UPDATE contacts SET lead_status = 'new' WHERE id = ?").bind(deal.contactId).run();
+  await db.prepare("UPDATE contacts SET lead_status = 'new', person_status = 'lead', sub_status = 'new' WHERE id = ?").bind(deal.contactId).run();
   await addTask(ctxFor(db, NOW, "add_task"), { dealId: deal.dealId, title: "Call", dueAt: "2026-11-19T15:00" });
   await db.prepare("UPDATE tasks SET contact_id = NULL WHERE title = 'Call'").run();
   const list = await listLeads(db, NOW, TZ, { dueWithinDays: 0 });

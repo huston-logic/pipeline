@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { TABLE_NAMES } from "./db.ts";
 import { applyMigrations, applySqlFile, createTestDb, migrationFiles, SqliteD1 } from "./sqlite-d1.ts";
+import { setLeadStatus } from "../../tests/helpers/people.ts";
 
 const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 
@@ -334,7 +335,7 @@ test("0006 leaves rule_firings pointing at rules, and the task link still clears
 test("0006 accepts a lead_followup rule and a firing with only a contact", async () => {
   const db = await createTestDb();
   await addContact(db, "ct_a");
-  await db.prepare("UPDATE contacts SET lead_status = 'new', lead_status_at = '2026-11-18T17:00:00.000Z'").run();
+  await setLeadStatus(db, "ct_a", "new", "2026-11-18T17:00:00.000Z");
   await db
     .prepare(
       `INSERT INTO rules (id, type, params, description, created_by)
@@ -353,10 +354,8 @@ test("0006 refuses lead_status 'hot' and accepts the six keys", async () => {
   const db = await createTestDb();
   await addContact(db, "ct_a");
   await assert.rejects(db.prepare("UPDATE contacts SET lead_status = 'hot'").run(), /CHECK/);
-  for (const key of ["new", "contacted", "not_now", "not_a_fit", "bad", "qualified"]) {
-    await db.prepare("UPDATE contacts SET lead_status = ?").bind(key).run();
-  }
-  await db.prepare("UPDATE contacts SET lead_status = NULL").run();
+  for (const key of ["new", "contacted", "not_now", "not_a_fit", "bad", "qualified"] as const) await setLeadStatus(db, "ct_a", key);
+  await setLeadStatus(db, "ct_a", null);
 });
 
 test("0006 refuses a firing with neither deal nor contact", async () => {
@@ -517,6 +516,61 @@ test("briefs: one per local date, items must be a JSON array", async () => {
   assert.deepEqual({ ...row }, { sent_at: null, send_status: null });
 });
 
+test("0011 from the previous version: leads become Lead with their status, everyone else Contact; lead_status is kept", async () => {
+  const db = new SqliteD1();
+  await applyMigrations(db, 10);
+  applySqlFile(db, "seed/defaults.sql");
+  const statuses = ["new", "contacted", "not_now", "not_a_fit", "bad", "qualified"];
+  statuses.forEach((status, i) => {
+    db.exec(`INSERT INTO contacts (id, name, email, lead_status, lead_status_at, version)
+      VALUES ('ct_${status}', 'Lead ${i}', '${status}@example.com', '${status}', '2026-11-1${i}T10:00:00.000Z', ${i + 1})`);
+  });
+  db.exec("INSERT INTO contacts (id, name, email) VALUES ('ct_never', 'Never Lead', 'never@example.org'), ('ct_also', 'Also Never', NULL)");
+  await addDeal(db, "dl_qualified", "ct_qualified");
+  const before = await snapshot(db, ["contacts"]);
+
+  assert.deepEqual(await applyMigrations(db, 11), ["0011_person_status.sql"]);
+
+  const rows = (await db.prepare("SELECT * FROM contacts ORDER BY rowid").all()).results.map((row) => ({ ...row }));
+  assert.equal(rows.length, 8);
+  const byId = Object.fromEntries(rows.map((row) => [row.id, [row.person_status, row.sub_status]]));
+  assert.deepEqual(byId, {
+    ct_new: ["lead", "new"],
+    ct_contacted: ["lead", "contacted"],
+    ct_not_now: ["lead", "not_now"],
+    ct_not_a_fit: ["lead", "not_a_fit"],
+    ct_bad: ["lead", "bad"],
+    // Qualified: a Contact now, with "was qualified" kept in lead_status.
+    ct_qualified: ["contact", null],
+    ct_never: ["contact", null],
+    ct_also: ["contact", null],
+  });
+  // Every earlier column (lead_status, lead_status_at and version included) is exactly as it was.
+  (before.contacts ?? []).forEach((row, i) => {
+    assert.deepEqual(Object.fromEntries(Object.keys(row).map((column) => [column, rows[i]?.[column]])), row);
+  });
+  const seeded = (await db.prepare("SELECT key, label, position, sub_label, locked, archived FROM person_statuses ORDER BY position").all()).results;
+  assert.deepEqual(seeded.map((row) => ({ ...row })), [
+    { key: "lead", label: "Lead", position: 1, sub_label: "Lead status", locked: 1, archived: 0 },
+    { key: "contact", label: "Contact", position: 2, sub_label: "Contact type", locked: 1, archived: 0 },
+    { key: "partner", label: "Partner", position: 3, sub_label: "Sub-status", locked: 0, archived: 0 },
+  ]);
+  const subs = (await db.prepare("SELECT id, status_key, key, label, position FROM person_substatuses ORDER BY status_key DESC, position").all()).results;
+  assert.deepEqual(subs.map((row) => ({ ...row })), [
+    { id: "lead.new", status_key: "lead", key: "new", label: "New", position: 1 },
+    { id: "lead.contacted", status_key: "lead", key: "contacted", label: "Contacted", position: 2 },
+    { id: "lead.not_now", status_key: "lead", key: "not_now", label: "Not now", position: 3 },
+    { id: "lead.not_a_fit", status_key: "lead", key: "not_a_fit", label: "Not a fit", position: 4 },
+    { id: "lead.bad", status_key: "lead", key: "bad", label: "Bad lead", position: 5 },
+    { id: "contact.client", status_key: "contact", key: "client", label: "Client", position: 1 },
+  ]);
+  // A sub-status belongs to a status that exists; each key once per status.
+  assert.throws(() => db.exec("INSERT INTO person_substatuses (id, status_key, key, label, position) VALUES ('x.y', 'nobody', 'y', 'Y', 1)"), /FOREIGN KEY/);
+  assert.throws(() => db.exec("INSERT INTO person_substatuses (id, status_key, key, label, position) VALUES ('lead.new2', 'lead', 'new', 'New', 6)"), /UNIQUE/);
+  assert.throws(() => db.exec("UPDATE person_statuses SET locked = 2 WHERE key = 'partner'"), /CHECK/);
+  assert.deepEqual((await db.prepare("PRAGMA foreign_key_check").all()).results, []);
+});
+
 /**
  * Fake rows for every table, with only the columns the table had when it was created, so they load at any later
  * version. A migration that adds a table must add its rows here (the test below fails until it does).
@@ -550,6 +604,9 @@ const FAKE_ROWS: Record<string, string> = {
     "INSERT INTO email_log (message_key, received_at, local_date, matched, unmatched) VALUES ('<fake@mail.example.com>', '2026-11-18T17:00:00.000Z', '2026-11-18', 1, 0)",
   import_drafts: "INSERT INTO import_drafts (id, module, expires_at) VALUES ('im_fake', 'people', '2026-11-18T19:00:00.000Z')",
   import_draft_parts: "INSERT INTO import_draft_parts (draft_id, seq, text) VALUES ('im_fake', 1, 'name\r\nPat Example\r\n')",
+  person_statuses: "INSERT INTO person_statuses (key, label, position) VALUES ('supplier', 'Supplier', 4)",
+  person_substatuses:
+    "INSERT INTO person_substatuses (id, status_key, key, label, position) VALUES ('supplier.wholesale', 'supplier', 'wholesale', 'Wholesale', 1)",
 };
 
 /** Tables that hold no rows between batches or belong to SQLite or wrangler. */

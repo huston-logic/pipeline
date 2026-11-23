@@ -89,7 +89,7 @@ test("rule tools refuse bad input in plain English", async () => {
 test("add_rule, update_rule and preview_rule take a lead_followup with its status; preview_rule says it shows the present", async () => {
   const db = await createTestDb();
   const stamp = new Date(NOW.getTime() - 6 * 86_400_000).toISOString();
-  db.exec(`INSERT INTO contacts (id, name, lead_status, lead_status_at) VALUES ('ct_lead', 'Pat Example', 'contacted', '${stamp}')`);
+  db.exec(`INSERT INTO contacts (id, name, lead_status, lead_status_at, person_status, sub_status) VALUES ('ct_lead', 'Pat Example', 'contacted', '${stamp}', 'lead', 'contacted')`);
   const c = await connectInMemory(createMcpServer({ db, now: () => NOW }));
 
   const preview = await ok(c, "preview_rule", { type: "lead_followup", status: "contacted", days: 5 });

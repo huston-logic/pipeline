@@ -8,6 +8,7 @@ import { commitChange, type Ctx, isDuplicateEmailFailure, oneLine, type RowChang
 import { dealLabel, isTrusted } from "../services/labels.ts";
 import { qualifyIfLead } from "../services/lead-change.ts";
 import { firstStageOfKind } from "../services/lookup.ts";
+import { CONTACT, newPersonColumns } from "../services/person-move.ts";
 import { MAX_BODY_BYTES, readCappedBody, secretMatches } from "./limits.ts";
 
 export { MAX_BODY_BYTES };
@@ -149,8 +150,7 @@ async function store(env: Env, enquiry: Enquiry, now: Date): Promise<"created" |
       version: 1,
       created_at: stamp,
       updated_at: stamp,
-      lead_status: null,
-      lead_status_at: null,
+      ...newPersonColumns({ status: CONTACT, sub: null }, now),
     };
     changes.push({ table: "contacts", id: contact.id, before: null, after: contact });
   }

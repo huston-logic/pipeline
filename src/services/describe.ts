@@ -56,6 +56,10 @@ export function rowLabel(table: ChangeTable, row: Row): string {
       return "the settings";
     case "push_subscriptions":
       return pushLabel(id);
+    case "person_statuses":
+      return `person status ${text(row.label)}`;
+    case "person_substatuses":
+      return `sub-status ${text(row.label)}`;
   }
 }
 
@@ -69,6 +73,8 @@ const COLUMN_LABELS: Record<string, string> = {
   snoozed_until: "snooze",
   accent_color: "accent colour",
   gone_at: "off date",
+  sub_status: "sub-status",
+  sub_label: "sub-status label",
 };
 
 export const columnLabel = (column: string) => COLUMN_LABELS[column] ?? column.replaceAll("_", " ");

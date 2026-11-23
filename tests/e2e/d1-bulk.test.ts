@@ -47,6 +47,8 @@ const person = (i: number): Row => ({
   updated_at: NOW.toISOString(),
   lead_status: "new",
   lead_status_at: NOW.toISOString(),
+  person_status: "lead",
+  sub_status: "new",
 });
 
 const stored = async () =>

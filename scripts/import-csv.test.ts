@@ -8,7 +8,7 @@ import { join, relative } from "node:path";
 import type { ContactRow } from "../src/db/db.ts";
 import { createTestDb, type SqliteD1 } from "../src/db/sqlite-d1.ts";
 import { STUB_ACCOUNT_ID } from "../tests/helpers/wrangler-stub.mjs";
-import { importContacts, parseImportArgs } from "./import-csv.ts";
+import { importContacts, NOT_UPDATED, parseImportArgs } from "./import-csv.ts";
 import { ROOT } from "./wrangler-run.mjs";
 
 const NOW = new Date("2026-11-19T18:00:00.000Z");
@@ -39,8 +39,13 @@ async function harness(t: TestContext, csv: string) {
       return { status: 0, stdout: "", stderr: "" };
     }
     const sql = cmd[cmd.indexOf("--command") + 1] ?? "";
-    const { rows } = db.execute(db.prepare(sql));
-    return { status: 0, stdout: JSON.stringify([{ results: rows, success: true }]), stderr: "" };
+    try {
+      const { rows } = db.execute(db.prepare(sql));
+      return { status: 0, stdout: JSON.stringify([{ results: rows, success: true }]), stderr: "" };
+    } catch (error) {
+      // As wrangler d1 execute fails: a non-zero exit with SQLite's message.
+      return { status: 1, stdout: "", stderr: `✘ [ERROR] ${error instanceof Error ? error.message : String(error)}` };
+    }
   };
   const deps = { run, log: (line: string) => lines.push(line), copiesDir, now: () => NOW };
   return { deps, calls, lines, file, db, copyDir, sqlFiles };
@@ -64,12 +69,15 @@ test("the default is a dry run: it reads the contacts, shows the plan and writes
   const h = await harness(t, CSV);
   const code = await importContacts(parseImportArgs(["--file", h.file, "--copy", "acme"]), h.deps);
   assert.equal(code, 0);
-  assert.equal(h.calls.length, 2);
+  assert.equal(h.calls.length, 4);
   const cfg = relative(ROOT, join(h.copyDir, "wrangler.jsonc"));
   assert.deepEqual(h.calls[0]?.cmd, [
     "wrangler", "d1", "execute", "DB", "--remote", "-c", cfg, "--json", "--yes", "--command", "SELECT * FROM contacts ORDER BY rowid",
   ]);
   assert.deepEqual(h.calls[1]?.cmd.slice(-2), ["--command", "SELECT * FROM field_defs ORDER BY rowid"]);
+  // The copy's person statuses (decision 0040), so a person_status column is read against them.
+  assert.deepEqual(h.calls[2]?.cmd.slice(-2), ["--command", "SELECT * FROM person_statuses ORDER BY rowid"]);
+  assert.deepEqual(h.calls[3]?.cmd.slice(-2), ["--command", "SELECT * FROM person_substatuses ORDER BY rowid"]);
   assert.deepEqual(h.calls[0]?.env, { CLOUDFLARE_ACCOUNT_ID: STUB_ACCOUNT_ID });
   const out = h.lines.join("\n");
   assert.match(out, /1 new contact, 1 filled in, 0 unchanged, 1 skipped/);
@@ -85,8 +93,8 @@ test("--apply writes one audited change through a SQL file, then removes the fil
   const h = await harness(t, CSV);
   const code = await importContacts(parseImportArgs(["--file", h.file, "--copy", "acme", "--apply"]), h.deps);
   assert.equal(code, 0);
-  assert.equal(h.calls.length, 3);
-  const [, , apply] = h.calls;
+  assert.equal(h.calls.length, 5);
+  const [, , , , apply] = h.calls;
   const cfg = relative(ROOT, join(h.copyDir, "wrangler.jsonc"));
   assert.deepEqual(apply?.cmd.slice(0, 7), ["wrangler", "d1", "execute", "DB", "--remote", "-c", cfg]);
   assert.deepEqual(apply?.cmd.slice(7, 8), ["--file"]);
@@ -176,10 +184,22 @@ test("an unknown --as value is refused in plain English", () => {
   assert.throws(() => parseImportArgs(["--file", "x.csv", "--local", "--as"]), /--as needs a value/);
 });
 
+test("a copy without migration 0011 is told to update first, and nothing is written", async (t) => {
+  const h = await harness(t, CSV);
+  h.db.exec("DROP TABLE person_substatuses; DROP TABLE person_statuses");
+  await assert.rejects(importContacts(parseImportArgs(["--file", h.file, "--copy", "acme", "--apply"]), h.deps), {
+    name: "Error",
+    message: "This copy hasn't been updated yet. Run npm run copies:update first, then import.",
+  });
+  assert.equal(NOT_UPDATED, "This copy hasn't been updated yet. Run npm run copies:update first, then import.");
+  assert.equal(h.calls.length, 3, "no write after the failed read");
+  assert.equal(await h.db.prepare("SELECT COUNT(*) AS n FROM audit_log").first("n"), 0);
+});
+
 test("nothing to import writes nothing, and bad arguments say how to fix them", async (t) => {
   const h = await harness(t, "name,email\r\nPat,pat@example.com\r\n");
   assert.equal(await importContacts(parseImportArgs(["--file", h.file, "--copy", "acme", "--apply"]), h.deps), 0);
-  assert.equal(h.calls.length, 2);
+  assert.equal(h.calls.length, 4);
   assert.ok(h.lines.some((line) => line === "Nothing to import: no new contacts and no details to fill in."));
 
   assert.throws(() => parseImportArgs(["--copy", "acme"]), /--file/);

@@ -697,7 +697,7 @@ test("the hourly run's reach test in SQL agrees with isReach for every activity 
     ["system", TEXT_DATA],
   ];
   cases.forEach(([type, data], i) => {
-    db.exec(`INSERT INTO contacts (id, name, lead_status, lead_status_at) VALUES ('ct_case${i}', 'Case ${i} Example', 'new', '${stamp}')`);
+    db.exec(`INSERT INTO contacts (id, name, lead_status, lead_status_at, person_status, sub_status) VALUES ('ct_case${i}', 'Case ${i} Example', 'new', '${stamp}', 'lead', 'new')`);
     db.exec(`INSERT INTO activities (id, contact_id, type, summary, data, occurred_at, actor)
       VALUES ('ac_case${i}', 'ct_case${i}', '${type}', 'Case', ${data === null ? "NULL" : `'${data}'`}, '${later(-2).toISOString()}', 'owner')`);
   });
@@ -710,7 +710,7 @@ test("the hourly run's reach test in SQL agrees with isReach for every activity 
 
 test("a lead whose status time is missing never fires", async () => {
   const db = await createTestDb();
-  db.exec("INSERT INTO contacts (id, name, lead_status, lead_status_at) VALUES ('ct_nostamp', 'Pat Example', 'new', NULL)");
+  db.exec("INSERT INTO contacts (id, name, lead_status, lead_status_at, person_status, sub_status) VALUES ('ct_nostamp', 'Pat Example', 'new', NULL, 'lead', 'new')");
   await addRule(ctxFor(db), { type: "lead_followup", status: "new", days: 1 });
   assert.equal((await runRules(db, later(30))).fired, 0);
 });

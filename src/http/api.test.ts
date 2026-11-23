@@ -203,6 +203,8 @@ test("the JSON export holds every listed table, each row as stored, as a downloa
     "deals",
     "email_log",
     "field_defs",
+    "person_statuses",
+    "person_substatuses",
     "rule_firings",
     "rulebook",
     "rules",

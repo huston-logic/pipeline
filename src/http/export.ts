@@ -13,6 +13,8 @@ export const EXPORT_TABLES = [
   "activities",
   "tasks",
   "stages",
+  "person_statuses",
+  "person_substatuses",
   "field_defs",
   "rules",
   "rule_firings",

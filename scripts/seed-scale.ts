@@ -556,6 +556,9 @@ function scaleLeads(now: Date, out: LeadParts): Row[] {
       updated_at: at(statusDays),
       lead_status: status,
       lead_status_at: at(statusDays),
+      // Every one is an unqualified lead: Lead, with the same sub-status (decision 0040).
+      person_status: "lead",
+      sub_status: status,
     };
     out.audit.push(
       change(out.audit.length, String(row.created_at), "owner", "add_lead", "contacts", id, {}, { [`contacts:${id}`]: row }, `Added lead ${first} ${last} (New)`),

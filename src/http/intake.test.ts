@@ -236,7 +236,7 @@ test("a form from a Not now lead's email adds one deal and makes them Qualified,
   const { db, env } = await setup();
   const ctx = { db, now: new Date("2026-11-01T12:00:00.000Z"), actor: "owner" as const, tool: "add_lead" };
   const lead = await addLead(ctx, { name: "Pat Example", email: "pat@example.com" });
-  db.exec(`UPDATE contacts SET lead_status = 'not_now', version = version + 1 WHERE id = '${lead.contactId}'`);
+  db.exec(`UPDATE contacts SET lead_status = 'not_now', person_status = 'lead', sub_status = 'not_now', version = version + 1 WHERE id = '${lead.contactId}'`);
 
   const res = await post(env, { ...goodBody, email: "PAT@example.com" });
   assert.equal(res.status, 201);

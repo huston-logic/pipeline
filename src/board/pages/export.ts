@@ -12,6 +12,8 @@ const TABLE_LABELS: Record<ExportTable, string> = {
   stages: "Stages",
   field_defs: "Custom fields",
   rules: "Rules",
+  person_statuses: "Person statuses",
+  person_substatuses: "Sub-statuses",
   rule_firings: "Rule firings",
   rulebook: "Rulebook",
   settings: "Settings",
