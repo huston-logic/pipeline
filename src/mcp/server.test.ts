@@ -40,8 +40,10 @@ const WRITE_TOOLS = [
   "add_rule",
   "add_stage",
   "add_task",
+  "apply_import",
   "archive_stage",
   "complete_task",
+  "import_rows",
   "log_activity",
   "pause_rule",
   "qualify_lead",
@@ -81,7 +83,7 @@ test("every read tool is annotated read-only and every write tool is not", async
     assert.equal(tool.inputSchema.type, "object", tool.name);
   }
   const byName = new Map(tools.map((t) => [t.name, t]));
-  for (const name of ["add_lead", "add_deal", "qualify_lead", "return_to_lead"]) {
+  for (const name of ["add_lead", "add_deal", "qualify_lead", "return_to_lead", "import_rows"]) {
     assert.equal(byName.get(name)?.annotations?.destructiveHint, false, name);
     assert.equal(byName.get(name)?.annotations?.idempotentHint, false, name);
   }
@@ -102,7 +104,8 @@ const DESTRUCTIVE = [
   "update_stage",
 ];
 // update_contact is not: a repeated followUpDate adds a second "Check back" task.
-const IDEMPOTENT = ["pause_rule", "resume_rule", "update_deal", "update_field", "update_rule", "update_rulebook", "update_settings", "update_stage"];
+// apply_import is: a second call of the same import writes nothing (decision 0039).
+const IDEMPOTENT = ["apply_import", "pause_rule", "resume_rule", "update_deal", "update_field", "update_rule", "update_rulebook", "update_settings", "update_stage"];
 
 test("destructive and idempotent hints are set exactly on the tools that need them", async () => {
   const { tools } = await (await client()).listTools();

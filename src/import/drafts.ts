@@ -3,9 +3,11 @@
 // nothing here writes a log line. The file lives only in import_draft_parts, in pieces of at most CHUNK_BYTES as a SQL
 // literal, and is deleted in the same batch that applies the import. A draft expires DRAFT_LIFETIME_MS after it is
 // made; deleteExpiredDrafts runs on every import post and in the hourly run (the import's pages never write).
+// import_rows (decision 0039) keeps an MCP import's rows in the same drafts, as CSV text, adding them with appendDraft.
 import type { Db, ImportDraftPartRow, ImportDraftRow } from "../db/db.ts";
 import { newId } from "../ids.ts";
 import { CHUNK_BYTES, sqlBytes } from "../services/bulk.ts";
+import { isGuardFailure } from "../services/change.ts";
 import type { ImportModuleKey, Target } from "./engine.ts";
 
 /** Two hours. */
@@ -35,6 +37,12 @@ export interface Draft {
   mapping: Target[];
   /** New people come in as leads (New), not contacts. People imports only; false for every other module. */
   asLeads: boolean;
+  /**
+   * import_rows' choices (decision 0039): People's possible duplicates too, Deals' closed deals as history. The board
+   * never reads them (its check step's boxes are on its apply post) and its match step clears them.
+   */
+  allowDuplicates: boolean;
+  closedAsHistory: boolean;
   result: ImportResult | null;
   changeId: string | null;
   version: number;
@@ -103,25 +111,41 @@ function parseResult(json: string | null): ImportResult | null {
   };
 }
 
-function asLeadsOf(json: string): boolean {
+/** How a draft's new people come in, and import_rows' choices (decision 0039). */
+export interface DraftChoices {
+  asLeads: boolean;
+  allowDuplicates?: boolean;
+  closedAsHistory?: boolean;
+}
+
+function choicesOf(json: string): Required<DraftChoices> {
+  let value: { asLeads?: unknown; allowDuplicates?: unknown; closedAsHistory?: unknown } = {};
   try {
-    return (JSON.parse(json) as { asLeads?: unknown }).asLeads === true;
+    value = JSON.parse(json) as typeof value;
   } catch {
-    return false;
+    // Reads as no choices.
   }
+  return { asLeads: value.asLeads === true, allowDuplicates: value.allowDuplicates === true, closedAsHistory: value.closedAsHistory === true };
+}
+
+/** The options column: `{"asLeads":…}`, plus import_rows' two choices when it sets them. */
+function choicesJson(choices: DraftChoices): string {
+  const { asLeads, allowDuplicates, closedAsHistory } = choices;
+  if (allowDuplicates === undefined && closedAsHistory === undefined) return JSON.stringify({ asLeads });
+  return JSON.stringify({ asLeads, allowDuplicates: allowDuplicates === true, closedAsHistory: closedAsHistory === true });
 }
 
 /** Stores a new draft and its file in one batch; answers its id. */
 export async function createDraft(
   db: Db,
-  input: { module: ImportModuleKey; text: string; mapping: Target[]; asLeads: boolean; now: Date },
+  input: { module: ImportModuleKey; text: string; mapping: Target[]; now: Date } & DraftChoices,
 ): Promise<string> {
   const id = newId("im");
   const expires = new Date(input.now.getTime() + DRAFT_LIFETIME_MS).toISOString();
   await db.batch([
     db
       .prepare("INSERT INTO import_drafts (id, module, created_at, expires_at, mapping, options) VALUES (?, ?, ?, ?, ?, ?)")
-      .bind(id, input.module, input.now.toISOString(), expires, JSON.stringify(input.mapping), JSON.stringify({ asLeads: input.asLeads })),
+      .bind(id, input.module, input.now.toISOString(), expires, JSON.stringify(input.mapping), choicesJson(input)),
     ...splitText(input.text).map((text, i) =>
       db.prepare("INSERT INTO import_draft_parts (draft_id, seq, text) VALUES (?, ?, ?)").bind(id, i + 1, text),
     ),
@@ -141,7 +165,7 @@ export async function getDraft(db: Db, id: string, now: Date): Promise<Draft | n
     module: row.module,
     expiresAt: row.expires_at,
     mapping: parseMapping(row.mapping),
-    asLeads: asLeadsOf(row.options),
+    ...choicesOf(row.options),
     result: parseResult(row.result),
     changeId: row.change_id,
     version: row.version,
@@ -166,6 +190,36 @@ export async function saveMapping(db: Db, draft: Draft, mapping: Target[], asLea
     .bind(JSON.stringify(mapping), JSON.stringify({ asLeads }), draft.id, draft.version)
     .run();
   return result.meta.changes === 1;
+}
+
+/**
+ * Adds rows to a draft (CSV records, no header, after the file it has) and saves its matches and choices, in one
+ * batch, only while it is unapplied, unexpired and at the version read (import_rows, decision 0039). True when saved.
+ */
+export async function appendDraft(
+  db: Db,
+  draft: Draft,
+  input: { text: string; mapping: Target[]; choices: DraftChoices },
+  now: Date,
+): Promise<boolean> {
+  const last = await db.prepare("SELECT COALESCE(MAX(seq), 0) AS last FROM import_draft_parts WHERE draft_id = ?").bind(draft.id).first<{ last: number }>();
+  const from = last?.last ?? 0;
+  try {
+    await db.batch([
+      draftGuard(db, draft, now),
+      ...splitText(input.text).map((text, i) =>
+        db.prepare("INSERT INTO import_draft_parts (draft_id, seq, text) VALUES (?, ?, ?)").bind(draft.id, from + i + 1, text),
+      ),
+      db
+        .prepare("UPDATE import_drafts SET mapping = ?, options = ?, version = version + 1 WHERE id = ?")
+        .bind(JSON.stringify(input.mapping), choicesJson(input.choices), draft.id),
+      db.prepare("DELETE FROM write_guard"),
+    ]);
+  } catch (error) {
+    if (isGuardFailure(error)) return false;
+    throw error;
+  }
+  return true;
 }
 
 /**

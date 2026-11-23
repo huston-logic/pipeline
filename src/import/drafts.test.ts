@@ -11,6 +11,7 @@ import {
   draftGuard,
   draftText,
   getDraft,
+  appendDraft,
   markApplied,
   saveMapping,
   splitText,
@@ -34,6 +35,8 @@ test("a draft is made, read back with its file, and gone once it expires", async
     expiresAt: at(DRAFT_LIFETIME_MS).toISOString(),
     mapping: [{ kind: "builtin", key: "name" }, { kind: "skip" }],
     asLeads: true,
+    allowDuplicates: false,
+    closedAsHistory: false,
     result: null,
     changeId: null,
     version: 1,
@@ -133,4 +136,29 @@ test("drafts never write a log line, whatever the file holds", async (t) => {
   if (draft) await saveMapping(db, draft, [], false);
   await deleteExpiredDrafts(db, at(DRAFT_LIFETIME_MS));
   assert.deepEqual(lines, []);
+});
+
+test("appendDraft adds rows after the file and saves the choices, once per version read, never after the apply", async () => {
+  const db = await openTestDb();
+  const id = await createDraft(db, { module: "people", text: CSV, mapping: [], asLeads: false, allowDuplicates: true, now: NOW });
+  const draft = await getDraft(db, id, NOW);
+  assert.ok(draft);
+  assert.deepEqual([draft.allowDuplicates, draft.closedAsHistory], [true, false]);
+  const mapping = [{ kind: "builtin", key: "name" } as const, { kind: "skip" } as const];
+  const more = "Lee Example,lee@example.com\r\n";
+  assert.equal(await appendDraft(db, draft, { text: more, mapping, choices: { asLeads: true } }, NOW), true);
+  assert.equal(await draftText(db, id), CSV + more);
+  const saved = await getDraft(db, id, NOW);
+  assert.deepEqual([saved?.mapping, saved?.asLeads, saved?.allowDuplicates, saved?.version], [mapping, true, false, 2]);
+  assert.equal(await appendDraft(db, draft, { text: more, mapping, choices: { asLeads: true } }, NOW), false, "a stale version adds nothing");
+  assert.equal(await draftText(db, id), CSV + more);
+  assert.ok(saved);
+  assert.equal(await appendDraft(db, saved, { text: more, mapping, choices: { asLeads: true } }, at(DRAFT_LIFETIME_MS)), false, "nor an expired draft");
+  await markApplied(db, saved, { created: 0, filled: 0, unchanged: 0, skipped: 0, duplicates: 0, fields: 0, people: 0, closed: 0, archived: 0 }, NOW);
+  const applied = await getDraft(db, id, NOW);
+  assert.ok(applied);
+  assert.equal(await appendDraft(db, applied, { text: more, mapping, choices: { asLeads: true } }, NOW), false, "nor an applied one");
+  assert.deepEqual(await parts(db, id), []);
+  const guard = await db.prepare("SELECT COUNT(*) AS n FROM write_guard").first<{ n: number }>();
+  assert.equal(guard?.n, 0);
 });
