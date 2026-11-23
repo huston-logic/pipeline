@@ -101,16 +101,16 @@ function ownListBox(planned: DraftPlan): Html | "" {
   switch (planned.module) {
     case "people":
       if (planned.plan.create.length + planned.plan.merge.length + planned.plan.duplicates.length === 0) return "";
-      return ownList("This is my own list: show names, businesses, emails, phones and sources as mine.");
+      return ownListCheck("This is my own list: show names, businesses, emails, phones and sources as mine.");
     case "deals":
       if (planned.plan.people.length + planned.plan.closed.length === 0) return "";
-      return ownList("This is my own list: show the people's names, businesses and emails as mine.");
+      return ownListCheck("This is my own list: show the people's names, businesses and emails as mine.");
     case "tasks":
       return "";
   }
 }
 
-const ownList = (label: string): Html =>
+const ownListCheck = (label: string): Html =>
   checkbox({ id: "import-own-list", name: OWN_LIST_FIELD, label, value: "yes", checked: false, hint: "Leave it unticked if someone else made this file." });
 
 /** The sections only this module's check step has, and the box it may ask the owner to tick. */

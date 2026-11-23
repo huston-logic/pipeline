@@ -139,3 +139,36 @@ test("own list: a custom field with an identity column's key keeps that key mark
   assert.deepEqual(outside(await byEmail(db, "nadia@example.net")), ["phone"], "outside wins");
   assert.deepEqual(outside(await byEmail(db, "pat@example.com")), ["phone", "source"]);
 });
+
+test("own list: invisible and stacked characters keep a value outside (fix round 1)", () => {
+  const hidden = [
+    // Variation selectors carrying a hidden payload after a short name.
+    ["variation selectors", `Pat Lee${"️︎︁".repeat(5)}`],
+    ["supplementary variation selectors", `Pat Lee\u{E0100}\u{E0101}\u{E01EF}`],
+    ["combining grapheme joiner", "Pat͏Lee"],
+    ["Hangul fillers only", "ᅟᅠㅤﾠ"],
+    ["a Hangul filler in a name", "PatㅤLee"],
+    ["braille blank", "Pat⠀Lee"],
+    ["tag characters", "Pat Lee\u{E0049}\u{E0067}"],
+    ["soft hyphen", "Pat­Lee"],
+    ["an unassigned code point", "Pat͸Lee"],
+    ["four combining marks in a row", "Paté̂̃̄"],
+    ["fewer visible characters than half its length", "a                   b"],
+    ["marks outnumbering letters", "Pá̂̃t́̂̃"],
+  ] as const;
+  for (const [what, text] of hidden) assert.equal(isOwnListValue(text), false, what);
+
+  // Ordinary names, accents (composed or one combining mark), other scripts and an emoji still count.
+  for (const text of ["Pat Lee", "J. R. Example", "José Núñez", "José Núñez", "हिन्दी नाम", "李小龙", "O'Brien-Example", "Pat 🙂"]) {
+    assert.equal(isOwnListValue(text), true, text);
+  }
+});
+
+test("own list: a name with a hidden payload is stored as outside text", async () => {
+  const db = await withPat();
+  const csv = ["name,email,business", `Pat Lee${"️".repeat(40)},hidden@example.net,ㅤㅤ`].join("\r\n");
+  await importPeople(db, csv, true);
+  const row = await byEmail(db, "hidden@example.net");
+  assert.equal(row?.name.startsWith("Pat Lee️"), true, "stored as it came");
+  assert.deepEqual(outside(row), ["business", "name"], "only the plain email is confirmed");
+});
