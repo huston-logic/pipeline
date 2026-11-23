@@ -130,9 +130,11 @@ this file before changing the repo, and update it when a rule changes.
   `PIPELINE_WRANGLER` points the scripts at that stub. Claude and CI run them only with `--dry-run`, against the stub,
   or with `--local`. Each copy's config is generated from `config/wrangler.copy.template.jsonc` into the git-ignored
   `/.copies/<name>/`; keep the template's shared settings in step with `wrangler.jsonc` (a test checks).
-- **CSV import** (`src/import/`): `plan.ts` plans (pure), `change.ts` builds one audited change (actor `owner`, tool
-  `import`) with `buildChange` from `src/services/change.ts`, and `sql.ts` renders its bound values as literal SQL for
-  `wrangler d1 execute --file`. Imported fields are listed in `untrusted_fields`; a merge never overwrites a value.
+- **CSV import** (`src/import/`, decision 0034): `engine.ts` is the one engine (`readCsv`, `autoMatch`, `mapRows`,
+  `planCsv`); each kind of record is a module in `modules/` (`people.ts` so far) that plans the mapped rows and builds
+  one audited change (actor `owner`, tool `import`) with `buildChange` from `src/services/change.ts`. `plan.ts`
+  (`planImport`) and `change.ts` (`importChange`) are People wrappers; `change.ts` also renders the change, and
+  `sql.ts` renders its bound values as literal SQL for `wrangler d1 execute --file`. Imported fields are listed in `untrusted_fields`; a merge never overwrites a value.
 - **Email logging** (decision 0031): the `email` handler in `src/index.ts` loads `src/email/log.ts` with a dynamic
   `import()` (only `src/email/` imports `postal-mime`). Mail is logged only when the envelope `to` is
   `EMAIL_LOG_ADDRESS`, the envelope and header From are owner emails, it is at most 1 MB and Cloudflare's
