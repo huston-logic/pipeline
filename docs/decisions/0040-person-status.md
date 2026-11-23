@@ -43,8 +43,9 @@ sits next to `lead_status`, what can and can't be added or archived, and how the
   label, reorder, archive and bring back. Lead and Contact (`locked`) can't be archived. A status anyone (not archived)
   has can't be archived either; the refusal names up to five of them. Sub-statuses: Lead's five can be renamed and
   moved but not archived, and Lead gets no new ones, because the lead engine and the `lead_status` CHECK use exactly
-  those keys. Other statuses' sub-statuses can be added, renamed, moved, archived (not while anyone has one) and brought
-  back. Client can be renamed and archived.
+  those keys: the follow-up rule, `list_leads`, the brief and What it caught read the five keys, and a new or missing
+  key would leave people in Lead that the lead engine can't see. Other statuses' sub-statuses can be added, renamed,
+  moved, archived (not while anyone has one) and brought back. Client can be renamed and archived.
 - **The owner's move** (`setPersonStatus`). Any live status and one of its live sub-statuses, in one audited change.
   With no sub-status given: kept when the status stays the same, New for a new Lead, none otherwise. Lead always has a
   sub-status. Lead is refused while the person has an open deal, pointing to `return_to_lead` or closing the deal,
@@ -53,8 +54,10 @@ sits next to `lead_status`, what can and can't be added or archived, and how the
   write gives the person a deal (`qualifyIfLead`, invariant 1); Contact (any sub-status) to Client when `update_deal`
   (or the board) marks one of their deals Won, in the same change, so one undo reverses both. A Client stays Client;
   a Partner or any other status is left alone; nobody moves while Client is archived. The summary says
-  "<name> is now a Client" with the owner's current label. A deal brought in as Won by an import moves nobody: the
-  file's stage is outside text.
+  "<name> is now a Client" with the owner's current label. A lead whose Lost or Not now deal is marked Won directly
+  is treated like a reopen for invariant 1: they become a Contact and then a Client in the same change ("is now
+  Qualified and a Client"), and one undo puts them back in Lead. A deal brought in as Won by an import moves nobody:
+  the file's stage is outside text.
 - **Undo.** The status tables are change tables (undoable, exported, bulk-writable). Undo refuses to remove a status or
   sub-status someone has (its dependents are people, matched by key). An undo summary that puts back a lead status
   doesn't list the person status and sub-status as well. An undo that would archive a status or sub-status again
@@ -63,11 +66,22 @@ sits next to `lead_status`, what can and can't be added or archived, and how the
 - **Import.** The People module gains `person_status` and `sub_status` columns (a live status, and one of its live
   sub-statuses, by key or label). `lead_status` still works: Lead with it, or Contact for Qualified, also by the
   owner's current Lead sub-status label. When a file gives both, the person status wins and having been a lead stays
-  as Qualified. A Lead with no sub-status starts New. A bad value skips the row; the reason names the column and the
-  live keys, never the value. A merge never moves anyone. The board, MCP and CLI imports read the copy's statuses (the
-  CLI with two more queries); a caller that passes none (a test) gets the seeded three.
+  as Qualified. A Lead with no sub-status starts New. A People import may create someone directly as Contact, Client,
+  Partner or any live status: that is the owner's choice of column mapping (the columns only say what a new person
+  is), unlike a Won stage in a deals file, which moves nobody. A bad value skips the row; the reason names the column
+  and the live keys, never the value. A merge never moves anyone. The board, MCP and CLI imports read the copy's
+  statuses (the CLI with two more queries); a caller that passes none (a test) gets the seeded three.
 - **Seeds.** Every person in the dev, fixture and scale seeds has a consistent pair; the dev seed's Hannah Cole
   (`ct_seed13`, an architect who sends work) is a Partner.
+
+- **Reports.** What it caught counts a person as qualified when `lead_status` became Qualified in the month, so a move
+  from Lead to Partner (or to any status other than Lead) by `setPersonStatus` or an import counts as qualified too.
+  That is deliberate: they left the lead list for a real relationship.
+- **Tests.** Test databases (`createTestDb`) carry a trigger that refuses any contact row whose pairs disagree, from a
+  service or from a test's own SQL; tests set a lead status through `tests/helpers/people.ts`. The either-pair
+  fallback in `personStatusPatch` exists only to repair such a row, never to trust one.
+- **CLI.** On a copy without migration 0011, `import:contacts` says "This copy hasn't been updated yet. Run npm run
+  copies:update first, then import." instead of SQLite's "no such table".
 
 ## What it replaces
 
@@ -91,5 +105,4 @@ history). "Not in this run: owner-defined statuses" no longer holds.
 - MCP tools and board forms for statuses come in task P8; they call the services in `src/services/person-status.ts`.
 - Places that show a lead status still use the fixed labels; renaming Lead's sub-statuses changes only the table
   until P8 reads the labels from it.
-- A copy must run migration 0011 (`copies:update`) before the CLI import, or the import's inserts fail on the new
-  columns.
+- A copy must run migration 0011 (`copies:update`) before the CLI import; the import says so.
