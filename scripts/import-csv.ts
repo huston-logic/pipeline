@@ -3,7 +3,8 @@
 // and columns named like contact custom fields; docs/INSTALL.md). --as leads makes the new people leads (status New).
 // The default is a dry run: it reads the copy's contacts, then shows what would be created, filled in and skipped.
 // --apply writes it as one audited change (actor owner, tool "import"; undo_change reverses it): a SQL file in the
-// git-ignored copy folder (or .wrangler/ for --local), run by `wrangler d1 execute --file`, then removed.
+// git-ignored copy folder (or .wrangler/ for --local), run by `wrangler d1 execute --file`, then removed. A file of up
+// to 2,000 rows and 1 MB goes in one go (decision 0035); a bigger one is refused with how to split it.
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";

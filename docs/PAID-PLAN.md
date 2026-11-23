@@ -29,6 +29,7 @@ Access (Zero Trust Free covers up to 50 users; a copy needs one or two).
 | CPU time of `list_leads` and the lead rule (10 ms per request) | Measured locally on 2,000 leads added to the 2,000-deal copy: `list_leads` 2.2 to 2.5 ms, the hourly run's lead rule about 1 ms, `preview_rule` on it 2.2 ms (see "Run 4: 2,000 leads" below) | Low. |
 | D1 rows read per `list_leads` call (free plan: 5 million rows a day) | The query reads every reach activity twice (once on the person, once through their deals) and every task, to find each lead's last contact and next task: about 50,000 rows on the 2,000-lead copy (estimated from the query shape, not counted) | **Medium on a big lead list.** About 100 calls a day would use the whole free allowance on that copy; a few hundred leads and a few thousand activities (a normal copy) read a tenth of that or less. If it matters, Workers Paid has a far larger allowance (check Cloudflare's current limits page; this repo holds no copy of it). |
 | CPU time of a logged email (the `email` handler, 10 ms per invocation; decision 0031) | Measured locally (2026-11-20, Node on the owner's Mac, warm, median of 15) for `parseEmail` plus the clean-up and the dedupe key: a typical 5 KB email 0.2 ms; 1 MB of plain text 2.9 ms; 1 MB of HTML-only unclosed tags 1.9 ms (worst run 2.5 ms); 1 MB of unclosed `<script` 1.7 ms (worst 5.3 ms); a 0.9 MB base64 attachment 6.8 ms (worst 7.6 ms). The body is cleaned from its first 20,000 characters only, in linear passes. Then up to about 11 D1 calls (owner emails, the dedupe check, up to two address lookups, the timezone, one open-deals read per person, one batch) | **Low for typical mail; close to the limit for a near-1 MB message with a large attachment** (the parser still decodes attachments it then ignores). Messages over 1 MB are dropped before parsing. Not yet measured in workerd: if "exceeded CPU" shows on the Worker's `email` invocations, the email is lost silently; the sign is the owner's BCC'd emails with big attachments not showing up. Workers Paid lifts it. Email Routing itself is free. |
+| CPU time of an import in the Worker (10 ms per request; the board import comes in run 5, task I3) | Measured locally on the 3,500-person copy (2026-11-22): reading the contacts, planning a 2,000-row file and writing it as one bulk change about 11 ms; undoing it about 8 ms (see "Run 5: import" below). The CLI import runs on the Mac, where the limit does not apply | **Medium to high for a full-size file on a big copy.** About half is the plan, which grows with the file and with the contacts on file. If a board import of a big file fails with "exceeded CPU", import it from the Mac (`npm run import:contacts`), split it into smaller files, or move the copy to Workers Paid. |
 | D1: 5 million rows read and 100,000 rows written per day, 5 GB storage | A one-person pipeline is far below this | Low. |
 | Requests: 100,000 per day | Far below | Low. |
 
@@ -181,7 +182,8 @@ read (see the limits table).
   1 ms an hour, `preview_rule` on it 2.2 ms. Nothing to fix.
 - **The import is not a Worker.** It runs on the Mac (`npm run import:contacts`), so the 10 ms does not apply: planning
   2,000 rows takes about 7 ms there. It can only be applied in files of about 190 rows (D1 allows 100 KB per statement,
-  `src/import/sql.ts` says so in plain English); a 2,000-row list is split into about ten files.
+  `src/import/sql.ts` says so in plain English); a 2,000-row list is split into about ten files. (Run 5 lifted this: a
+  2,000-row file is one change; see "Run 5: import" below.)
 - **Leads make three existing pages heavier, none of them a lead page:** `/companies` doubles (7.3 to 15.0 ms, 344 KB to
   857 KB) because every lead's business becomes a company on a page with no paging; Today adds about 1 ms; the export
   grows with the data (about 5 ms per MB here, 3.5 in run 2). `/companies` is the only one that crosses 10 ms because of the
@@ -216,3 +218,39 @@ cheap (2.1 ms) because it shows at most 200 rows. Neither crosses 10 ms. Still o
 and 2,000 deals, and flagged for the first real copy (see the STOP queue in docs/STATUS.md): Today (13.8), the hour of
 the brief (11.5), `preview_rule` on a deal rule (11.0) and `list_deals` for every open deal (10.3). They fail only on a
 copy with thousands of people and deals; Workers Paid is the fix if "exceeded CPU" shows up in the dashboard.
+
+## Run 5: import (task I2, 2026-11-22)
+
+A 2,000-row import is now one audited change in one D1 batch (decision 0035): set-based statements with one JSON
+parameter each, the snapshot in `audit_parts`. `scripts/cpu-check.ts` gained two cases, and its 150-row SQL case now
+renders the whole 2,000-row file. Same method (b) and copy as above (2,000 deals, 3,500 people of whom 2,000 leads), the
+same 2,000-row leads file (1,600 new people, 200 matching a lead's email, all of them already complete, and 200
+possible duplicates), medians of 20 runs after 5 warm-ups, this Mac (Apple silicon, Node 24). The Mac was quieter than
+in run 4 (Today 8.3 ms, `list_deals` 6.3, the hour of the brief 7.3, all measured in the same run).
+
+| Request | Worker CPU ms | D1 CPU ms | D1 statements |
+|---|---|---|---|
+| Import plan only (on the Mac) | 8.3 | 0 | 0 |
+| Plan plus the audited change, no SQL (on the Mac) | 6.6 | 0 | 0 |
+| Plan, change and SQL for the whole 2,000-row file, as `import:contacts --apply` (on the Mac; 1.5 MB of SQL) | 11.6 | 0 | 0 |
+| **Import in the Worker:** read the contacts and fields, plan, one bulk change | 11.5 | 24.5 | 23 (2 reads, 21 in 1 batch) |
+| **Undo of that import:** 1,600 people removed | 8.4 | 11.6 | 23 (7 reads, 16 in 1 batch) |
+
+Repeated alone the same afternoon (`--only import`): 10.9 and 8.0 ms. Run-to-run noise is about 1 ms; the plan-only
+line (6.5 to 8.3) shows it.
+
+### Verdict against the free plan's 10 ms
+
+- **The CLI import is not a Worker** and now applies a 2,000-row file in one go: 24 statements for 2,000 new people
+  (10 inserts, the audit row, 12 parts, the guard clean-up), the largest about 91 KB, all under D1's 100 KB.
+- **In the Worker, a full 2,000-row import is at the limit: about 11 ms.** Timed apart (a one-off script, medians of
+  20): the plan about 4 ms, the import's change 1.5 ms, turning it into bulk statements about 3 ms (each row is
+  written as JSON once), and decoding the 3,500 contacts it reads about 1.5 to 2.5 ms.
+  The writes themselves (about 24 ms here) are D1's time, not the Worker's. A file of a few hundred rows, or a copy
+  with fewer people, is well inside it. The board import (task I3) should expect "exceeded CPU" for full-size files on a
+  big copy on the free plan; the ways out are the CLI, smaller files, or Workers Paid.
+- **The undo is inside it: about 8 ms** for 1,600 people, reading set-based (7 reads whatever the size).
+- **D1 statements per invocation:** the import is 23 statements (21 in one batch) and its undo 23 (16 in one batch).
+  Whether D1 counts a batch as one query or one per statement toward the free plan's 50 is **still unknown** (see "What
+  the owner confirms" above). Counted per statement, both fit under 50.
+

@@ -5,6 +5,7 @@
 import type { FieldDefRow } from "../db/db.ts";
 import { type CsvRecord, parseCsvRecords } from "../http/csv.ts";
 import type { ChangeInput } from "../services/change.ts";
+import { sqlBytes } from "../services/bulk.ts";
 import { UserError } from "../services/errors.ts";
 
 export type { CsvRecord };
@@ -91,9 +92,35 @@ function cleanValue(raw: string, multiline: boolean): string | null {
 
 const headerKey = (text: string) => text.trim().toLowerCase();
 
-/** The header row and the records after it; an empty file has an empty header. */
+/** The most data rows one import takes (decision 0035): one change, one undo, one D1 batch. */
+export const IMPORT_MAX_ROWS = 2_000;
+
+/** The largest file one import takes, in bytes (1 MB). */
+export const IMPORT_MAX_BYTES = 1_048_576;
+
+const FILE_COUNTS = ["", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"];
+
+const isBlank = (record: CsvRecord) => record.fields.every((field) => field.trim() === "");
+
+/**
+ * The header row and the records after it; an empty file has an empty header. Refuses a file over IMPORT_MAX_BYTES or
+ * with more than IMPORT_MAX_ROWS data rows (blank lines don't count), saying how to split it.
+ */
 export function readCsv(text: string): { header: string[]; records: CsvRecord[] } {
+  const bytes = new TextEncoder().encode(text).byteLength;
+  if (bytes > IMPORT_MAX_BYTES) {
+    const mb = (Math.ceil((bytes * 10) / IMPORT_MAX_BYTES) / 10).toFixed(1);
+    throw new UserError(`This file is ${mb} MB. One import takes at most 1 MB. Split it into smaller files and import each one.`);
+  }
   const [first, ...records] = parseCsvRecords(text);
+  const rows = records.filter((record) => !isBlank(record)).length;
+  if (rows > IMPORT_MAX_ROWS) {
+    const files = Math.ceil(rows / IMPORT_MAX_ROWS);
+    throw new UserError(
+      `This file has ${rows.toLocaleString("en-US")} rows. One import takes at most ${IMPORT_MAX_ROWS.toLocaleString("en-US")}. ` +
+        `Split it into ${FILE_COUNTS[files] ?? files} files and import each one.`,
+    );
+  }
   return { header: first?.fields ?? [], records };
 }
 
@@ -172,17 +199,75 @@ export function mapRows(
   return records.map(({ line, fields: cells }) => {
     const values: Record<string, string | null> = Object.fromEntries(module.columns.map((column) => [column.key, null]));
     const fields: MappedField[] = [];
+    const sizes = new RowSize(line);
     targets.forEach((target, index) => {
       const raw = cells[index] ?? "";
+      const column = (header[index] ?? "").trim();
       if (target.kind === "builtin") {
-        values[target.key] = cleanValue(raw, columns.get(target.key)?.multiline ?? false);
+        values[target.key] = sizes.add(cleanValue(raw, columns.get(target.key)?.multiline ?? false), column);
       } else if (target.kind === "field") {
-        const text = cleanValue(raw, false);
-        if (text !== null) fields.push({ key: target.key, column: (header[index] ?? "").trim(), text });
+        const text = sizes.add(cleanValue(raw, false), column);
+        if (text !== null) fields.push({ key: target.key, column, text });
       }
     });
+    sizes.check();
     return { line, values, fields };
   });
+}
+
+/**
+ * The most one imported value may take, and the most one row's values may take together, measured as stored (decision
+ * 0035): JSON inside JSON for a custom field, then as a SQL literal. A row is written into a statement of at most
+ * CHUNK_BYTES (90 KB), and an undo's snapshot holds it twice (before and after), so a row must stay under half of that
+ * with room for its ids and times. Within these, every bulk statement fits D1's 100 KB.
+ */
+export const IMPORT_MAX_VALUE_BYTES = 40_000;
+export const IMPORT_MAX_ROW_BYTES = 40_000;
+
+const kb = (bytes: number) => `${Math.ceil(bytes / 1000)} KB`;
+
+/** A value's stored size, worst case: written as JSON inside JSON (a custom field), then as a SQL literal. */
+const storedBytes = (text: string) => sqlBytes(JSON.stringify(JSON.stringify(text)));
+
+/** Adds up one row's values and refuses, in plain English, a value or a row too large to write in one statement. */
+class RowSize {
+  readonly #line: number;
+  readonly #texts: string[] = [];
+  #bound = 0;
+
+  constructor(line: number) {
+    this.#line = line;
+  }
+
+  add(text: string | null, column: string): string | null {
+    if (text === null) return null;
+    // Stored, one UTF-16 unit takes at most 7 bytes (a lone surrogate, \\uXXXX escaped twice), so a short value
+    // needs no measuring.
+    const bound = 7 * text.length + 6;
+    if (bound > IMPORT_MAX_VALUE_BYTES) {
+      const bytes = storedBytes(text);
+      if (bytes > IMPORT_MAX_VALUE_BYTES) {
+        throw new UserError(
+          `Line ${this.#line}'s ${column === "" ? "unnamed" : `"${column}"`} value is ${kb(bytes)}; one value can be at most ` +
+            `${kb(IMPORT_MAX_VALUE_BYTES)}. Shorten it and try again.`,
+        );
+      }
+    }
+    this.#texts.push(text);
+    this.#bound += bound;
+    return text;
+  }
+
+  check(): void {
+    if (this.#bound <= IMPORT_MAX_ROW_BYTES) return;
+    const total = this.#texts.reduce((sum, text) => sum + storedBytes(text), 0);
+    if (total > IMPORT_MAX_ROW_BYTES) {
+      throw new UserError(
+        `Line ${this.#line} is ${kb(total)}; one row can be at most ${kb(IMPORT_MAX_ROW_BYTES)}. ` +
+          "Shorten its longest values and try again.",
+      );
+    }
+  }
 }
 
 /** readCsv, autoMatch and mapRows in one: the rows a module plans, and the header names not imported. */

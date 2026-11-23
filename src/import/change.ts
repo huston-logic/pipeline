@@ -1,7 +1,8 @@
 // The CSV import's one audited change (actor owner, tool "import"): the change a module builds from its plan (for
 // contacts, src/import/modules/people.ts), with the same row snapshots, write_guard checks and audit row that
 // commitChange writes, rendered as a SQL file for `wrangler d1 execute --file`. Undo reverses it like any other change
-// (undo_change).
+// (undo_change). An import's change is bulk (decision 0035), so a file of up to 2,000 rows renders as a few dozen
+// statements, each under D1's 100 KB (renderScript checks every one against MAX_STATEMENT_BYTES).
 import { buildChange, type Ctx, type ChangeInput } from "../services/change.ts";
 import { renderScript } from "./sql.ts";
 

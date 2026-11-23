@@ -426,7 +426,8 @@ test("email_log from the previous version: existing rows stay and the table star
   const db = new SqliteD1();
   await applyMigrations(db, file.number - 1);
   applySqlFile(db, "seed/defaults.sql");
-  for (const [table, sql] of Object.entries(FAKE_ROWS)) if (table !== "email_log") db.exec(sql);
+  const present = await userTables(db);
+  for (const [table, sql] of Object.entries(FAKE_ROWS)) if (table !== "email_log" && present.includes(table)) db.exec(sql);
   const before = await snapshot(db, ["contacts", "activities", "briefs"]);
 
   assert.deepEqual(await applyMigrations(db, file.number), [file.name]);
@@ -448,6 +449,35 @@ test("email_log: one row per message key; counts can't be negative", async () =>
     db.prepare("INSERT INTO email_log (message_key, received_at, local_date, matched, unmatched) VALUES ('k', 'x', 'y', 'one', 0)").run(),
     /cannot store TEXT/,
   );
+});
+
+test("0009 from the previous version keeps every row and gives old audit rows parts = 0", async () => {
+  const db = new SqliteD1();
+  await applyMigrations(db, 8);
+  applySqlFile(db, "seed/defaults.sql");
+  const present = await userTables(db);
+  for (const [table, sql] of Object.entries(FAKE_ROWS)) if (present.includes(table)) db.exec(sql);
+  const before = await snapshot(db, ["audit_log", "contacts"]);
+
+  assert.deepEqual(await applyMigrations(db, 9), ["0009_audit_parts.sql"]);
+  const after = await snapshot(db, ["audit_log", "contacts"]);
+  assert.deepEqual(after.contacts, before.contacts);
+  assert.deepEqual(after.audit_log, before.audit_log?.map((row) => ({ ...row, parts: 0 })));
+  assert.equal(await count(db, "audit_parts"), 0);
+});
+
+test("audit_parts: one row per change and seq, valid JSON, and only for a change that exists", async () => {
+  const db = await createTestDb();
+  db.exec(FAKE_ROWS.audit_log ?? "");
+  const insert = (change: string, seq: number, before = "{}", after = "{}") =>
+    db.prepare("INSERT INTO audit_parts (change_id, seq, before_json, after_json) VALUES (?, ?, ?, ?)").bind(change, seq, before, after).run();
+  await insert("chg_fake", 1);
+  await assert.rejects(insert("chg_fake", 1), /UNIQUE constraint failed/);
+  await assert.rejects(insert("chg_fake", 2, "not json"), /CHECK/);
+  await assert.rejects(insert("chg_fake", 3, "{}", "{"), /CHECK/);
+  await assert.rejects(insert("chg_missing", 1), /FOREIGN KEY constraint failed/);
+  await assert.rejects(insert("chg_fake", "two" as unknown as number), /cannot store TEXT/);
+  assert.equal(await db.prepare("SELECT parts FROM audit_log WHERE id = 'chg_fake'").first("parts"), 0);
 });
 
 test("briefs: one per local date, items must be a JSON array", async () => {
@@ -485,6 +515,10 @@ const FAKE_ROWS: Record<string, string> = {
   rulebook: "INSERT INTO rulebook (name, markdown) VALUES ('fake', '# Fake')",
   audit_log:
     "INSERT INTO audit_log (id, at, actor, tool, target_table, target_id, before_json, after_json, summary) VALUES ('chg_fake', '2026-11-18T17:00:00.000Z', 'ai', 'add_lead', 'deals', 'dl_fake', '{}', '{\"deals:dl_fake\":null}', 'Added a fake lead (change chg_fake)')",
+  // A bulk change of its own (decision 0035): '{}' in the audit row, parts = 1, the snapshot in its one part.
+  audit_parts:
+    "INSERT INTO audit_log (id, at, actor, tool, target_table, target_id, before_json, after_json, summary, parts) VALUES ('chg_fakebulk', '2026-11-18T18:00:00.000Z', 'owner', 'import', 'contacts', 'ct_fake', '{}', '{}', 'Imported 1 contact and filled details on 0 (change chg_fakebulk)', 1); " +
+    "INSERT INTO audit_parts (change_id, seq, before_json, after_json) VALUES ('chg_fakebulk', 1, '{\"contacts:ct_fake\":null}', '{\"contacts:ct_fake\":{\"id\":\"ct_fake\"}}')",
   briefs:
     "INSERT INTO briefs (id, local_date, composed_at, text) VALUES ('br_fake', '2026-11-18', '2026-11-18T15:00:00.000Z', 'Fake brief')",
   push_subscriptions:

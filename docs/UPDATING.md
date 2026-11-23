@@ -87,8 +87,8 @@ npm run import:contacts -- --copy <name> --file <csv> --as leads --apply
 
 The dry run prints how many people it would add and skip. Lines marked "possible duplicate" look like someone already on
 file or earlier in the same file (a row with no email whose business is already there); they are skipped. Check them, and add `--allow-duplicates` only if you want them
-anyway. A big file is split into files of about 190 rows when applied (D1 allows 100 KB per statement). The import is
-one change; ask the AI app to undo it if it was wrong.
+anyway. One file takes up to 2,000 rows and 1 MB and is applied in one go (decision 0035); split a bigger list into
+files of that size. Each import is one change; ask the AI app to undo it if it was wrong.
 
 ### 5. Email logging
 
