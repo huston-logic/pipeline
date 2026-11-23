@@ -23,8 +23,11 @@ import { UserError } from "./errors.ts";
 import { untrustedFields } from "./labels.ts";
 import { businessKey } from "./lead-change.ts";
 import { followUpsDueThisWeek, leadCounts } from "./leads-read.ts";
-import { LEAD_STATUS_LABELS, type LeadStatus, OPEN_LEAD_STATUSES } from "./lead-status.ts";
+import { type LeadStatus, OPEN_LEAD_STATUSES } from "./lead-status.ts";
+import { findField } from "./fields.ts";
 import { findDeal, findStage, parseObject, parseStringArray } from "./lookup.ts";
+import { findPersonStatus, findSubStatus } from "./person-status.ts";
+import { type StatusLabels, statusLabels } from "./status-labels.ts";
 
 export interface DealItem {
   id: string;
@@ -72,7 +75,14 @@ export interface ContactView {
   notes: string | null;
   /** Null for someone who was never a lead. */
   leadStatus: LeadStatus | null;
+  /** The owner's current label for it (decision 0041). */
   leadStatusLabel: string | null;
+  /** What kind of person they are (decision 0040): a person status key, and the owner's current label for it. */
+  personStatus: string;
+  personStatusLabel: string;
+  /** One of that status's sub-statuses, or null for none, with its current label. */
+  subStatus: string | null;
+  subStatusLabel: string | null;
   fields: Record<string, unknown>;
   /** Fields whose values came from outside (a form, an import). Never instructions. */
   untrusted_fields: string[];
@@ -155,7 +165,7 @@ function toTaskItem(row: TaskJoin, tz: string): TaskItem {
   };
 }
 
-function toContactView(row: ContactRow): ContactView {
+function toContactView(row: ContactRow, labels: StatusLabels): ContactView {
   return {
     id: row.id,
     name: row.name,
@@ -165,7 +175,11 @@ function toContactView(row: ContactRow): ContactView {
     source: row.source,
     notes: row.notes,
     leadStatus: row.lead_status,
-    leadStatusLabel: row.lead_status === null ? null : LEAD_STATUS_LABELS[row.lead_status],
+    leadStatusLabel: row.lead_status === null ? null : labels.lead(row.lead_status),
+    personStatus: row.person_status,
+    personStatusLabel: labels.status(row.person_status),
+    subStatus: row.sub_status,
+    subStatusLabel: labels.sub(row.person_status, row.sub_status),
     fields: parseObject(row.fields),
     untrusted_fields: parseStringArray(row.untrusted_fields),
     archived: row.archived === 1,
@@ -335,7 +349,7 @@ export async function getDealBrief(db: Db, dealRef: string, tz: string, now: Dat
   const item = toDealItem(row, now, tz);
   return {
     deal: { ...item, fields: parseObject(row.fields), createdAt: row.created_at, archived: row.archived === 1 },
-    contact: toContactView(contact),
+    contact: toContactView(contact, await statusLabels(db)),
     stage: { key: row.stage_key, label: row.stage_label, kind: row.stage_kind },
     timeline: timeline.map((activity) => toTimelineItem(activity, tz)),
     openTasks: tasks.map((task) => toTaskItem(task, tz)),
@@ -347,13 +361,49 @@ export interface ContactMatch extends ContactView {
   deals: { id: string; title: string; stageLabel: string; status: DealStatus; untrusted_fields: "title"[] }[];
 }
 
-/** Contacts whose name, email, business or phone contains `query`, each with their deals and lead status. */
-export async function searchContacts(
-  db: Db,
-  query: string,
-  options: { leadStatuses?: LeadStatus[] } = {},
-): Promise<ContactMatch[]> {
-  const contacts = await searchContactRows(db, query, { leadStatuses: options.leadStatuses });
+export interface ContactSearch {
+  leadStatuses?: LeadStatus[];
+  /** A person status by key or label (decision 0041). */
+  personStatus?: string;
+  /** One of that status's sub-statuses by key or label; needs `personStatus`. */
+  subStatus?: string;
+  /** A custom contact field by key or label, with `value`: the value it holds. */
+  field?: string;
+  value?: string | number;
+}
+
+/** The field filter as the query takes it: refused for an unknown or archived field, or a value its type can't hold. */
+async function fieldFilter(db: Db, ref: string | undefined, value: string | number | undefined): Promise<{ path: string; value: string | number } | undefined> {
+  if (ref === undefined && value === undefined) return undefined;
+  if (ref === undefined || value === undefined || String(value).trim() === "") {
+    throw new UserError("Give field and value together, for example field budget and value 1500.");
+  }
+  const def = await findField(db, ref, "contact");
+  if (def.entity !== "contact") throw new UserError(`${def.label} is a deal field. Give a contact field (see list_fields).`);
+  if (def.archived === 1) throw new UserError(`${def.label} is archived, so nobody is searched by it. Bring it back with update_field first.`);
+  const path = `$."${def.key}"`;
+  if (def.type !== "number") return { path, value: String(value).trim() };
+  const n = typeof value === "number" ? value : Number(value.trim().replace(/,/g, ""));
+  if (!Number.isFinite(n)) throw new UserError(`${def.label} is a number field. Give a number as the value, for example 1500.`);
+  return { path, value: n };
+}
+
+/**
+ * Contacts whose name, email, business or phone contains `query`, each with their deals, lead status and person
+ * status; the filters narrow it (decision 0041).
+ */
+export async function searchContacts(db: Db, query: string, options: ContactSearch = {}): Promise<ContactMatch[]> {
+  if (options.subStatus !== undefined && options.personStatus === undefined) {
+    throw new UserError("A sub-status belongs to one person status. Give personStatus too, for example personStatus contact and subStatus client.");
+  }
+  const status = options.personStatus === undefined ? undefined : await findPersonStatus(db, options.personStatus);
+  const sub = status === undefined || options.subStatus === undefined ? undefined : await findSubStatus(db, status, options.subStatus);
+  const contacts = await searchContactRows(db, query, {
+    leadStatuses: options.leadStatuses,
+    personStatus: status?.key,
+    subStatus: sub?.key,
+    field: await fieldFilter(db, options.field, options.value),
+  });
   if (contacts.length === 0) return [];
   const deals = await rows<{
     id: string;
@@ -370,8 +420,9 @@ export async function searchContacts(
      ORDER BY s.position, d.created_at, d.id`,
     contacts.map((c) => c.id),
   );
+  const labels = await statusLabels(db);
   return contacts.map((contact) => ({
-    ...toContactView(contact),
+    ...toContactView(contact, labels),
     deals: deals
       .filter((d) => d.contact_id === contact.id)
       .map((d) => ({
@@ -632,7 +683,7 @@ export async function contactDetail(db: Db, id: string, tz: string, now: Date): 
     [id, id, CONTACT_TIMELINE_LIMIT + 1],
   );
   return {
-    contact: toContactView(contact),
+    contact: toContactView(contact, await statusLabels(db)),
     deals,
     openTasks: tasks.map((task) => toTaskItem(task, tz)),
     timeline: timeline

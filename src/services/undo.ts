@@ -30,7 +30,8 @@ import {
 import { capitalize, columnLabel, dealTitleOf, joinAnd, rowLabel, short } from "./describe.ts";
 import { UserError } from "./errors.ts";
 import { contactName, dealLabel } from "./labels.ts";
-import { isUnqualified, LEAD_STATUS_LABELS, type LeadStatus } from "./lead-status.ts";
+import { isUnqualified, type LeadStatus } from "./lead-status.ts";
+import { statusLabels } from "./status-labels.ts";
 import { parseStringArray, stageLabels } from "./lookup.ts";
 import { migratedPersonColumns } from "./person-move.ts";
 import { resumedParams } from "./rules.ts";
@@ -292,7 +293,7 @@ async function reopenBlocker(ctx: Ctx, changeId: string, entries: Entry[], curre
     const dealRef = { id: String(deal.id), title: String(deal.title), untrusted_fields: deal.untrusted_fields };
     return (
       `Can't undo ${changeId}: it would reopen ${dealLabel(dealRef, contact)}, but ${contactName(contact)} is a lead now ` +
-      `(${LEAD_STATUS_LABELS[contact.lead_status]}). Reopen the deal with update_deal instead, which makes them a contact again.`
+      `(${(await statusLabels(ctx.db)).lead(contact.lead_status)}). Reopen the deal with update_deal instead, which makes them a contact again.`
     );
   }
   return null;
@@ -329,7 +330,7 @@ async function leadAgainBlocker(ctx: Ctx, changeId: string, entries: Entry[], cu
     if (open.size === 0) continue;
     const contact = current.get(entry) ?? before;
     const person = { id: entry.id, name: String(contact.name), untrusted_fields: contact.untrusted_fields };
-    const who = `${contactName(person)} a lead again (${LEAD_STATUS_LABELS[status]})`;
+    const who = `${contactName(person)} a lead again (${(await statusLabels(ctx.db)).lead(status)})`;
     const [only] = open.values();
     if (open.size === 1 && only !== undefined) {
       return (

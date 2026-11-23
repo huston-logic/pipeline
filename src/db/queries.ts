@@ -75,7 +75,15 @@ const escapeLike = (text: string) => text.replace(/[\\%_]/g, (c) => `\\${c}`);
 export async function searchContacts(
   db: Db,
   query: string,
-  options: { limit?: number; includeArchived?: boolean; leadStatuses?: readonly string[] } = {},
+  options: {
+    limit?: number;
+    includeArchived?: boolean;
+    leadStatuses?: readonly string[];
+    personStatus?: string;
+    subStatus?: string;
+    /** A custom field's JSON path ($."key") and the value it holds: a number exactly, text ignoring ASCII case. */
+    field?: { path: string; value: string | number };
+  } = {},
 ): Promise<ContactRow[]> {
   const w = where();
   const text = query.trim();
@@ -93,6 +101,11 @@ export async function searchContacts(
   if (!options.includeArchived) add(w, "archived = 0");
   const statuses = options.leadStatuses ?? [];
   if (statuses.length > 0) add(w, `lead_status IN (${statuses.map(() => "?").join(", ")})`, ...statuses);
+  if (options.personStatus !== undefined) add(w, "person_status = ?", options.personStatus);
+  if (options.subStatus !== undefined) add(w, "sub_status = ?", options.subStatus);
+  const field = options.field;
+  if (field !== undefined && typeof field.value === "number") add(w, "json_extract(fields, ?) = ?", field.path, field.value);
+  else if (field !== undefined) add(w, "lower(CAST(json_extract(fields, ?) AS TEXT)) = lower(?)", field.path, field.value);
   return all<ContactRow>(db, `SELECT * FROM contacts ${whereSql(w)} ORDER BY name COLLATE NOCASE, id LIMIT ?`, [
     ...w.params,
     options.limit ?? 20,

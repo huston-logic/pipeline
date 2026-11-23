@@ -10,7 +10,7 @@ import { newId } from "../ids.ts";
 import { activityEffects } from "../services/activities.ts";
 import { commitChange, type Ctx, isEmailLogKeyFailure, type RowChange, StaleWriteError } from "../services/change.ts";
 import { contactName } from "../services/labels.ts";
-import { LEAD_STATUS_LABELS } from "../services/lead-status.ts";
+import { statusLabels } from "../services/status-labels.ts";
 import { ownerTimezone } from "../services/lookup.ts";
 import { localDate } from "../time.ts";
 import { logAddressOf } from "./address.ts";
@@ -139,7 +139,7 @@ async function record(db: Db, now: Date, { key, email, addresses }: Logged): Pro
     if (effects.contacted !== null) contacted.push(person);
   }
 
-  const moved = contacted.length === 0 ? "" : `; ${listOf(contacted.map(contactName))} ${contacted.length === 1 ? "is" : "are"} now ${LEAD_STATUS_LABELS.contacted}`;
+  const moved = contacted.length === 0 ? "" : `; ${listOf(contacted.map(contactName))} ${contacted.length === 1 ? "is" : "are"} now ${(await statusLabels(db)).lead("contacted")}`;
   const summary = `Logged an email by BCC with ${listOf(people.map(contactName))}${moved}`;
   const ctx: Ctx = { db, now, actor: "system", tool: "email_log" };
   const target = { table: "activities" as const, id: activities[0]?.id ?? "" };

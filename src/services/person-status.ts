@@ -71,6 +71,33 @@ export async function listPersonStatuses(db: Db): Promise<PersonStatusView[]> {
   }));
 }
 
+export interface PersonStatusOverview extends Omit<PersonStatusView, "subStatuses"> {
+  /** People (not archived) with this status. */
+  people: number;
+  subStatuses: (SubStatusView & { people: number })[];
+}
+
+/** list_person_statuses (decision 0041): the statuses in board order with how many people hold each; archived ones on request. */
+export async function personStatusOverview(db: Db, includeArchived: boolean): Promise<PersonStatusOverview[]> {
+  const [all, held] = await Promise.all([
+    listPersonStatuses(db),
+    db
+      .prepare("SELECT person_status AS status, sub_status AS sub, COUNT(*) AS n FROM contacts WHERE archived = 0 GROUP BY 1, 2")
+      .all<{ status: string; sub: string | null; n: number }>(),
+  ]);
+  const count = (status: string, sub?: string) =>
+    held.results.filter((row) => row.status === status && (sub === undefined || row.sub === sub)).reduce((sum, row) => sum + row.n, 0);
+  return all
+    .filter((status) => includeArchived || !status.archived)
+    .map((status) => ({
+      ...status,
+      people: count(status.key),
+      subStatuses: status.subStatuses
+        .filter((sub) => includeArchived || !sub.archived)
+        .map((sub) => ({ ...sub, people: count(status.key, sub.key) })),
+    }));
+}
+
 /** The statuses as the import plan takes them (src/import/modules/people.ts). */
 export async function statusEntries(db: Db): Promise<readonly StatusEntry[]> {
   const [statuses, subs] = await Promise.all([statusRows(db), subRows(db)]);
@@ -406,6 +433,65 @@ export interface PersonStatusInput {
   sub?: string | null;
 }
 
+/** Where a write moves a person: the live status and sub-status rows, and the move as keys. */
+export interface ResolvedMove {
+  status: PersonStatusRow;
+  sub: PersonSubstatusRow | null;
+  move: PersonMove;
+}
+
+/**
+ * The live status and sub-status a write moves a person to, or the plain refusal. `current` is the person now, or null
+ * for a new person. With no sub-status given: kept when the status stays the same, New for Lead, none otherwise. Lead
+ * always has one.
+ */
+export async function resolveMove(
+  db: Db,
+  current: Pick<ContactRow, "person_status" | "sub_status"> | null,
+  input: PersonStatusInput,
+): Promise<ResolvedMove> {
+  const statuses = await statusRows(db);
+  const text = input.status.trim();
+  const status = statuses.find((row) => row.key === text) ?? statuses.find((row) => row.archived === 0 && sameLabel(row.label, text));
+  if (!status || status.archived === 1) {
+    const list = statuses.filter((row) => row.archived === 0).map((row) => `${row.label} (${row.key})`).join(", ");
+    throw new UserError(`There's no live person status "${text}". Use one of: ${list}.`);
+  }
+  const subs = (await subRows(db, status.key)).filter((row) => row.archived === 0);
+  let sub: PersonSubstatusRow | null = null;
+  if (input.sub === undefined) {
+    if (current !== null && status.key === current.person_status) sub = subs.find((row) => row.key === current.sub_status) ?? null;
+    else if (status.key === LEAD) sub = subs.find((row) => row.key === "new") ?? null;
+  } else if (input.sub !== null && clean(input.sub) !== null) {
+    const subText = input.sub.trim();
+    sub = subs.find((row) => row.key === subText) ?? subs.find((row) => sameLabel(row.label, subText)) ?? null;
+    if (sub === null) {
+      const list = subs.map((row) => `${row.label} (${row.key})`).join(", ");
+      throw new UserError(
+        list === ""
+          ? `${status.label} has no sub-statuses. Leave the sub-status out.`
+          : `${status.label} has no sub-status "${subText}". Use one of: ${list}.`,
+      );
+    }
+  }
+  if (status.key === LEAD && sub === null) {
+    throw new UserError(`A lead always has a ${status.sub_label.toLowerCase()}. Give one of: ${subs.map((row) => row.key).join(", ")}.`);
+  }
+  return { status, sub, move: { status: status.key, sub: sub?.key ?? null } };
+}
+
+/** A status by key (archived ones too) or label, for a filter: the refusal lists the live ones. */
+export async function findPersonStatus(db: Db, ref: string): Promise<PersonStatusRow> {
+  return pick(await statusRows(db), ref, "person status");
+}
+
+/** One of a status's sub-statuses by key (archived ones too) or label. */
+export async function findSubStatus(db: Db, status: PersonStatusRow, ref: string): Promise<PersonSubstatusRow> {
+  const all = await subRows(db, status.key);
+  if (all.length === 0) throw new UserError(`${status.label} has no sub-statuses. Leave the sub-status out.`);
+  return pick(all, ref, `sub-status of ${status.label}`);
+}
+
 /** The refusal for Lead while the person has open deals (invariant 1, decision 0022). */
 async function refuseLeadWithDeal(db: Db, contact: ContactRow): Promise<void> {
   const open = await openDealCount(db, contact.id);
@@ -427,34 +513,7 @@ export async function setPersonStatus(ctx: Ctx, contactRef: string, input: Perso
   const contact = await findContact(db, contactRef);
   const who = contactName(contact);
   if (contact.archived === 1) throw new UserError(`${capitalize(who)} is archived, so their status can't change.`);
-  const statuses = await statusRows(db);
-  const text = input.status.trim();
-  const status = statuses.find((row) => row.key === text) ?? statuses.find((row) => row.archived === 0 && sameLabel(row.label, text));
-  if (!status || status.archived === 1) {
-    const list = statuses.filter((row) => row.archived === 0).map((row) => `${row.label} (${row.key})`).join(", ");
-    throw new UserError(`There's no live person status "${text}". Use one of: ${list}.`);
-  }
-  const subs = (await subRows(db, status.key)).filter((row) => row.archived === 0);
-  let sub: PersonSubstatusRow | null = null;
-  if (input.sub === undefined) {
-    if (status.key === contact.person_status) sub = subs.find((row) => row.key === contact.sub_status) ?? null;
-    else if (status.key === LEAD) sub = subs.find((row) => row.key === "new") ?? null;
-  } else if (input.sub !== null && clean(input.sub) !== null) {
-    const subText = input.sub.trim();
-    sub = subs.find((row) => row.key === subText) ?? subs.find((row) => sameLabel(row.label, subText)) ?? null;
-    if (sub === null) {
-      const list = subs.map((row) => `${row.label} (${row.key})`).join(", ");
-      throw new UserError(
-        list === ""
-          ? `${status.label} has no sub-statuses. Leave the sub-status out.`
-          : `${status.label} has no sub-status "${subText}". Use one of: ${list}.`,
-      );
-    }
-  }
-  if (status.key === LEAD && sub === null) {
-    throw new UserError(`A lead always has a ${status.sub_label.toLowerCase()}. Give one of: ${subs.map((row) => row.key).join(", ")}.`);
-  }
-  const to: PersonMove = { status: status.key, sub: sub?.key ?? null };
+  const { status, sub, move: to } = await resolveMove(db, contact, input);
   if (to.status === contact.person_status && to.sub === contact.sub_status) {
     throw new UserError(`Nothing to change for ${who}: they are ${status.label}${sub ? ` (${sub.label})` : ""} already.`);
   }

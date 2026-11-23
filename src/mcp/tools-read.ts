@@ -9,12 +9,14 @@ import { ownerTimezone } from "../services/lookup.ts";
 import { getSettings } from "../services/settings.ts";
 import { stageOverview } from "../services/stages.ts";
 import { LEAD_SORTS, listLeads } from "../services/leads-read.ts";
-import { LEAD_STATUS_LABELS, LEAD_STATUSES, type LeadStatus } from "../services/lead-status.ts";
+import { LEAD_STATUSES, type LeadStatus } from "../services/lead-status.ts";
+import { personStatusOverview } from "../services/person-status.ts";
+import { type StatusLabels, statusLabels } from "../services/status-labels.ts";
 import { getDealBrief, listDealsFiltered, pipelineSummary, recentChanges, searchContacts, whatsDue } from "../services/read.ts";
 import { listRules, previewRuleFor, type RulePreview } from "../services/rules.ts";
 import { formatLocal, parseWhen } from "../time.ts";
 import { toolResult } from "./format.ts";
-import { DEAL_STATUSES, dealRef, FIELD_ENTITIES, RULE_TYPES, ruleRef, ruleSettings, shortText, when } from "./schemas.ts";
+import { DEAL_STATUSES, dealRef, FIELD_ENTITIES, RULE_TYPES, ruleRef, ruleSettings, shortText, statusRef, subStatusRef, when } from "./schemas.ts";
 import { registerTool, type ToolDeps } from "./tool.ts";
 
 const DAY_MS = 86_400_000;
@@ -43,10 +45,10 @@ function previewHeadline(preview: RulePreview): string {
 const leadStatusList = (description: string) => z.array(z.enum(LEAD_STATUSES)).max(LEAD_STATUSES.length).describe(description);
 
 /** "Leads: 4 new, 3 contacted, 2 not now; 3 follow-ups due this week." Counts only, never a name. */
-function leadsSentence(leads: NonNullable<Awaited<ReturnType<typeof pipelineSummary>>["leads"]>): string {
+function leadsSentence(leads: NonNullable<Awaited<ReturnType<typeof pipelineSummary>>["leads"]>, labels: StatusLabels): string {
   const parts = (["new", "contacted", "not_now", "not_a_fit", "bad"] as const)
     .filter((status) => leads.counts[status] > 0)
-    .map((status) => `${leads.counts[status]} ${LEAD_STATUS_LABELS[status].toLowerCase()}`);
+    .map((status) => `${leads.counts[status]} ${labels.lead(status).toLowerCase()}`);
   return `Leads: ${parts.join(", ")}; ${count(leads.followUpsDueThisWeek, "follow-up")} due this week.`;
 }
 
@@ -64,7 +66,7 @@ export function registerReadTools(server: McpServer, deps: ToolDeps): void {
       async run(_args, { db, now }) {
         const at = now();
         const summary = await pipelineSummary(db, at, await ownerTimezone(db));
-        const leads = summary.leads === null ? "" : ` ${leadsSentence(summary.leads)}`;
+        const leads = summary.leads === null ? "" : ` ${leadsSentence(summary.leads, await statusLabels(db))}`;
         if (summary.total === 0) {
           return toolResult(`Your pipeline is empty: there are no deals yet. Add one with add_deal.${leads}`, summary);
         }
@@ -149,17 +151,24 @@ export function registerReadTools(server: McpServer, deps: ToolDeps): void {
       kind: "read",
       description:
         "Contacts whose name, email, business or phone contains the text (up to 20, by name), each with their deals. " +
-        "An empty query lists the first 20 contacts. Each result has its lead status (null for someone who was never " +
-        "a lead); leadStatus keeps only people with one of those statuses.",
+        "An empty query lists the first 20 contacts. Each result has its person status and sub-status (keys and " +
+        "labels) and its lead status (null for someone who was never a lead). The filters combine: leadStatus, " +
+        "personStatus with an optional subStatus (for example contact and client, or partner), and a custom contact " +
+        "field with the value it holds (a number field compares numbers; text ignores case).",
       input: z.strictObject({
         query: z.string().max(200).describe("Text to look for, for example part of a name."),
         leadStatus: leadStatusList("Only people with one of these lead statuses.").optional(),
+        personStatus: statusRef("Only people with this person status: its key or label (see list_person_statuses).").optional(),
+        subStatus: subStatusRef("With personStatus: only people with this sub-status of it, by key or label.").optional(),
+        field: shortText("A custom contact field, by key or label (see list_fields). Give value too.").optional(),
+        value: z.union([z.string().max(2_000), z.number()]).optional().describe("With field: the value the field holds."),
       }),
-      async run({ query, leadStatus }, { db }) {
-        const contacts = await searchContacts(db, query, { leadStatuses: leadStatus });
+      async run({ query, leadStatus, personStatus, subStatus, field, value }, { db }) {
+        const contacts = await searchContacts(db, query, { leadStatuses: leadStatus, personStatus, subStatus, field, value });
+        const filtered = [leadStatus, personStatus, subStatus, field, value].some((filter) => filter !== undefined);
         const headline =
           contacts.length === 0
-            ? query.trim() === ""
+            ? query.trim() === "" && !filtered
               ? "There are no contacts yet. Add a lead with add_lead, or a deal with add_deal."
               : "No contacts match that search."
             : `${count(contacts.length, "contact")} found.`;
@@ -194,9 +203,10 @@ export function registerReadTools(server: McpServer, deps: ToolDeps): void {
         const list = await listLeads(db, now(), await ownerTimezone(db), args);
         if (list.total === 0) return toolResult("No leads match.", { filter: args, ...list });
         const shown = list.items.length;
+        const labels = await statusLabels(db);
         const byStatus = LEAD_STATUSES.map((status: LeadStatus) => [status, list.items.filter((i) => i.leadStatus === status).length] as const)
           .filter(([, n]) => n > 0)
-          .map(([status, n]) => `${n} ${LEAD_STATUS_LABELS[status].toLowerCase()}`);
+          .map(([status, n]) => `${n} ${labels.lead(status).toLowerCase()}`);
         const headline =
           shown < list.total
             ? `${count(list.total, "lead")}, showing the first ${shown}.`
@@ -309,6 +319,29 @@ export function registerReadTools(server: McpServer, deps: ToolDeps): void {
             : `${count(stages.length, "stage")} in board order: ${labels.join(", ")}.`,
           { stages },
         );
+      },
+    },
+    deps,
+  );
+
+  registerTool(
+    server,
+    {
+      name: "list_person_statuses",
+      title: "List person statuses",
+      kind: "read",
+      description:
+        "The kinds of person the owner tracks (Lead, Contact, Partner and any they added), in board order: each one's " +
+        "key, label, the name of its sub-status field, its sub-statuses and how many people have each. Lead and " +
+        "Contact are locked (never archived). Archived ones are left out unless asked for. Use the keys or labels with " +
+        "add_contact, update_contact and search_contacts.",
+      input: z.strictObject({
+        includeArchived: z.boolean().optional().describe("true to list archived statuses and sub-statuses too."),
+      }),
+      async run({ includeArchived }, { db }) {
+        const statuses = await personStatusOverview(db, includeArchived === true);
+        const names = statuses.map((s) => `${s.label}${s.archived ? " (archived)" : ""}`);
+        return toolResult(`${count(statuses.length, "person status", "person statuses")}: ${names.join(", ")}.`, { statuses });
       },
     },
     deps,

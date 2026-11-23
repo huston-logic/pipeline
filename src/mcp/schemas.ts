@@ -25,6 +25,12 @@ export const dealRef = (description = "The deal: its id (dl_...), its exact titl
 export const contactRef = (description = "The contact: their id (ct_...) or exact name.") =>
   z.string().min(1).max(500).describe(description);
 
+/** A person status (decision 0040), by key or label. */
+export const statusRef = (description: string) => z.string().min(1).max(100).describe(description);
+
+/** A sub-status of a person status, by key or label. */
+export const subStatusRef = (description: string) => z.string().max(100).describe(description);
+
 export const DEAL_STATUSES = ["open", "won", "lost", "not_now"] as const;
 
 export const FIELD_ENTITIES = ["contact", "deal"] as const;

@@ -16,6 +16,7 @@ import { contactsOnFile, dealsOnFile, tasksOnFile } from "../import/load.ts";
 import { dealsModule, peopleModule, tasksModule } from "../import/modules/index.ts";
 import { DEFAULT_TZ } from "../time.ts";
 import { logActivity } from "./activities.ts";
+import { addContact } from "./add-contact.ts";
 import { addDeal } from "./add-deal.ts";
 import { type ChangeInput, type ChangeResult, commitChange, type Ctx } from "./change.ts";
 import { updateContact } from "./contacts.ts";
@@ -124,6 +125,14 @@ test("every write that moves or creates a person, and its undo, keeps person_sta
     ["update_deal Won makes a Client", async () => (await updateDeal(ctxFor(db, "update_deal"), "dl_seed01", { stage: "won" })).changeId],
     ["update_deal marks a Not a fit lead's lost deal Won", async () => (await updateDeal(ctxFor(db, "update_deal"), unfitDeal, { status: "won" })).changeId],
     ["update_deal reopens a Not a fit lead's lost deal", async () => (await updateDeal(ctxFor(db, "update_deal"), unfitDeal, { stage: "replied" })).changeId],
+    ["add_contact as a Lead", async () => (await addContact(ctxFor(db, "add_contact"), { name: "Lia Lead", personStatus: "lead" })).changeId],
+    ["add_contact as a Client", async () => (await addContact(ctxFor(db, "add_contact"), { name: "Cal Client", subStatus: "client" })).changeId],
+    ["update_contact moves a lead to Partner", async () => (await updateContact(ctxFor(db, "update_contact"), newId, { personStatus: "partner" })).changeId],
+    [
+      "update_contact moves a contact to Lead, with a name",
+      async () => (await updateContact(ctxFor(db, "update_contact"), "ct_seed08", { personStatus: "lead", subStatus: "not_now", name: "Sam Later" })).changeId,
+    ],
+    ["update_contact moves a lead between sub-statuses", async () => (await updateContact(ctxFor(db, "update_contact"), newId, { subStatus: "bad" })).changeId],
     ["set_person_status to Partner", async () => (await setPersonStatus(ctxFor(db, "set_person_status"), contactedId, { status: "partner" })).changeId],
     ["set_person_status to Lead", async () => (await setPersonStatus(ctxFor(db, "set_person_status"), "ct_seed08", { status: "lead", sub: "contacted" })).changeId],
     [

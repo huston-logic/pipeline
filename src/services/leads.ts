@@ -13,9 +13,10 @@ import { checkFieldValues } from "./fields.ts";
 import { checkEmail, checkValue, clean, whenOrNull, withoutNulls } from "./input.ts";
 import { contactName, contactRef, dealTitle } from "./labels.ts";
 import { businessKey, noOpenDeal, openDealCount, withLeadStatus } from "./lead-change.ts";
-import { isUnqualified, LEAD_STATUS_LABELS, type LeadStatus, UNQUALIFIED_STATUSES } from "./lead-status.ts";
+import { isUnqualified, type LeadStatus, UNQUALIFIED_STATUSES } from "./lead-status.ts";
 import { type FieldValues, findContact, findDeal, findStage, firstStageOfKind, ownerTimezone } from "./lookup.ts";
 import { LEAD, newPersonColumns } from "./person-move.ts";
+import { statusLabels } from "./status-labels.ts";
 
 export interface NewLeadInput {
   /** Needed unless `business` is given; with only a business, the lead is named after it. */
@@ -121,7 +122,7 @@ export async function addLead(ctx: Ctx, input: NewLeadInput): Promise<AddLeadRes
     changes.push({ table: "activities", id: note.id, before: null, after: note });
   }
   const from = contact.source === null ? "" : `, from ${contact.source}`;
-  const summary = `Added lead ${name} (${LEAD_STATUS_LABELS.new})${from}`;
+  const summary = `Added lead ${name} (${(await statusLabels(db)).lead("new")})${from}`;
   const result = await commitWithEmail(ctx, { target: { table: "contacts", id: contact.id }, summary, changes }, email);
   return { ...result, contactId: contact.id };
 }
@@ -263,10 +264,11 @@ export async function returnToLead(ctx: Ctx, input: ReturnInput): Promise<Return
   if (contact.lead_status !== status) {
     changes.push({ table: "contacts", id: contact.id, before: contact, after: withLeadStatus(contact, status, ctx.now) });
   }
+  const label = (await statusLabels(db)).lead(status);
   try {
     const result = await commitChange(ctx, {
       target: { table: "deals", id: deal.id },
-      summary: `Moved ${who} back to leads (${LEAD_STATUS_LABELS[status]}); archived ${dealNoun(deal)}`,
+      summary: `Moved ${who} back to leads (${label}); archived ${dealNoun(deal)}`,
       changes,
       extra: [noOpenDeal(db, contact.id)],
     });
