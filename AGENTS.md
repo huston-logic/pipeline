@@ -145,7 +145,7 @@ this file before changing the repo, and update it when a rule changes.
   on the board's People and Deals check step, unticked by default, read only from the apply form. With it, a person's
   name, business, email, phone and source are stored as the owner's when the cleaned value is at most 200 characters of
   plain text on one line with nothing invisible in it (no variation selectors, fillers or other ignorable characters,
-  no more than three combining marks in a row, at least half of it visible); notes, titles, next steps, custom fields
+  no more than three combining marks in a row, only single plain spaces, at least half of it visible); notes, titles, next steps, custom fields
   and Add to notes lines stay outside text. A confirmed value is the owner's text from then on, as an owner-typed name
   is: it can appear in titles the system builds ("<name> inquiry", "Check back with <name>"), tool headlines and change
   summaries. Never add it to an MCP tool or the CLI: one test scans every tool's inputs, and

@@ -172,3 +172,15 @@ test("own list: a name with a hidden payload is stored as outside text", async (
   assert.equal(row?.name.startsWith("Pat Lee️"), true, "stored as it came");
   assert.deepEqual(outside(row), ["business", "name"], "only the plain email is confirmed");
 });
+
+test("own list: only plain single spaces count, so no value hides text in which space it uses (fix round 2)", () => {
+  const spaced = [
+    ["no-break space", "Pat Lee"],
+    ["thin space", "Pat Lee"],
+    ["ideographic space", "Pat　Lee"],
+    ["a double space", "Pat  Lee"],
+    ["a mix of spaces", "Mary Ann O'Neil Example"],
+  ] as const;
+  for (const [what, text] of spaced) assert.equal(isOwnListValue(text), false, what);
+  for (const text of ["Mary Ann O'Neil", "Nguyễn Văn An", "李小龍", "Pat Lee"]) assert.equal(isOwnListValue(text), true, text);
+});

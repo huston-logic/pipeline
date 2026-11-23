@@ -16,6 +16,8 @@ export const OWN_LIST_MAX = 200;
 const NOT_PLAIN = /[\p{Cc}\p{Cf}\p{Cs}\p{Co}\p{Cn}\p{Zl}\p{Zp}\p{Default_Ignorable_Code_Point}\u2800]/u;
 // More than three combining marks on one character: stacked marks can bury text in a blur.
 const STACKED_MARKS = /\p{M}{4}/u;
+// Any space but a plain one (U+0020), or two plain ones in a row: which space a value uses could carry hidden text.
+const ODD_SPACE = /(?! )[\p{Z}\s]| {2}/u;
 // What draws nothing on its own: spaces and combining marks.
 const NOT_VISIBLE = /^[\p{Z}\s\p{M}]$/u;
 
@@ -28,7 +30,8 @@ function mostlyVisible(text: string): boolean {
 
 /**
  * Whether a cleaned value may be stored as the owner's: at most OWN_LIST_MAX characters of plain text on one line, no
- * invisible characters (NOT_PLAIN), no more than three combining marks in a row, and at least half of it visible.
+ * invisible characters (NOT_PLAIN), no more than three combining marks in a row, only single plain spaces, and at
+ * least half of it visible.
  * Anything else stays outside text.
  */
 export function isOwnListValue(text: string | null | undefined): text is string {
@@ -38,6 +41,7 @@ export function isOwnListValue(text: string | null | undefined): text is string 
     text.length <= OWN_LIST_MAX &&
     !NOT_PLAIN.test(text) &&
     !STACKED_MARKS.test(text) &&
+    !ODD_SPACE.test(text) &&
     mostlyVisible(text)
   );
 }

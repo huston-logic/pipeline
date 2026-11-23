@@ -27,13 +27,15 @@ through MCP.
   on that post is the only thing that turns it on. The preview plans without it, because it changes no count.
 - **What it confirms** (`src/import/own-list.ts`): for each value on its own, only these columns: a person's `name`,
   `business`, `email`, `phone` and `source` (Deals: the `name`, `email` and `business` of a person the import adds).
-  The cleaned value (formula guard off, control characters gone, line breaks already spaces) must pass four checks:
+  The cleaned value (formula guard off, control characters gone, line breaks already spaces) must pass five checks:
   - at most 200 characters;
   - no invisible character: none of Unicode's control, format (bidi overrides and isolates, zero-width characters),
     surrogate, private-use, unassigned, line separator or paragraph separator categories, nothing Unicode lists as
     Default_Ignorable_Code_Point (variation selectors, the combining grapheme joiner, Hangul fillers, tag characters,
     soft hyphens), and not the braille blank U+2800;
   - no more than three combining marks in a row (stacked marks can blur text out of sight);
+  - every space a plain U+0020 and never two in a row, so a value can't hide text in which of Unicode's many spaces
+    it uses (fix round 2);
   - at least half of its characters (code points) visible, that is, not a space or a combining mark (so a value can't
     be mostly padding).
 
@@ -82,7 +84,8 @@ through MCP.
 - Tests: `own list: short identity values are trusted, notes stay outside`, `own list: a deals import confirms the
   people it adds; the deal's own values stay outside`, `own list: a 201-character name stays outside` and `own list: a
   custom field with an identity column's key keeps that key marked, on a new person and a merge`, `own list: invisible
-  and stacked characters keep a value outside` and `own list: a name with a hidden payload is stored as outside text`
+  and stacked characters keep a value outside`, `own list: a name with a hidden payload is stored as outside text` and
+  `own list: only plain single spaces count, so no value hides text in which space it uses`
   (`src/import/own-list.test.ts`); two structural scans in `src/import/own-list-reach.test.ts` (fix round 1), which
   read every source file and fail if `ownList` is set anywhere but the board's apply post, passed anywhere but the
   board's plan or read anywhere but the two modules, or if the form field, `own-list.ts` or `import-plan.ts` is
