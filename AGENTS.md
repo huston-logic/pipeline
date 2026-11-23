@@ -144,8 +144,13 @@ this file before changing the repo, and update it when a rule changes.
   The one exception is "This is my own list" (decision 0038, `src/import/own-list.ts`, `ImportOptions.ownList`): a box
   on the board's People and Deals check step, unticked by default, read only from the apply form. With it, a person's
   name, business, email, phone and source are stored as the owner's when the cleaned value is at most 200 characters of
-  plain text on one line; notes, titles, next steps, custom fields and Add to notes lines stay outside text. Never add
-  it to an MCP tool or the CLI (a test scans every tool's inputs).
+  plain text on one line with nothing invisible in it (no variation selectors, fillers or other ignorable characters,
+  no more than three combining marks in a row, at least half of it visible); notes, titles, next steps, custom fields
+  and Add to notes lines stay outside text. A confirmed value is the owner's text from then on, as an owner-typed name
+  is: it can appear in titles the system builds ("<name> inquiry", "Check back with <name>"), tool headlines and change
+  summaries. Never add it to an MCP tool or the CLI: one test scans every tool's inputs, and
+  `src/import/own-list-reach.test.ts` fails if any file but the board's apply post sets `ownList` or reaches its form
+  field, `own-list.ts` or `import-plan.ts`.
   One import is one change at any size (decision 0035): `readCsv` refuses more than `IMPORT_MAX_ROWS` (2,000) data
   rows or `IMPORT_MAX_BYTES` (1 MB), `mapRows` a value or row over 40 KB (`IMPORT_MAX_VALUE_BYTES`,
   `IMPORT_MAX_ROW_BYTES`), and the change is `bulk` (`ChangeInput.bulk`): set-based statements with one JSON
