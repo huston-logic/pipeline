@@ -8,7 +8,7 @@ import { join, relative } from "node:path";
 import type { ContactRow } from "../src/db/db.ts";
 import { createTestDb, type SqliteD1 } from "../src/db/sqlite-d1.ts";
 import { STUB_ACCOUNT_ID } from "../tests/helpers/wrangler-stub.mjs";
-import { importContacts, parseImportArgs } from "./import-csv.ts";
+import { importContacts, NOT_UPDATED, parseImportArgs } from "./import-csv.ts";
 import { ROOT } from "./wrangler-run.mjs";
 
 const NOW = new Date("2026-11-19T18:00:00.000Z");
@@ -39,8 +39,13 @@ async function harness(t: TestContext, csv: string) {
       return { status: 0, stdout: "", stderr: "" };
     }
     const sql = cmd[cmd.indexOf("--command") + 1] ?? "";
-    const { rows } = db.execute(db.prepare(sql));
-    return { status: 0, stdout: JSON.stringify([{ results: rows, success: true }]), stderr: "" };
+    try {
+      const { rows } = db.execute(db.prepare(sql));
+      return { status: 0, stdout: JSON.stringify([{ results: rows, success: true }]), stderr: "" };
+    } catch (error) {
+      // As wrangler d1 execute fails: a non-zero exit with SQLite's message.
+      return { status: 1, stdout: "", stderr: `✘ [ERROR] ${error instanceof Error ? error.message : String(error)}` };
+    }
   };
   const deps = { run, log: (line: string) => lines.push(line), copiesDir, now: () => NOW };
   return { deps, calls, lines, file, db, copyDir, sqlFiles };
@@ -177,6 +182,18 @@ test("--as leads: the dry run lists possible duplicates by line and id only, the
 test("an unknown --as value is refused in plain English", () => {
   assert.throws(() => parseImportArgs(["--file", "x.csv", "--local", "--as", "deals"]), { message: /^--as can only be "leads"/ });
   assert.throws(() => parseImportArgs(["--file", "x.csv", "--local", "--as"]), /--as needs a value/);
+});
+
+test("a copy without migration 0011 is told to update first, and nothing is written", async (t) => {
+  const h = await harness(t, CSV);
+  h.db.exec("DROP TABLE person_substatuses; DROP TABLE person_statuses");
+  await assert.rejects(importContacts(parseImportArgs(["--file", h.file, "--copy", "acme", "--apply"]), h.deps), {
+    name: "Error",
+    message: "This copy hasn't been updated yet. Run npm run copies:update first, then import.",
+  });
+  assert.equal(NOT_UPDATED, "This copy hasn't been updated yet. Run npm run copies:update first, then import.");
+  assert.equal(h.calls.length, 3, "no write after the failed read");
+  assert.equal(await h.db.prepare("SELECT COUNT(*) AS n FROM audit_log").first("n"), 0);
 });
 
 test("nothing to import writes nothing, and bad arguments say how to fix them", async (t) => {
