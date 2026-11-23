@@ -29,8 +29,16 @@ export function contactLink(id: string, name: string, outside: boolean): Html {
 
 const ADD = { deal: { path: "/deals/new", label: "Add a deal" }, lead: { path: "/leads/new", label: "Add a lead" } } as const;
 
-/** The board import's start (decision 0036): from Leads, new people come in as leads. */
-const importHref = (from: string) => `/import?module=people${from === "leads" ? "&as=leads" : ""}`;
+/**
+ * The board import's start (decisions 0036, 0037): deals from Pipeline, tasks from Today, people from People (and
+ * from Leads they come in as leads).
+ */
+const IMPORT_FROM = {
+  today: "/import?module=tasks",
+  pipeline: "/import?module=deals",
+  contacts: "/import?module=people",
+  leads: "/import?module=people&as=leads",
+} as const;
 
 /**
  * Add a deal and Add a lead under a page's lede (decision 0028), the first as the primary button and any other as a
@@ -39,7 +47,7 @@ const importHref = (from: string) => `/import?module=people${from === "leads" ? 
 export const addButtons = (from: "today" | "pipeline" | "contacts" | "leads", kinds: readonly ("deal" | "lead" | "import")[]): Html =>
   html`<p class="page-action">${kinds.map((kind, i) => {
     const className = `button${i === 0 ? "" : " button-quiet"}`;
-    if (kind === "import") return html`<a class="${className}" href="${importHref(from)}">Import</a>`;
+    if (kind === "import") return html`<a class="${className}" href="${IMPORT_FROM[from]}">Import</a>`;
     return html`<a class="${className}" href="${ADD[kind].path}?from=${from}">${ADD[kind].label}</a>`;
   })}</p>`;
 

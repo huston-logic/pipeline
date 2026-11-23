@@ -5,13 +5,25 @@
 // Leads (decision 0022): `asLeads` gives created rows the status New; a `lead_status` column is used only when it is
 // exactly a status key or label; a column named like a contact custom field fills that field on created rows; and
 // a leads import skips people who look like ones already on file (no email, same business) unless told not to.
-import type { ContactRow, FieldDefRow } from "../../db/db.ts";
-import { newId } from "../../ids.ts";
+// Ids (decision 0037): an `id` column that names a contact on file matches it before the email does; a well-formed
+// contact id that matches nobody is kept for the new contact, so the board's export imports into another copy.
+import type { ContactRow } from "../../db/db.ts";
+import { isContactId, newId } from "../../ids.ts";
 import { type ChangeInput, type RowChange, updatedRow } from "../../services/change.ts";
-import { validateFieldValues } from "../../services/fields.ts";
 import { businessKey } from "../../services/lead-change.ts";
 import { type LeadStatus, leadStatusFromText } from "../../services/lead-status.ts";
 import type { ColumnDef, ImportModule, ImportOptions, MappedRow } from "../engine.ts";
+import {
+  ARCHIVED_IN_FILE,
+  checkedFields,
+  EMAIL,
+  FIELDS_INVALID,
+  fieldInputs,
+  isArchivedCell,
+  isEmptyValue,
+  jsonFieldInputs,
+  storedFields,
+} from "./values.ts";
 
 export const IMPORT_COLUMNS = ["name", "email", "phone", "business", "source", "notes"] as const;
 export type ImportColumn = (typeof IMPORT_COLUMNS)[number];
@@ -33,6 +45,23 @@ export const IMPORT_LIMITS: Record<ImportColumn, number> = {
 /** The header that names the optional status column. */
 export const STATUS_COLUMN = "lead_status";
 
+/** The header that names a contact's id, as the board's export writes it. */
+export const ID_COLUMN = "id";
+
+/** The board export's contacts columns that are bookkeeping, not details: recognised and never imported. */
+const PEOPLE_IGNORED = ["untrusted_fields", "version", "created_at", "updated_at", "lead_status_at"];
+
+/** The export's JSON object of custom field values, and its archived flag: read, never stored as they are. */
+export const FIELDS_COLUMN = "fields";
+export const ARCHIVED_COLUMN = "archived";
+
+export interface PeopleOptions extends ImportOptions {
+  /** Created rows become leads: New, unless a lead_status column says otherwise. */
+  asLeads: boolean;
+  /** Create rows that look like someone already on file (leads imports only). */
+  allowDuplicates: boolean;
+}
+
 const LABELS: Record<ImportColumn, string> = {
   name: "Name",
   email: "Email",
@@ -42,9 +71,10 @@ const LABELS: Record<ImportColumn, string> = {
   notes: "Notes",
 };
 
-// The status column is read for new people only, by its value (an exact status key or label), so its length is never
-// checked on its own.
+// The status column is read for new people only, by its value (an exact status key or label), the id only by its
+// shape, and the export's fields and archived columns only for what they hold, so none has a length limit of its own.
 const PEOPLE_COLUMNS: readonly ColumnDef[] = [
+  { key: ID_COLUMN, label: "Contact id", aliases: [], multiline: false },
   ...IMPORT_COLUMNS.map((key) => ({
     key,
     label: LABELS[key],
@@ -53,7 +83,9 @@ const PEOPLE_COLUMNS: readonly ColumnDef[] = [
     multiline: key === "notes",
     required: key === "name",
   })),
-  { key: STATUS_COLUMN, label: "Lead status", aliases: [], limit: 500, multiline: false },
+  { key: STATUS_COLUMN, label: "Lead status", aliases: [], multiline: false },
+  { key: FIELDS_COLUMN, label: "Field values (from an export)", aliases: [], multiline: false },
+  { key: ARCHIVED_COLUMN, label: "Archived (from an export)", aliases: [], multiline: false },
 ];
 
 export type ExistingContact = {
@@ -71,6 +103,8 @@ export type ImportValues = { name: string } & { [K in Exclude<ImportColumn, "nam
 
 export interface CreateRow extends ImportValues {
   line: number;
+  /** A well-formed contact id from the file that matches nobody, kept for the new contact; null for a new id. */
+  id: string | null;
   /** The status the new contact starts with; null for a contact who is not a lead. */
   leadStatus: LeadStatus | null;
   /** Custom field values by field key, for the contact fields the file has columns for. */
@@ -100,35 +134,9 @@ export interface PeoplePlan {
   skipped: { line: number; reason: string }[];
   /** Possible duplicates left out of `create`; always empty unless the import is as leads. */
   duplicates: DuplicateRow[];
+  /** Lines the file marks archived (also in `skipped`): never created or filled in. */
+  archived: number[];
 }
-
-const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-function fieldProblem(def: FieldDefRow): string {
-  switch (def.type) {
-    case "number":
-      return "needs a number";
-    case "date":
-      return "needs a date like 2026-11-19";
-    case "choice":
-      return `needs one of: ${(JSON.parse(def.choices ?? "[]") as string[]).join(", ")}`;
-    case "text":
-      return "is too long";
-  }
-}
-
-function storedFields(contact: ExistingContact): Record<string, unknown> {
-  try {
-    const value: unknown = JSON.parse(contact.fields ?? "{}");
-    return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
-  } catch {
-    return {};
-  }
-}
-
-const isEmptyField = (value: unknown) => value === undefined || value === null || (typeof value === "string" && value.trim() === "");
-
-const NUMBER = /^-?\d+(\.\d+)?$/;
 
 const isBlank = (text: string | null) => text === null || text.trim() === "";
 
@@ -138,16 +146,13 @@ function joinLines(texts: readonly (string | null)[]): string | null {
   return kept.length === 0 ? null : kept.join("\n");
 }
 
+/** Rows over a column's limit never reach the plan: planRows (src/import/engine.ts) skips them first. */
 export function planPeople(
   rows: readonly MappedRow[],
   existing: readonly ExistingContact[],
-  options: ImportOptions,
+  options: PeopleOptions,
 ): PeoplePlan {
-  const contactField = (key: string): FieldDefRow => {
-    const def = options.fieldDefs.find((candidate) => candidate.entity === "contact" && candidate.archived === 0 && candidate.key === key);
-    if (!def) throw new Error(`The import maps a column to the field "${key}", which isn't a contact field.`);
-    return def;
-  };
+  const byId = new Map(existing.map((contact) => [contact.id, contact]));
   const byEmail = new Map<string, ExistingContact>();
   const byBusiness = new Map<string, ExistingContact>();
   for (const contact of existing) {
@@ -156,8 +161,11 @@ export function planPeople(
     if (business !== "" && !byBusiness.has(business)) byBusiness.set(business, contact);
   }
   const seenEmails = new Map<string, number>();
+  const seenIds = new Map<string, number>();
+  // The contacts on file a line already matched, so no contact is filled in twice in one change.
+  const seenMatches = new Map<string, number>();
   const seenBusinesses = new Map<string, number>();
-  const plan: PeoplePlan = { create: [], merge: [], unchanged: [], skipped: [], duplicates: [] };
+  const plan: PeoplePlan = { create: [], merge: [], unchanged: [], skipped: [], duplicates: [], archived: [] };
 
   for (const row of rows) {
     const { line } = row;
@@ -172,9 +180,9 @@ export function planPeople(
       skip("empty row");
       continue;
     }
-    const tooLong = IMPORT_COLUMNS.find((column) => (values[column]?.length ?? 0) > IMPORT_LIMITS[column]);
-    if (tooLong) {
-      skip(`${tooLong} is longer than ${IMPORT_LIMITS[tooLong]} characters`);
+    if (isArchivedCell(row.values[ARCHIVED_COLUMN] ?? null)) {
+      plan.archived.push(line);
+      skip(ARCHIVED_IN_FILE);
       continue;
     }
     const { name, email } = values;
@@ -182,23 +190,28 @@ export function planPeople(
       skip("no name");
       continue;
     }
-    // What each custom column holds in this row; checked below, only for the fields a row actually fills.
-    const given = row.fields.map(({ key, text }) => ({ def: contactField(key), text }));
-    const checked = (list: typeof given): { fields: CreateRow["fields"]; problem: string | null } => {
-      const out: CreateRow["fields"] = {};
-      for (const { def, text } of list) {
-        const value = def.type === "number" && NUMBER.test(text) ? Number(text) : text;
-        try {
-          validateFieldValues([def], "contact", { [def.key]: value });
-        } catch {
-          // Named by the field's label (the owner's), never by the file's header.
-          return { fields: out, problem: `the "${def.label}" field ${fieldProblem(def)}` };
-        }
-        out[def.key] = value;
+    // What each custom column holds in this row, then the export's fields column for the fields no column gives;
+    // checked below, only for the fields a row actually fills.
+    const columns = fieldInputs(row.fields, options.fieldDefs, "contact");
+    const fromJson = jsonFieldInputs(row.values[FIELDS_COLUMN] ?? null, options.fieldDefs, "contact", columns);
+    if (fromJson === null) {
+      skip(FIELDS_INVALID);
+      continue;
+    }
+    const given = [...columns, ...fromJson];
+    const checked = (list: typeof given) => checkedFields(list, "contact");
+    const idText = row.values[ID_COLUMN] ?? null;
+    const id = idText !== null && isContactId(idText) ? idText : null;
+    if (id !== null) {
+      const earlier = seenIds.get(id);
+      if (earlier !== undefined) {
+        skip(`the same id as line ${earlier}`);
+        continue;
       }
-      return { fields: out, problem: null };
-    };
-    if (email !== null) {
+      seenIds.set(id, line);
+    }
+    const byIdMatch = id === null ? undefined : byId.get(id);
+    if (byIdMatch === undefined && email !== null) {
       if (!EMAIL.test(email)) {
         skip("the email doesn't look like an email address");
         continue;
@@ -210,33 +223,39 @@ export function planPeople(
         continue;
       }
       seenEmails.set(key, line);
-      const match = byEmail.get(key);
-      if (match) {
-        const changes: MergeRow["changes"] = {};
-        for (const column of FILL_COLUMNS) {
-          const value = column === "notes" ? joinLines([values.notes, ...lines]) : values[column];
-          const current = match[column];
-          if (value !== null && (current === null || current.trim() === "")) changes[column] = value;
-        }
-        // Notes on file keep everything they have; "Add to notes" lines they don't hold yet go after it.
-        const added = isBlank(match.notes) ? [] : lines.filter((text) => !(match.notes ?? "").split("\n").includes(text));
-        if (added.length > 0) changes.notes = [match.notes, ...added].join("\n");
-        if ((changes.notes?.length ?? 0) > IMPORT_LIMITS.notes) {
-          skip(`notes is longer than ${IMPORT_LIMITS.notes} characters`);
-          continue;
-        }
-        const stored = storedFields(match);
-        const { fields: filled, problem } = checked(given.filter(({ def }) => isEmptyField(stored[def.key])));
-        if (problem !== null) {
-          skip(problem);
-          continue;
-        }
-        const merged: MergeRow = { id: match.id, line, changes };
-        if (Object.keys(filled).length > 0) merged.fields = filled;
-        if (Object.keys(changes).length > 0 || merged.fields) plan.merge.push(merged);
-        else plan.unchanged.push({ line, id: match.id });
+    }
+    const match = byIdMatch ?? (email === null ? undefined : byEmail.get(email.toLowerCase()));
+    if (match) {
+      const before = seenMatches.get(match.id);
+      if (before !== undefined) {
+        skip(`the same person as line ${before}`);
         continue;
       }
+      seenMatches.set(match.id, line);
+      const changes: MergeRow["changes"] = {};
+      for (const column of FILL_COLUMNS) {
+        const value = column === "notes" ? joinLines([values.notes, ...lines]) : values[column];
+        const current = match[column];
+        if (value !== null && (current === null || current.trim() === "")) changes[column] = value;
+      }
+      // Notes on file keep everything they have; "Add to notes" lines they don't hold yet go after it.
+      const added = isBlank(match.notes) ? [] : lines.filter((text) => !(match.notes ?? "").split("\n").includes(text));
+      if (added.length > 0) changes.notes = [match.notes, ...added].join("\n");
+      if ((changes.notes?.length ?? 0) > IMPORT_LIMITS.notes) {
+        skip(`notes is longer than ${IMPORT_LIMITS.notes} characters`);
+        continue;
+      }
+      const stored = storedFields(match.fields);
+      const { fields: filled, problem } = checked(given.filter(({ def }) => isEmptyValue(stored[def.key])));
+      if (problem !== null) {
+        skip(problem);
+        continue;
+      }
+      const merged: MergeRow = { id: match.id, line, changes };
+      if (Object.keys(filled).length > 0) merged.fields = filled;
+      if (Object.keys(changes).length > 0 || merged.fields) plan.merge.push(merged);
+      else plan.unchanged.push({ line, id: match.id });
+      continue;
     }
     // A new person: the status column (a merge never uses it) and every custom value must be usable.
     let leadStatus: LeadStatus | null = options.asLeads ? "new" : null;
@@ -272,7 +291,7 @@ export function planPeople(
       continue;
     }
     if (business !== "" && !seenBusinesses.has(business)) seenBusinesses.set(business, line);
-    plan.create.push({ line, ...values, notes, name, leadStatus, fields: custom });
+    plan.create.push({ line, id, ...values, notes, name, leadStatus, fields: custom });
   }
   return plan;
 }
@@ -289,7 +308,7 @@ export function peopleChange(plan: PeoplePlan, existing: readonly ContactRow[], 
   const changes: RowChange[] = [];
   for (const row of plan.create) {
     const contact: ContactRow = {
-      id: newId("ct"),
+      id: row.id ?? newId("ct"),
       name: row.name,
       email: row.email,
       phone: row.phone,
@@ -328,13 +347,15 @@ export function peopleChange(plan: PeoplePlan, existing: readonly ContactRow[], 
   };
 }
 
-/** Contacts and leads, matched by email. The ctx is every contact on file. */
-export const peopleModule: ImportModule<readonly ContactRow[], PeoplePlan> = {
+/** Contacts and leads, matched by id, then email. The ctx is every contact on file. */
+export const peopleModule: ImportModule<readonly ContactRow[], PeoplePlan, PeopleOptions> = {
   key: "people",
   noun: { one: "contact", many: "contacts" },
   entity: "contact",
+  notes: true,
   columns: PEOPLE_COLUMNS,
   hintColumns: IMPORT_COLUMNS,
+  ignored: PEOPLE_IGNORED,
   plan: planPeople,
   change: peopleChange,
 };

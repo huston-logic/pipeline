@@ -2,7 +2,7 @@
 // cap, CSRF from the form part), matching columns, the check step, one audited change on apply, and Undo.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { auditRows, changeIdOf, devEnv, formFields, load, ORIGIN, post, seededDb, send } from "../../tests/helpers/board.ts";
+import { auditOf, auditRows, changeIdOf, devEnv, formFields, load, ORIGIN, post, seededDb, send } from "../../tests/helpers/board.ts";
 import type { ContactRow, Db } from "../db/db.ts";
 import type { SqliteD1 } from "../db/sqlite-d1.ts";
 import type { Env } from "../env.ts";
@@ -18,14 +18,15 @@ const contactByEmail = (db: SqliteD1, email: string) => db.prepare("SELECT * FRO
 /** The upload as a browser sends it: multipart, with the page's cookie and the token in the form part. */
 async function upload(
   env: Env,
-  input: { csv?: string; name?: string; paste?: string; as?: "contacts" | "leads"; csrf?: string | null },
+  input: { csv?: string; name?: string; paste?: string; as?: "contacts" | "leads"; csrf?: string | null; module?: "people" | "deals" | "tasks" },
 ): Promise<{ res: Response; body: string; location: string; session: Session }> {
-  const page = await load(env, "/import?module=people");
+  const module = input.module ?? "people";
+  const page = await load(env, `/import?module=${module}`);
   const session = { cookie: page.cookie, token: page.token };
   const form = new FormData();
   if (input.csrf !== null) form.set("csrf", input.csrf ?? page.token);
-  form.set("return_to", "/import?module=people");
-  form.set("module", "people");
+  form.set("return_to", `/import?module=${module}`);
+  form.set("module", module);
   form.set("as", input.as ?? "contacts");
   form.set("file", input.csv === undefined ? new File([], "") : new File([input.csv], input.name ?? "people.csv", { type: "text/csv" }));
   form.set("paste", input.paste ?? "");
@@ -56,6 +57,7 @@ async function applyImport(env: Env, session: Session, id: string, extra: Record
   assert.equal(page.res.status, 200);
   const fields = formFields(page.body, `/import/${id}/apply`);
   fields.delete("allow_duplicates");
+  fields.delete("closed_history");
   for (const [name, value] of Object.entries(extra)) fields.set(name, value);
   return { preview: page.body, ...(await post(env, `/import/${id}/apply`, fields, session)) };
 }
@@ -472,4 +474,145 @@ test("every import route sits behind the same checks: a cross-site or null origi
     }
   }
   assert.deepEqual(await state(), before, "no draft, no mapping change, no audit row, no contact");
+});
+
+const DEALS_CSV = [
+  "title,email,name,business,stage,value",
+  "Secret shop sign,nadia@example.net,Nadia Fenwick,Fenwick Joinery,,450",
+  "Secret old site,pat@example.com,,,Won,1200",
+  "Secret older site,pat@example.com,,,Won,",
+  "Secret oldest site,robin@example.com,,,won,",
+  "Secret lost one,casey@example.com,,,Lost,",
+  "Secret orphan,,,,,",
+].join("\r\n");
+
+const SECRETS = ["Secret", "Nadia", "nadia@example.net", "Fenwick"];
+
+test("deals on the board: Import on Pipeline, no leads choice, closed deals counted per stage and brought in only when ticked", async () => {
+  const db = await seededDb();
+  const env = devEnv(db);
+  assert.match((await load(env, "/pipeline")).body, /<a class="button button-quiet" href="\/import\?module=deals">Import<\/a>/);
+  const start = await load(env, "/import?module=deals");
+  assert.match(start.body, /<h1>Import deals<\/h1>\n<p class="import-step">Step 1 of 3: Choose a file<\/p>/);
+  assert.match(start.body, /<input type="hidden" name="module" value="deals">/);
+  assert.match(start.body, /<a class="form-cancel" href="\/pipeline">Cancel<\/a>/);
+
+  const pages: string[] = [];
+  const run = async (tick: boolean) => {
+    const { location, session } = await upload(env, { csv: DEALS_CSV, module: "deals" });
+    const id = draftIdOf(location);
+    const mapping = await load(env, `/import/${id}`, session.cookie);
+    pages.push(mapping.body);
+    assert.doesNotMatch(mapping.body, /New people come in as/, "only People has the leads choice");
+    assert.doesNotMatch(mapping.body, /Add to notes/, "deals have no notes");
+    assert.match(mapping.body, /<optgroup label="Deal details">/);
+    assert.match(mapping.body, /One column must go to Title\./);
+    assert.equal((await matchColumns(env, session, id, {})).res.status, 303);
+    const { preview, res, location: done } = await applyImport(env, session, id, tick ? { closed_history: "yes" } : {});
+    pages.push(preview, (await load(env, done, session.cookie)).body);
+    assert.match(preview, /<h2 id="import-closed">Closed deals<\/h2>\n<p>3 deals come in as Won, 1 as Lost\.<\/p>/);
+    assert.match(preview, /<input id="import-closed-too" name="closed_history" type="checkbox" value="yes"/);
+    assert.match(preview, /<li>Line 3: closed deal, not confirmed\.<\/li>/);
+    assert.match(preview, /<li>Line 7: no person matches and there&#39;s no name to add one\.<\/li>/);
+    assert.match(preview, /<dt>New deals<\/dt><dd>1<\/dd>/);
+    // The second import finds the person the first one added, by email.
+    assert.match(preview, new RegExp(`<dt>New people</dt><dd>${tick ? 0 : 1}</dd>`));
+    assert.equal(res.status, 303);
+    return { id, done, session };
+  };
+
+  const unticked = await run(false);
+  const changeId = changeIdOf(unticked.done);
+  assert.equal((await auditOf(db, changeId))?.summary, `Imported 1 deal and filled details on 0; added 1 contact (change ${changeId})`);
+  assert.equal(await db.prepare("SELECT COUNT(*) AS n FROM deals WHERE title LIKE 'Secret%'").first("n"), 1);
+  const shown = (await load(env, unticked.done, unticked.session.cookie)).body;
+  assert.match(shown, /<dt>Closed deals brought in<\/dt><dd>0<\/dd>/);
+  assert.match(shown, /<a class="button" href="\/pipeline">See your pipeline<\/a><a class="form-cancel" href="\/import\?module=deals">Import another file<\/a>/);
+
+  const ticked = await run(true);
+  const closed = (await db.prepare("SELECT status FROM deals WHERE title LIKE 'Secret o%' OR title LIKE 'Secret lost%' ORDER BY status").all<{ status: string }>()).results;
+  assert.deepEqual(closed.map((row) => row.status), ["lost", "won", "won", "won"]);
+  assert.match((await load(env, ticked.done, ticked.session.cookie)).body, /<dt>Closed deals brought in<\/dt><dd>4<\/dd>/);
+  for (const body of pages) for (const value of SECRETS) assert.doesNotMatch(body, new RegExp(value), value);
+});
+
+test("tasks on the board: Import on Today, no New field or notes, an unmatched row skipped with its reason, one change and Undo", async () => {
+  const db = await seededDb();
+  const env = devEnv(db);
+  assert.match((await load(env, "/")).body, /<a class="button button-quiet" href="\/import\?module=tasks">Import<\/a>/);
+  const csv = "title,due,deal_id,email\r\nSecret call,2026-12-01,dl_seed01,\r\nSecret card,,,robin@example.com\r\nSecret nobody,,,nobody@example.net\r\n";
+  const { location, session } = await upload(env, { csv, module: "tasks" });
+  const id = draftIdOf(location);
+  const mapping = await load(env, `/import/${id}`, session.cookie);
+  assert.match(mapping.body, /<h1>Import tasks<\/h1>/);
+  assert.doesNotMatch(mapping.body, /value="new_field"|value="notes"|name="label\.0"/, "tasks have no fields and no notes");
+  const forged = await matchColumns(env, session, id, { 3: "notes" });
+  assert.equal(forged.res.status, 422);
+  assert.match(forged.body, /<a href="#col-3">Choose where column 4 goes\.<\/a>/);
+  const noTitle = await matchColumns(env, session, id, { 0: "skip" });
+  assert.equal(noTitle.res.status, 422);
+  assert.match(noTitle.body, /Choose Title for the column that holds each task&#39;s title\./);
+  assert.equal((await matchColumns(env, session, id, {})).res.status, 303);
+  const { preview, res, location: done } = await applyImport(env, session, id);
+  assert.match(preview, /<li>Line 4: no person or deal matches\.<\/li>/);
+  assert.match(preview, /<h2 id="import-new">New tasks<\/h2>\n<p class="import-lines">Lines 2, 3\.<\/p>/);
+  assert.equal(res.status, 303);
+  const changeId = changeIdOf(done);
+  assert.equal((await auditOf(db, changeId))?.summary, `Imported 2 tasks and filled details on 0 (change ${changeId})`);
+  const shown = (await load(env, done, session.cookie)).body;
+  assert.match(shown, /<a class="button" href="\/">See Today<\/a>/);
+  for (const body of [mapping.body, preview, shown]) for (const value of ["Secret", "nobody@example.net"]) assert.doesNotMatch(body, new RegExp(value), value);
+  const undone = await post(env, `/changes/${changeId}/undo`, { return_to: `/import/${id}`, confirm: "yes" }, session);
+  assert.equal(undone.res.status, 303);
+  assert.equal(await db.prepare("SELECT COUNT(*) AS n FROM tasks WHERE title LIKE 'Secret%'").first("n"), 0);
+});
+
+test("/import names its module: people by default, deals and tasks by name, anything else is 404; the upload keeps the module", async () => {
+  const db = await seededDb();
+  const env = devEnv(db);
+  assert.match((await load(env, "/import")).body, /<h1>Import people<\/h1>/);
+  const tasks = await load(env, "/import?module=tasks&as=leads");
+  assert.match(tasks.body, /<input type="hidden" name="as" value="contacts">/, "as=leads is People's only");
+  assert.match(tasks.body, /<a class="button button-quiet" href="\/import\?module=people">Import people<\/a><a class="button button-quiet" href="\/import\?module=deals">Import deals<\/a>/);
+  const refused = await upload(env, { csv: "", name: "empty.csv", module: "deals" });
+  assert.equal(refused.res.status, 422);
+  assert.match(refused.body, /<h1>Import deals<\/h1>/);
+  assert.match(refused.body, /The file is empty\. Export your deals with a header row and try again\./);
+  const made = await upload(env, { csv: "title\r\nA sign\r\n", module: "deals" });
+  assert.equal((await getDraft(db, draftIdOf(made.location), new Date()))?.module, "deals");
+});
+
+test("rows the file marks archived are counted on the check step and never come in", async () => {
+  const db = await seededDb();
+  const env = devEnv(db);
+  const { location, session } = await upload(env, { csv: "name,email,archived\r\nGail Gone,gail@example.net,1\r\nKim Kept,kim@example.net,0\r\n" });
+  const id = draftIdOf(location);
+  assert.equal((await matchColumns(env, session, id, {})).res.status, 303);
+  const { preview, res, location: done } = await applyImport(env, session, id);
+  assert.match(preview, /<dt>Archived in the file, left out<\/dt><dd>1<\/dd>/);
+  assert.match(preview, /<li>Line 2: archived in the file\.<\/li>/);
+  assert.equal(res.status, 303);
+  assert.match((await load(env, done, session.cookie)).body, /<dt>Archived in the file, left out<\/dt><dd>1<\/dd>/);
+  assert.equal(await contactByEmail(db, "gail@example.net"), null);
+  assert.ok(await contactByEmail(db, "kim@example.net"));
+});
+
+test("two imports keeping the same contact id: the one that loses is a plain refusal, nothing saved", async () => {
+  const db = await seededDb();
+  const env = devEnv(db);
+  const { location, session } = await upload(env, { csv: "id,name\r\nct_racer01,Rita Racer\r\n" });
+  const id = draftIdOf(location);
+  assert.equal((await matchColumns(env, session, id, {})).res.status, 303);
+  const fields = formFields((await load(env, `/import/${id}/preview`, session.cookie)).body, `/import/${id}/apply`);
+  // Another import (here, a plain insert) writes ct_racer01 after this apply planned it as new.
+  const rival = async () => {
+    db.exec("INSERT INTO contacts (id, name, untrusted_fields) VALUES ('ct_racer01', 'Rival Racer', '[]')");
+  };
+  const count = (await auditRows(db)).length;
+  const lost = await post({ ...env, DB: racingDb(db, "write", rival) }, `/import/${id}/apply`, fields, session);
+  assert.equal(lost.res.status, 422);
+  assert.match(lost.body, /A record with an id in this file was added while it was importing, so nothing was saved\./);
+  assert.equal((await auditRows(db)).length, count);
+  assert.equal(await db.prepare("SELECT name FROM contacts WHERE id = 'ct_racer01'").first("name"), "Rival Racer");
+  assert.equal((await getDraft(db, id, new Date()))?.result, null, "the draft can be checked and applied again");
 });

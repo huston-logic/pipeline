@@ -131,7 +131,7 @@ export async function todayPage(ctx: PageContext): Promise<string> {
 <p class="page-date"><time datetime="${date}">${headerDate(date)}</time></p>
 </div>
 <p class="lede">${summaryLine(summary)}</p>
-${addButtons("today", ["deal", "lead"])}
+${addButtons("today", ["deal", "lead", "import"])}
 <div class="today-columns">
 <div class="today-due">
 ${dueSections(due, ctx)}

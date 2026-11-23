@@ -75,7 +75,7 @@ const RECORD_PATHS: { path: RegExp; isId: (id: string) => boolean; page: RecordP
   { path: /^\/import\/([^/]+)\/preview$/, isId: isImportId, page: importPreview, gone: importGonePage },
 ];
 
-/** /import: the start of the board import. Only the People module is a page (decision 0036). */
+/** /import: the start of the board import, for the module its `module=` names (decisions 0036, 0037). */
 const IMPORT_START = "/import";
 
 async function contextFor({ db, now, url, csrf }: Omit<PageRequest, "pushKey" | "emailLogAddress">): Promise<PageContext> {

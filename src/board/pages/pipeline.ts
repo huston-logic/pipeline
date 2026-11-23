@@ -201,7 +201,7 @@ export async function pipelinePage(ctx: PageContext): Promise<string> {
     body: html`<h1>Pipeline</h1>
 ${viewSwitch(view)}
 <p class="lede">${openLine(summary)}</p>
-${addButtons("pipeline", ["deal", "lead"])}
+${addButtons("pipeline", ["deal", "lead", "import"])}
 ${body}`,
   });
 }

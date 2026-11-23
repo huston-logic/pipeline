@@ -1,10 +1,10 @@
 // The CSV contact import's plan (pure), kept as a wrapper over the import engine and its People module (decision
 // 0034): the same exports and the same behaviour as before the engine. Nothing is written here; the import script
 // shows the plan as a dry run, and only `--apply` turns it into one audited change (src/import/change.ts).
-import { type FilePlan, type ImportOptions, mapCsv } from "./engine.ts";
-import { type ExistingContact, type PeoplePlan, peopleModule, planPeople } from "./modules/people.ts";
+import { type FilePlan, mapCsv, planRows } from "./engine.ts";
+import { type ExistingContact, type PeopleOptions, type PeoplePlan, peopleModule, planPeople } from "./modules/people.ts";
 
-export type { ImportOptions } from "./engine.ts";
+export type { PeopleOptions as ImportOptions } from "./modules/people.ts";
 export {
   type CreateRow,
   type DuplicateRow,
@@ -21,13 +21,13 @@ export {
 
 export type ImportPlan = FilePlan<PeoplePlan>;
 
-const NO_OPTIONS: ImportOptions = { asLeads: false, allowDuplicates: false, fieldDefs: [] };
+const NO_OPTIONS: PeopleOptions = { asLeads: false, allowDuplicates: false, fieldDefs: [] };
 
 export function planImport(
   csvText: string,
   existing: readonly ExistingContact[],
-  options: ImportOptions = NO_OPTIONS,
+  options: PeopleOptions = NO_OPTIONS,
 ): ImportPlan {
   const { rows, skippedColumns } = mapCsv(peopleModule, csvText, options.fieldDefs);
-  return { ...planPeople(rows, existing, options), skippedColumns };
+  return { ...planRows({ columns: peopleModule.columns, plan: planPeople }, rows, existing, options), skippedColumns };
 }

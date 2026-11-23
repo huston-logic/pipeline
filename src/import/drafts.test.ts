@@ -77,7 +77,7 @@ test("a mapping is saved only on the version read, and only before the import is
   assert.equal(await saveMapping(db, draft, [], false), false, "an older version is refused");
 
   assert.ok(saved);
-  const result = { created: 1, filled: 0, unchanged: 0, skipped: 0, duplicates: 0, fields: 0 };
+  const result = { created: 1, filled: 0, unchanged: 0, skipped: 0, duplicates: 0, fields: 0, people: 0, closed: 0, archived: 0 };
   await db.batch([draftGuard(db, saved, NOW), ...appliedStatements(db, saved, result, "chg_draft0001")]);
   const applied = await getDraft(db, id, NOW);
   assert.deepEqual([applied?.result, applied?.changeId], [result, "chg_draft0001"]);
@@ -98,7 +98,7 @@ test("the apply guard and markApplied refuse a draft that has expired, even one 
   assert.ok(draft);
   const late = at(DRAFT_LIFETIME_MS);
   await assert.rejects(db.batch([draftGuard(db, draft, late)]), /CHECK constraint failed/);
-  const result = { created: 0, filled: 0, unchanged: 1, skipped: 0, duplicates: 0, fields: 0 };
+  const result = { created: 0, filled: 0, unchanged: 1, skipped: 0, duplicates: 0, fields: 0, people: 0, closed: 0, archived: 0 };
   assert.equal(await markApplied(db, draft, result, late), false);
   assert.equal(await markApplied(db, draft, result, NOW), true);
 });
@@ -108,7 +108,7 @@ test("an import that writes nothing is marked applied once, without a change", a
   const id = await createDraft(db, { module: "people", text: CSV, mapping: [], asLeads: false, now: NOW });
   const draft = await getDraft(db, id, NOW);
   assert.ok(draft);
-  const result = { created: 0, filled: 0, unchanged: 1, skipped: 0, duplicates: 0, fields: 0 };
+  const result = { created: 0, filled: 0, unchanged: 1, skipped: 0, duplicates: 0, fields: 0, people: 0, closed: 0, archived: 0 };
   assert.equal(await markApplied(db, draft, result, NOW), true);
   assert.equal(await markApplied(db, draft, result, NOW), false);
   const applied = await getDraft(db, id, NOW);

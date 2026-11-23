@@ -199,8 +199,10 @@ test("Today, Pipeline and Contacts each have Add a deal and Add a lead buttons t
   const db = await seededDb();
   const env = devEnv(db);
   for (const [path, from] of [["/", "today"], ["/pipeline", "pipeline"], ["/contacts", "contacts"]] as const) {
-    // Contacts and Leads also have Import (decision 0036); from Leads, new people come in as leads.
-    const importing = from === "contacts" ? '<a class="button button-quiet" href="/import\\?module=people">Import</a>' : "";
+    // Each has Import too (decisions 0036, 0037): tasks from Today, deals from Pipeline, people from Contacts (and from
+    // Leads, new people come in as leads).
+    const module = { today: "tasks", pipeline: "deals", contacts: "people" }[from];
+    const importing = `<a class="button button-quiet" href="/import\\?module=${module}">Import</a>`;
     assert.match(
       (await load(env, path)).body,
       new RegExp(`<p class="page-action"><a class="button" href="/deals/new\\?from=${from}">Add a deal</a><a class="button button-quiet" href="/leads/new\\?from=${from}">Add a lead</a>${importing}</p>`),

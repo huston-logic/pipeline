@@ -31,20 +31,32 @@ export interface ColumnDef {
   label: string;
   /** Other header names for this column, matched like the key (trimmed, any capitals). */
   aliases: string[];
-  /** The most characters a value may have. */
-  limit: number;
+  /**
+   * The most characters a value may have: planRows skips a longer one ("title is longer than 500 characters") before
+   * the module plans. Left out for a column read only as one of a list (a stage, a status, a date, an id).
+   */
+  limit?: number;
   /** Keeps its line breaks; in every other column a line break or tab becomes a space. */
   multiline: boolean;
   /** The header row must name it. */
   required?: boolean;
 }
 
+/** What every module's plan takes. A module adds its own choices (People: leads, duplicates; Deals: closed deals). */
 export interface ImportOptions {
-  /** Created rows become leads: New, unless a lead_status column says otherwise. */
-  asLeads: boolean;
-  /** Create rows that look like someone already on file (leads imports only). */
-  allowDuplicates: boolean;
+  /** Every field the plan may fill, the mapping's new fields included. */
   fieldDefs: readonly FieldDefRow[];
+}
+
+/** A row left out of the import, and why, in counts, line numbers, column names and ids only (decision 0029). */
+export interface SkippedRow {
+  line: number;
+  reason: string;
+}
+
+/** What every module's plan has: the rows it skipped, in line order. */
+export interface PlanBase {
+  skipped: SkippedRow[];
 }
 
 /** A custom field value one row gives, with the 0-based index of the column it came from. */
@@ -82,20 +94,30 @@ export class MappingError extends UserError {
   }
 }
 
-export interface ImportModule<Ctx, Plan> {
+export interface ImportModule<Ctx, Plan extends PlanBase, Options extends ImportOptions = ImportOptions> {
   key: ImportModuleKey;
   noun: { one: string; many: string };
   /** Whose custom fields a column can fill; null when the records have none. */
   entity: "contact" | "deal" | null;
+  /** Whether a column can be added to the record's notes ("Add to notes"); a module whose records have none can't. */
+  notes: boolean;
   columns: readonly ColumnDef[];
   /** The columns the missing-header message names; every column when left out. */
   hintColumns?: readonly string[];
-  plan(rows: MappedRow[], ctx: Ctx, options: ImportOptions): Plan;
+  /**
+   * Header names of the board export's bookkeeping columns (`version`, `created_at`, ...): recognised and never
+   * imported, so they never match a custom field of the same name.
+   */
+  ignored?: readonly string[];
+  plan(rows: MappedRow[], ctx: Ctx, options: Options): Plan;
   change(plan: Plan, ctx: Ctx, now: Date): ChangeInput | null;
 }
 
+/** Any module, whatever its records, plan and options (method parameters are compared both ways). */
+export type AnyImportModule = ImportModule<never, PlanBase, never>;
+
 /** What reading and matching need from a module: not its plan or change. */
-export type ModuleShape = Pick<ImportModule<never, unknown>, "noun" | "entity" | "columns" | "hintColumns">;
+export type ModuleShape = Pick<AnyImportModule, "noun" | "entity" | "notes" | "columns" | "hintColumns" | "ignored">;
 
 /** A module's plan, with the header names that are not imported. */
 export type FilePlan<Plan> = Plan & { skippedColumns: string[] };
@@ -150,7 +172,7 @@ export function readCsv(text: string): { header: string[]; records: CsvRecord[] 
 
 /**
  * Where each header cell goes, by name: a module column's key, then one of its aliases, then a custom field of the
- * module's entity (not archived) by key or label. Anything else is skipped.
+ * module's entity (not archived) by key or label. A bookkeeping column (`ignored`) and anything else is skipped.
  */
 export function autoMatch(module: ModuleShape, header: string[], fieldDefs: readonly FieldDefRow[]): Target[] {
   return header.map((cell): Target => {
@@ -159,6 +181,7 @@ export function autoMatch(module: ModuleShape, header: string[], fieldDefs: read
       module.columns.find((candidate) => candidate.key.toLowerCase() === key) ??
       module.columns.find((candidate) => candidate.aliases.some((alias) => headerKey(alias) === key));
     if (column) return { kind: "builtin", key: column.key };
+    if (module.ignored?.some((name) => headerKey(name) === key)) return { kind: "skip" };
     const def = fieldDefs.find(
       (candidate) =>
         module.entity !== null &&
@@ -219,6 +242,9 @@ function checkTargets(module: ModuleShape, header: readonly string[], targets: r
     if (target.kind === "new_field") throw new Error("A new field must be planned (planNewFields) before its rows are mapped.");
     if (target.kind === "skip") return;
     if (target.kind === "notes") {
+      if (!module.notes) {
+        throw new MappingError(`${capitalize(module.noun.many)} have no notes, so ${columnName(header, index)} can't be added to them.`, index);
+      }
       noteLabel(target.label, header, index);
       return;
     }
@@ -416,15 +442,47 @@ export function mapCsv(
   return { rows: mapRows(module, records, targets, header, fieldDefs), skippedColumns: skippedColumnNames(header, targets) };
 }
 
+/** The first value of the row longer than its column's limit, as a skip reason; null when every value fits. */
+function limitReason(module: Pick<ModuleShape, "columns">, row: MappedRow): string | null {
+  for (const column of module.columns) {
+    if (column.limit !== undefined && (row.values[column.key]?.length ?? 0) > column.limit) {
+      return `${column.key} is longer than ${column.limit} characters`;
+    }
+  }
+  return null;
+}
+
+/**
+ * The module's plan for mapped rows. A row with a value longer than its column's limit is skipped here, for every
+ * module, before the module sees it; the skipped rows stay in line order.
+ */
+export function planRows<Ctx, Plan extends PlanBase, Options extends ImportOptions>(
+  module: Pick<ImportModule<Ctx, Plan, Options>, "columns" | "plan">,
+  rows: readonly MappedRow[],
+  ctx: Ctx,
+  options: Options,
+): Plan {
+  const over: SkippedRow[] = [];
+  const kept: MappedRow[] = [];
+  for (const row of rows) {
+    const reason = limitReason(module, row);
+    if (reason === null) kept.push(row);
+    else over.push({ line: row.line, reason });
+  }
+  const plan = module.plan(kept, ctx, options);
+  if (over.length === 0) return plan;
+  return { ...plan, skipped: [...plan.skipped, ...over].sort((a, b) => a.line - b.line) };
+}
+
 /** A CSV file planned by a module, matched by header names. */
-export function planCsv<Ctx, Plan extends object>(
-  module: ImportModule<Ctx, Plan>,
+export function planCsv<Ctx, Plan extends PlanBase, Options extends ImportOptions>(
+  module: ImportModule<Ctx, Plan, Options>,
   csvText: string,
   ctx: Ctx,
-  options: ImportOptions,
+  options: Options,
 ): FilePlan<Plan> {
   const { rows, skippedColumns } = mapCsv(module, csvText, options.fieldDefs);
-  return { ...module.plan(rows, ctx, options), skippedColumns };
+  return { ...planRows(module, rows, ctx, options), skippedColumns };
 }
 
 export interface MappedFile {
@@ -433,7 +491,7 @@ export interface MappedFile {
   skippedColumns: string[];
   /** The fields the mapping creates, not yet written (planNewFields). */
   newFields: FieldDefRow[];
-  /** `fieldDefs` and the new fields: what the module's plan takes as `ImportOptions.fieldDefs`. */
+  /** `fieldDefs` and the new fields: what the module's plan takes as its options' `fieldDefs`. */
   fieldDefs: FieldDefRow[];
 }
 
@@ -467,8 +525,8 @@ export function mapFile(
  * The module's change for its plan, with the new fields inserted first in the same change, so one undo takes back the
  * fields and the records. Null when the plan writes no record: a new field alone is never added.
  */
-export function fileChange<Ctx, Plan>(
-  module: ImportModule<Ctx, Plan>,
+export function fileChange<Ctx, Plan extends PlanBase, Options extends ImportOptions>(
+  module: ImportModule<Ctx, Plan, Options>,
   plan: Plan,
   ctx: Ctx,
   now: Date,
