@@ -123,11 +123,13 @@ ${wasField(props)}</div>`;
 
 /** One checkbox that posts `value` when ticked and nothing when not, with its label beside it (the label is the tap
  * area too). */
-export function checkbox(props: { id: string; name: string; label: string; value: string; checked: boolean }): Html {
+export function checkbox(props: { id: string; name: string; label: string; value: string; checked: boolean; hint?: string }): Html {
+  const described = props.hint === undefined ? "" : html` aria-describedby="${props.id}-hint"`;
   return html`<div class="check">
-<input id="${props.id}" name="${props.name}" type="checkbox" value="${props.value}"${props.checked ? " checked" : ""}>
+<input id="${props.id}" name="${props.name}" type="checkbox" value="${props.value}"${props.checked ? " checked" : ""}${described}>
 <label for="${props.id}">${props.label}</label>
-</div>`;
+</div>${props.hint === undefined ? "" : html`
+<p class="field-hint check-hint" id="${props.id}-hint">${props.hint}</p>`}`;
 }
 
 /** At the top of a refused form: every problem, each linked to its field when it has one. */

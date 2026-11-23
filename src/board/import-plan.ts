@@ -11,10 +11,13 @@ import { type PeoplePlan, peopleModule } from "../import/modules/people.ts";
 import { type TasksCtx, type TasksPlan, tasksModule } from "../import/modules/tasks.ts";
 import type { ChangeInput } from "../services/change.ts";
 
-/** What the check step's boxes say: People's possible duplicates too, Deals' closed deals as history. */
-export type Confirmed = { duplicates: boolean; closed: boolean };
+/**
+ * What the check step's boxes say: People's possible duplicates too, Deals' closed deals as history, and People's and
+ * Deals' "This is my own list" (decision 0038; Tasks never read it).
+ */
+export type Confirmed = { duplicates: boolean; closed: boolean; ownList: boolean };
 
-export const NOTHING_CONFIRMED: Confirmed = { duplicates: false, closed: false };
+export const NOTHING_CONFIRMED: Confirmed = { duplicates: false, closed: false, ownList: false };
 
 /** A draft planned against the data on file now: the mapped file, the plan and the records it read. */
 export type DraftPlan =
@@ -28,14 +31,15 @@ export async function planDraft(db: Db, draft: Draft, text: string, now: Date, c
     case "people": {
       const mapped = mapFile(peopleModule, text, draft.mapping, fieldDefs, now);
       const ctx = await contactsOnFile(db);
-      const options = { asLeads: draft.asLeads, allowDuplicates: confirmed.duplicates, fieldDefs: mapped.fieldDefs };
+      const options = { asLeads: draft.asLeads, allowDuplicates: confirmed.duplicates, ownList: confirmed.ownList, fieldDefs: mapped.fieldDefs };
       const plan = planRows(peopleModule, mapped.rows, ctx, options);
       return { module: "people", mapped, ctx, plan: { ...plan, skippedColumns: mapped.skippedColumns } };
     }
     case "deals": {
       const mapped = mapFile(dealsModule, text, draft.mapping, fieldDefs, now);
       const ctx = await dealsOnFile(db, mapped.rows);
-      const plan = planRows(dealsModule, mapped.rows, ctx, { closedAsHistory: confirmed.closed, fieldDefs: mapped.fieldDefs });
+      const options = { closedAsHistory: confirmed.closed, ownList: confirmed.ownList, fieldDefs: mapped.fieldDefs };
+      const plan = planRows(dealsModule, mapped.rows, ctx, options);
       return { module: "deals", mapped, ctx, plan: { ...plan, skippedColumns: mapped.skippedColumns } };
     }
     case "tasks": {

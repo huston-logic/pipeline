@@ -31,6 +31,7 @@ import {
   FILE_FIELD,
   IMPORT_MAX_COLUMNS,
   MODULE_FIELD,
+  OWN_LIST_FIELD,
   PASTE_FIELD,
   postedMapping,
   previewPath,
@@ -188,7 +189,12 @@ async function apply(ctx: ActionContext, id: string): Promise<ActionResult> {
   if (ctx.form.get(VERSION_FIELD) !== String(draft.version)) {
     return refused("The column matches changed since this page was drawn. Check the import again, then import it.");
   }
-  const confirmed = { duplicates: ctx.form.get(ALLOW_DUPLICATES_FIELD) === "yes", closed: ctx.form.get(CLOSED_FIELD) === "yes" };
+  const confirmed = {
+    duplicates: ctx.form.get(ALLOW_DUPLICATES_FIELD) === "yes",
+    closed: ctx.form.get(CLOSED_FIELD) === "yes",
+    // The only way to set it (decision 0038): the box on this form. Tasks have no identity columns to confirm.
+    ownList: draft.module !== "tasks" && ctx.form.get(OWN_LIST_FIELD) === "yes",
+  };
   let planned: Awaited<ReturnType<typeof planDraft>>;
   try {
     planned = await planDraft(ctx.db, draft, await draftText(ctx.db, draft.id), ctx.now, confirmed);

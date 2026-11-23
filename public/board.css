@@ -1465,6 +1465,11 @@ button.button {
   font-weight: 600;
 }
 
+/* A box's hint, under its label: indented by the box and the gap. */
+.check-hint {
+  margin: 0 0 0.5rem 2.25rem;
+}
+
 /* A lead's page (decision 0028): the status line, the status menu and Qualify in one card. */
 .lead-status-line {
   margin: 0;
