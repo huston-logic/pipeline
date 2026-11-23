@@ -1,12 +1,6 @@
-// What the board import's pages and posts share (decision 0036): its paths, the mapping form's names and how a posted
-// mapping is read, and planning a draft against the data as it is now. Only the People module is on the board yet.
-import type { ContactRow, Db, FieldDefRow } from "../db/db.ts";
-import { contactsOnFile } from "../import/load.ts";
-import { UserError } from "../services/errors.ts";
-import { listFieldDefs } from "../db/queries.ts";
-import type { Draft, ImportResult } from "../import/drafts.ts";
-import { type FilePlan, type MappedFile, mapFile, planRows, type Target } from "../import/engine.ts";
-import { type PeoplePlan, peopleModule } from "../import/modules/people.ts";
+// What the board import's pages and posts share (decisions 0036, 0037): its paths, the mapping form's names and how a
+// posted mapping is read. Planning a draft is in import-plan.ts.
+import type { ImportModuleKey, ModuleShape, Target } from "../import/engine.ts";
 
 export const IMPORT_PATH = "/import";
 export const draftPath = (id: string) => `${IMPORT_PATH}/${encodeURIComponent(id)}`;
@@ -14,16 +8,20 @@ export const previewPath = (id: string) => `${draftPath(id)}/preview`;
 export const mapAction = (id: string) => `${draftPath(id)}/map`;
 export const applyAction = (id: string) => `${draftPath(id)}/apply`;
 
-/** Where the Import button was tapped: `as=leads` on Leads, so new people come in as leads. */
-export const startPath = (asLeads: boolean) => `${IMPORT_PATH}?module=people${asLeads ? "&as=leads" : ""}`;
+/** Where the Import button was tapped: the module, and `as=leads` on Leads, so new people come in as leads. */
+export const startPath = (module: ImportModuleKey, asLeads = false) =>
+  `${IMPORT_PATH}?module=${module}${module === "people" && asLeads ? "&as=leads" : ""}`;
 
 /** The most columns one import takes, so the matching step stays a page a phone can scroll (decision 0036). */
 export const IMPORT_MAX_COLUMNS = 100;
 
 export const FILE_FIELD = "file";
 export const PASTE_FIELD = "paste";
+export const MODULE_FIELD = "module";
 export const AS_FIELD = "as";
 export const ALLOW_DUPLICATES_FIELD = "allow_duplicates";
+/** The deals check step's box: bring in deals in a Won, Lost or Not now stage (decision 0037). */
+export const CLOSED_FIELD = "closed_history";
 export const VERSION_FIELD = "version";
 
 export const columnField = (index: number) => `col.${index}`;
@@ -60,11 +58,13 @@ function headerLabel(header: string): string {
 export type PostedMapping = { targets: Target[]; asLeads: boolean; unchosen: number[]; unlabelled: number[] };
 
 /**
- * The mapping the form posted, one target per header cell. A select value the page never offers (a missing or forged
- * field) is listed in `unchosen` by column, and a New field with no label in `unlabelled`; mapRows checks everything
- * else. An "Add to notes" column with no label is labelled with its header (notes are outside text anyway).
+ * The mapping the form posted, one target per header cell. A select value the page never offers for this module (a
+ * missing or forged field, New field where the records have no fields, Add to notes where they have no notes) is
+ * listed in `unchosen` by column, and a New field with no label in `unlabelled`; mapRows checks everything else. An
+ * "Add to notes" column with no label is labelled with its header (notes are outside text anyway). Only People has
+ * the leads choice.
  */
-export function postedMapping(form: URLSearchParams, header: readonly string[]): PostedMapping {
+export function postedMapping(module: ModuleShape & { key: ImportModuleKey }, form: URLSearchParams, header: readonly string[]): PostedMapping {
   const unchosen: number[] = [];
   const unlabelled: number[] = [];
   const targets = header.map((cell, index): Target => {
@@ -72,45 +72,16 @@ export function postedMapping(form: URLSearchParams, header: readonly string[]):
     const label = form.get(labelField(index)) ?? "";
     const [kind, key = ""] = value.split(/:(.*)/s, 2);
     if (value === "skip") return { kind: "skip" };
-    if (value === "new_field") {
+    if (value === "new_field" && module.entity !== null) {
       if (label.trim() === "") unlabelled.push(index);
       return { kind: "new_field", label };
     }
-    if (value === "notes") return { kind: "notes", label: label.trim() === "" ? headerLabel(cell) : label };
-    if ((kind === "builtin" && peopleModule.columns.some((column) => column.key === key)) || (kind === "field" && key !== "")) {
+    if (value === "notes" && module.notes) return { kind: "notes", label: label.trim() === "" ? headerLabel(cell) : label };
+    if ((kind === "builtin" && module.columns.some((column) => column.key === key)) || (kind === "field" && key !== "" && module.entity !== null)) {
       return { kind, key };
     }
     unchosen.push(index);
     return { kind: "skip" };
   });
-  return { targets, asLeads: form.get(AS_FIELD) === "leads", unchosen, unlabelled };
-}
-
-/** A draft planned against the people and fields on file now: the mapped file, the plan and the people it read. */
-export interface DraftPlan {
-  mapped: MappedFile;
-  plan: FilePlan<PeoplePlan>;
-  contacts: ContactRow[];
-}
-
-/** Plans the draft once (the preview and the apply are separate requests, and each plans once). */
-export async function planDraft(db: Db, draft: Draft, text: string, now: Date, allowDuplicates: boolean): Promise<DraftPlan> {
-  if (draft.module !== "people") throw new UserError(`The board can't import ${draft.module} yet. Start again with a file of people.`);
-  const fieldDefs: FieldDefRow[] = await listFieldDefs(db, { includeArchived: true });
-  const contacts = await contactsOnFile(db);
-  const mapped = mapFile(peopleModule, text, draft.mapping, fieldDefs, now);
-  const plan = planRows(peopleModule, mapped.rows, contacts, { asLeads: draft.asLeads, allowDuplicates, fieldDefs: mapped.fieldDefs });
-  return { mapped, plan: { ...plan, skippedColumns: mapped.skippedColumns }, contacts };
-}
-
-/** The counts an applied import keeps. */
-export function resultOf({ plan, mapped }: Pick<DraftPlan, "plan" | "mapped">, wrote: boolean): ImportResult {
-  return {
-    created: plan.create.length,
-    filled: plan.merge.length,
-    unchanged: plan.unchanged.length,
-    skipped: plan.skipped.length,
-    duplicates: plan.duplicates.length,
-    fields: wrote ? mapped.newFields.length : 0,
-  };
+  return { targets, asLeads: module.key === "people" && form.get(AS_FIELD) === "leads", unchosen, unlabelled };
 }

@@ -20,6 +20,10 @@ export interface ImportResult {
   duplicates: number;
   /** New fields the import added. */
   fields: number;
+  /** People a deals import added for their deals (decision 0037). */
+  people: number;
+  /** Closed deals a deals import brought in as history. */
+  closed: number;
 }
 
 export interface Draft {
@@ -27,7 +31,7 @@ export interface Draft {
   module: ImportModuleKey;
   expiresAt: string;
   mapping: Target[];
-  /** New people come in as leads (New), not contacts. */
+  /** New people come in as leads (New), not contacts. People imports only; false for every other module. */
   asLeads: boolean;
   result: ImportResult | null;
   changeId: string | null;
@@ -91,6 +95,8 @@ function parseResult(json: string | null): ImportResult | null {
     skipped: n(value.skipped),
     duplicates: n(value.duplicates),
     fields: n(value.fields),
+    people: n(value.people),
+    closed: n(value.closed),
   };
 }
 
