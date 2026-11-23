@@ -122,6 +122,7 @@ test("every write that moves or creates a person, and its undo, keeps person_sta
       },
     ],
     ["update_deal Won makes a Client", async () => (await updateDeal(ctxFor(db, "update_deal"), "dl_seed01", { stage: "won" })).changeId],
+    ["update_deal marks a Not a fit lead's lost deal Won", async () => (await updateDeal(ctxFor(db, "update_deal"), unfitDeal, { status: "won" })).changeId],
     ["update_deal reopens a Not a fit lead's lost deal", async () => (await updateDeal(ctxFor(db, "update_deal"), unfitDeal, { stage: "replied" })).changeId],
     ["set_person_status to Partner", async () => (await setPersonStatus(ctxFor(db, "set_person_status"), contactedId, { status: "partner" })).changeId],
     ["set_person_status to Lead", async () => (await setPersonStatus(ctxFor(db, "set_person_status"), "ct_seed08", { status: "lead", sub: "contacted" })).changeId],
@@ -162,4 +163,20 @@ test("every write that moves or creates a person, and its undo, keeps person_sta
     await undoChange(ctxFor(db, "undo_change"), changeId);
     assert.deepEqual(await broken(db), [], `after undoing ${name}`);
   }
+});
+
+test("test databases refuse a row whose person status and lead status disagree, from a service or from raw SQL", async () => {
+  const db = await createTestDb();
+  assert.throws(
+    () => db.exec("INSERT INTO contacts (id, name, lead_status) VALUES ('ct_bad', 'Bad Row', 'new')"),
+    /person_status and lead_status disagree/,
+  );
+  assert.throws(
+    () => db.exec("INSERT INTO contacts (id, name, lead_status, person_status, sub_status) VALUES ('ct_bad', 'Bad Row', 'new', 'lead', 'contacted')"),
+    /disagree/,
+  );
+  assert.throws(() => db.exec("INSERT INTO contacts (id, name, person_status) VALUES ('ct_bad', 'Bad Row', 'lead')"), /disagree/);
+  db.exec("INSERT INTO contacts (id, name, lead_status, person_status, sub_status) VALUES ('ct_ok', 'Ok Row', 'new', 'lead', 'new')");
+  assert.throws(() => db.exec("UPDATE contacts SET lead_status = 'qualified' WHERE id = 'ct_ok'"), /disagree/);
+  db.exec("INSERT INTO contacts (id, name, lead_status, person_status) VALUES ('ct_was', 'Was Lead', 'qualified', 'partner')");
 });

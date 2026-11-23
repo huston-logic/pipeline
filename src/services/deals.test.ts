@@ -163,7 +163,7 @@ const leadStatusOf = async (db: Db, id: string) =>
 test("reopening a Lost deal of a Not a fit person into an open stage makes them Qualified in the same change (invariant 1)", async () => {
   const { db, dealId, contactId } = await setup();
   await updateDeal(ctxAt(db, CREATED), dealId, { status: "lost" });
-  await db.prepare("UPDATE contacts SET lead_status = 'not_a_fit', lead_status_at = ? WHERE id = ?").bind(CREATED.toISOString(), contactId).run();
+  await db.prepare("UPDATE contacts SET lead_status = 'not_a_fit', person_status = 'lead', sub_status = 'not_a_fit', lead_status_at = ? WHERE id = ?").bind(CREATED.toISOString(), contactId).run();
 
   const result = await updateDeal(ctxAt(db, NOW), dealId, { stage: "replied" });
   assert.equal(result.summary, `Moved "Website refresh" (Pat Example) to Replied; Pat Example is now Qualified (change ${result.changeId})`);
@@ -174,13 +174,13 @@ test("reopening a Lost deal of a Not a fit person into an open stage makes them 
 
 test("moving an open deal, closing it, or reopening one for a person with no lead status leaves the contact alone", async () => {
   const { db, dealId, contactId } = await setup();
-  await db.prepare("UPDATE contacts SET lead_status = 'contacted' WHERE id = ?").bind(contactId).run();
+  await db.prepare("UPDATE contacts SET lead_status = 'contacted', person_status = 'lead', sub_status = 'contacted' WHERE id = ?").bind(contactId).run();
   const moved = await updateDeal(ctxAt(db, NOW), dealId, { stage: "replied" });
   assert.doesNotMatch(moved.summary, /Qualified/, "only a reopen qualifies");
   await updateDeal(ctxAt(db, NOW), dealId, { status: "lost" });
   assert.equal((await leadStatusOf(db, contactId))?.lead_status, "contacted", "closing a deal never touches the lead status");
 
-  await db.prepare("UPDATE contacts SET lead_status = NULL WHERE id = ?").bind(contactId).run();
+  await db.prepare("UPDATE contacts SET lead_status = NULL, person_status = 'contact', sub_status = NULL WHERE id = ?").bind(contactId).run();
   const reopened = await updateDeal(ctxAt(db, NOW), dealId, { stage: "new_inquiry" });
   assert.doesNotMatch(reopened.summary, /Qualified/);
   assert.equal((await leadStatusOf(db, contactId))?.lead_status, null);

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { TABLE_NAMES } from "./db.ts";
 import { applyMigrations, applySqlFile, createTestDb, migrationFiles, SqliteD1 } from "./sqlite-d1.ts";
+import { setLeadStatus } from "../../tests/helpers/people.ts";
 
 const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 
@@ -334,7 +335,7 @@ test("0006 leaves rule_firings pointing at rules, and the task link still clears
 test("0006 accepts a lead_followup rule and a firing with only a contact", async () => {
   const db = await createTestDb();
   await addContact(db, "ct_a");
-  await db.prepare("UPDATE contacts SET lead_status = 'new', lead_status_at = '2026-11-18T17:00:00.000Z'").run();
+  await setLeadStatus(db, "ct_a", "new", "2026-11-18T17:00:00.000Z");
   await db
     .prepare(
       `INSERT INTO rules (id, type, params, description, created_by)
@@ -353,10 +354,8 @@ test("0006 refuses lead_status 'hot' and accepts the six keys", async () => {
   const db = await createTestDb();
   await addContact(db, "ct_a");
   await assert.rejects(db.prepare("UPDATE contacts SET lead_status = 'hot'").run(), /CHECK/);
-  for (const key of ["new", "contacted", "not_now", "not_a_fit", "bad", "qualified"]) {
-    await db.prepare("UPDATE contacts SET lead_status = ?").bind(key).run();
-  }
-  await db.prepare("UPDATE contacts SET lead_status = NULL").run();
+  for (const key of ["new", "contacted", "not_now", "not_a_fit", "bad", "qualified"] as const) await setLeadStatus(db, "ct_a", key);
+  await setLeadStatus(db, "ct_a", null);
 });
 
 test("0006 refuses a firing with neither deal nor contact", async () => {

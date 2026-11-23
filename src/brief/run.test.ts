@@ -13,6 +13,7 @@ import { addTask } from "../services/tasks.ts";
 import { toBase64Url } from "../push/bytes.ts";
 import { subscribePush } from "../push/subscriptions.ts";
 import { runBrief, shouldRunBrief } from "./run.ts";
+import { setLeadStatus } from "../../tests/helpers/people.ts";
 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
@@ -182,7 +183,7 @@ test("the brief carries a Leads line with the open lead counts, and none without
   const old = new Date(SEVEN.getTime() - 3 * DAY);
   for (const [name, status] of [["A", "new"], ["B", "new"], ["C", "contacted"], ["D", "not_a_fit"]] as const) {
     const { contactId } = await addLead(ctxFor(other, old, "add_lead"), { name: `${name} Example` });
-    await other.prepare("UPDATE contacts SET lead_status = ? WHERE id = ?").bind(status, contactId).run();
+    await setLeadStatus(other, contactId, status);
   }
   await runBrief(envFor(other), SEVEN);
   const [row] = await briefs(other);

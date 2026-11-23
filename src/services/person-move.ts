@@ -19,7 +19,11 @@ export interface PersonMove {
 
 type PersonColumns = Pick<ContactRow, "person_status" | "sub_status" | "lead_status">;
 
-/** A lead by either pair of columns, so a row the two disagree on is still moved out of Lead properly. */
+/**
+ * A lead by either pair of columns. The fallback exists only so a row whose pairs disagree (written by hand, never by
+ * the services) is repaired by the next move out of Lead; a disagreeing row is never trusted or produced here. Test
+ * databases refuse such rows outright (src/db/sqlite-d1.ts).
+ */
 const isLead = (contact: Pick<ContactRow, "person_status" | "lead_status">) =>
   contact.person_status === LEAD || isUnqualified(contact.lead_status);
 

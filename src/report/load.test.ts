@@ -99,7 +99,7 @@ test("leads: created in the month, first reach in the month, qualified in the mo
   await log(lead.contactId, "2026-10-15T18:00:00.000Z");
   await log(older.contactId, "2026-09-02T18:00:00.000Z");
   await log(older.contactId, "2026-10-20T18:00:00.000Z");
-  await run(db, "UPDATE contacts SET lead_status = 'qualified', lead_status_at = '2026-10-25T18:00:00.000Z' WHERE id = ?", lead.contactId);
+  await run(db, "UPDATE contacts SET lead_status = 'qualified', person_status = 'contact', sub_status = NULL, lead_status_at = '2026-10-25T18:00:00.000Z' WHERE id = ?", lead.contactId);
   await log(never.contactId, "2026-10-12T18:00:00.000Z");
 
   const input = await loadCaughtInput(db, "2026-10", TZ);

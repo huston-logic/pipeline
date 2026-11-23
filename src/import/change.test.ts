@@ -211,8 +211,8 @@ test("a CSV round trip keeps lead_status; lead_status and lead_status_at are in 
 
 test("the JSON export carries lead_status, lead_status_at and the rule firings' contact_id", async () => {
   const db = await createTestDb();
-  db.exec(`INSERT INTO contacts (id, name, untrusted_fields, lead_status, lead_status_at)
-    VALUES ('ct_a', 'Avery Lead', '[]', 'new', '2026-11-10T00:00:00.000Z')`);
+  db.exec(`INSERT INTO contacts (id, name, untrusted_fields, lead_status, lead_status_at, person_status, sub_status)
+    VALUES ('ct_a', 'Avery Lead', '[]', 'new', '2026-11-10T00:00:00.000Z', 'lead', 'new')`);
   const full = await exportAll(db, NOW);
   assert.equal(full.tables.contacts[0]?.lead_status, "new");
   assert.equal(full.tables.contacts[0]?.lead_status_at, "2026-11-10T00:00:00.000Z");

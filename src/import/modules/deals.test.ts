@@ -17,10 +17,10 @@ const LATER = new Date("2026-11-23T19:00:00.000Z");
 
 async function withPeople(): Promise<SqliteD1> {
   const db = await createTestDb();
-  db.exec(`INSERT INTO contacts (id, name, email, business, untrusted_fields, lead_status, lead_status_at, created_at, updated_at) VALUES
-    ('ct_lead', 'Lee Lead', 'lee@example.com', 'Lead Bakery', '[]', 'contacted', '2026-11-01T00:00:00.000Z', '2026-11-01T00:00:00.000Z', '2026-11-01T00:00:00.000Z'),
-    ('ct_pat', 'Pat Example', 'pat@example.com', 'Example Plumbing', '[]', NULL, NULL, '2026-11-01T00:00:00.000Z', '2026-11-01T00:00:00.000Z'),
-    ('ct_gone', 'Gail Gone', 'gail@example.com', NULL, '[]', NULL, NULL, '2026-11-01T00:00:00.000Z', '2026-11-01T00:00:00.000Z')`);
+  db.exec(`INSERT INTO contacts (id, name, email, business, untrusted_fields, lead_status, lead_status_at, created_at, updated_at, person_status, sub_status) VALUES
+    ('ct_lead', 'Lee Lead', 'lee@example.com', 'Lead Bakery', '[]', 'contacted', '2026-11-01T00:00:00.000Z', '2026-11-01T00:00:00.000Z', '2026-11-01T00:00:00.000Z', 'lead', 'contacted'),
+    ('ct_pat', 'Pat Example', 'pat@example.com', 'Example Plumbing', '[]', NULL, NULL, '2026-11-01T00:00:00.000Z', '2026-11-01T00:00:00.000Z', 'contact', NULL),
+    ('ct_gone', 'Gail Gone', 'gail@example.com', NULL, '[]', NULL, NULL, '2026-11-01T00:00:00.000Z', '2026-11-01T00:00:00.000Z', 'contact', NULL)`);
   db.exec("UPDATE contacts SET archived = 1 WHERE id = 'ct_gone'");
   db.exec(`INSERT INTO deals (id, contact_id, title, stage_key, value, stage_entered_at, untrusted_fields) VALUES
     ('dl_onfile', 'ct_pat', 'Boiler page', 'replied', NULL, '2026-11-02T00:00:00.000Z', '[]')`);

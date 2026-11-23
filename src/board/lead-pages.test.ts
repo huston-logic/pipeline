@@ -195,7 +195,7 @@ test("a contact who was never a lead sees no lead controls; a Qualified one sees
   const env = devEnv(db);
   const never = mainOf((await load(env, "/contacts/ct_seed01")).body);
   for (const bad of [/Lead status/, /lead-status/, /\/qualify/, /claude\.ai/, /Draft an intro/]) assert.doesNotMatch(never, bad, String(bad));
-  db.exec(`UPDATE contacts SET lead_status = 'qualified', lead_status_at = '2026-11-01T18:00:00.000Z' WHERE id = 'ct_seed01'`);
+  db.exec(`UPDATE contacts SET lead_status = 'qualified', person_status = 'contact', sub_status = NULL, lead_status_at = '2026-11-01T18:00:00.000Z' WHERE id = 'ct_seed01'`);
   const qualified = mainOf((await load(env, "/contacts/ct_seed01")).body);
   assert.match(qualified, /Lead status: Qualified, since/);
   for (const bad of [/lead-status"/, /\/qualify/, /claude\.ai/]) assert.doesNotMatch(qualified, bad, String(bad));

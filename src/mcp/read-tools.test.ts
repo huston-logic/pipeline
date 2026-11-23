@@ -129,8 +129,8 @@ async function leadsClient() {
   const ann = await addLead(ctx, { name: "Ann Example", source: "Trade fair" });
   const bo = await addLead(ctx, { name: "Bo Example" });
   const cy = await addLead(ctx, { name: "Cy Example" });
-  await db.prepare("UPDATE contacts SET lead_status = 'contacted' WHERE id = ?").bind(bo.contactId).run();
-  await db.prepare("UPDATE contacts SET lead_status = 'bad' WHERE id = ?").bind(cy.contactId).run();
+  await db.prepare("UPDATE contacts SET lead_status = 'contacted', person_status = 'lead', sub_status = 'contacted' WHERE id = ?").bind(bo.contactId).run();
+  await db.prepare("UPDATE contacts SET lead_status = 'bad', person_status = 'lead', sub_status = 'bad' WHERE id = ?").bind(cy.contactId).run();
   await addTask({ db, now: NOW, actor: "ai", tool: "add_task" }, { contactId: ann.contactId, title: "Reach out", dueAt: "2026-11-19T15:00" });
   await db.prepare("UPDATE contacts SET untrusted_fields = '[\"name\"]' WHERE id = ?").bind(bo.contactId).run();
   await db.prepare("UPDATE contacts SET untrusted_fields = '[\"source\"]' WHERE id = ?").bind(ann.contactId).run();
