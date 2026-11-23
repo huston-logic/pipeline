@@ -51,7 +51,7 @@ test("add_contact takes any live status and sub-status by key or label; a Lead s
   assert.match(client.headline, /^Added Cal Example as a Contact \(Client\) \(change/);
   assert.equal((await row(db, contactIdOf(client.data))).sub_status, "client");
   const lead = await ok(c, "add_contact", { name: "Lou Example", personStatus: "lead" });
-  assert.match(lead.headline, /^Added Lou Example as a Lead \(New\) \(change/);
+  assert.match(lead.headline, /^Added lead Lou Example \(New\) \(change/);
   const leadRow = await row(db, contactIdOf(lead.data));
   assert.deepEqual([leadRow.person_status, leadRow.sub_status, leadRow.lead_status], ["lead", "new", "new"]);
 
@@ -63,6 +63,46 @@ test("add_contact takes any live status and sub-status by key or label; a Lead s
     /^Pat Example \(ct_seed01, pat@example\.com\) already uses that email\. Change them with update_contact instead\.$/,
   );
   assert.match(await fails(c, "add_contact", { name: "  " }), /^A contact needs a name\./);
+});
+
+test("add_contact with a Lead adds them exactly as add_lead does: the business check, notes as a note, undo", async () => {
+  const { db, c } = await setup();
+  const first = await ok(c, "add_contact", { name: "Ann Example", business: "Acme Plumbing", personStatus: "lead", notes: "Met at the fair." });
+  const ann = contactIdOf(first.data);
+  assert.match(first.headline, /^Added lead Ann Example \(New\) \(change/);
+  const annRow = await row(db, ann);
+  assert.equal(annRow.notes, null, "notes are a note on the person, as add_lead logs them");
+  const note = await db.prepare("SELECT type, summary FROM activities WHERE contact_id = ?").bind(ann).first<{ type: string; summary: string }>();
+  assert.deepEqual(note, { type: "note", summary: "Met at the fair." });
+  assert.match(
+    await fails(c, "add_contact", { name: "Jo Example", business: " acme  plumbing", personStatus: "Lead" }),
+    /already has that business\. Say allowDuplicate: true to add another lead anyway\.$/,
+  );
+  await ok(c, "add_contact", { name: "Jo Example", business: "Acme Plumbing", personStatus: "lead", allowDuplicate: true });
+  const reached = await ok(c, "add_contact", { name: "Kim Example", personStatus: "lead", subStatus: "Contacted" });
+  assert.match(reached.headline, /^Added lead Kim Example \(Contacted\) \(change/);
+  assert.equal((await row(db, contactIdOf(reached.data))).lead_status, "contacted");
+  await ok(c, "undo_change", { changeId: changeIdOf(first.data) });
+  assert.equal(await db.prepare("SELECT COUNT(*) AS n FROM activities WHERE contact_id = ?").bind(ann).first<number>("n"), 0);
+  assert.equal(await db.prepare("SELECT 1 FROM contacts WHERE id = ?").bind(ann).first(), null);
+});
+
+test("a blank sub-status is refused, not read as none; null clears one, except a lead's", async () => {
+  const { db, c } = await setup();
+  for (const [tool, args] of [
+    ["add_contact", { name: "Lee Example", subStatus: "  " }],
+    ["update_contact", { contact: "ct_seed01", subStatus: "" }],
+    ["search_contacts", { query: "", personStatus: "contact", subStatus: " " }],
+    ["update_sub_status", { status: "contact", subStatus: "", label: "Buyer" }],
+  ] as const) {
+    assert.match(await fails(c, tool, args), /subStatus"? can't be empty/, tool);
+  }
+  assert.match(await fails(c, "add_contact", { name: "Lee Example", personStatus: " " }), /personStatus"? can't be empty/);
+  const id = contactIdOf((await ok(c, "add_contact", { name: "Lee Example", subStatus: "client" })).data);
+  await ok(c, "update_contact", { contact: id, subStatus: null });
+  assert.equal((await row(db, id)).sub_status, null);
+  const lead = contactIdOf((await ok(c, "add_lead", { name: "Lou Example" })).data);
+  assert.match(await fails(c, "update_contact", { contact: lead, subStatus: null }), /^A lead always has a lead status\./);
 });
 
 test("update_contact sets a person status and sub-status in one change with other fields, and undo reverses it all", async () => {

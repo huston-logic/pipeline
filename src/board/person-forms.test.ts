@@ -153,3 +153,21 @@ test("a renamed lead status shows by its new name on the contact page, its statu
   assert.match(leads, /<option value="open" selected>Open \(New, Reached, Not now\)<\/option>/);
   assert.match(leads, /<option value="contacted">Reached<\/option>/);
 });
+
+test("Add contact with Lead adds a lead as Add a lead does: notes as a note, a business on file refused in board words", async () => {
+  const db = await seededDb();
+  const env = devEnv(db);
+  const added = await post(env, "/contacts/new", { name: "Ann Example", business: "Acme Plumbing", person_status: "lead", notes: "Met at the fair." });
+  assert.equal(added.res.status, 303);
+  const audit = await auditOf(db, changeIdOf(added.location));
+  assert.equal(audit?.tool, "add_contact");
+  assert.match(audit?.summary ?? "", /^Added lead Ann Example \(New\) \(change/);
+  const id = /^\/contacts\/(ct_[a-z0-9]+)/.exec(added.location)?.[1] ?? "";
+  assert.equal(await db.prepare("SELECT COUNT(*) AS n FROM activities WHERE contact_id = ? AND type = 'note'").bind(id).first<number>("n"), 1);
+
+  const before = await auditCount(db);
+  const again = await post(env, "/contacts/new", { name: "Jo Example", business: "acme plumbing", person_status: "lead" });
+  assert.equal(again.res.status, 422);
+  assert.match(again.body, /<a href="#contact-business">Ann Example \(ct_[a-z0-9]+\) already has that business\. To add another lead anyway, use Add a lead and tick Add anyway\.<\/a>/);
+  assert.equal(await auditCount(db), before);
+});

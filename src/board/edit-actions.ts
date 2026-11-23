@@ -10,6 +10,7 @@ import { addContact, type NewContactInput } from "../services/add-contact.ts";
 import { addDeal, type DealInput } from "../services/add-deal.ts";
 import { type ContactPatch, updateContact } from "../services/contacts.ts";
 import { type DealPatch, updateDeal } from "../services/deals.ts";
+import { DuplicateLeadError } from "../services/leads.ts";
 import { ownerTimezone } from "../services/lookup.ts";
 import { CONTACT } from "../services/person-move.ts";
 import { listPersonStatuses } from "../services/person-status.ts";
@@ -95,6 +96,15 @@ async function newContact(ctx: ActionContext): Promise<ActionResult> {
     const result = await addContact(asOwner(ctx, "add_contact"), collected.input as unknown as NewContactInput);
     return redirect(withChange(contactHref(result.contactId), result.changeId));
   } catch (error) {
+    // A lead is added as Add a lead adds one (decision 0041); its duplicate answers are said in the board's words.
+    if (error instanceof DuplicateLeadError) {
+      const message =
+        error.by === "email"
+          ? `${error.who} already uses that email, so they are on file already.`
+          : `${error.who} already has that business. To add another lead anyway, use Add a lead and tick Add anyway.`;
+      fieldError(collected, error.by, message);
+      return refused();
+    }
     return refused([refusal(error, "contact")]);
   }
 }

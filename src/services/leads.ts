@@ -31,6 +31,8 @@ export interface NewLeadInput {
   fields?: FieldValues;
   /** Add the lead even though a person on file has the same business. */
   allowDuplicate?: boolean;
+  /** The lead status they start with (add_contact with a Lead sub-status, decision 0041); New when left out. */
+  status?: LeadStatus;
 }
 
 export interface AddLeadResult extends ChangeResult {
@@ -85,6 +87,8 @@ export async function addLead(ctx: Ctx, input: NewLeadInput): Promise<AddLeadRes
   }
   const fields = withoutNulls(input.fields ?? {});
   await checkFieldValues(db, "contact", fields);
+  const status = input.status ?? "new";
+  if (!isUnqualified(status)) throw new UserError(`A new lead can't start ${String(status)}. Use one of: ${UNQUALIFIED_STATUSES.join(", ")}.`);
 
   const now = ctx.now.toISOString();
   const contact: ContactRow = {
@@ -101,7 +105,7 @@ export async function addLead(ctx: Ctx, input: NewLeadInput): Promise<AddLeadRes
     version: 1,
     created_at: now,
     updated_at: now,
-    ...newPersonColumns({ status: LEAD, sub: "new" }, ctx.now),
+    ...newPersonColumns({ status: LEAD, sub: status }, ctx.now),
   };
   const changes: RowChange[] = [{ table: "contacts", id: contact.id, before: null, after: contact }];
   const notes = clean(input.notes);
@@ -122,7 +126,7 @@ export async function addLead(ctx: Ctx, input: NewLeadInput): Promise<AddLeadRes
     changes.push({ table: "activities", id: note.id, before: null, after: note });
   }
   const from = contact.source === null ? "" : `, from ${contact.source}`;
-  const summary = `Added lead ${name} (${(await statusLabels(db)).lead("new")})${from}`;
+  const summary = `Added lead ${name} (${(await statusLabels(db)).lead(status)})${from}`;
   const result = await commitWithEmail(ctx, { target: { table: "contacts", id: contact.id }, summary, changes }, email);
   return { ...result, contactId: contact.id };
 }

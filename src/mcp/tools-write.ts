@@ -127,7 +127,9 @@ export function registerWriteTools(server: McpServer, deps: ToolDeps): void {
         "Adds a person with a person status (Contact unless you give another) and no deal: a partner, a supplier, a " +
         "past client or anyone who is neither a lead nor a deal. " +
         `${SORTING_RULE} ` +
-        "An email already on file is refused (use update_contact for that person). Notes are kept on the person.",
+        "An email already on file is refused (use update_contact for that person). Notes are kept on the person. A " +
+        "lead is added exactly as add_lead adds one (a business on file is refused unless allowDuplicate is true, notes " +
+        "are logged as a note).",
       input: z.strictObject({
         name: shortText("The person's name."),
         email: shortText("Their email address. One already on file is refused.").optional(),
@@ -136,8 +138,14 @@ export function registerWriteTools(server: McpServer, deps: ToolDeps): void {
         source: shortText("Where they came from, for example \"referral\".").optional(),
         notes: longText("Notes about the person.").optional(),
         personStatus: statusRef("Their person status: its key or label (see list_person_statuses). The default is contact.").optional(),
-        subStatus: orNull(subStatusRef("One of that status's sub-statuses: its key or label, or null for none. A lead starts New.")).optional(),
+        subStatus: orNull(
+          subStatusRef("One of that status's sub-statuses: its key or label, or null for none (the default; a lead starts New)."),
+        ).optional(),
         fields: fieldValues("contact").optional(),
+        allowDuplicate: z
+          .boolean()
+          .optional()
+          .describe("With a lead: true to add them even though someone on file has the same business, as add_lead."),
       }),
       async run(args, deps) {
         const result = await addContact(aiCtx(deps, "add_contact"), args);
@@ -243,8 +251,8 @@ export function registerWriteTools(server: McpServer, deps: ToolDeps): void {
         ).optional(),
         subStatus: orNull(
           subStatusRef(
-            "One of the person status's sub-statuses (the new one, or the current one): its key or label, or null for " +
-              "none. Left out, it is kept when the status stays, New for a new lead, none otherwise.",
+            "One of the person status's sub-statuses (the new one, or the current one): its key or label. null clears it " +
+              "(not for a lead). Left out, it is kept when the status stays, New for a new lead, none otherwise.",
           ),
         ).optional(),
       }),

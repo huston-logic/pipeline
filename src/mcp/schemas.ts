@@ -26,10 +26,10 @@ export const contactRef = (description = "The contact: their id (ct_...) or exac
   z.string().min(1).max(500).describe(description);
 
 /** A person status (decision 0040), by key or label. */
-export const statusRef = (description: string) => z.string().min(1).max(100).describe(description);
+export const statusRef = (description: string) => z.string().trim().min(1).max(100).describe(description);
 
-/** A sub-status of a person status, by key or label. */
-export const subStatusRef = (description: string) => z.string().max(100).describe(description);
+/** A sub-status of a person status, by key or label; never blank (null clears one where a tool allows it). */
+export const subStatusRef = (description: string) => z.string().trim().min(1).max(100).describe(description);
 
 export const DEAL_STATUSES = ["open", "won", "lost", "not_now"] as const;
 
