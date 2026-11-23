@@ -1,15 +1,19 @@
-// The board's editing posts (decision 0018): Add a deal for a new person, a new deal for a contact, Edit contact, Edit
-// deal, Add a task, Done, Snooze and Log. Each calls the service the matching MCP tool calls, as the owner under that
-// tool's name, and answers 303 back with ?change=. A refused post draws its form again (422) with the values kept and
-// the errors. The lead routes (decision 0028) are in lead-actions.ts.
+// The board's editing posts (decision 0018): Add a deal for a new person, a new deal for a contact, Add contact
+// (decision 0041), Edit contact, Edit deal, Add a task, Done, Snooze and Log. Each calls the service the matching MCP
+// tool calls, as the owner under that tool's name, and answers 303 back with ?change=. A refused post draws its form
+// again (422) with the values kept and the errors. The lead routes (decision 0028) are in lead-actions.ts.
 import type { ActivityType, FieldDefRow } from "../db/db.ts";
 import { getContact, getDeal, getTask, listFieldDefs } from "../db/queries.ts";
 import { isContactId, isDealId, isTaskId } from "../ids.ts";
 import { logActivity } from "../services/activities.ts";
+import { addContact, type NewContactInput } from "../services/add-contact.ts";
 import { addDeal, type DealInput } from "../services/add-deal.ts";
 import { type ContactPatch, updateContact } from "../services/contacts.ts";
 import { type DealPatch, updateDeal } from "../services/deals.ts";
+import { DuplicateLeadError } from "../services/leads.ts";
 import { ownerTimezone } from "../services/lookup.ts";
+import { CONTACT } from "../services/person-move.ts";
+import { listPersonStatuses } from "../services/person-status.ts";
 import { addTask, completeTask, snoozeTask } from "../services/tasks.ts";
 import {
   type ActionContext,
@@ -32,12 +36,14 @@ import { html } from "./html.ts";
 import { errorSummary } from "./inputs.ts";
 import { addReturn } from "./lead-forms.ts";
 import { logForm, logSpecs } from "./log-form.ts";
-import { contactEditPage, contactEditPath } from "./pages/contact-edit.ts";
+import { contactEditPage, contactEditPath, contactEditSpecs } from "./pages/contact-edit.ts";
+import { CONTACT_PATH, contactNewPage, newContactSpecs } from "./pages/contact-new.ts";
+import { checkSubStatus, personRow } from "./person-status-form.ts";
 import { dealEditPage, dealEditPath } from "./pages/deal-edit.ts";
 import { newDealPage, newDealPath, newDealSpecs } from "./pages/deal-new.ts";
 import { PERSON_DEAL_PATH, personDealPage } from "./pages/deal-new-person.ts";
 import { contactHref, dealHref } from "./parts.ts";
-import { collectEdit, collectNew, contactSpecs, dealSpecs, line, parseValue, personDealSpecs, postedValue } from "./record-form.ts";
+import { collectEdit, collectNew, dealSpecs, line, parseValue, personDealSpecs, postedValue } from "./record-form.ts";
 import { fieldId } from "./record-fields.ts";
 import { withChange } from "./return-to.ts";
 import { MORNING, snoozePresets } from "./snooze.ts";
@@ -78,12 +84,39 @@ async function newDeal(ctx: ActionContext, id: string): Promise<ActionResult> {
   }
 }
 
+/** POST /contacts/new: add_contact with the person status and sub-status chosen. Then the new contact's page. */
+async function newContact(ctx: ActionContext): Promise<ActionResult> {
+  const collected = collectNew(await newContactSpecs(ctx.db), ctx.form);
+  const input = collected.input as Partial<NewContactInput>;
+  if (collected.errors.length === 0) checkSubStatus(collected, input.personStatus ?? CONTACT, await listPersonStatuses(ctx.db));
+  const cancel = addReturn(ctx.form.get(RETURN_FIELD), "/contacts");
+  const refused = async (extra: string[] = []) => page(422, await contactNewPage(pageContext(ctx, CONTACT_PATH), stateOf(collected, extra), cancel));
+  if (collected.errors.length > 0) return refused();
+  try {
+    const result = await addContact(asOwner(ctx, "add_contact"), collected.input as unknown as NewContactInput);
+    return redirect(withChange(contactHref(result.contactId), result.changeId));
+  } catch (error) {
+    // A lead is added as Add a lead adds one (decision 0041); its duplicate answers are said in the board's words.
+    if (error instanceof DuplicateLeadError) {
+      const message =
+        error.by === "email"
+          ? `${error.who} already uses that email, so they are on file already.`
+          : `${error.who} already has that business. To add another lead anyway, use Add a lead and tick Add anyway.`;
+      fieldError(collected, error.by, message);
+      return refused();
+    }
+    return refused([refusal(error, "contact")]);
+  }
+}
+
 /** POST /contacts/<id>/edit: update_contact with only the fields the owner changed. */
 async function editContact(ctx: ActionContext, id: string): Promise<ActionResult> {
   const contact = isContactId(id) ? await getContact(ctx.db, id) : null;
   if (contact === null) return notFound(ctx);
   const tz = await ownerTimezone(ctx.db);
-  const collected = await collectEdit(contactSpecs(await defsOf(ctx)), ctx.form, contact, tz);
+  const collected = await collectEdit(await contactEditSpecs(ctx.db), ctx.form, personRow(contact), tz);
+  const status = (collected.input as ContactPatch).personStatus ?? contact.person_status;
+  if (collected.errors.length === 0) checkSubStatus(collected, status, await listPersonStatuses(ctx.db));
   const refused = async (extra: string[] = []) =>
     page(422, (await contactEditPage(pageContext(ctx, contactEditPath(id)), id, stateOf(collected, extra))) ?? "");
   if (collected.errors.length > 0) return refused();
@@ -240,6 +273,7 @@ async function snooze(ctx: ActionContext, id: string): Promise<ActionResult> {
 export const EDIT_ROUTES: Route[] = [
   { path: /^\/deals\/(new)$/, handle: (ctx) => newPersonDeal(ctx), big: true },
   { path: /^\/contacts\/([^/]+)\/deals\/new$/, handle: newDeal, big: true },
+  { path: /^\/contacts\/(new)$/, handle: (ctx) => newContact(ctx), big: true },
   { path: /^\/contacts\/([^/]+)\/edit$/, handle: editContact, big: true },
   { path: /^\/deals\/([^/]+)\/edit$/, handle: editDeal, big: true },
   { path: /^\/deals\/([^/]+)\/tasks$/, handle: addTaskTo("deal") },

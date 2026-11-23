@@ -6,7 +6,8 @@ import { addDays, dayBoundsUtc, localDate } from "../time.ts";
 import { UserError } from "./errors.ts";
 import { untrustedFields } from "./labels.ts";
 import { businessKey } from "./lead-change.ts";
-import { isLeadStatus, LEAD_STATUS_LABELS, LEAD_STATUSES, type LeadStatus, OPEN_LEAD_STATUSES } from "./lead-status.ts";
+import { isLeadStatus, LEAD_STATUSES, type LeadStatus, OPEN_LEAD_STATUSES } from "./lead-status.ts";
+import { statusLabels } from "./status-labels.ts";
 
 export const LEAD_LIST_LIMIT = 200;
 const DAY_MS = 86_400_000;
@@ -36,8 +37,14 @@ export interface LeadItem {
   email: string | null;
   phone: string | null;
   leadStatus: LeadStatus;
+  /** The owner's current label for it (decision 0041). */
   leadStatusLabel: string;
   leadStatusAt: string | null;
+  /** Their person status and sub-status keys (decision 0040), with the owner's current labels. */
+  personStatus: string;
+  personStatusLabel: string;
+  subStatus: string | null;
+  subStatusLabel: string | null;
   /** The latest form, email, call, meeting or text, on the person or any of their deals. */
   lastContactAt: string | null;
   /** The soonest open task that is not snoozed, with a due date. */
@@ -97,6 +104,8 @@ type LeadRow = {
   phone: string | null;
   lead_status: LeadStatus;
   lead_status_at: string | null;
+  person_status: string;
+  sub_status: string | null;
   untrusted_fields: string;
   created_at: string;
   last_contact_at: string | null;
@@ -204,6 +213,7 @@ export async function listLeads(db: Db, now: Date, tz: string, options: LeadList
     )
     .bind(now.toISOString(), now.toISOString(), ...params, Math.min(Math.max(options.limit ?? LEAD_LIST_LIMIT, 1), LEAD_LIST_LIMIT))
     .all<LeadRow>();
+  const labels = await statusLabels(db);
   const items = found.results.map((row): LeadItem => {
     const outside = untrustedFields(row);
     return {
@@ -214,8 +224,12 @@ export async function listLeads(db: Db, now: Date, tz: string, options: LeadList
       email: row.email,
       phone: row.phone,
       leadStatus: row.lead_status,
-      leadStatusLabel: LEAD_STATUS_LABELS[row.lead_status],
+      leadStatusLabel: labels.lead(row.lead_status),
       leadStatusAt: row.lead_status_at,
+      personStatus: row.person_status,
+      personStatusLabel: labels.status(row.person_status),
+      subStatus: row.sub_status,
+      subStatusLabel: labels.sub(row.person_status, row.sub_status),
       lastContactAt: row.last_contact_at,
       nextTaskAt: row.next_task_at,
       createdAt: row.created_at,

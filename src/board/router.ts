@@ -12,6 +12,7 @@ import { isContactId, isDealId, isImportId } from "../ids.ts";
 import { companiesPage } from "./pages/companies.ts";
 import { contactPage } from "./pages/contact.ts";
 import { contactEditPage } from "./pages/contact-edit.ts";
+import { CONTACT_PATH, contactNewPage } from "./pages/contact-new.ts";
 import { contactsPage } from "./pages/contacts.ts";
 import { dealEditPage } from "./pages/deal-edit.ts";
 import { newDealPage } from "./pages/deal-new.ts";
@@ -57,6 +58,7 @@ const PAGES = new Map<string, Page>([
   [NOTIFICATIONS_PATH, (ctx, request) => notificationsPage(ctx, request.pushKey)],
   [EMAIL_LOG_PATH, (ctx, request) => emailLogPage(ctx, request.emailLogAddress)],
   [LEAD_PATH, (ctx) => leadPage(ctx)],
+  [CONTACT_PATH, (ctx) => contactNewPage(ctx)],
   [PERSON_DEAL_PATH, (ctx) => personDealPage(ctx)],
 ]);
 

@@ -25,10 +25,14 @@ export type FieldProps = {
   choices?: string[];
   /** A choice of fixed options with their own labels, and no blank option (the activity type). */
   options?: { value: string; label: string }[];
+  /** A choice of options in labelled groups, after a blank option called None (a sub-status under its status). */
+  groups?: OptionGroup[];
   maxlength?: number;
 };
 
 export type FieldError = { id?: string; message: string };
+
+export type OptionGroup = { label: string; options: { value: string; label: string }[] };
 
 export const WAS_PREFIX = "was.";
 
@@ -70,6 +74,12 @@ function control(props: FieldProps): Html {
     case "textarea":
       return html`<textarea id="${props.id}" name="${props.name}" rows="4"${required}${max}${aria}>${props.value}</textarea>`;
     case "choice": {
+      if (props.groups !== undefined) {
+        const option = (o: { value: string; label: string }) => html`<option value="${o.value}"${o.value === props.value ? " selected" : ""}>${o.label}</option>\n`;
+        return html`<select id="${props.id}" name="${props.name}"${required}${aria}>
+<option value=""${props.value === "" ? " selected" : ""}>None</option>
+${props.groups.map((group) => html`<optgroup label="${group.label}">\n${group.options.map(option)}</optgroup>\n`)}</select>`;
+      }
       if (props.options !== undefined) {
         return html`<select id="${props.id}" name="${props.name}"${required}${aria}>
 ${props.options.map((option) => html`<option value="${option.value}"${option.value === props.value ? " selected" : ""}>${option.label}</option>\n`)}</select>`;

@@ -112,7 +112,7 @@ export async function contactsPage(ctx: PageContext): Promise<string> {
   const clear = query === "" ? "" : html`<p class="search-clear"><a href="${clearHref}">Clear search</a></p>`;
   let results: Html;
   if (total === 0 && query === "") {
-    results = empty("No contacts yet.", "Add one with Add a deal or Add a lead, or by talking to your AI app. People from your website form show up here too.");
+    results = empty("No contacts yet.", "Add one with Add a deal, Add contact or Add a lead, or by talking to your AI app. People from your website form show up here too.");
   } else if (total === 0) {
     results = html`${empty(`No contacts match "${query}".`, "Try part of a name, an email address, a phone number or a company.")}
 ${await leadsHint(ctx, tz, query)}${clear}`;
@@ -128,7 +128,7 @@ ${await leadsHint(ctx, tz, query)}${clear}`;
     frame: ctx,
     body: html`<h1>Contacts</h1>
 ${peopleSwitch("contacts")}
-${addButtons("contacts", ["deal", "lead", "import"])}
+${addButtons("contacts", ["deal", "contact", "lead", "import"])}
 ${total === 0 && query === "" ? "" : searchForm(query, sortValue)}
 ${results}`,
   });

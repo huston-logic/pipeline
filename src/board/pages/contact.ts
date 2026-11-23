@@ -4,6 +4,7 @@
 import type { ContactRow } from "../../db/db.ts";
 import { getContact, listFieldDefs } from "../../db/queries.ts";
 import { ownerTimezone } from "../../services/lookup.ts";
+import { type StatusLabels, statusLabels } from "../../services/status-labels.ts";
 import { type ContactDetail, contactDetail, type DealItem } from "../../services/read.ts";
 import { formatLocal } from "../../time.ts";
 import { type Html, html } from "../html.ts";
@@ -31,6 +32,10 @@ function detailsSection(detail: ContactDetail, labels: Map<string, string>, tz: 
     "Details",
     html`<div class="card">
 ${pairs([
+  {
+    name: "Person status",
+    value: contact.subStatusLabel === null ? contact.personStatusLabel : `${contact.personStatusLabel} (${contact.subStatusLabel})`,
+  },
   text("Email", "email", contact.email),
   text("Phone", "phone", contact.phone),
   text("Company", "business", contact.business),
@@ -50,11 +55,11 @@ ${reachActions(contact, subject, form)}
  * The Lead section, only for someone with a lead status (decision 0022, invariant 4): the status line, and for an
  * unqualified lead who is not archived the status menu and Qualify. A Qualified person keeps the line as history.
  */
-async function leadSection(contact: ContactRow, tz: string, form: FormContext): Promise<Html | ""> {
+async function leadSection(contact: ContactRow, tz: string, form: FormContext, labels: StatusLabels): Promise<Html | ""> {
   if (contact.lead_status === null) return "";
-  const line = statusLine(contact.lead_status, contact.lead_status_at, tz);
+  const line = statusLine(contact.lead_status, contact.lead_status_at, tz, labels);
   const controls = canQualify(contact)
-    ? html`${await statusMenu(contact.id, contact.lead_status, form)}
+    ? html`${await statusMenu(contact.id, contact.lead_status, form, labels)}
 <p class="lead-qualify"><a class="button" href="${qualifyPath(contact.id)}">Qualify</a></p>`
     : "";
   return section("lead-heading", "Lead", html`<div class="card lead-card">
@@ -171,7 +176,7 @@ ${company}
 ${hasOutsideText(detail) ? outsideNote() : ""}
 <div class="detail-columns">
 <div>
-${await leadSection(row, tz, ctx)}
+${await leadSection(row, tz, ctx, await statusLabels(db))}
 ${detailsSection(detail, labels, tz, ctx, subject)}
 ${dealsSection(detail)}
 </div>

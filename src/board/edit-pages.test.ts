@@ -203,9 +203,11 @@ test("Today, Pipeline and Contacts each have Add a deal and Add a lead buttons t
     // Leads, new people come in as leads).
     const module = { today: "tasks", pipeline: "deals", contacts: "people" }[from];
     const importing = `<a class="button button-quiet" href="/import\\?module=${module}">Import</a>`;
+    // Contacts has Add contact too (decision 0041).
+    const contact = from === "contacts" ? `<a class="button button-quiet" href="/contacts/new\\?from=contacts">Add contact</a>` : "";
     assert.match(
       (await load(env, path)).body,
-      new RegExp(`<p class="page-action"><a class="button" href="/deals/new\\?from=${from}">Add a deal</a><a class="button button-quiet" href="/leads/new\\?from=${from}">Add a lead</a>${importing}</p>`),
+      new RegExp(`<p class="page-action"><a class="button" href="/deals/new\\?from=${from}">Add a deal</a>${contact}<a class="button button-quiet" href="/leads/new\\?from=${from}">Add a lead</a>${importing}</p>`),
       path,
     );
   }
@@ -222,6 +224,6 @@ test("empty states say what can be done on the board now", async () => {
   const today = (await load(env, "/")).body;
   assert.match(today, /<p class="empty-title">Nothing due today\.<\/p><p>Add a task on a deal or contact page, or add a deal or a lead\.<\/p>/);
   assert.match((await load(env, "/pipeline")).body, /Add one with Add a deal, or by talking to your AI app\. Inquiries from your website form/);
-  assert.match((await load(env, "/contacts")).body, /Add one with Add a deal or Add a lead, or by talking to your AI app\./);
+  assert.match((await load(env, "/contacts")).body, /Add one with Add a deal, Add contact or Add a lead, or by talking to your AI app\./);
   assert.match(today, /<footer class="app-footer">\n<p>Add leads, edit contacts and deals, and move, log and undo here, or change anything by talking to your AI app\.<\/p>/);
 });

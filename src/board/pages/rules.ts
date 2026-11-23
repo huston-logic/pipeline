@@ -1,7 +1,7 @@
 import type { Actor, RuleType } from "../../db/db.ts";
-import { LEAD_STATUS_LABELS } from "../../services/lead-status.ts";
 import { ownerTimezone } from "../../services/lookup.ts";
 import { listRules, type RuleView } from "../../services/rules.ts";
+import { type StatusLabels, statusLabels } from "../../services/status-labels.ts";
 import { formatLocal } from "../../time.ts";
 import { type Html, html } from "../html.ts";
 import type { PageContext } from "../context.ts";
@@ -17,7 +17,7 @@ const TYPE: Record<RuleType, string> = {
 
 const BY: Record<string, string> = { owner: "you", ai: "your AI app", system: "the system" } satisfies Record<Actor, string>;
 
-function ruleCard(rule: RuleView, tz: string): Html {
+function ruleCard(rule: RuleView, tz: string, labels: StatusLabels): Html {
   return html`<li class="card">
 <div class="card-head">
 <h2 class="card-title">${rule.description}</h2>
@@ -26,7 +26,7 @@ ${rule.active ? tag("Active") : tag("Paused", true)}
 ${pairs([
   { name: "Type", value: TYPE[rule.type] },
   rule.stageLabel !== null && { name: "Stage", value: rule.stageLabel },
-  rule.params?.type === "lead_followup" && { name: "Lead status", value: LEAD_STATUS_LABELS[rule.params.status] },
+  rule.params?.type === "lead_followup" && { name: "Lead status", value: labels.lead(rule.params.status) },
   rule.params === null && { name: "Note", value: "Its settings can't be read, so it is skipped." },
   { name: "Fired", value: count(rule.timesFired, "time") },
   { name: "Added", value: html`${when(rule.createdAt, formatLocal(rule.createdAt, tz))} by ${BY[rule.createdBy] ?? rule.createdBy}` },
@@ -39,6 +39,7 @@ export async function rulesPage(ctx: PageContext): Promise<string> {
   const { db } = ctx;
   const tz = await ownerTimezone(db);
   const rules = await listRules(db);
+  const labels = await statusLabels(db);
   return renderPage({
     title: "Rules",
     description: "Your follow-up rules: what each one does, whether it is active and how often it has fired.",
@@ -49,7 +50,7 @@ export async function rulesPage(ctx: PageContext): Promise<string> {
 ${
   rules.length === 0
     ? empty("No rules yet.", "Ask your AI app for one, for example a nudge three days after a proposal with no reply.")
-    : html`<ul class="cards cards-wide">${rules.map((rule) => ruleCard(rule, tz))}</ul>`
+    : html`<ul class="cards cards-wide">${rules.map((rule) => ruleCard(rule, tz, labels))}</ul>`
 }`,
   });
 }

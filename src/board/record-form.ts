@@ -6,7 +6,7 @@ import { parseObject, parseStringArray } from "../services/lookup.ts";
 import { untrustedFields } from "../services/labels.ts";
 import { localWhen, parseWhen } from "../time.ts";
 import { compareField, type FieldKind, fingerprint, normalize } from "./edit-state.ts";
-import type { FieldKindName } from "./inputs.ts";
+import type { FieldKindName, OptionGroup } from "./inputs.ts";
 import { WAS_PREFIX } from "./inputs.ts";
 
 export type Spec = {
@@ -21,6 +21,8 @@ export type Spec = {
   choices?: string[];
   /** Fixed options with their own labels (the activity type). */
   options?: { value: string; label: string }[];
+  /** Options in labelled groups, after None (a sub-status under its person status). */
+  groups?: OptionGroup[];
   maxlength: number;
   /** A number that must be 0 or more (a deal's value). */
   min0?: boolean;
@@ -77,15 +79,19 @@ export const line = (name: string, label: string, kind: FieldKindName, group: Sp
   ...extra,
 });
 
-/** A contact's details and custom contact fields; `notes` is the contact's own notes (left off a new lead). */
-export function contactSpecs(defs: FieldDefRow[], options: { notes?: boolean; bag?: "fields" | "contactFields" } = {}): Spec[] {
-  const { notes = true, bag = "fields" } = options;
+/**
+ * A contact's details and custom contact fields; `notes` is the contact's own notes (left off a new lead), `status` the
+ * Person status and Sub-status fields, after Source (person-status-form.ts).
+ */
+export function contactSpecs(defs: FieldDefRow[], options: { notes?: boolean; bag?: "fields" | "contactFields"; status?: Spec[] } = {}): Spec[] {
+  const { notes = true, bag = "fields", status = [] } = options;
   return [
     line("name", "Name", "text", "contact", { required: true, requiredMessage: "Give the person's name." }),
     line("email", "Email", "email", "contact"),
     line("phone", "Phone", "tel", "contact"),
     line("business", "Company", "text", "contact"),
     line("source", "Source", "text", "contact", { hint: "Where they came from, for example a referral." }),
+    ...status,
     ...(notes ? [line("notes", "Notes", "textarea", "contact")] : []),
     ...customSpecs(defs, "contact", bag),
   ];
@@ -204,6 +210,12 @@ function realDate(text: string): boolean {
 
 const fail = (message: string): Parsed => ({ ok: false, message });
 
+/** The values a choice field accepts: its options, its grouped options, or its choices. */
+function choiceValues(spec: Spec): string[] {
+  const options = spec.options ?? spec.groups?.flatMap((group) => group.options);
+  return options === undefined ? (spec.choices ?? []) : options.map((option) => option.value);
+}
+
 /** A posted value as the service takes it; "" is null (not set, or cleared). */
 export function parseValue(spec: Spec, posted: string): Parsed {
   const text = normalize(posted, kindOf(spec));
@@ -233,7 +245,7 @@ export function parseValue(spec: Spec, posted: string): Parsed {
       return { ok: true, value: text };
     }
     case "choice":
-      return (spec.options?.map((option) => option.value) ?? spec.choices ?? []).includes(text) ? { ok: true, value: text } : fail("Choose one of the options.");
+      return choiceValues(spec).includes(text) ? { ok: true, value: text } : fail("Choose one of the options.");
     default:
       return { ok: true, value: text };
   }

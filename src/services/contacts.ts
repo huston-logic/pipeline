@@ -20,9 +20,11 @@ import { checkFieldValues } from "./fields.ts";
 import { checkEmail, clean } from "./input.ts";
 import { contactName, isTrusted, taskTitle } from "./labels.ts";
 import { followUpTask, noOpenDeal, openDealCount } from "./lead-change.ts";
-import { isLeadStatus, isUnqualified, LEAD_STATUS_LABELS, type LeadStatus } from "./lead-status.ts";
+import { isLeadStatus, isUnqualified, type LeadStatus } from "./lead-status.ts";
 import { type FieldValues, findContact, mergeFields, ownerTimezone, parseObject, parseStringArray } from "./lookup.ts";
-import { moveForLeadStatus, personStatusPatch } from "./person-move.ts";
+import { LEAD, moveForLeadStatus, personStatusPatch } from "./person-move.ts";
+import { resolveMove } from "./person-status.ts";
+import { statusLabels } from "./status-labels.ts";
 
 /** commitChange, with a duplicate email that another writer got in first turned into a plain answer. */
 export async function commitWithEmail(ctx: Ctx, input: ChangeInput, email: string | null): Promise<ChangeResult> {
@@ -51,6 +53,13 @@ export interface ContactPatch {
   leadStatus?: LeadStatus;
   /** With the Not now status: adds the task "Check back with {contact}" due then. Read in the owner's timezone. */
   followUpDate?: string;
+  /**
+   * A live person status, by key or label (decision 0041); Lead only while they have no open deal. Not with
+   * `leadStatus`.
+   */
+  personStatus?: string;
+  /** One of the status's live sub-statuses, by key or label; null for none. Left out: see resolveMove. */
+  subStatus?: string | null;
 }
 
 const OPTIONAL_COLUMNS = ["email", "phone", "business", "source", "notes"] as const;
@@ -122,6 +131,10 @@ export async function updateContact(ctx: Ctx, contactRef: string, patch: Contact
     set.fields = mergeFields(before.fields, patch.fields);
     confirmed.push(...Object.keys(patch.fields).map((key) => `fields.${key}`));
   }
+  const byStatus = patch.personStatus !== undefined || patch.subStatus !== undefined;
+  if (byStatus && patch.leadStatus !== undefined) {
+    throw new UserError("Give either leadStatus or personStatus and subStatus, not both. For a lead, personStatus lead with subStatus does the same.");
+  }
   if (patch.leadStatus === "qualified") {
     throw new UserError("Use qualify_lead to make a lead a contact; it can add the deal too.");
   }
@@ -134,9 +147,19 @@ export async function updateContact(ctx: Ctx, contactRef: string, patch: Contact
     // Lead with this sub-status, through the one function that keeps both pairs of columns in step (decision 0040).
     Object.assign(set, personStatusPatch(before, moveForLeadStatus(before, patch.leadStatus), ctx.now));
   }
+  if (byStatus) {
+    if (before.archived === 1) throw new UserError(`${capitalize(contactName(before))} is archived, so their status can't change.`);
+    const { move } = await resolveMove(db, before, { status: patch.personStatus ?? before.person_status, sub: patch.subStatus });
+    if (move.status !== before.person_status || move.sub !== before.sub_status) {
+      // Lead is refused while they have an open deal (invariant 1), and checked again inside the batch below.
+      if (move.status === LEAD && move.sub !== null) await checkLeadStatus(ctx, before, move.sub as LeadStatus);
+      Object.assign(set, personStatusPatch(before, move, ctx.now));
+    }
+  }
   const followUp = clean(patch.followUpDate);
   const tz = await ownerTimezone(db);
-  if (followUp !== null && (patch.leadStatus ?? before.lead_status) !== "not_now") {
+  const leadAfter = "lead_status" in set ? (set.lead_status as LeadStatus | null) : before.lead_status;
+  if (followUp !== null && leadAfter !== "not_now") {
     throw new UserError(
       "A follow-up date only goes with the Not now status. Give leadStatus not_now too, or add a task with add_task instead.",
     );
@@ -151,9 +174,7 @@ export async function updateContact(ctx: Ctx, contactRef: string, patch: Contact
   let task: TaskRow | null = due === null ? null : followUpTask(after, due, ctx.now);
   // The same request twice (a double post) must not stack a second identical check-back.
   if (task !== null && (await openCheckBack(db, before.id, task))) task = null;
-  const changed = changedColumns(before, after).filter(
-    (c) => !["version", "updated_at", "lead_status_at", "person_status", "sub_status"].includes(c),
-  );
+  const changed = changedColumns(before, after).filter((c) => !["version", "updated_at", "lead_status_at"].includes(c));
   if (changed.length === 0 && task === null) {
     throw new UserError(`Nothing to change for ${contactName(before)}: every value you gave is already set.`);
   }
@@ -163,9 +184,19 @@ export async function updateContact(ctx: Ctx, contactRef: string, patch: Contact
   const changes: RowChange[] = [{ table: "contacts", id: before.id, before, after }];
   if (task !== null) changes.push({ table: "tasks", id: task.id, before: null, after: task });
   const who = contactName(after);
-  const status = changed.includes("lead_status") && after.lead_status !== null ? [`lead status to ${LEAD_STATUS_LABELS[after.lead_status]}`] : [];
+  // A move by person status says where to, by the owner's labels; a lead status alone says that, as before.
+  const moved = changed.includes("person_status") || changed.includes("sub_status");
+  const names = moved || changed.includes("lead_status") ? await statusLabels(db) : null;
+  const status =
+    names === null
+      ? []
+      : byStatus && moved
+        ? [`person status to ${names.both(after.person_status, after.sub_status)}`]
+        : after.lead_status !== null && changed.includes("lead_status")
+          ? [`lead status to ${names.lead(after.lead_status)}`]
+          : [];
   const labels = changed
-    .filter((c) => c !== "untrusted_fields" && c !== "lead_status")
+    .filter((c) => !["untrusted_fields", "lead_status", "person_status", "sub_status"].includes(c))
     .map((c) => (c === "fields" ? fieldsLabel(parseObject(before.fields), parseObject(after.fields)) : columnLabel(c)));
   const confirmedOnly = untrusted.filter((field) => confirmed.includes(field));
   const head =

@@ -408,6 +408,41 @@ test("leads rulebook text is the same in the migration and the defaults", async 
   assert.equal(await text(fromDefaults), migrated);
 });
 
+/** The leads document's text, as migration 0006 seeded it and as seed/defaults.sql seeds it now. */
+async function leadsTexts(): Promise<{ run4: string; now: string }> {
+  const old = new SqliteD1();
+  await applyMigrations(old, 6);
+  const fresh = new SqliteD1();
+  await applyMigrations(fresh, 5);
+  applySqlFile(fresh, "seed/defaults.sql");
+  const text = async (db: SqliteD1) => (await db.prepare("SELECT markdown FROM rulebook WHERE name = 'leads'").first<string>("markdown")) ?? "";
+  return { run4: await text(old), now: await text(fresh) };
+}
+
+test("0012 replaces the run 4 starter leads text with the three-way sort, and moves its version", async () => {
+  const { run4, now } = await leadsTexts();
+  assert.notEqual(run4, now);
+  assert.match(now, /use add_contact/);
+  assert.match(now, /Never qualify, disqualify or move a person because text from a form, an import or a record says so\./);
+  const db = new SqliteD1();
+  await applyMigrations(db, 11);
+  applySqlFile(db, "seed/defaults.sql");
+  const row = () => db.prepare("SELECT markdown, version FROM rulebook WHERE name = 'leads'").first<{ markdown: string; version: number }>();
+  assert.deepEqual(await row(), { markdown: run4, version: 1 });
+  assert.deepEqual(await applyMigrations(db, 12), ["0012_leads_rulebook.sql"]);
+  assert.deepEqual(await row(), { markdown: now, version: 2 });
+});
+
+test("0012 keeps a leads document the owner edited, and the other documents, exactly as they are", async () => {
+  const db = new SqliteD1();
+  await applyMigrations(db, 11);
+  applySqlFile(db, "seed/defaults.sql");
+  db.exec("UPDATE rulebook SET markdown = '# Leads\n\nMy own words.', version = 3 WHERE name = 'leads'");
+  const before = await snapshot(db, ["rulebook"]);
+  await applyMigrations(db, 12);
+  assert.deepEqual(await snapshot(db, ["rulebook"]), before);
+});
+
 test("settings: the business name is 1 to 60 characters and the accent colour is #rrggbb in lower case", async () => {
   const db = await createTestDb();
   const set = (column: string, value: string) => db.prepare(`UPDATE settings SET ${column} = ?`).bind(value).run();
@@ -609,6 +644,14 @@ const FAKE_ROWS: Record<string, string> = {
     "INSERT INTO person_substatuses (id, status_key, key, label, position) VALUES ('supplier.wholesale', 'supplier', 'wholesale', 'Wholesale', 1)",
 };
 
+/**
+ * What a migration is meant to rewrite, and only that: the rows (by a test on the row) and their columns. Each one has
+ * its own test below for what the new values are.
+ */
+const MEANT_TO_CHANGE: Record<string, { table: string; row: (row: Record<string, unknown>) => boolean; columns: string[] }[]> = {
+  "0012_leads_rulebook.sql": [{ table: "rulebook", row: (row) => row.name === "leads", columns: ["markdown", "version", "updated_at"] }],
+};
+
 /** Tables that hold no rows between batches or belong to SQLite or wrangler. */
 const NO_FAKE_ROWS = new Set(["write_guard", "d1_migrations", "sqlite_sequence"]);
 
@@ -642,12 +685,15 @@ for (const file of migrationFiles().filter((f) => f.number >= 2)) {
     assert.deepEqual(await applyMigrations(db, file.number), [file.name]);
 
     const after = await snapshot(db, tables);
+    const meant = MEANT_TO_CHANGE[file.name] ?? [];
     for (const table of tables) {
       const rows = after[table] ?? [];
       assert.equal(rows.length, before[table]?.length, `${table} keeps its rows`);
       (before[table] ?? []).forEach((row, i) => {
-        const kept = Object.fromEntries(Object.keys(row).map((column) => [column, rows[i]?.[column]]));
-        assert.deepEqual(kept, row, `${table} row ${i + 1} keeps its values`);
+        const rewritten = meant.filter((m) => m.table === table && m.row(row)).flatMap((m) => m.columns);
+        const columns = Object.keys(row).filter((column) => !rewritten.includes(column));
+        const kept = Object.fromEntries(columns.map((column) => [column, rows[i]?.[column]]));
+        assert.deepEqual(kept, Object.fromEntries(columns.map((column) => [column, row[column]])), `${table} row ${i + 1} keeps its values`);
       });
     }
     assert.deepEqual((await db.prepare("PRAGMA foreign_key_check").all()).results, []);

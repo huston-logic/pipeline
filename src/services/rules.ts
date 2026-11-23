@@ -29,6 +29,7 @@ import { UserError } from "./errors.ts";
 import { contactName, dealLabel, untrustedFields } from "./labels.ts";
 import { LEAD_STATUS_LABELS, type LeadStatus, leadStatusFromText } from "./lead-status.ts";
 import { findStage, ownerTimezone, stageLabels } from "./lookup.ts";
+import { type StatusLabels, statusLabels } from "./status-labels.ts";
 
 export type { RuleParams };
 
@@ -190,12 +191,13 @@ async function checkParams(db: Db, type: RuleType, settings: RuleSettings): Prom
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
-export function describeRule(params: RuleParams, stageLabel: string | null): string {
+/** `labels` names a lead_followup's status the way the owner calls it now; the fixed label without it. */
+export function describeRule(params: RuleParams, stageLabel: string | null, labels?: StatusLabels): string {
   const where = stageLabel ?? ("stage" in params ? params.stage : "");
   switch (params.type) {
     case "lead_followup": {
       const task = params.title === undefined ? "a follow-up task" : `the task "${params.title}"`;
-      const status = LEAD_STATUS_LABELS[params.status];
+      const status = labels?.lead(params.status) ?? LEAD_STATUS_LABELS[params.status];
       return `When a lead has been ${status} for ${plural(params.days, "day")} with no contact logged, add ${task}.`;
     }
     case "stage_followup": {
@@ -254,7 +256,7 @@ const ruleName = (row: RuleRow) => `rule ${row.id}`;
 export async function addRule(ctx: Ctx, input: RuleInput): Promise<ChangeResult & { ruleId: string }> {
   const { type, description: given, ...settings } = input;
   const { params, stageLabel } = await checkParams(ctx.db, type, settings);
-  const description = cleanDescription(given) ?? describeRule(params, stageLabel);
+  const description = cleanDescription(given) ?? describeRule(params, stageLabel, await statusLabels(ctx.db));
   const now = ctx.now.toISOString();
   const row: RuleRow = {
     id: newId("ru"),
@@ -305,7 +307,7 @@ export async function updateRule(ctx: Ctx, ref: string, patch: RulePatch): Promi
     (key) => JSON.stringify((params as Record<string, unknown>)[key]) !== JSON.stringify((stored as Record<string, unknown>)[key]),
   );
   const paramsChanged = changed.length > 0;
-  const nextDescription = description ?? (paramsChanged ? describeRule(params, stageLabel) : before.description);
+  const nextDescription = description ?? (paramsChanged ? describeRule(params, stageLabel, await statusLabels(db)) : before.description);
   if (!paramsChanged && nextDescription === before.description) {
     throw new UserError(`Nothing to change on ${ruleName(before)}: every value you gave is already set.`);
   }
@@ -731,7 +733,7 @@ export async function previewRuleFor(db: Db, now: Date, request: PreviewRequest)
       );
     }
     const { params, stageLabel } = await checkParams(db, type, settings);
-    preview = { ruleId: null, description: cleanDescription(description) ?? describeRule(params, stageLabel), params, paused: false };
+    preview = { ruleId: null, description: cleanDescription(description) ?? describeRule(params, stageLabel, await statusLabels(db)), params, paused: false };
   }
 
   const tz = await ownerTimezone(db);

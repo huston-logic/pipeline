@@ -9,8 +9,8 @@ import { UserError } from "./errors.ts";
 import { clean } from "./input.ts";
 import { contactName, dealLabel } from "./labels.ts";
 import { contactedIfNew, TEXT_DATA } from "./lead-change.ts";
-import { LEAD_STATUS_LABELS } from "./lead-status.ts";
 import { findSubject, ownerTimezone } from "./lookup.ts";
+import { statusLabels } from "./status-labels.ts";
 
 /** The activity types that count as contact: they move the deal's last_activity_at. */
 export const CONTACT_TYPES = ["form", "email", "call", "meeting", "note"] as const satisfies readonly ActivityType[];
@@ -110,7 +110,7 @@ export async function logActivity(ctx: Ctx, input: ActivityInput): Promise<Chang
   const where = deal ? `on ${dealLabel(deal, contact)}` : `with ${contactName(contact)}`;
   const summary =
     `Logged ${withArticle(input.type)} ${where}: ${short(text)}` +
-    (contacted === null ? "" : `; ${contactName(contact)} is now ${LEAD_STATUS_LABELS.contacted}`);
+    (contacted === null ? "" : `; ${contactName(contact)} is now ${(await statusLabels(db)).lead("contacted")}`);
   const result = await commitChange(ctx, { target: { table: "activities", id: activity.id }, summary, changes });
   return { ...result, activityId: activity.id };
 }

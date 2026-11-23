@@ -130,7 +130,12 @@ this file before changing the repo, and update it when a rule changes.
   status keys (`src/db/lead-status.ts`, re-exported by `src/services/lead-status.ts`; `src/db` imports nothing from
   `src/services`, a test checks), renamable, never archived or added to; nothing in use is archived. `add_lead`
   (`src/services/leads.ts`) adds a Lead (New) with no deal; `add_deal` (`src/services/add-deal.ts`) adds a deal for a
-  new or existing person; `update_contact` (`src/services/contacts.ts`) sets a lead status. The moves the app makes:
+  new or existing person; `add_contact` (`src/services/add-contact.ts`) adds a person with any live status and no deal;
+  `update_contact` (`src/services/contacts.ts`) sets a lead status, or a person status and sub-status (`resolveMove`),
+  in one change with other fields (decision 0041). Labels shown to the owner (MCP answers, summaries, the board) come
+  from the tables through `src/services/status-labels.ts`, never from `LEAD_STATUS_LABELS` directly; keys never change.
+  The board's person forms (Add contact at `/contacts/new`, Edit contact) draw Person status and Sub-status as plain
+  selects (`src/board/person-status-form.ts`; sub-status values are `<status>.<key>`). The moves the app makes:
   any write that gives an unqualified lead a deal (`add_deal`, `/intake`, `update_deal` reopening a deal, a deals
   import) makes them a Contact (`qualified`) in the same change; logging a reach on a `new` lead sets `contacted`
   (`contactedIfNew`); `update_deal` marking a deal Won makes a Contact a Client (`clientIfWon`). Lead is refused

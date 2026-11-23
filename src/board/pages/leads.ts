@@ -4,6 +4,7 @@
 import { ownerTimezone } from "../../services/lookup.ts";
 import { LEAD_LIST_LIMIT, LEAD_SORTS, type LeadItem, type LeadSort, type LeadSource, leadCounts, listLeads } from "../../services/leads-read.ts";
 import { CLOSED_OUT_STATUSES, type LeadStatus, OPEN_LEAD_STATUSES } from "../../services/lead-status.ts";
+import { type StatusLabels, statusLabels } from "../../services/status-labels.ts";
 import { formatLocal } from "../../time.ts";
 import { type Html, html } from "../html.ts";
 import type { PageContext } from "../context.ts";
@@ -16,12 +17,12 @@ const QUERY_MAX = 100;
 type StatusFilter = "open" | "new" | "contacted" | "not_now" | "closed";
 
 /** The status filter's choices, in the order shown. The first is the default. */
-const STATUS_FILTERS: { value: StatusFilter; label: string; statuses: readonly LeadStatus[]; title: string; description: string }[] = [
-  { value: "open", label: "Open (New, Contacted, Not now)", statuses: OPEN_LEAD_STATUSES, title: "Leads", description: "People you plan to approach, with their status, last contact and next task." },
-  { value: "new", label: "New", statuses: ["new"], title: "New leads", description: "Leads you have not reached yet, with their last contact and next task." },
-  { value: "contacted", label: "Contacted", statuses: ["contacted"], title: "Contacted leads", description: "Leads you have reached, with their last contact and next task." },
-  { value: "not_now", label: "Not now", statuses: ["not_now"], title: "Leads for later", description: "Leads set aside for now, with their last contact and next task." },
-  { value: "closed", label: "Closed out (Not a fit, Bad lead)", statuses: CLOSED_OUT_STATUSES, title: "Closed out leads", description: "Leads marked Not a fit or Bad lead." },
+const STATUS_FILTERS: { value: StatusFilter; statuses: readonly LeadStatus[]; title: string; description: string }[] = [
+  { value: "open", statuses: OPEN_LEAD_STATUSES, title: "Leads", description: "People you plan to approach, with their status, last contact and next task." },
+  { value: "new", statuses: ["new"], title: "New leads", description: "Leads you have not reached yet, with their last contact and next task." },
+  { value: "contacted", statuses: ["contacted"], title: "Contacted leads", description: "Leads you have reached, with their last contact and next task." },
+  { value: "not_now", statuses: ["not_now"], title: "Leads for later", description: "Leads set aside for now, with their last contact and next task." },
+  { value: "closed", statuses: CLOSED_OUT_STATUSES, title: "Closed out leads", description: "Leads marked Not a fit or Bad lead." },
 ];
 
 const SORT_LABELS: Record<LeadSort, string> = {
@@ -85,7 +86,15 @@ ${sources.map((s) => {
 })}`;
 }
 
-function searchForm(asked: ReturnType<typeof leadsQuery>, sources: LeadSource[], selectedToken: string): Html {
+/** A filter's label by the owner's current lead status labels: "New", or "Open (New, Contacted, Not now)". */
+function filterLabel(filter: (typeof STATUS_FILTERS)[number], labels: StatusLabels): string {
+  const names = filter.statuses.map((status) => labels.lead(status)).join(", ");
+  if (filter.value === "open") return `Open (${names})`;
+  if (filter.value === "closed") return `Closed out (${names})`;
+  return names;
+}
+
+function searchForm(asked: ReturnType<typeof leadsQuery>, sources: LeadSource[], selectedToken: string, labels: StatusLabels): Html {
   return html`<form class="search search-filters" action="/leads" method="get" role="search" aria-label="Search leads">
 <div class="field field-grow">
 <label for="leads-q">Search leads</label>
@@ -95,7 +104,7 @@ function searchForm(asked: ReturnType<typeof leadsQuery>, sources: LeadSource[],
 <div class="field">
 <label for="leads-status">Status</label>
 <select id="leads-status" name="status">
-${STATUS_FILTERS.map((f) => html`<option value="${f.value}"${f.value === asked.filter.value ? " selected" : ""}>${f.label}</option>\n`)}</select>
+${STATUS_FILTERS.map((f) => html`<option value="${f.value}"${f.value === asked.filter.value ? " selected" : ""}>${filterLabel(f, labels)}</option>\n`)}</select>
 </div>
 <div class="field">
 <label for="leads-source">Source</label>
@@ -169,7 +178,7 @@ ${clear}`;
     body: html`<h1>Leads</h1>
 ${peopleSwitch("leads")}
 ${addButtons("leads", ["lead", "import"])}
-${searchForm(asked, list.sources, token)}
+${searchForm(asked, list.sources, token, await statusLabels(db))}
 ${results}`,
   });
 }

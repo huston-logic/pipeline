@@ -2,8 +2,9 @@
 // status menu, the Qualify form's fields, and Back to leads on a deal. Plain forms that work without JavaScript.
 import type { Db, DealStatus, StageRow } from "../db/db.ts";
 import { openDealCount } from "../services/lead-change.ts";
-import { LEAD_STATUS_LABELS, UNQUALIFIED_STATUSES } from "../services/lead-status.ts";
+import { UNQUALIFIED_STATUSES } from "../services/lead-status.ts";
 import type { LeadStatus } from "../services/lead-status.ts";
+import type { StatusLabels } from "../services/status-labels.ts";
 import { formatLocal } from "../time.ts";
 import { fingerprint } from "./edit-state.ts";
 import { type FormContext, postForm } from "./forms.ts";
@@ -31,18 +32,20 @@ export const addReturn = (path: string | null, fallback: string): string => (pat
 
 export const backText = (path: string): string => BACK[path] ?? "Back to the pipeline";
 
-export const STATUS_OPTIONS = UNQUALIFIED_STATUSES.map((status) => ({ value: status, label: LEAD_STATUS_LABELS[status] }));
+/** The five statuses that are not Qualified, by the owner's current labels (decision 0041). */
+export const statusOptions = (labels: StatusLabels): { value: string; label: string }[] =>
+  UNQUALIFIED_STATUSES.map((status) => ({ value: status, label: labels.lead(status) }));
 
 /** "Lead status: Not now, since Thu Nov 19", the day in the owner's timezone. */
-export function statusLine(status: LeadStatus, at: string | null, tz: string): Html {
+export function statusLine(status: LeadStatus, at: string | null, tz: string, labels: StatusLabels): Html {
   const since = at === null ? "" : html`, since ${when(at, formatLocal(at, tz).split(",")[0] ?? "")}`;
-  return html`<p class="lead-status-line">Lead status: ${LEAD_STATUS_LABELS[status]}${since}</p>`;
+  return html`<p class="lead-status-line">Lead status: ${labels.lead(status)}${since}</p>`;
 }
 
 export const statusAction = (contactId: string): string => `${contactHref(contactId)}/lead-status`;
 
-export const statusSpecs = (): Spec[] => [
-  line("lead_status", "Change lead status", "choice", "contact", { prop: "leadStatus", options: STATUS_OPTIONS }),
+export const statusSpecs = (labels: StatusLabels): Spec[] => [
+  line("lead_status", "Change lead status", "choice", "contact", { prop: "leadStatus", options: statusOptions(labels) }),
   line("follow_up", "Check back on (optional)", "date", "contact", {
     prop: "followUpDate",
     hint: "Only for Not now. Adds a task to check back that day.",
@@ -57,9 +60,15 @@ export const statusFingerprint = (status: string): Promise<string> => fingerprin
  * select carries the fingerprint of the status it was drawn with, so a post from a stale page sends the status only
  * when the owner changed the select (lead-actions.ts).
  */
-export async function statusMenu(contactId: string, current: LeadStatus, form: FormContext, state?: FormState): Promise<Html> {
+export async function statusMenu(
+  contactId: string,
+  current: LeadStatus,
+  form: FormContext,
+  labels: StatusLabels,
+  state?: FormState,
+): Promise<Html> {
   const prefix = `status-${contactId}`;
-  const specs = statusSpecs();
+  const specs = statusSpecs(labels);
   const shown = state?.shown ?? new Map([["lead_status", { value: current, was: await statusFingerprint(current), outside: false }]]);
   const inner = postForm(
     "lead-status-form",

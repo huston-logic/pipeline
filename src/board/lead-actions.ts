@@ -35,8 +35,8 @@ import {
   qualifyPath,
   qualifySpecs,
   returnAction,
-  STATUS_OPTIONS,
   statusFingerprint,
+  statusOptions,
   statusMenu,
   statusSpecs,
 } from "./lead-forms.ts";
@@ -45,6 +45,8 @@ import { canQualify, CREATE_DEAL, qualifyPage } from "./pages/qualify.ts";
 import { contactHref, dealHref } from "./parts.ts";
 import { collectNew, line, newLeadSpecs, parseValue } from "./record-form.ts";
 import { withChange } from "./return-to.ts";
+import { type StatusLabels, statusLabels } from "../services/status-labels.ts";
+import { joinAnd } from "../services/describe.ts";
 
 /** POST /leads/new: add_lead. Then the new lead's page. */
 async function newLead(ctx: ActionContext): Promise<ActionResult> {
@@ -96,7 +98,8 @@ async function saveStatus(ctx: ActionContext, id: string): Promise<ActionResult>
   if (contact === null) return notFound(ctx);
   const back = backTo(ctx, contactHref(contact.id));
   const current = contact.lead_status as LeadStatus;
-  const collected = collectNew(statusSpecs(), ctx.form);
+  const labels = await statusLabels(ctx.db);
+  const collected = collectNew(statusSpecs(labels), ctx.form);
   const parsed = collected.input as { leadStatus?: LeadStatus; followUpDate?: string };
   const was = ctx.form.get(`${WAS_PREFIX}lead_status`);
   const outcome = await compareField(ctx.form.get("lead_status"), was, current, "line");
@@ -121,7 +124,7 @@ async function saveStatus(ctx: ActionContext, id: string): Promise<ActionResult>
       refusedFormPage(
         ctx,
         "The lead status wasn't changed",
-        await statusMenu(contact.id, current, { csrf: ctx.csrf, here: back }, stateOf(collected)),
+        await statusMenu(contact.id, current, { csrf: ctx.csrf, here: back }, labels, stateOf(collected)),
         back,
         contactHref(contact.id),
       ),
@@ -163,9 +166,9 @@ async function qualify(ctx: ActionContext, id: string): Promise<ActionResult> {
   }
 }
 
-const returnStatusSpec = line("status", "Lead status", "choice", "contact", { options: STATUS_OPTIONS });
+const returnStatusSpec = (labels: StatusLabels) => line("status", "Lead status", "choice", "contact", { options: statusOptions(labels) });
 
-function returnConfirmPage(ctx: ActionContext, deal: DealRow, back: string): string {
+function returnConfirmPage(ctx: ActionContext, deal: DealRow, back: string, labels: StatusLabels): string {
   return renderPage({
     title: "Confirm: move back to leads",
     description: "Moving a deal back to leads asks first. Confirm it, or keep the deal.",
@@ -178,7 +181,7 @@ ${postForm(
   returnAction(deal.id),
   { csrf: ctx.csrf, here: back },
   html`${hidden("confirm", "yes")}
-<div class="confirm-field">${field({ id: "return-status", name: "status", label: "Lead status", kind: "choice", value: "contacted", options: STATUS_OPTIONS })}</div>
+<div class="confirm-field">${field({ id: "return-status", name: "status", label: "Lead status", kind: "choice", value: "contacted", options: statusOptions(labels) })}</div>
 <div class="confirm-actions">
 <button class="button" type="submit">Move back to leads</button>
 <a class="confirm-cancel" href="${back}">Keep the deal</a>
@@ -197,11 +200,15 @@ async function backToLeads(ctx: ActionContext, id: string): Promise<ActionResult
   if (deal === null) return notFound(ctx);
   const back = backTo(ctx, dealHref(deal.id));
   const offered = await offersBackToLeads(ctx.db, { id: deal.id, contactId: deal.contact_id, status: deal.status, archived: deal.archived === 1 });
-  if (offered && ctx.form.get("confirm") !== "yes") return page(200, returnConfirmPage(ctx, deal, back));
+  const labels = await statusLabels(ctx.db);
+  if (offered && ctx.form.get("confirm") !== "yes") return page(200, returnConfirmPage(ctx, deal, back, labels));
   try {
     // No status (or a blank one) is the service's default, Contacted.
-    const parsed = parseValue(returnStatusSpec, ctx.form.get("status") ?? "");
-    if (!parsed.ok) throw new UserError(`${parsed.message} The lead statuses are New, Contacted, Not now, Not a fit and Bad lead.`);
+    const parsed = parseValue(returnStatusSpec(labels), ctx.form.get("status") ?? "");
+    if (!parsed.ok) {
+      const names = joinAnd(statusOptions(labels).map((option) => option.label));
+      throw new UserError(`${parsed.message} The lead statuses are ${names}.`);
+    }
     const status = parsed.value === null ? undefined : (parsed.value as LeadStatus);
     const result = await returnToLead(asOwner(ctx, "return_to_lead"), { deal: deal.id, status });
     return redirect(withChange(contactHref(result.contactId), result.changeId));
