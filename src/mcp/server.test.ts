@@ -129,6 +129,24 @@ test("date inputs describe the accepted formats", async () => {
   }
 });
 
+test("own list is not an input of import_rows or any other tool: only the board's check step sets it (decision 0038)", async () => {
+  const { tools } = await (await client()).listTools();
+  const keys: string[] = [];
+  const walk = (value: unknown, path: string): void => {
+    if (Array.isArray(value)) value.forEach((item, i) => walk(item, `${path}[${i}]`));
+    else if (value && typeof value === "object") {
+      for (const [key, child] of Object.entries(value)) {
+        if (key === "properties" && child && typeof child === "object") keys.push(...Object.keys(child).map((name) => `${path}.${name}`));
+        walk(child, `${path}.${key}`);
+      }
+    }
+  };
+  for (const tool of tools) walk(tool.inputSchema, tool.name);
+  assert.ok(keys.length > 50, "every tool's inputs were read");
+  const ownList = keys.filter((key) => /own[\s_-]?list|my[\s_-]?own/i.test(key.split(".").at(-1) ?? ""));
+  assert.deepEqual(ownList, []);
+});
+
 test("add_lead and add_deal both carry the sorting rule in their descriptions", async () => {
   const { tools } = await (await client()).listTools();
   for (const name of ["add_lead", "add_deal"]) {

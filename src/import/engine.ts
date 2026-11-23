@@ -46,6 +46,12 @@ export interface ColumnDef {
 export interface ImportOptions {
   /** Every field the plan may fill, the mapping's new fields included. */
   fieldDefs: readonly FieldDefRow[];
+  /**
+   * "This is my own list" (decision 0038): short, single-line identity values (src/import/own-list.ts) are stored as
+   * the owner's, not as outside text. Set only by the board's check step, never by MCP or the CLI; modules whose
+   * records have no identity columns (Tasks) ignore it.
+   */
+  ownList?: boolean;
 }
 
 /** A row left out of the import, and why, in counts, line numbers, column names and ids only (decision 0029). */

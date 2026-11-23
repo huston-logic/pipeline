@@ -7,12 +7,15 @@
 // a leads import skips people who look like ones already on file (no email, same business) unless told not to.
 // Ids (decision 0037): an `id` column that names a contact on file matches it before the email does; a well-formed
 // contact id that matches nobody is kept for the new contact, so the board's export imports into another copy.
+// Own list (decision 0038): with the board's box ticked, short single-line names, emails, phones, businesses and sources
+// are the owner's, left out of untrusted_fields; notes and custom fields stay outside text.
 import type { ContactRow } from "../../db/db.ts";
 import { isContactId, newId } from "../../ids.ts";
 import { type ChangeInput, type RowChange, updatedRow } from "../../services/change.ts";
 import { businessKey } from "../../services/lead-change.ts";
 import { type LeadStatus, leadStatusFromText } from "../../services/lead-status.ts";
 import type { ColumnDef, ImportModule, ImportOptions, MappedRow } from "../engine.ts";
+import { confirmedColumns, OWN_LIST_COLUMNS, type OwnListColumn } from "../own-list.ts";
 import {
   ARCHIVED_IN_FILE,
   checkedFields,
@@ -109,6 +112,8 @@ export interface CreateRow extends ImportValues {
   leadStatus: LeadStatus | null;
   /** Custom field values by field key, for the contact fields the file has columns for. */
   fields: Record<string, string | number>;
+  /** Own list (decision 0038): the columns stored as the owner's. Left out when there are none. */
+  confirmed?: OwnListColumn[];
 }
 
 /** A row left out because it may be a person already on file: the existing contact's id or an earlier line. */
@@ -124,6 +129,8 @@ export interface MergeRow {
   changes: Partial<Record<FillColumn, string>>;
   /** Custom fields that were empty on the contact and are filled from the file, by field key. */
   fields?: Record<string, string | number>;
+  /** Own list (decision 0038): the filled columns stored as the owner's. Left out when there are none. */
+  confirmed?: OwnListColumn[];
 }
 
 export interface PeoplePlan {
@@ -139,6 +146,9 @@ export interface PeoplePlan {
 }
 
 const isBlank = (text: string | null) => text === null || text.trim() === "";
+
+/** The columns the own-list box may confirm on a person on file: the identity columns a merge fills. */
+const OWN_FILL_COLUMNS = ["business", "phone", "source"] as const satisfies readonly (OwnListColumn & FillColumn)[];
 
 /** The non-empty texts, one per line; null when there are none. */
 function joinLines(texts: readonly (string | null)[]): string | null {
@@ -253,6 +263,8 @@ export function planPeople(
       }
       const merged: MergeRow = { id: match.id, line, changes };
       if (Object.keys(filled).length > 0) merged.fields = filled;
+      const confirmed = confirmedColumns(options.ownList, changes, OWN_FILL_COLUMNS);
+      if (confirmed.length > 0) merged.confirmed = confirmed;
       if (Object.keys(changes).length > 0 || merged.fields) plan.merge.push(merged);
       else plan.unchanged.push({ line, id: match.id });
       continue;
@@ -291,7 +303,10 @@ export function planPeople(
       continue;
     }
     if (business !== "" && !seenBusinesses.has(business)) seenBusinesses.set(business, line);
-    plan.create.push({ line, id, ...values, notes, name, leadStatus, fields: custom });
+    const created: CreateRow = { line, id, ...values, notes, name, leadStatus, fields: custom };
+    const confirmed = confirmedColumns(options.ownList, values, OWN_LIST_COLUMNS);
+    if (confirmed.length > 0) created.confirmed = confirmed;
+    plan.create.push(created);
   }
   return plan;
 }
@@ -316,7 +331,10 @@ export function peopleChange(plan: PeoplePlan, existing: readonly ContactRow[], 
       source: row.source,
       notes: row.notes,
       fields: JSON.stringify(row.fields),
-      untrusted_fields: JSON.stringify([...IMPORT_COLUMNS.filter((column) => row[column] !== null), ...Object.keys(row.fields)]),
+      untrusted_fields: JSON.stringify([
+        ...IMPORT_COLUMNS.filter((column) => row[column] !== null && !(row.confirmed ?? []).some((key) => key === column)),
+        ...Object.keys(row.fields),
+      ]),
       archived: 0,
       version: 1,
       created_at: stamp,
@@ -326,11 +344,13 @@ export function peopleChange(plan: PeoplePlan, existing: readonly ContactRow[], 
     };
     changes.push({ table: "contacts", id: contact.id, before: null, after: contact });
   }
-  for (const { id, changes: filled, fields: filledFields } of plan.merge) {
+  for (const { id, changes: filled, fields: filledFields, confirmed = [] } of plan.merge) {
     const before = existing.find((contact) => contact.id === id);
     if (!before) throw new Error(`The import plan names contact ${id}, which wasn't read.`);
+    // Marks on file stay as they are (a custom field may share a column's key); a confirmed value adds none.
     const untrusted = new Set(JSON.parse(before.untrusted_fields) as string[]);
-    for (const column of [...Object.keys(filled), ...Object.keys(filledFields ?? {})]) untrusted.add(column);
+    for (const column of Object.keys(filled)) if (!confirmed.some((key) => key === column)) untrusted.add(column);
+    for (const key of Object.keys(filledFields ?? {})) untrusted.add(key);
     const patch: Partial<ContactRow> = { ...filled, untrusted_fields: JSON.stringify([...untrusted]) };
     if (filledFields) patch.fields = JSON.stringify({ ...(JSON.parse(before.fields) as object), ...filledFields });
     const after = updatedRow(before, patch, now);

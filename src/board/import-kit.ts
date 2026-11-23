@@ -22,6 +22,8 @@ export const AS_FIELD = "as";
 export const ALLOW_DUPLICATES_FIELD = "allow_duplicates";
 /** The deals check step's box: bring in deals in a Won, Lost or Not now stage (decision 0037). */
 export const CLOSED_FIELD = "closed_history";
+/** The People and Deals check step's box: "This is my own list" (decision 0038). */
+export const OWN_LIST_FIELD = "own_list";
 export const VERSION_FIELD = "version";
 
 export const columnField = (index: number) => `col.${index}`;

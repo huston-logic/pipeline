@@ -1,6 +1,7 @@
 // Step 3 of the board import (decisions 0036, 0037): what the import would do with the records on file now, and
 // Import. Every list shows line numbers, counts, field and stage labels and records on file (by their links), never a
-// value from the file. People may tick "Import possible duplicates too"; Deals "Bring in closed deals as history".
+// value from the file. People may tick "Import possible duplicates too"; Deals "Bring in closed deals as history";
+// both "This is my own list" (decision 0038), unticked by default.
 import type { ContactRow, DealRow } from "../../db/db.ts";
 import type { Draft, ImportResult } from "../../import/drafts.ts";
 import type { ImportModuleKey } from "../../import/engine.ts";
@@ -9,7 +10,17 @@ import { isTrusted } from "../../services/labels.ts";
 import type { PageContext } from "../context.ts";
 import { hidden, postForm } from "../forms.ts";
 import { type Html, html } from "../html.ts";
-import { ALLOW_DUPLICATES_FIELD, applyAction, CLOSED_FIELD, draftPath, IMPORT_PATH, previewPath, startPath, VERSION_FIELD } from "../import-kit.ts";
+import {
+  ALLOW_DUPLICATES_FIELD,
+  applyAction,
+  CLOSED_FIELD,
+  draftPath,
+  IMPORT_PATH,
+  OWN_LIST_FIELD,
+  previewPath,
+  startPath,
+  VERSION_FIELD,
+} from "../import-kit.ts";
 import { type DraftPlan, resultOf } from "../import-plan.ts";
 import { IMPORT_TEXT } from "../import-text.ts";
 import { checkbox } from "../inputs.ts";
@@ -81,6 +92,26 @@ function dealOnFile(id: string, deals: ReadonlyMap<string, DealRow>): Html {
 /** Each "Line n: record" item of a list, the first SHOWN of them. */
 const recordList = <T extends { line: number }>(rows: readonly T[], item: (row: T) => Html): Html =>
   html`<ul class="panel rows">${rows.slice(0, SHOWN).map((row) => html`<li>Line ${formatNumber(row.line)}: ${item(row)}</li>`)}${moreLine(rows.length)}</ul>`;
+
+/**
+ * "This is my own list" (decision 0038): what it confirms, said on the box. Shown only when the import writes people,
+ * never for Tasks, and never ticked until the owner ticks it.
+ */
+function ownListBox(planned: DraftPlan): Html | "" {
+  switch (planned.module) {
+    case "people":
+      if (planned.plan.create.length + planned.plan.merge.length + planned.plan.duplicates.length === 0) return "";
+      return ownListCheck("This is my own list: show names, businesses, emails, phones and sources as mine.");
+    case "deals":
+      if (planned.plan.people.length + planned.plan.closed.length === 0) return "";
+      return ownListCheck("This is my own list: show the people's names, businesses and emails as mine.");
+    case "tasks":
+      return "";
+  }
+}
+
+const ownListCheck = (label: string): Html =>
+  checkbox({ id: "import-own-list", name: OWN_LIST_FIELD, label, value: "yes", checked: false, hint: "Leave it unticked if someone else made this file." });
 
 /** The sections only this module's check step has, and the box it may ask the owner to tick. */
 function moduleSections(planned: DraftPlan, asLeads: boolean): { sections: (Html | "")[]; box: Html | "" } {
@@ -233,6 +264,7 @@ ${body}`,
     ...sections,
   ];
   const canApply = plan.create.length + plan.merge.length > 0 || box !== "";
+  const own = canApply ? ownListBox(planned) : "";
   const apply = canApply
     ? postForm(
         "import-apply",
@@ -240,6 +272,7 @@ ${body}`,
         { csrf: ctx.csrf, here: previewPath(draft.id) },
         html`${hidden(VERSION_FIELD, String(draft.version))}
 ${box}
+${own}
 <div class="form-actions">
 <button class="button" type="submit">Import</button>
 <a class="form-cancel" href="${draftPath(draft.id)}">Back to matching</a>
