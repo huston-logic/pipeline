@@ -118,15 +118,24 @@ this file before changing the repo, and update it when a rule changes.
   (`src/import/planned.ts`). Strict schemas; never add the own-list option. At most 10 drafts wait at once (both
   doors). A draft MCP touched is `options.source = "mcp"`: the board never offers "my own list" for it. Lines are the
   sheet's rows (columns line 1).
-- **Leads** (decisions 0022, 0023): a lead is a `contacts` row with a `lead_status` and no open deal; there is no
-  leads table. `add_lead` (`src/services/leads.ts`) adds a person with status `new` and no deal; `add_deal`
-  (`src/services/add-deal.ts`, what `add_lead` did before run 4) adds a deal for a new or existing person;
-  `update_contact` (`src/services/contacts.ts`) sets a status. The status keys and labels are in
-  `src/db/lead-status.ts`, re-exported by `src/services/lead-status.ts` (the keys never change; `src/db` imports
-  nothing from `src/services`, a test checks); the shared pieces are in `src/services/lead-change.ts`. Any
-  write that gives an unqualified lead a deal (`add_deal`, `/intake`, `update_deal` reopening a deal) sets `qualified`
-  in the same change, and logging a reach on a `new` lead sets `contacted` in the same change (`contactedIfNew`).
-  `via: "text"` on a note comes only from the board's Text button, never from an MCP input.
+- **People and person status** (decisions 0022, 0023, 0040): every `contacts` row has a `person_status` (a
+  `person_statuses` key: Lead, Contact, Partner and any the owner adds) and a `sub_status` (a `person_substatuses` key
+  of that status, or null); there is no leads table. A lead is a person whose status is Lead, with no open deal.
+  `lead_status`/`lead_status_at` stay the lead engine's columns (rules, reports, `list_leads`, the brief): Lead exactly
+  when `lead_status` is unqualified, and then `sub_status` equals it. Never write either pair by hand: every move and
+  every new person goes through `personStatusPatch`/`newPersonColumns` (`src/services/person-move.ts`; `withLeadStatus`
+  and `withPersonStatus` in `lead-change.ts` use it), and `src/services/person-status-invariant.test.ts` checks every
+  writer. The statuses, sub-statuses and the owner's move (`setPersonStatus`) are in `src/services/person-status.ts`:
+  keys are slugs fixed once made; Lead and Contact are never archived; Lead's sub-status keys are the fixed lead
+  status keys (`src/db/lead-status.ts`, re-exported by `src/services/lead-status.ts`; `src/db` imports nothing from
+  `src/services`, a test checks), renamable, never archived or added to; nothing in use is archived. `add_lead`
+  (`src/services/leads.ts`) adds a Lead (New) with no deal; `add_deal` (`src/services/add-deal.ts`) adds a deal for a
+  new or existing person; `update_contact` (`src/services/contacts.ts`) sets a lead status. The moves the app makes:
+  any write that gives an unqualified lead a deal (`add_deal`, `/intake`, `update_deal` reopening a deal, a deals
+  import) makes them a Contact (`qualified`) in the same change; logging a reach on a `new` lead sets `contacted`
+  (`contactedIfNew`); `update_deal` marking a deal Won makes a Contact a Client (`clientIfWon`). Lead is refused
+  while the person has an open deal. Nothing moves because outside text says so. `via: "text"` on a note comes only
+  from the board's Text button, never from an MCP input.
 - **Sign-in:** `src/auth/dev.ts` until task 10. `AUTH_MODE=dev` works only with `ENVIRONMENT=development` on a
   loopback host; anywhere else every route answers 500. Without `AUTH_MODE`, `/mcp` answers 401.
 - **Types:** `src/env.ts` is the `Env` type the code uses. `src/worker-configuration.d.ts` holds the Workers runtime
@@ -147,7 +156,9 @@ this file before changing the repo, and update it when a rule changes.
   value over its column's `limit`) and builds one audited change (actor `owner`, tool `import`) with `buildChange`
   from `src/services/change.ts`. An `id` column matches a record of that module (fills empty values only); an
   unmatched well-formed id is kept, and the export's `fields` JSON and `archived` columns are read (an archived row
-  is skipped), so the board's export imports into another copy (decision 0037). `plan.ts`
+  is skipped), so the board's export imports into another copy (decision 0037). People's `person_status` and
+  `sub_status` columns (and the older `lead_status`) set a new person's status, read against the copy's live statuses
+  (`PeopleOptions.statuses`, from `statusEntries`); a merge never moves anyone (decision 0040). `plan.ts`
   (`planImport`) and `change.ts` (`importChange`) are People wrappers; `change.ts` also renders the change, and
   `sql.ts` renders its bound values as literal SQL for `wrangler d1 execute --file`. Imported fields are listed in `untrusted_fields`; a merge never overwrites a value.
   The one exception is "This is my own list" (decision 0038, `src/import/own-list.ts`, `ImportOptions.ownList`): a box
