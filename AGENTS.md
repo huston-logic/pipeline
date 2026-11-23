@@ -101,14 +101,20 @@ this file before changing the repo, and update it when a rule changes.
   scan (installed Google Chrome; needs `npm run build`).
 - **MCP** (decision 0004): `src/index.ts` loads `src/mcp/handler.ts` with a dynamic `import()` (so the board and its
   unit tests never load the SDK); the handler serves an MCP SDK v2 server (`@modelcontextprotocol/server`) built
-  fresh per request by `createMcpServer` (`server.ts`); stateless, no Durable Object. Tools live in `tools-read.ts`
-  and `tools-write.ts` and are registered through `tool.ts`, which parses arguments with the tool's zod schema and
+  fresh per request by `createMcpServer` (`server.ts`); stateless, no Durable Object. Tools live in `tools-read.ts`,
+  `tools-write.ts` and `tools-import.ts` and are registered through `tool.ts`, which parses arguments with the tool's zod schema and
   answers through `format.ts` (`toolResult`: a one-line headline, a blank line, pretty JSON; `toolError`). Tools call
   the services only. Headlines, change summaries and error messages never contain outside text: services name records
   through `src/services/labels.ts` (outside values become ids such as "contact ct_…"), and read items list their
   outside keys in `untrusted_fields`. Deals and tasks have `untrusted_fields` too (migration 0002). Every write tool acts as the `ai` actor. `instructions.ts`
   holds the server instructions. Adding a tool means adding its name to the tool-list tests (`src/mcp/server.test.ts`,
   `tests/e2e/mcp.test.ts`).
+- **MCP import** (decision 0039): `import_rows` keeps a sheet's rows (at most 500 a call, 60 columns) in a board
+  import draft as CSV text (`csvLines`) and answers the check step's preview as data (counts, line numbers, ids,
+  labels; no row value or column name); `apply_import` writes it as one bulk change (actor `ai`, tool
+  `apply_import`), once. Both call `src/services/import-rows.ts`, which builds the plan options from fixed keys and
+  never imports the board's import code. Strict schemas; never add the own-list option. A draft started there may be
+  finished on the board, and the other way round. Lines are the sheet's rows (columns line 1).
 - **Leads** (decisions 0022, 0023): a lead is a `contacts` row with a `lead_status` and no open deal; there is no
   leads table. `add_lead` (`src/services/leads.ts`) adds a person with status `new` and no deal; `add_deal`
   (`src/services/add-deal.ts`, what `add_lead` did before run 4) adds a deal for a new or existing person;
@@ -169,7 +175,7 @@ this file before changing the repo, and update it when a rule changes.
   delete expired ones; the import's GET pages never write. A page shows only the file's header names (escaped, "From
   your file", in each column's legend), line numbers and counts, never a value from it; no message, skip reason or link
   quotes a header (columns are named by number, fields by label); the file is never in an address, a cookie or a log
-  line.
+  line. The draft's `options` also hold `import_rows`' two choices (decision 0039), which the board never reads.
 - **Email logging** (decision 0031): the `email` handler in `src/index.ts` loads `src/email/log.ts` with a dynamic
   `import()` (only `src/email/` imports `postal-mime`). Mail is logged only when the envelope `to` is
   `EMAIL_LOG_ADDRESS`, the envelope and header From are owner emails, it is at most 1 MB and Cloudflare's
