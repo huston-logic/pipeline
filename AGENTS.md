@@ -150,9 +150,11 @@ this file before changing the repo, and update it when a rule changes.
   `src/board/import-actions.ts`. The file waits between steps in `import_drafts`/`import_draft_parts` (migration 0010,
   `src/import/drafts.ts`, ids `im_`): scratch space like `write_guard`, never audited, exported or logged, in pieces of
   at most `CHUNK_BYTES`, deleted in the same batch that applies the import, which also guards that the draft is still
-  unapplied (a second apply writes nothing). Drafts expire after 2 hours; every import request and the hourly run
-  delete expired ones. A page shows only the file's header names (escaped, "From your file"), line numbers and counts,
-  never a value from it; the file is never in an address, a cookie or a log line.
+  unapplied (a second apply writes nothing). Drafts expire after 2 hours; every import post and the hourly run
+  delete expired ones; the import's GET pages never write. A page shows only the file's header names (escaped, "From
+  your file", in each column's legend), line numbers and counts, never a value from it; no message, skip reason or link
+  quotes a header (columns are named by number, fields by label); the file is never in an address, a cookie or a log
+  line.
 - **Email logging** (decision 0031): the `email` handler in `src/index.ts` loads `src/email/log.ts` with a dynamic
   `import()` (only `src/email/` imports `postal-mime`). Mail is logged only when the envelope `to` is
   `EMAIL_LOG_ADDRESS`, the envelope and header From are owner emails, it is at most 1 MB and Cloudflare's

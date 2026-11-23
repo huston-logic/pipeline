@@ -2,7 +2,7 @@
 -- uploaded on /import, the column matches they chose and, once applied, the counts and the change id. It is not
 -- audited, not exported and never logged. The file is kept only in import_draft_parts, in pieces of at most 90 KB
 -- (CHUNK_BYTES), so every statement stays under D1's 100 KB; the pieces are deleted the moment the import is applied.
--- A draft expires 2 hours after it is made; every import request and the hourly run delete expired drafts. Adds
+-- A draft expires 2 hours after it is made; every import post and the hourly run delete expired drafts. Adds
 -- tables only: earlier data is untouched.
 
 CREATE TABLE import_drafts (
