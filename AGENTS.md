@@ -133,8 +133,11 @@ this file before changing the repo, and update it when a rule changes.
   or with `--local`. Each copy's config is generated from `config/wrangler.copy.template.jsonc` into the git-ignored
   `/.copies/<name>/`; keep the template's shared settings in step with `wrangler.jsonc` (a test checks).
 - **CSV import** (`src/import/`, decision 0034): `engine.ts` is the one engine (`readCsv`, `autoMatch`, `mapRows`,
-  `planCsv`); each kind of record is a module in `modules/` (`people.ts` so far) that plans the mapped rows and builds
-  one audited change (actor `owner`, tool `import`) with `buildChange` from `src/services/change.ts`. `plan.ts`
+  `planCsv`); each kind of record is a module in `modules/` (`people.ts`, `deals.ts`, `tasks.ts`, listed in
+  `IMPORT_MODULES`) with its own plan options, that plans the mapped rows (always through `planRows`, which skips a
+  value over its column's `limit`) and builds one audited change (actor `owner`, tool `import`) with `buildChange`
+  from `src/services/change.ts`. An `id` column matches a record of that module (fills empty values only); an
+  unmatched well-formed id is kept, so the board's export imports into another copy (decision 0037). `plan.ts`
   (`planImport`) and `change.ts` (`importChange`) are People wrappers; `change.ts` also renders the change, and
   `sql.ts` renders its bound values as literal SQL for `wrangler d1 execute --file`. Imported fields are listed in `untrusted_fields`; a merge never overwrites a value.
   One import is one change at any size (decision 0035): `readCsv` refuses more than `IMPORT_MAX_ROWS` (2,000) data
@@ -145,7 +148,8 @@ this file before changing the repo, and update it when a rule changes.
   A mapping chosen by hand goes through `mapFile` (`planNewFields`, then `mapRows`, which checks every target); a
   `notes` target adds `Label: value` lines to the notes, a `new_field` target creates a text field with `add_field`'s
   rules (`newFieldRow`) inserted first in the import's own change (`fileChange`).
-- **Board import** (decision 0036): `/import` (step 1), `/import/<id>` (step 2, or the result once applied) and
+- **Board import** (decisions 0036, 0037): `/import?module=people|deals|tasks` (step 1; Import on People, Pipeline,
+  Today), `/import/<id>` (step 2, or the result once applied) and
   `/import/<id>/preview` (step 3) are pages; `POST /import`, `/import/<id>/map` and `/import/<id>/apply` are in
   `src/board/import-actions.ts`. The file waits between steps in `import_drafts`/`import_draft_parts` (migration 0010,
   `src/import/drafts.ts`, ids `im_`): scratch space like `write_guard`, never audited, exported or logged, in pieces of
