@@ -24,6 +24,8 @@ export interface ImportResult {
   people: number;
   /** Closed deals a deals import brought in as history. */
   closed: number;
+  /** Lines the file marks archived, left out (people and deals; decision 0037). */
+  archived: number;
 }
 
 export interface Draft {
@@ -97,6 +99,7 @@ function parseResult(json: string | null): ImportResult | null {
     fields: n(value.fields),
     people: n(value.people),
     closed: n(value.closed),
+    archived: n(value.archived),
   };
 }
 

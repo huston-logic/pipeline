@@ -1,5 +1,5 @@
-// The Tasks import module (decision 0037): each row is a new task on a deal (by deal_id) or else on a person (by
-// contact_id, email or name), unless its `id` names a task on file, which it fills in (an empty due date only). A task
+// The Tasks import module (decision 0037): each row is a new task on a deal (by deal_id; a deal id that isn't on file
+// skips the row) or else on a person (by contact_id, email or name), unless its `id` names a task on file, which it fills in (an empty due date only). A task
 // never adds a person or a deal: a row that matches neither is skipped. A done_at makes the task one already done.
 // Every value from the file is outside text: the change lists it in the task's untrusted_fields.
 import type { ContactRow, DealRow, TaskRow } from "../../db/db.ts";
@@ -76,7 +76,10 @@ export function planTasks(rows: readonly MappedRow[], ctx: TasksCtx): TasksPlan 
 
   const subjectOf = (values: MappedRow["values"]): Subject => {
     const dealText = values.deal_id ?? null;
-    const deal = dealText !== null && isDealId(dealText) ? dealsById.get(dealText) : undefined;
+    const dealId = dealText !== null && isDealId(dealText) ? dealText : null;
+    const deal = dealId === null ? undefined : dealsById.get(dealId);
+    // A deal id of the right shape names a deal: never put its task on the person instead. The id is safe to show.
+    if (dealId !== null && !deal) return { reason: `deal ${dealId} isn't on file; import deals first` };
     if (deal) {
       if (deal.archived === 1) return { reason: `deal ${deal.id} is archived` };
       const owner = byId.get(deal.contact_id);

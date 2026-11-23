@@ -206,8 +206,9 @@ export const isForeignKeyFailure = (error: unknown) => /FOREIGN KEY constraint f
 export const isDuplicateEmailFailure = (error: unknown) =>
   /UNIQUE constraint failed: (?:index 'contacts_email'|contacts\.)/.test(errorText(error));
 
-/** A deal or task whose id another write inserted first (two imports of one exported file racing, decision 0037). */
-export const isDuplicateIdFailure = (error: unknown) => /UNIQUE constraint failed: (?:deals|tasks)\.id\b/.test(errorText(error));
+/** A contact, deal or task whose id another write inserted first (two imports keeping one file's ids, decision 0037). */
+export const isDuplicateIdFailure = (error: unknown) =>
+  /UNIQUE constraint failed: (?:contacts|deals|tasks)\.id\b/.test(errorText(error));
 
 /** A rule firing whose fire_key another run inserted first (two rule runs racing). */
 export const isFireKeyFailure = (error: unknown) =>

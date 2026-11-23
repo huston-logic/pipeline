@@ -581,3 +581,38 @@ test("/import names its module: people by default, deals and tasks by name, anyt
   const made = await upload(env, { csv: "title\r\nA sign\r\n", module: "deals" });
   assert.equal((await getDraft(db, draftIdOf(made.location), new Date()))?.module, "deals");
 });
+
+test("rows the file marks archived are counted on the check step and never come in", async () => {
+  const db = await seededDb();
+  const env = devEnv(db);
+  const { location, session } = await upload(env, { csv: "name,email,archived\r\nGail Gone,gail@example.net,1\r\nKim Kept,kim@example.net,0\r\n" });
+  const id = draftIdOf(location);
+  assert.equal((await matchColumns(env, session, id, {})).res.status, 303);
+  const { preview, res, location: done } = await applyImport(env, session, id);
+  assert.match(preview, /<dt>Archived in the file, left out<\/dt><dd>1<\/dd>/);
+  assert.match(preview, /<li>Line 2: archived in the file\.<\/li>/);
+  assert.equal(res.status, 303);
+  assert.match((await load(env, done, session.cookie)).body, /<dt>Archived in the file, left out<\/dt><dd>1<\/dd>/);
+  assert.equal(await contactByEmail(db, "gail@example.net"), null);
+  assert.ok(await contactByEmail(db, "kim@example.net"));
+});
+
+test("two imports keeping the same contact id: the one that loses is a plain refusal, nothing saved", async () => {
+  const db = await seededDb();
+  const env = devEnv(db);
+  const { location, session } = await upload(env, { csv: "id,name\r\nct_racer01,Rita Racer\r\n" });
+  const id = draftIdOf(location);
+  assert.equal((await matchColumns(env, session, id, {})).res.status, 303);
+  const fields = formFields((await load(env, `/import/${id}/preview`, session.cookie)).body, `/import/${id}/apply`);
+  // Another import (here, a plain insert) writes ct_racer01 after this apply planned it as new.
+  const rival = async () => {
+    db.exec("INSERT INTO contacts (id, name, untrusted_fields) VALUES ('ct_racer01', 'Rival Racer', '[]')");
+  };
+  const count = (await auditRows(db)).length;
+  const lost = await post({ ...env, DB: racingDb(db, "write", rival) }, `/import/${id}/apply`, fields, session);
+  assert.equal(lost.res.status, 422);
+  assert.match(lost.body, /A record with an id in this file was added while it was importing, so nothing was saved\./);
+  assert.equal((await auditRows(db)).length, count);
+  assert.equal(await db.prepare("SELECT name FROM contacts WHERE id = 'ct_racer01'").first("name"), "Rival Racer");
+  assert.equal((await getDraft(db, id, new Date()))?.result, null, "the draft can be checked and applied again");
+});

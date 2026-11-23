@@ -266,3 +266,47 @@ test("bookkeeping columns of the export never fill a custom field of the same na
   assert.deepEqual(plan.create[0]?.fields, { created_at: "2026-11-02" }, "only the column named like the field's label fills it");
   assert.deepEqual(plan.skippedColumns, ["version", "CREATED_AT"]);
 });
+
+test("the export's fields column fills live contact fields; a field column wins; other keys and bad cells are never echoed", () => {
+  const fieldDefs = defs([{ key: "role", label: "Role" }, { key: "size", label: "Team size", type: "number" }, { key: "old", label: "Old", archived: 1 }]);
+  const csv = [
+    "name,email,fields,Role",
+    `Robin,robin@example.com,"{""role"":""Baker"",""size"":4,""old"":""x"",""secret_key"":""Secret value""}",`,
+    `Casey,casey@example.com,"{""role"":""Baker""}",Owner`,
+    `Jordan,jordan@example.com,"{""size"":""lots""}",`,
+    `Sam,sam@example.com,"[1,2]",`,
+    `Alex,alex@example.com,not json,`,
+    `Taylor,taylor@example.com,"{""role"":{""nested"":1}}",`,
+    `Morgan,morgan@example.com,{},`,
+  ].join("\r\n");
+  const plan = planImport(csv, [], { ...LEADS, asLeads: false, fieldDefs });
+  assert.deepEqual(plan.create.map((row) => [row.line, row.fields]), [
+    [2, { role: "Baker", size: 4 }],
+    [3, { role: "Owner" }],
+    [8, {}],
+  ]);
+  assert.deepEqual(plan.skipped, [
+    { line: 4, reason: 'the "Team size" field needs a number' },
+    { line: 5, reason: "the fields column isn't valid" },
+    { line: 6, reason: "the fields column isn't valid" },
+    { line: 7, reason: "the fields column isn't valid" },
+  ]);
+  for (const { reason } of plan.skipped) assert.doesNotMatch(reason, /lots|nested|json|secret/i);
+
+  const onFile: ExistingContact = { ...pat, email: "robin@example.com", id: "ct_robin", fields: '{"role":"Owner"}' };
+  const merged = planImport(csv.split("\r\n").slice(0, 2).join("\r\n"), [onFile], { ...LEADS, fieldDefs });
+  assert.deepEqual(merged.merge, [{ id: "ct_robin", line: 2, changes: {}, fields: { size: 4 } }], "a merge fills only the empty field");
+});
+
+test("a row the export marks archived is skipped and counted, never created or filled in", () => {
+  const csv = "id,name,email,archived\r\nct_gone,Gail Gone,gail@example.com,1\r\nct_kept,Kim Kept,kim@example.com,0\r\n,Tara True,tara@example.com,TRUE\r\n";
+  const onFile: ExistingContact = { ...pat, id: "ct_gone", email: "gail@example.com" };
+  const plan = planImport(csv, [onFile]);
+  assert.deepEqual(plan.skipped, [
+    { line: 2, reason: "archived in the file" },
+    { line: 4, reason: "archived in the file" },
+  ]);
+  assert.deepEqual(plan.archived, [2, 4]);
+  assert.deepEqual(plan.create.map((row) => row.id), ["ct_kept"]);
+  assert.deepEqual(plan.merge, []);
+});

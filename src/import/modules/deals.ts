@@ -12,12 +12,16 @@ import { businessKey, qualifyIfLead } from "../../services/lead-change.ts";
 import { isUnqualified } from "../../services/lead-status.ts";
 import type { ColumnDef, ImportModule, ImportOptions, MappedRow, PlanBase } from "../engine.ts";
 import {
+  ARCHIVED_IN_FILE,
   checkedFields,
   EMAIL,
   emailKey,
+  FIELDS_INVALID,
   fieldInputs,
   idList,
+  isArchivedCell,
   isEmptyValue,
+  jsonFieldInputs,
   nameKey,
   readAmount,
   readWhen,
@@ -37,10 +41,12 @@ const DEAL_COLUMNS: readonly ColumnDef[] = [
   { key: "value", label: "Value", aliases: [], multiline: false },
   { key: "next_step", label: "Next step", aliases: ["next step"], limit: 500, multiline: false },
   { key: "next_at", label: "Next date", aliases: ["next date"], multiline: false },
+  { key: "fields", label: "Field values (from an export)", aliases: [], multiline: false },
+  { key: "archived", label: "Archived (from an export)", aliases: [], multiline: false },
 ];
 
 /** The board export's deals columns that are bookkeeping: recognised and never imported. */
-const DEAL_IGNORED = ["fields", "stage_entered_at", "last_activity_at", "untrusted_fields", "archived", "version", "created_at", "updated_at"];
+const DEAL_IGNORED = ["stage_entered_at", "last_activity_at", "untrusted_fields", "version", "created_at", "updated_at"];
 
 /** What a deals plan reads: every contact and stage, the deals the file's ids name, and the owner's timezone. */
 export interface DealsCtx {
@@ -98,6 +104,8 @@ export interface DealsPlan extends PlanBase {
   unchanged: { line: number; id: string }[];
   /** Every new deal in a closed stage, confirmed or not (unconfirmed ones are also in `skipped`). */
   closed: { line: number; stageKey: string }[];
+  /** Lines the file marks archived (also in `skipped`): never created or filled in. */
+  archived: number[];
 }
 
 const STATUS_WORDS: Record<StageKind, string> = { open: "open", won: "won", lost: "lost", not_now: "not now" };
@@ -129,7 +137,7 @@ export function planDeals(rows: readonly MappedRow[], ctx: DealsCtx, options: De
   const addedByEmail = new Map<string, number>();
   const addedByPerson = new Map<string, number>();
   const seenIds = new Map<string, number>();
-  const plan: DealsPlan = { create: [], people: [], qualify: [], merge: [], unchanged: [], skipped: [], closed: [] };
+  const plan: DealsPlan = { create: [], people: [], qualify: [], merge: [], unchanged: [], skipped: [], closed: [], archived: [] };
 
   const resolve = (values: MappedRow["values"], contactId: string | null): Resolved => {
     if (contactId !== null) {
@@ -167,6 +175,11 @@ export function planDeals(rows: readonly MappedRow[], ctx: DealsCtx, options: De
       skip("no title");
       continue;
     }
+    if (isArchivedCell(values.archived ?? null)) {
+      plan.archived.push(line);
+      skip(ARCHIVED_IN_FILE);
+      continue;
+    }
     const idText = values.id ?? null;
     const id = idText !== null && isDealId(idText) ? idText : null;
     if (id !== null) {
@@ -190,7 +203,14 @@ export function planDeals(rows: readonly MappedRow[], ctx: DealsCtx, options: De
       continue;
     }
     const nextStep = values.next_step ?? null;
-    const given = fieldInputs(row.fields, options.fieldDefs, "deal");
+    // The custom field columns, then the export's fields column for the fields no column gives.
+    const columns = fieldInputs(row.fields, options.fieldDefs, "deal");
+    const fromJson = jsonFieldInputs(values.fields ?? null, options.fieldDefs, "deal", columns);
+    if (fromJson === null) {
+      skip(FIELDS_INVALID);
+      continue;
+    }
+    const given = [...columns, ...fromJson];
 
     const match = id === null ? undefined : dealsById.get(id);
     if (match) {

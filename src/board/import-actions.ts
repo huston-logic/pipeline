@@ -223,11 +223,12 @@ async function apply(ctx: ActionContext, id: string): Promise<ActionResult> {
       const who = people ? "Someone in this file" : "A record this import touches";
       return refused(`${who} was changed while it was importing, so nothing was saved. Check the import again.`);
     }
-    if (isDuplicateEmailFailure(error)) {
-      return refused("Someone with an email in this file was added while it was importing, so nothing was saved. Check the import again.");
-    }
+    // Before the email check, which matches every unique failure on contacts.
     if (isDuplicateIdFailure(error)) {
       return refused("A record with an id in this file was added while it was importing, so nothing was saved. Check the import again.");
+    }
+    if (isDuplicateEmailFailure(error)) {
+      return refused("Someone with an email in this file was added while it was importing, so nothing was saved. Check the import again.");
     }
     if (error instanceof RecordTooLargeError) {
       const who = people ? "Someone on file" : "A record on file";

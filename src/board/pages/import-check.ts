@@ -29,12 +29,15 @@ export function countsList(module: ImportModuleKey, result: ImportResult, asLead
     { name: "Lines skipped", value: formatNumber(result.skipped) },
   ];
   const fields = result.fields > 0 && { name: applied ? "New fields added" : "New fields", value: formatNumber(result.fields) };
+  // Also among the lines skipped: the file marks them archived, so nothing of theirs comes in.
+  const archived = result.archived > 0 && { name: "Archived in the file, left out", value: formatNumber(result.archived) };
   switch (module) {
     case "people":
       return pairs([
         { name: asLeads ? "New leads" : "New contacts", value: formatNumber(result.created) },
         ...shared,
         { name: applied ? "Possible duplicates left out" : "Possible duplicates", value: formatNumber(result.duplicates) },
+        archived,
         fields,
       ]);
     case "deals":
@@ -43,6 +46,7 @@ export function countsList(module: ImportModuleKey, result: ImportResult, asLead
         { name: "New people", value: formatNumber(result.people) },
         ...shared,
         { name: applied ? "Closed deals brought in" : "Closed deals in the file", value: formatNumber(result.closed) },
+        archived,
         fields,
       ]);
     case "tasks":

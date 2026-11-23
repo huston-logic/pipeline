@@ -196,3 +196,33 @@ test("deals: a name shared by two people on file is not guessed", async () => {
   const { plan: planned } = await plan(db, "title,name,business\r\nA sign,Sam Twin,Twin Shop\r\n");
   assert.deepEqual(planned.skipped, [{ line: 2, reason: "more than one person on file has this name and business (contact ct_twin1, ct_twin2)" }]);
 });
+
+test("deals: the export's fields column fills live deal fields (a field column wins), a merge only empty ones; archived rows never come in", async () => {
+  const db = await withPeople();
+  db.exec(`INSERT INTO field_defs (id, entity, key, label, type) VALUES ('fd_budget', 'deal', 'budget', 'Budget', 'text'), ('fd_hours', 'deal', 'hours', 'Hours', 'number')`);
+  db.exec(`UPDATE deals SET fields = '{"budget":"100"}' WHERE id = 'dl_onfile'`);
+  const csv = [
+    "id,title,contact_id,fields,Budget,archived",
+    `dl_onfile,Boiler page,ct_pat,"{""budget"":""999"",""hours"":3}",,0`,
+    `dl_new1,Sign,ct_pat,"{""budget"":""200"",""hours"":""2"",""secret"":""Secret""}",250,`,
+    `dl_new2,Sign two,ct_pat,"""just text""",,`,
+    `dl_new3,Old sign,ct_pat,{},,1`,
+    `dl_onfile2,Boiler page,ct_pat,{},,true`,
+  ].join("\r\n");
+  const { ctx, plan: planned } = await plan(db, csv);
+  assert.deepEqual(planned.merge, [{ id: "dl_onfile", line: 2, changes: {}, fields: { hours: 3 } }]);
+  assert.deepEqual(planned.create.map((row) => [row.id, row.fields]), [["dl_new1", { budget: "250", hours: 2 }]]);
+  assert.deepEqual(planned.skipped, [
+    { line: 4, reason: "the fields column isn't valid" },
+    { line: 5, reason: "archived in the file" },
+    { line: 6, reason: "archived in the file" },
+  ]);
+  assert.deepEqual(planned.archived, [5, 6]);
+  const input = dealsModule.change(planned, ctx, NOW);
+  assert.ok(input);
+  await commitChange({ db, now: NOW, ...IMPORT_ACTOR }, input);
+  const byId = new Map((await dealsOf(db)).map((deal) => [deal.id, deal]));
+  assert.deepEqual(JSON.parse(byId.get("dl_onfile")?.fields ?? ""), { budget: "100", hours: 3 });
+  assert.deepEqual(JSON.parse(byId.get("dl_new1")?.untrusted_fields ?? ""), ["title", "budget", "hours"]);
+  assert.equal(byId.has("dl_new3"), false);
+});

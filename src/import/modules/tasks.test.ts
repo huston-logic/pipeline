@@ -38,13 +38,14 @@ test("tasks: an unmatched row is skipped with a reason", async () => {
   const csv = [
     "title,due,deal_id,contact_id,email,name,done_at",
     "Send the quote,2026-11-30,dl_pat,ct_robin,,,",
-    "Ring Robin,2026-11-30T09:30,dl_nothere,,ROBIN@example.com,,",
+    "Ring Robin,2026-11-30T09:30,,,ROBIN@example.com,,",
     "Card for Pat,,,,,pat example,2026-11-20",
     "Secret task,,,ct_nobody,nobody@example.com,Secret Person,",
     "Secret task,,,ct_gone,,,",
     "Secret task,soon,,ct_pat,,,",
     "Secret task,,,ct_pat,,,yesterday",
     ",,,ct_pat,,,",
+    "Secret task,,dl_nothere,ct_robin,robin@example.com,,",
   ].join("\r\n");
   const { ctx, plan: planned } = await plan(db, csv);
   assert.deepEqual(planned.skipped, [
@@ -53,6 +54,7 @@ test("tasks: an unmatched row is skipped with a reason", async () => {
     { line: 7, reason: "due_at isn't a date like 2026-11-19" },
     { line: 8, reason: "done_at isn't a date like 2026-11-19" },
     { line: 9, reason: "no title" },
+    { line: 10, reason: "deal dl_nothere isn't on file; import deals first" },
   ]);
   for (const { reason } of planned.skipped) assert.doesNotMatch(reason, /Secret|nobody|soon|yesterday/);
   assert.deepEqual(
@@ -62,7 +64,7 @@ test("tasks: an unmatched row is skipped with a reason", async () => {
       [3, null, "ct_robin"],
       [4, null, "ct_pat"],
     ],
-    "a deal wins and its own person is used; a missing deal falls back to the person; a name matches ignoring case",
+    "a deal wins and its own person is used; an email and a name match ignoring case; a deal id never falls back to the person",
   );
   const input = tasksModule.change(planned, ctx, NOW);
   assert.ok(input);

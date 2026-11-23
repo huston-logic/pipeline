@@ -72,12 +72,18 @@ export function resultOf(planned: DraftPlan, wrote: boolean): ImportResult {
     fields: wrote ? mapped.newFields.length : 0,
     people: 0,
     closed: 0,
+    archived: 0,
   };
   switch (planned.module) {
     case "people":
-      return { ...base, duplicates: planned.plan.duplicates.length };
+      return { ...base, duplicates: planned.plan.duplicates.length, archived: planned.plan.archived.length };
     case "deals":
-      return { ...base, people: planned.plan.people.length, closed: planned.plan.create.filter((row) => row.status !== "open").length };
+      return {
+        ...base,
+        people: planned.plan.people.length,
+        closed: planned.plan.create.filter((row) => row.status !== "open").length,
+        archived: planned.plan.archived.length,
+      };
     case "tasks":
       return base;
   }

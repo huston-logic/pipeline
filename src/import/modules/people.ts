@@ -13,7 +13,17 @@ import { type ChangeInput, type RowChange, updatedRow } from "../../services/cha
 import { businessKey } from "../../services/lead-change.ts";
 import { type LeadStatus, leadStatusFromText } from "../../services/lead-status.ts";
 import type { ColumnDef, ImportModule, ImportOptions, MappedRow } from "../engine.ts";
-import { checkedFields, EMAIL, fieldInputs, isEmptyValue, storedFields } from "./values.ts";
+import {
+  ARCHIVED_IN_FILE,
+  checkedFields,
+  EMAIL,
+  FIELDS_INVALID,
+  fieldInputs,
+  isArchivedCell,
+  isEmptyValue,
+  jsonFieldInputs,
+  storedFields,
+} from "./values.ts";
 
 export const IMPORT_COLUMNS = ["name", "email", "phone", "business", "source", "notes"] as const;
 export type ImportColumn = (typeof IMPORT_COLUMNS)[number];
@@ -39,7 +49,11 @@ export const STATUS_COLUMN = "lead_status";
 export const ID_COLUMN = "id";
 
 /** The board export's contacts columns that are bookkeeping, not details: recognised and never imported. */
-const PEOPLE_IGNORED = ["fields", "untrusted_fields", "archived", "version", "created_at", "updated_at", "lead_status_at"];
+const PEOPLE_IGNORED = ["untrusted_fields", "version", "created_at", "updated_at", "lead_status_at"];
+
+/** The export's JSON object of custom field values, and its archived flag: read, never stored as they are. */
+export const FIELDS_COLUMN = "fields";
+export const ARCHIVED_COLUMN = "archived";
 
 export interface PeopleOptions extends ImportOptions {
   /** Created rows become leads: New, unless a lead_status column says otherwise. */
@@ -57,8 +71,8 @@ const LABELS: Record<ImportColumn, string> = {
   notes: "Notes",
 };
 
-// The status column is read for new people only, by its value (an exact status key or label), and the id only by
-// its shape, so neither has a length limit of its own.
+// The status column is read for new people only, by its value (an exact status key or label), the id only by its
+// shape, and the export's fields and archived columns only for what they hold, so none has a length limit of its own.
 const PEOPLE_COLUMNS: readonly ColumnDef[] = [
   { key: ID_COLUMN, label: "Contact id", aliases: [], multiline: false },
   ...IMPORT_COLUMNS.map((key) => ({
@@ -70,6 +84,8 @@ const PEOPLE_COLUMNS: readonly ColumnDef[] = [
     required: key === "name",
   })),
   { key: STATUS_COLUMN, label: "Lead status", aliases: [], multiline: false },
+  { key: FIELDS_COLUMN, label: "Field values (from an export)", aliases: [], multiline: false },
+  { key: ARCHIVED_COLUMN, label: "Archived (from an export)", aliases: [], multiline: false },
 ];
 
 export type ExistingContact = {
@@ -118,6 +134,8 @@ export interface PeoplePlan {
   skipped: { line: number; reason: string }[];
   /** Possible duplicates left out of `create`; always empty unless the import is as leads. */
   duplicates: DuplicateRow[];
+  /** Lines the file marks archived (also in `skipped`): never created or filled in. */
+  archived: number[];
 }
 
 const isBlank = (text: string | null) => text === null || text.trim() === "";
@@ -147,7 +165,7 @@ export function planPeople(
   // The contacts on file a line already matched, so no contact is filled in twice in one change.
   const seenMatches = new Map<string, number>();
   const seenBusinesses = new Map<string, number>();
-  const plan: PeoplePlan = { create: [], merge: [], unchanged: [], skipped: [], duplicates: [] };
+  const plan: PeoplePlan = { create: [], merge: [], unchanged: [], skipped: [], duplicates: [], archived: [] };
 
   for (const row of rows) {
     const { line } = row;
@@ -162,13 +180,25 @@ export function planPeople(
       skip("empty row");
       continue;
     }
+    if (isArchivedCell(row.values[ARCHIVED_COLUMN] ?? null)) {
+      plan.archived.push(line);
+      skip(ARCHIVED_IN_FILE);
+      continue;
+    }
     const { name, email } = values;
     if (name === null) {
       skip("no name");
       continue;
     }
-    // What each custom column holds in this row; checked below, only for the fields a row actually fills.
-    const given = fieldInputs(row.fields, options.fieldDefs, "contact");
+    // What each custom column holds in this row, then the export's fields column for the fields no column gives;
+    // checked below, only for the fields a row actually fills.
+    const columns = fieldInputs(row.fields, options.fieldDefs, "contact");
+    const fromJson = jsonFieldInputs(row.values[FIELDS_COLUMN] ?? null, options.fieldDefs, "contact", columns);
+    if (fromJson === null) {
+      skip(FIELDS_INVALID);
+      continue;
+    }
+    const given = [...columns, ...fromJson];
     const checked = (list: typeof given) => checkedFields(list, "contact");
     const idText = row.values[ID_COLUMN] ?? null;
     const id = idText !== null && isContactId(idText) ? idText : null;

@@ -58,6 +58,47 @@ export function checkedFields(list: readonly FieldInput[], entity: FieldEntity):
   return { fields: out, problem: null };
 }
 
+/** The skip reason for a `fields` cell that isn't a JSON object of values: it quotes nothing. */
+export const FIELDS_INVALID = "the fields column isn't valid";
+
+/**
+ * The custom field values a board export's `fields` column holds (a JSON object, decision 0037): only keys that are a
+ * live field of `entity`, and only where no column of the row already gives that field (`given`). An empty value is
+ * left out; other keys are ignored and never named. Null when the cell isn't a JSON object of text, numbers or
+ * true/false.
+ */
+export function jsonFieldInputs(
+  text: string | null,
+  fieldDefs: readonly FieldDefRow[],
+  entity: FieldEntity,
+  given: readonly FieldInput[],
+): FieldInput[] | null {
+  if (text === null) return [];
+  let value: unknown;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  const out: FieldInput[] = [];
+  for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
+    if (raw === null) continue;
+    if (typeof raw !== "string" && typeof raw !== "number" && typeof raw !== "boolean") return null;
+    const def = fieldDefs.find((candidate) => candidate.entity === entity && candidate.archived === 0 && candidate.key === key);
+    if (!def || given.some((input) => input.def.key === key)) continue;
+    const cell = String(raw).trim();
+    if (cell !== "") out.push({ def, text: cell });
+  }
+  return out;
+}
+
+/** Whether a board export's `archived` cell says the record was archived: 1, true or yes. */
+export const isArchivedCell = (text: string | null): boolean => text !== null && ["1", "true", "yes"].includes(text.trim().toLowerCase());
+
+/** The skip reason for a row the file marks archived: no archived record is ever created or filled in. */
+export const ARCHIVED_IN_FILE = "archived in the file";
+
 /** The stored JSON object of custom field values; anything else reads as none. */
 export function storedFields(json: string | undefined): Record<string, unknown> {
   try {
