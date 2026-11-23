@@ -16,6 +16,7 @@ export const EXPORT_TABLES = [
   "rulebook",
   "settings",
   "audit_log",
+  "audit_parts",
   "briefs",
   "email_log",
 ] as const satisfies readonly TableName[];

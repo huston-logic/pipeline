@@ -197,6 +197,7 @@ test("the JSON export holds every listed table, each row as stored, as a downloa
   assert.deepEqual([...EXPORT_TABLES].sort(), [
     "activities",
     "audit_log",
+    "audit_parts",
     "briefs",
     "contacts",
     "deals",

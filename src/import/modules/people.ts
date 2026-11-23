@@ -301,6 +301,8 @@ export function peopleChange(plan: PeoplePlan, existing: readonly ContactRow[], 
     target: { table: "contacts", id: first.id },
     summary: importSummary(plan.create.length, plan.merge.length),
     changes,
+    // One change at any size (decision 0035): up to IMPORT_MAX_ROWS rows in one batch and one undo.
+    bulk: true,
   };
 }
 

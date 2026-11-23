@@ -16,6 +16,7 @@ const TABLE_LABELS: Record<ExportTable, string> = {
   rulebook: "Rulebook",
   settings: "Settings",
   audit_log: "Change log",
+  audit_parts: "Change log, big changes",
   briefs: "Daily briefs",
   email_log: "Logged emails",
 };

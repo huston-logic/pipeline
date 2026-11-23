@@ -91,9 +91,35 @@ function cleanValue(raw: string, multiline: boolean): string | null {
 
 const headerKey = (text: string) => text.trim().toLowerCase();
 
-/** The header row and the records after it; an empty file has an empty header. */
+/** The most data rows one import takes (decision 0035): one change, one undo, one D1 batch. */
+export const IMPORT_MAX_ROWS = 2_000;
+
+/** The largest file one import takes, in bytes (1 MB). */
+export const IMPORT_MAX_BYTES = 1_048_576;
+
+const FILE_COUNTS = ["", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"];
+
+const isBlank = (record: CsvRecord) => record.fields.every((field) => field.trim() === "");
+
+/**
+ * The header row and the records after it; an empty file has an empty header. Refuses a file over IMPORT_MAX_BYTES or
+ * with more than IMPORT_MAX_ROWS data rows (blank lines don't count), saying how to split it.
+ */
 export function readCsv(text: string): { header: string[]; records: CsvRecord[] } {
+  const bytes = new TextEncoder().encode(text).byteLength;
+  if (bytes > IMPORT_MAX_BYTES) {
+    const mb = (Math.ceil((bytes * 10) / IMPORT_MAX_BYTES) / 10).toFixed(1);
+    throw new UserError(`This file is ${mb} MB. One import takes at most 1 MB. Split it into smaller files and import each one.`);
+  }
   const [first, ...records] = parseCsvRecords(text);
+  const rows = records.filter((record) => !isBlank(record)).length;
+  if (rows > IMPORT_MAX_ROWS) {
+    const files = Math.ceil(rows / IMPORT_MAX_ROWS);
+    throw new UserError(
+      `This file has ${rows.toLocaleString("en-US")} rows. One import takes at most ${IMPORT_MAX_ROWS.toLocaleString("en-US")}. ` +
+        `Split it into ${FILE_COUNTS[files] ?? files} files and import each one.`,
+    );
+  }
   return { header: first?.fields ?? [], records };
 }
 

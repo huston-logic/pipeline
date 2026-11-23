@@ -191,3 +191,15 @@ test("nothing to import writes nothing, and bad arguments say how to fix them", 
   assert.throws(() => parseImportArgs(["--file", "x.csv", "--local", "--remote"]), /Unknown option/);
   await assert.rejects(importContacts(parseImportArgs(["--file", join(h.copyDir, "missing.csv"), "--local"]), h.deps), /Can't read/);
 });
+
+test("--apply writes a 2,000-row file in one go: one SQL file, one audited change", async (t) => {
+  const rows = Array.from({ length: 2_000 }, (_, i) => `Person ${i} O'Example 🌱,person.${i}@example.com,555-01${String(i % 100).padStart(2, "0")},Shop ${i},trade list,Met at the fair`);
+  const h = await harness(t, `name,email,phone,business,source,notes\r\n${rows.join("\r\n")}\r\n`);
+  assert.equal(await importContacts(parseImportArgs(["--file", h.file, "--copy", "acme", "--apply"]), h.deps), 0);
+  assert.equal(h.sqlFiles.length, 1, "one wrangler d1 execute --file");
+  assert.equal(await h.db.prepare("SELECT COUNT(*) AS n FROM contacts").first("n"), 2_001);
+  const audit = await h.db.prepare("SELECT summary, parts FROM audit_log").all<{ summary: string; parts: number }>();
+  assert.equal(audit.results.length, 1);
+  assert.match(audit.results[0]?.summary ?? "", /^Imported 2000 contacts and filled details on 0 \(change chg_[a-z2-7]{12}\)$/);
+  assert.ok((audit.results[0]?.parts ?? 0) > 1);
+});

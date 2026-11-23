@@ -5,7 +5,16 @@ import { createTestDb, type SqliteD1 } from "../db/sqlite-d1.ts";
 import type { RowChange } from "../services/change.ts";
 import { UserError } from "../services/errors.ts";
 import { renderImport } from "./change.ts";
-import { autoMatch, type ImportModule, type ImportOptions, mapRows, planCsv, readCsv } from "./engine.ts";
+import {
+  autoMatch,
+  IMPORT_MAX_BYTES,
+  IMPORT_MAX_ROWS,
+  type ImportModule,
+  type ImportOptions,
+  mapRows,
+  planCsv,
+  readCsv,
+} from "./engine.ts";
 import { peopleModule } from "./modules/people.ts";
 
 const NOW = new Date("2026-11-22T18:00:00.000Z");
@@ -178,4 +187,25 @@ test("the notes and new_field targets are not supported yet", () => {
   const { header, records } = readCsv("name,Extra\r\nA,b\r\n");
   assert.throws(() => mapRows(peopleModule, records, [{ kind: "builtin", key: "name" }, { kind: "notes", label: "Extra" }], header), /not supported yet/);
   assert.throws(() => mapRows(peopleModule, records, [{ kind: "builtin", key: "name" }, { kind: "new_field", label: "Extra" }], header), /not supported yet/);
+});
+
+test("readCsv takes at most 2,000 data rows and 1 MB, and says how to split a bigger file", () => {
+  assert.equal(IMPORT_MAX_ROWS, 2_000);
+  assert.equal(IMPORT_MAX_BYTES, 1_048_576);
+  const rows = (n: number) => ["name", ...Array.from({ length: n }, (_, i) => `Person ${i}`)].join("\r\n");
+  const refused = (text: string, message: string) =>
+    assert.throws(() => readCsv(text), (error: unknown) => error instanceof UserError && error.message === message);
+
+  assert.equal(readCsv(rows(2_000)).records.length, 2_000);
+  assert.equal(readCsv(`${rows(2_000)}\r\n\r\n,\r\n`).records.length, 2_002, "blank lines are not data rows");
+  refused(rows(2_431), "This file has 2,431 rows. One import takes at most 2,000. Split it into two files and import each one.");
+  refused(rows(2_001), "This file has 2,001 rows. One import takes at most 2,000. Split it into two files and import each one.");
+  refused(rows(4_001), "This file has 4,001 rows. One import takes at most 2,000. Split it into three files and import each one.");
+
+  const wide = `name,notes\r\n${Array.from({ length: 1_000 }, (_, i) => `P${i},${"n".repeat(1_440)}`).join("\r\n")}`;
+  assert.ok(wide.length > 1.3 * IMPORT_MAX_BYTES && wide.length <= 1.4 * IMPORT_MAX_BYTES);
+  refused(wide, "This file is 1.4 MB. One import takes at most 1 MB. Split it into smaller files and import each one.");
+  const justOver = `name\r\n${"é".repeat(IMPORT_MAX_BYTES / 2)}`;
+  refused(justOver, "This file is 1.1 MB. One import takes at most 1 MB. Split it into smaller files and import each one.");
+  assert.doesNotThrow(() => readCsv(`name\r\n${"x".repeat(IMPORT_MAX_BYTES - 6)}`), "exactly 1 MB is fine");
 });

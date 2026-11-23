@@ -18,6 +18,7 @@ export const TABLE_NAMES = [
   "rule_firings",
   "rulebook",
   "audit_log",
+  "audit_parts",
   "write_guard",
   "briefs",
   "push_subscriptions",
@@ -243,4 +244,18 @@ export type AuditRow = {
   undone_by: string | null;
   /** On an undo, the id of the change it undid. */
   undo_of: string | null;
+  /**
+   * How many audit_parts rows hold the snapshot (migration 0009, decision 0035). 0: the snapshot is in before_json
+   * and after_json; otherwise those are "{}" and the snapshot is the union of the parts.
+   */
+  parts: number;
+};
+
+/** One piece of a big change's snapshot (migration 0009): the same shape as before_json/after_json, for some rows. */
+export type AuditPartRow = {
+  change_id: string;
+  /** 1, 2, ...: the order the rows were written in. */
+  seq: number;
+  before_json: string;
+  after_json: string;
 };
