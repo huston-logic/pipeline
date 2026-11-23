@@ -111,10 +111,13 @@ this file before changing the repo, and update it when a rule changes.
   `tests/e2e/mcp.test.ts`).
 - **MCP import** (decision 0039): `import_rows` keeps a sheet's rows (at most 500 a call, 60 columns) in a board
   import draft as CSV text (`csvLines`) and answers the check step's preview as data (counts, line numbers, ids,
-  labels; no row value or column name); `apply_import` writes it as one bulk change (actor `ai`, tool
-  `apply_import`), once. Both call `src/services/import-rows.ts`, which builds the plan options from fixed keys and
-  never imports the board's import code. Strict schemas; never add the own-list option. A draft started there may be
-  finished on the board, and the other way round. Lines are the sheet's rows (columns line 1).
+  labels, the draft's `version`; no row value or column name); `apply_import` `{ draft, version }` writes it as one
+  bulk change (actor `ai`, tool `apply_import`), once, only at the version previewed. Both call
+  `src/services/import-rows.ts`, which builds the plan options from fixed keys, checks the mapping itself (a zod
+  refusal would echo a column name) and never imports the board's import code; change and counts are shared
+  (`src/import/planned.ts`). Strict schemas; never add the own-list option. At most 10 drafts wait at once (both
+  doors). A draft MCP touched is `options.source = "mcp"`: the board never offers "my own list" for it. Lines are the
+  sheet's rows (columns line 1).
 - **Leads** (decisions 0022, 0023): a lead is a `contacts` row with a `lead_status` and no open deal; there is no
   leads table. `add_lead` (`src/services/leads.ts`) adds a person with status `new` and no deal; `add_deal`
   (`src/services/add-deal.ts`, what `add_lead` did before run 4) adds a deal for a new or existing person;
