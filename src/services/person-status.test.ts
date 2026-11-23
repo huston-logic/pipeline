@@ -6,6 +6,7 @@ import { createTestDb, openTestDb } from "../db/sqlite-d1.ts";
 import { logActivity } from "./activities.ts";
 import { addDeal } from "./add-deal.ts";
 import type { Ctx } from "./change.ts";
+import { updateContact } from "./contacts.ts";
 import { updateDeal } from "./deals.ts";
 import { UserError } from "./errors.ts";
 import { addLead } from "./leads.ts";
@@ -365,4 +366,38 @@ test("undoing a bring-back is refused while someone has the status again", async
     await refusal(undoChange(ctxFor(db, "undo_change", LATER), back.changeId)),
     /it would archive person status Partner again, but 1 person has it now/,
   );
+});
+
+test("a lead whose Lost deal is marked Won becomes a Contact and a Client in the same change; undo puts both back", async () => {
+  const db = await openTestDb();
+  const lee = await addDeal(ctxFor(db, "add_deal"), { name: "Lee Example", email: "lee@example.com", dealTitle: "Roof" });
+  await updateDeal(ctxFor(db, "update_deal"), lee.dealId, { status: "lost" });
+  await updateContact(ctxFor(db, "update_contact"), lee.contactId, { leadStatus: "not_now" });
+  const won = await updateDeal(ctxFor(db, "update_deal", LATER), lee.dealId, { status: "won" });
+  assert.equal(won.summary, `Moved "Roof" (Lee Example) to Won; Lee Example is now Qualified and a Client (change ${won.changeId})`);
+  assert.deepEqual(await pair(db, lee.contactId), {
+    person_status: "contact",
+    sub_status: "client",
+    lead_status: "qualified",
+    lead_status_at: LATER.toISOString(),
+  });
+  await undoChange(ctxFor(db, "undo_change", LATER), won.changeId);
+  assert.deepEqual(await pair(db, lee.contactId), {
+    person_status: "lead",
+    sub_status: "not_now",
+    lead_status: "not_now",
+    lead_status_at: NOW.toISOString(),
+  });
+  assert.equal((await db.prepare("SELECT status FROM deals WHERE id = ?").bind(lee.dealId).first("status")), "lost");
+
+  // With Client archived, the lead still leaves Lead (invariant 1) but gets no sub-status.
+  await updateSubStatus(ctxFor(db), "contact", "client", { archived: true });
+  const again = await updateDeal(ctxFor(db, "update_deal", LATER), lee.dealId, { stage: "won" });
+  assert.match(again.summary, /; Lee Example is now Qualified \(change/);
+  assert.deepEqual(await pair(db, lee.contactId), {
+    person_status: "contact",
+    sub_status: null,
+    lead_status: "qualified",
+    lead_status_at: LATER.toISOString(),
+  });
 });
