@@ -8,8 +8,10 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { ContactRow, FieldDefRow } from "../src/db/db.ts";
-import { importChange, renderImport } from "../src/import/change.ts";
-import { type ImportPlan, planImport } from "../src/import/plan.ts";
+import { renderImport } from "../src/import/change.ts";
+import { type FilePlan, planCsv } from "../src/import/engine.ts";
+import { peopleModule } from "../src/import/modules/index.ts";
+import type { PeoplePlan } from "../src/import/modules/people.ts";
 import { parseFlags, UsageError } from "./cli-args.mjs";
 import { copyNameProblem, copyPaths, databaseTarget, isCopyName, makeRunner, query } from "./copies.mjs";
 import { ROOT, run as defaultRun, type RunOptions, type RunResult } from "./wrangler-run.mjs";
@@ -75,7 +77,7 @@ export function parseImportArgs(argv: string[]): ImportOptions {
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
-function showPlan(plan: ImportPlan, log: (line: string) => void): void {
+function showPlan(plan: FilePlan<PeoplePlan>, log: (line: string) => void): void {
   log(
     `${plural(plan.create.length, "new contact")}, ${plan.merge.length} filled in, ${plan.unchanged.length} unchanged, ` +
       `${plan.skipped.length} skipped${plan.duplicates.length > 0 ? `, ${plural(plan.duplicates.length, "possible duplicate")}` : ""}.`,
@@ -109,7 +111,7 @@ export async function importContacts(options: ImportOptions, deps: ImportDeps): 
   const runner = makeRunner(deps, target.accountId);
   const existing = query(runner, target, "SELECT * FROM contacts ORDER BY rowid") as ContactRow[];
   const fieldDefs = query(runner, target, "SELECT * FROM field_defs ORDER BY rowid") as FieldDefRow[];
-  const plan = planImport(csv, existing, { asLeads: options.asLeads, allowDuplicates: options.allowDuplicates, fieldDefs });
+  const plan = planCsv(peopleModule, csv, existing, { asLeads: options.asLeads, allowDuplicates: options.allowDuplicates, fieldDefs });
   deps.log(`Import plan for ${options.local ? "the local dev database" : `the copy "${options.copy}"`}:`);
   showPlan(plan, deps.log);
   if (!options.apply) {
@@ -118,7 +120,7 @@ export async function importContacts(options: ImportOptions, deps: ImportDeps): 
   }
 
   const at = now();
-  const input = importChange(plan, existing, at);
+  const input = peopleModule.change(plan, existing, at);
   if (input === null) {
     deps.log("Nothing to import: no new contacts and no details to fill in.");
     return 0;

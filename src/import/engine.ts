@@ -1,0 +1,208 @@
+// The import engine (decision 0034): one way to bring a CSV in, whatever the records are. readCsv reads the file,
+// autoMatch says where each header cell goes (a column the module defines, a custom field, or nowhere), and mapRows
+// cleans each row's values. The module (src/import/modules/) then plans the rows and builds the one audited change.
+// Pure: nothing here reads or writes the database.
+import type { FieldDefRow } from "../db/db.ts";
+import { type CsvRecord, parseCsvRecords } from "../http/csv.ts";
+import type { ChangeInput } from "../services/change.ts";
+import { UserError } from "../services/errors.ts";
+
+export type { CsvRecord };
+
+export type ImportModuleKey = "people" | "deals" | "tasks";
+
+/** Where one CSV column goes. */
+export type Target =
+  | { kind: "builtin"; key: string }
+  | { kind: "field"; key: string }
+  | { kind: "new_field"; label: string }
+  | { kind: "notes"; label: string }
+  | { kind: "skip" };
+
+/** A column the module defines. */
+export interface ColumnDef {
+  key: string;
+  label: string;
+  /** Other header names for this column, matched like the key (trimmed, any capitals). */
+  aliases: string[];
+  /** The most characters a value may have. */
+  limit: number;
+  /** Keeps its line breaks; in every other column a line break or tab becomes a space. */
+  multiline: boolean;
+  /** The header row must name it. */
+  required?: boolean;
+}
+
+export interface ImportOptions {
+  /** Created rows become leads: New, unless a lead_status column says otherwise. */
+  asLeads: boolean;
+  /** Create rows that look like someone already on file (leads imports only). */
+  allowDuplicates: boolean;
+  fieldDefs: readonly FieldDefRow[];
+}
+
+/** A custom field value one row gives, with the header of the column it came from (for skip reasons). */
+export interface MappedField {
+  key: string;
+  column: string;
+  text: string;
+}
+
+export interface MappedRow {
+  /** The line of the file the row starts on. */
+  line: number;
+  /** Every module column by key: its cleaned value, or null when it is empty or not in the file. */
+  values: Record<string, string | null>;
+  /** The custom field values this row gives (empty cells left out), in column order. */
+  fields: MappedField[];
+}
+
+export interface ImportModule<Ctx, Plan> {
+  key: ImportModuleKey;
+  noun: { one: string; many: string };
+  /** Whose custom fields a column can fill; null when the records have none. */
+  entity: "contact" | "deal" | null;
+  columns: readonly ColumnDef[];
+  /** The columns the missing-header message names; every column when left out. */
+  hintColumns?: readonly string[];
+  plan(rows: MappedRow[], ctx: Ctx, options: ImportOptions): Plan;
+  change(plan: Plan, ctx: Ctx, now: Date): ChangeInput | null;
+}
+
+/** What reading and matching need from a module: not its plan or change. */
+export type ModuleShape = Pick<ImportModule<never, unknown>, "noun" | "entity" | "columns" | "hintColumns">;
+
+/** A module's plan, with the header names that are not imported. */
+export type FilePlan<Plan> = Plan & { skippedColumns: string[] };
+
+// What the export's formula guard (src/http/csv.ts) puts an apostrophe in front of.
+const GUARDED = /^'[=+\-@\t\r]/;
+const CONTROL = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/g;
+const LINE_BREAK = /\r\n|[\r\n\t]/g;
+
+const unguard = (value: string) => (GUARDED.test(value) ? value.slice(1) : value);
+
+function cleanValue(raw: string, multiline: boolean): string | null {
+  let value = unguard(raw).replace(CONTROL, "");
+  if (!multiline) value = value.replace(LINE_BREAK, " ");
+  value = value.trim();
+  return value === "" ? null : value;
+}
+
+const headerKey = (text: string) => text.trim().toLowerCase();
+
+/** The header row and the records after it; an empty file has an empty header. */
+export function readCsv(text: string): { header: string[]; records: CsvRecord[] } {
+  const [first, ...records] = parseCsvRecords(text);
+  return { header: first?.fields ?? [], records };
+}
+
+/**
+ * Where each header cell goes, by name: a module column's key, then one of its aliases, then a custom field of the
+ * module's entity (not archived) by key or label. Anything else is skipped.
+ */
+export function autoMatch(module: ModuleShape, header: string[], fieldDefs: readonly FieldDefRow[]): Target[] {
+  return header.map((cell): Target => {
+    const key = headerKey(cell);
+    const column =
+      module.columns.find((candidate) => candidate.key.toLowerCase() === key) ??
+      module.columns.find((candidate) => candidate.aliases.some((alias) => headerKey(alias) === key));
+    if (column) return { kind: "builtin", key: column.key };
+    const def = fieldDefs.find(
+      (candidate) =>
+        module.entity !== null &&
+        candidate.entity === module.entity &&
+        candidate.archived === 0 &&
+        (candidate.key.toLowerCase() === key || headerKey(candidate.label) === key),
+    );
+    return def ? { kind: "field", key: def.key } : { kind: "skip" };
+  });
+}
+
+/** Header names (trimmed, blank ones left out) whose column is skipped. */
+export function skippedColumnNames(header: readonly string[], targets: readonly Target[]): string[] {
+  return header.flatMap((cell, index) => {
+    const name = cell.trim();
+    return targets[index]?.kind === "skip" && name !== "" ? [name] : [];
+  });
+}
+
+function checkTargets(module: ModuleShape, header: readonly string[], targets: readonly Target[]): void {
+  if (header.length === 0) {
+    throw new UserError(`The CSV file is empty. Export your ${module.noun.many} with a header row and try again.`);
+  }
+  const seen = new Set<string>();
+  for (const target of targets) {
+    if (target.kind === "notes" || target.kind === "new_field") {
+      throw new Error(`Importing a column as ${target.kind === "notes" ? "notes" : "a new field"} is not supported yet.`);
+    }
+    if (target.kind === "skip") continue;
+    if (target.kind === "builtin" && !module.columns.some((column) => column.key === target.key)) {
+      throw new Error(`The import maps a column to "${target.key}", which this import doesn't have.`);
+    }
+    const id = `${target.kind}:${target.key}`;
+    if (seen.has(id)) {
+      throw new UserError(`The header row names "${target.key}" twice. Keep one column of each name and try again.`);
+    }
+    seen.add(id);
+  }
+  const missing = module.columns.filter((column) => column.required && !seen.has(`builtin:${column.key}`));
+  if (missing.length > 0) {
+    const hint = module.hintColumns ?? module.columns.map((column) => column.key);
+    throw new UserError(
+      `The first line must be a header row naming the columns, with at least ${missing.map((column) => `"${column.key}"`).join(", ")} ` +
+        `(${hint.join(", ")}). Add one and try again.`,
+    );
+  }
+}
+
+/**
+ * Each record's cleaned values: the export's formula guard taken off, control characters removed, line breaks kept
+ * only in multiline columns, trimmed, and an empty cell is null. Refuses an empty file, a target named twice and a
+ * missing required column, in plain English. `targets[i]` and `header[i]` describe column i.
+ */
+export function mapRows(
+  module: ModuleShape,
+  records: CsvRecord[],
+  targets: Target[],
+  header: readonly string[],
+): MappedRow[] {
+  checkTargets(module, header, targets);
+  const columns = new Map(module.columns.map((column) => [column.key, column]));
+  return records.map(({ line, fields: cells }) => {
+    const values: Record<string, string | null> = Object.fromEntries(module.columns.map((column) => [column.key, null]));
+    const fields: MappedField[] = [];
+    targets.forEach((target, index) => {
+      const raw = cells[index] ?? "";
+      if (target.kind === "builtin") {
+        values[target.key] = cleanValue(raw, columns.get(target.key)?.multiline ?? false);
+      } else if (target.kind === "field") {
+        const text = cleanValue(raw, false);
+        if (text !== null) fields.push({ key: target.key, column: (header[index] ?? "").trim(), text });
+      }
+    });
+    return { line, values, fields };
+  });
+}
+
+/** readCsv, autoMatch and mapRows in one: the rows a module plans, and the header names not imported. */
+export function mapCsv(
+  module: ModuleShape,
+  csvText: string,
+  fieldDefs: readonly FieldDefRow[],
+): { rows: MappedRow[]; skippedColumns: string[] } {
+  const { header, records } = readCsv(csvText);
+  const targets = autoMatch(module, header, fieldDefs);
+  return { rows: mapRows(module, records, targets, header), skippedColumns: skippedColumnNames(header, targets) };
+}
+
+/** A CSV file planned by a module, matched by header names. */
+export function planCsv<Ctx, Plan extends object>(
+  module: ImportModule<Ctx, Plan>,
+  csvText: string,
+  ctx: Ctx,
+  options: ImportOptions,
+): FilePlan<Plan> {
+  const { rows, skippedColumns } = mapCsv(module, csvText, options.fieldDefs);
+  return { ...module.plan(rows, ctx, options), skippedColumns };
+}
