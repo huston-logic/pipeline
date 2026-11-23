@@ -12,15 +12,17 @@ import {
   IMPORT_MAX_ROWS,
   IMPORT_MAX_VALUE_BYTES,
   type ImportModule,
-  type ImportOptions,
+  MappingError,
   mapRows,
   planCsv,
+  planRows,
   readCsv,
 } from "./engine.ts";
-import { peopleModule } from "./modules/people.ts";
+import { IMPORT_MODULES } from "./modules/index.ts";
+import { type PeopleOptions, peopleModule } from "./modules/people.ts";
 
 const NOW = new Date("2026-11-22T18:00:00.000Z");
-const PLAIN: ImportOptions = { asLeads: false, allowDuplicates: false, fieldDefs: [] };
+const PLAIN: PeopleOptions = { asLeads: false, allowDuplicates: false, fieldDefs: [] };
 
 const defs = (rows: Partial<FieldDefRow>[]): FieldDefRow[] =>
   rows.map((row, i) => ({
@@ -120,6 +122,7 @@ const fakeTasks: ImportModule<string, FakeTaskPlan> = {
   key: "tasks",
   noun: { one: "task", many: "tasks" },
   entity: null,
+  notes: false,
   columns: [
     { key: "title", label: "Title", aliases: ["to do"], limit: 500, multiline: false, required: true },
     { key: "due", label: "Due", aliases: [], limit: 10, multiline: false },
@@ -227,4 +230,30 @@ test("a value or a row too large for one statement is refused in plain English, 
   // The longest notes the plan accepts (10,000 characters, three bytes each) still fit.
   const plan = planCsv(peopleModule, `name,notes\r\nPat,${"漢".repeat(10_000)}\r\n`, [], PLAIN);
   assert.equal(plan.create.length, 1);
+});
+
+test("a column's limit is enforced by the engine for every module, before the module plans, in line order", () => {
+  const csv = `To Do,due\r\n${"t".repeat(501)},2026-12-01\r\nCall the bakery,2026-12-01T09:00\r\n,2026-12-02\r\n`;
+  const plan = planCsv(fakeTasks, csv, "ct_pat", PLAIN);
+  assert.deepEqual(plan.tasks, []);
+  assert.deepEqual(plan.skipped, [
+    { line: 2, reason: "title is longer than 500 characters" },
+    { line: 3, reason: "due is longer than 10 characters" },
+    { line: 4, reason: "no title" },
+  ]);
+  const { header, records } = readCsv(csv);
+  const rows = mapRows(fakeTasks, records, autoMatch(fakeTasks, header, []), header, []);
+  assert.deepEqual(planRows(fakeTasks, rows, "ct_pat", PLAIN).skipped, plan.skipped, "planRows is the one place");
+});
+
+test("Add to notes is refused for a module whose records have no notes, naming the column by number", () => {
+  const { header, records } = readCsv("To Do,Extra\r\nCall,x\r\n");
+  assert.throws(
+    () => mapRows(fakeTasks, records, [{ kind: "builtin", key: "title" }, { kind: "notes", label: "Extra" }], header, []),
+    (error: unknown) => error instanceof MappingError && error.column === 1 && error.message === "Tasks have no notes, so column 2 can't be added to them.",
+  );
+});
+
+test("every listed module is under its own key", () => {
+  for (const [key, module] of Object.entries(IMPORT_MODULES)) assert.equal(module.key, key);
 });

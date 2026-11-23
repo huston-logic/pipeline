@@ -5,7 +5,7 @@ import { contactsOnFile } from "../import/load.ts";
 import { UserError } from "../services/errors.ts";
 import { listFieldDefs } from "../db/queries.ts";
 import type { Draft, ImportResult } from "../import/drafts.ts";
-import { type FilePlan, type MappedFile, mapFile, type Target } from "../import/engine.ts";
+import { type FilePlan, type MappedFile, mapFile, planRows, type Target } from "../import/engine.ts";
 import { type PeoplePlan, peopleModule } from "../import/modules/people.ts";
 
 export const IMPORT_PATH = "/import";
@@ -99,7 +99,7 @@ export async function planDraft(db: Db, draft: Draft, text: string, now: Date, a
   const fieldDefs: FieldDefRow[] = await listFieldDefs(db, { includeArchived: true });
   const contacts = await contactsOnFile(db);
   const mapped = mapFile(peopleModule, text, draft.mapping, fieldDefs, now);
-  const plan = peopleModule.plan(mapped.rows, contacts, { asLeads: draft.asLeads, allowDuplicates, fieldDefs: mapped.fieldDefs });
+  const plan = planRows(peopleModule, mapped.rows, contacts, { asLeads: draft.asLeads, allowDuplicates, fieldDefs: mapped.fieldDefs });
   return { mapped, plan: { ...plan, skippedColumns: mapped.skippedColumns }, contacts };
 }
 

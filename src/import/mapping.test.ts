@@ -8,8 +8,8 @@ import { commitChange } from "../services/change.ts";
 import { UserError } from "../services/errors.ts";
 import { undoChange } from "../services/undo.ts";
 import { IMPORT_ACTOR } from "./change.ts";
-import { fileChange, type ImportOptions, mapFile, MappingError, mapRows, readCsv, type Target } from "./engine.ts";
-import { peopleModule } from "./modules/people.ts";
+import { fileChange, mapFile, MappingError, mapRows, planRows, readCsv, type Target } from "./engine.ts";
+import { type PeopleOptions, peopleModule } from "./modules/people.ts";
 
 const NOW = new Date("2026-11-22T18:00:00.000Z");
 const LATER = new Date("2026-11-22T19:00:00.000Z");
@@ -30,9 +30,9 @@ const field = (row: Partial<FieldDefRow>): FieldDefRow => ({
 
 const builtin = (key: string): Target => ({ kind: "builtin", key });
 
-function planned(csv: string, targets: Target[], existing: ContactRow[], fieldDefs: FieldDefRow[] = [], options: Partial<ImportOptions> = {}) {
+function planned(csv: string, targets: Target[], existing: ContactRow[], fieldDefs: FieldDefRow[] = [], options: Partial<PeopleOptions> = {}) {
   const mapped = mapFile(peopleModule, csv, targets, fieldDefs, NOW);
-  const plan = peopleModule.plan(mapped.rows, existing, {
+  const plan = planRows(peopleModule, mapped.rows, existing, {
     asLeads: false,
     allowDuplicates: false,
     ...options,

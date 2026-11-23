@@ -239,7 +239,7 @@ test("round trip: contacts exported to CSV import back unchanged (commas, quotes
   const target = await createTestDb();
   const plan = planImport(csv, []);
   assert.deepEqual(plan.skipped, []);
-  assert.ok(plan.skippedColumns.includes("id") && plan.skippedColumns.includes("untrusted_fields"));
+  assert.ok(!plan.skippedColumns.includes("id") && plan.skippedColumns.includes("untrusted_fields"), "the id is imported (decision 0037)");
   const input = importChange(plan, [], NOW);
   assert.ok(input);
   runFile(target, renderImport(input, NOW).sql);
@@ -251,8 +251,10 @@ test("round trip: contacts exported to CSV import back unchanged (commas, quotes
     (await contacts(source)).sort(byName).map(pick),
   );
 
+  assert.deepEqual((await contacts(target)).map((row) => row.id).sort(), (await contacts(source)).map((row) => row.id).sort(), "ids kept");
+
   const again = planImport(csv, await contacts(source));
-  assert.equal(again.create.length, 1, "only the contact without an email can't be matched");
+  assert.equal(again.create.length, 0, "every contact is matched by its id, the one without an email too");
   assert.equal(again.merge.length, 0);
-  assert.equal(again.unchanged.length, 4);
+  assert.equal(again.unchanged.length, 5);
 });

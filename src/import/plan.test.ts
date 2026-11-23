@@ -18,6 +18,7 @@ test("a header row is required: names columns case-insensitively and lists unkno
   assert.deepEqual(plan.create, [
     {
       line: 2,
+      id: null,
       name: "Robin Sample",
       email: "robin@example.com",
       phone: "555 0100",
@@ -233,4 +234,35 @@ test("possible duplicates (no email, same business as someone on file or an earl
   assert.deepEqual(allowed.duplicates, []);
   assert.deepEqual(allowed.create.map((row) => row.line), [2, 3, 4, 5, 6]);
   assert.deepEqual(planImport(csv, [pat]).duplicates, [], "only a leads import looks for duplicates");
+});
+
+test("an id column matches a contact on file before the email; an unmatched contact id is kept; anything else is ignored", () => {
+  const robin: ExistingContact = { id: "ct_robin", email: "robin@example.com", phone: null, business: null, source: null, notes: null };
+  const csv = [
+    "id,name,email,phone,version,created_at",
+    "ct_pat,Pat Example,robin@example.com,555 0101,3,2026-11-01",
+    "ct_newone,Casey Placeholder,casey@example.com,,1,2026-11-01",
+    "12345,Jordan Fake,jordan@example.com,,1,2026-11-01",
+    "ct_newone,Casey Again,casey.again@example.com,,1,2026-11-01",
+    "ct_other,Robin Sample,robin@example.com,555 0102,1,2026-11-01",
+    ",Robin Twice,ROBIN@example.com,555 0103,1,2026-11-01",
+  ].join("\r\n");
+  const plan = planImport(csv, [pat, robin]);
+  assert.deepEqual(plan.merge, [
+    { id: "ct_pat", line: 2, changes: { phone: "555 0101" } },
+    { id: "ct_robin", line: 6, changes: { phone: "555 0102" } },
+  ], "by id first (the email is ignored), then by email with the unmatched id ignored");
+  assert.deepEqual(plan.create.map((row) => [row.line, row.id]), [[3, "ct_newone"], [4, null]], "a kept id, and a new one for a non-id");
+  assert.deepEqual(plan.skipped, [
+    { line: 5, reason: "the same id as line 3" },
+    { line: 7, reason: "the same email as line 6" },
+  ]);
+  assert.deepEqual(plan.skippedColumns, ["version", "created_at"], "bookkeeping columns are not imported");
+});
+
+test("bookkeeping columns of the export never fill a custom field of the same name", () => {
+  const fieldDefs = defs([{ key: "version", label: "Version" }, { key: "created_at", label: "Created" }]);
+  const plan = planImport("name,version,CREATED_AT,Created\r\nPat,3,2026-11-01,2026-11-02\r\n", [], { ...LEADS, fieldDefs });
+  assert.deepEqual(plan.create[0]?.fields, { created_at: "2026-11-02" }, "only the column named like the field's label fills it");
+  assert.deepEqual(plan.skippedColumns, ["version", "CREATED_AT"]);
 });
