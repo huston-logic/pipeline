@@ -28,9 +28,11 @@ in the Worker (bound values) and from the Mac (rendered SQL).
 - **Size of one row.** `mapRows` refuses, before any change is built, a value over `IMPORT_MAX_VALUE_BYTES` (40 KB)
   or a row whose values add up to more than `IMPORT_MAX_ROW_BYTES` (40 KB), measured as stored (JSON inside JSON, then
   as a SQL literal): "Line 14's "notes" value is 95 KB; one value can be at most 40 KB. Shorten it and try again." An
-  undo's snapshot part holds a row twice (before and after), so a row under 40 KB always fits a 90 KB chunk. A record
-  too large for one statement still throws a plain error in `chunkBy`, as a backstop for writes that don't come from
-  an import.
+  undo's snapshot part holds a row twice (before and after), so a new row under 40 KB always fits a 90 KB chunk. A
+  filled-in row is not fully covered: its `before` is the record already on file, which the import does not measure,
+  so a very large existing record plus large fills can still pass 90 KB. A record too large for one statement throws a
+  plain error in `chunkBy` and nothing is written: the backstop for that case and for writes that don't come from an
+  import.
 - **Chunks.** A JSON parameter is at most `CHUNK_BYTES = 90_000`, measured as UTF-8 bytes plus one per apostrophe
   (`sqlBytes` in `src/services/bulk.ts`), because that is its size as a quoted SQL literal. With the statement text
   around it, every statement stays under 100 KB whether it is bound or rendered. `chunkRows` and `chunkBy` cut lists in
