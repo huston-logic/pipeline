@@ -29,6 +29,7 @@ const READ_TOOLS = [
   "list_person_statuses",
   "list_rules",
   "list_stages",
+  "list_views",
   "pipeline_summary",
   "preview_rule",
   "recent_changes",
@@ -45,8 +46,10 @@ const WRITE_TOOLS = [
   "add_stage",
   "add_sub_status",
   "add_task",
+  "add_view",
   "apply_import",
   "archive_stage",
+  "archive_view",
   "complete_task",
   "import_rows",
   "log_activity",
@@ -65,6 +68,7 @@ const WRITE_TOOLS = [
   "update_settings",
   "update_stage",
   "update_sub_status",
+  "update_view",
 ];
 
 async function client(db?: Db) {
@@ -90,7 +94,7 @@ test("every read tool is annotated read-only and every write tool is not", async
     assert.equal(tool.inputSchema.type, "object", tool.name);
   }
   const byName = new Map(tools.map((t) => [t.name, t]));
-  for (const name of ["add_lead", "add_deal", "add_contact", "add_person_status", "add_sub_status", "qualify_lead", "return_to_lead", "import_rows"]) {
+  for (const name of ["add_lead", "add_deal", "add_contact", "add_person_status", "add_sub_status", "add_view", "qualify_lead", "return_to_lead", "import_rows"]) {
     assert.equal(byName.get(name)?.annotations?.destructiveHint, false, name);
     assert.equal(byName.get(name)?.annotations?.idempotentHint, false, name);
   }
@@ -101,6 +105,7 @@ test("every read tool is annotated read-only and every write tool is not", async
 // repeat call is refused or changes something again.
 const DESTRUCTIVE = [
   "archive_stage",
+  "archive_view",
   "undo_change",
   "update_contact",
   "update_deal",
@@ -111,6 +116,7 @@ const DESTRUCTIVE = [
   "update_settings",
   "update_stage",
   "update_sub_status",
+  "update_view",
 ];
 // update_contact is not: a repeated followUpDate adds a second "Check back" task.
 // apply_import is: a second call of the same import writes nothing (decision 0039).
@@ -126,6 +132,7 @@ const IDEMPOTENT = [
   "update_settings",
   "update_stage",
   "update_sub_status",
+  "update_view",
 ];
 
 test("destructive and idempotent hints are set exactly on the tools that need them", async () => {

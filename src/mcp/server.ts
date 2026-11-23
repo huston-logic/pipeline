@@ -6,6 +6,7 @@ import { SERVER_INSTRUCTIONS } from "./instructions.ts";
 import type { ToolDeps } from "./tool.ts";
 import { registerImportTools } from "./tools-import.ts";
 import { registerReadTools } from "./tools-read.ts";
+import { registerViewTools } from "./tools-views.ts";
 import { registerWriteTools } from "./tools-write.ts";
 
 export const SERVER_INFO = { name: "pipeline", version: "0.1.0" };
@@ -15,5 +16,6 @@ export function createMcpServer(deps: ToolDeps): McpServer {
   registerReadTools(server, deps);
   registerWriteTools(server, deps);
   registerImportTools(server, deps);
+  registerViewTools(server, deps);
   return server;
 }

@@ -369,10 +369,10 @@ export async function updateView(ctx: Ctx, ref: string, patch: ViewPatch): Promi
     }
   }
   if (patch.columns !== undefined) {
-    const columns = JSON.stringify(await resolveColumns(db, module, patch.columns));
-    if (columns !== JSON.stringify(parseColumns(module, view.columns))) {
-      edit.columns = columns;
-      parts.push("columns");
+    const columns = await resolveColumns(db, module, patch.columns);
+    if (JSON.stringify(columns) !== JSON.stringify(parseColumns(module, view.columns))) {
+      edit.columns = JSON.stringify(columns);
+      parts.push(`columns to ${columns.join(", ")}`);
     }
   }
   let ordered = live;
