@@ -137,7 +137,8 @@ this file before changing the repo, and update it when a rule changes.
   `IMPORT_MODULES`) with its own plan options, that plans the mapped rows (always through `planRows`, which skips a
   value over its column's `limit`) and builds one audited change (actor `owner`, tool `import`) with `buildChange`
   from `src/services/change.ts`. An `id` column matches a record of that module (fills empty values only); an
-  unmatched well-formed id is kept, so the board's export imports into another copy (decision 0037). `plan.ts`
+  unmatched well-formed id is kept, and the export's `fields` JSON and `archived` columns are read (an archived row
+  is skipped), so the board's export imports into another copy (decision 0037). `plan.ts`
   (`planImport`) and `change.ts` (`importChange`) are People wrappers; `change.ts` also renders the change, and
   `sql.ts` renders its bound values as literal SQL for `wrangler d1 execute --file`. Imported fields are listed in `untrusted_fields`; a merge never overwrites a value.
   One import is one change at any size (decision 0035): `readCsv` refuses more than `IMPORT_MAX_ROWS` (2,000) data

@@ -19,9 +19,18 @@ People-only choices. This record replaces 0036's consequence "Only People can be
   plans ("title is longer than 500 characters", People's wording); People dropped its own copy. A column read only
   as one of a list (stage, status, dates, ids, `lead_status`) has no limit. A module says whether it takes Add to
   notes (only People); `mapRows` refuses a notes target otherwise, naming the column by number. A module lists the
-  export's bookkeeping columns (`version`, `created_at`, `updated_at`, `untrusted_fields`, `archived`, `fields`,
-  `stage_entered_at`, `last_activity_at`, `lead_status_at`, `snoozed_until`, `source`): they are skipped and never
-  fill a custom field of the same name.
+  export's bookkeeping columns (`version`, `created_at`, `updated_at`, `untrusted_fields`, `stage_entered_at`,
+  `last_activity_at`, `lead_status_at`, `snoozed_until`, `source`): they are skipped and never fill a custom field of
+  the same name.
+- **The export's `fields` column** (People and Deals) is read: a JSON object of custom field values. Only keys that are
+  a live field of the module's entity count; other keys are ignored, counted nowhere and never named. A value in a
+  per-field column of the same row wins over the JSON value. Values go through the same field checks as a column, are
+  listed in `untrusted_fields`, and a merge fills only fields that are empty on file. A cell that isn't a JSON object
+  of text, numbers or true/false skips the row ("the fields column isn't valid"), quoting nothing. So a board export
+  carries custom values to another copy that has the same fields.
+- **The export's `archived` column** (People and Deals; tasks have none): a row marked archived (1, true or yes) is
+  skipped ("archived in the file") and counted on the check and done steps ("Archived in the file, left out"). The
+  import never creates an archived record and never fills in a record from an archived row.
 - **Ids, every module.** An `id` column that names a record of the module matches it, and the row fills that
   record's empty values only. A well-formed id (`isContactId`, `isDealId`, `isTaskId`) that matches nothing is kept
   for the new record. Anything else in the column is ignored. The same id twice is skipped ("the same id as line 3").
@@ -49,7 +58,8 @@ People-only choices. This record replaces 0036's consequence "Only People can be
   stage, renames the deal or changes its person.
 - **Tasks.** Columns `title` (required), `due_at` (alias `due`), `deal_id`, `contact_id`, `email`, `name`, `done_at`
   (alias `done`). A task goes on the deal its `deal_id` names (and that deal's person), else on the person by
-  `contact_id`, email or name (two people with that name are not guessed). It never adds a person or a deal: with
+  `contact_id`, email or name (two people with that name are not guessed). A well-formed `deal_id` that names no deal
+  on file skips the row ("deal dl_… isn't on file; import deals first") rather than putting the task on the person. It never adds a person or a deal: with
   none, "no person or deal matches". An archived deal or person is never used. A `done_at` makes it a task already
   done at that time. A task merge (by id) fills an empty due date only: it never completes, renames or moves a task.
 - **Outside text.** Everything from the file is listed in `untrusted_fields`: a new person's name, email and business;
@@ -65,7 +75,8 @@ People-only choices. This record replaces 0036's consequence "Only People can be
   Pipeline (deals) and Today (tasks). Step 1 of each module links to the other two, so Import in More reaches all
   three. Only People's matching step has "New people come in as"; Add to notes is offered only for People and New
   field only where the records have fields (not tasks). The check and done steps count per module (new deals, new
-  people, closed deals). A deal or task id that another import wrote first is a plain refusal, nothing saved.
+  people, closed deals). A contact, deal or task id that another import wrote first is a plain refusal, nothing saved ("A record with an id
+  in this file was added while it was importing"), checked before the duplicate-email refusal.
 
 ## Why
 
@@ -78,8 +89,20 @@ People-only choices. This record replaces 0036's consequence "Only People can be
 
 ## Consequences
 
-- The export's `fields` JSON column is not read: custom field values come in through one column per field. A copy
-  that wants them must have the same fields and a file with those columns.
+- Custom field values cross copies only for fields the other copy has (same key, live); the owner adds the fields
+  first. Field definitions themselves are not imported.
+- Ids chosen by a file (a kept `ct_`, `dl_` or `tk_` id) appear in trusted text such as change summaries and the
+  check step, as ids. They are limited to the strict id shape (`[a-z0-9]{1,32}` after the prefix), so the risk is low.
+- The check step is planned with "Bring in closed deals as history" unticked: its New deals and New people counts
+  leave out what only closed rows would add. Apply plans again with the box as posted, and the done step shows what
+  was written.
+- An archived person never matches a deal by name plus business (nor a task by name); by contact id or email the row
+  is skipped as archived. A live deal in the file whose person was archived in the source (and so left out) matches
+  no one by id and may add a new person by name.
+- A round trip resets bookkeeping: `stage_entered_at` and `created_at` become the import time, `last_activity_at` is
+  empty, `snoozed_until` is cleared, `lead_status_at` is the import time, and a task's `source` becomes "owner" (a
+  rule-made task is no longer tied to its rule). Quiet-deal rules (`gone_quiet`, `stage_followup`) count from the
+  import, so imported open deals don't look quiet until their days have passed again.
 - A person added by a deal import has no phone, source or notes; the deals file has no such columns.
 - Seed drafts for deals and tasks are not added; the a11y check, Lighthouse and the screenshots cover their first
   step only. Their later steps share People's markup and are covered by the unit tests.
