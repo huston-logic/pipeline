@@ -416,6 +416,7 @@ async function dependents(ctx: Ctx, changeId: string, entries: Entry[]): Promise
     (referrers[i] ?? []).filter((row) => {
       const key = rowKey(ref.table, String(row.id));
       if (removed.has(key)) return false;
+      if (ref.table === "views" && row.archived === 1) return false;
       const before = restored.get(key);
       return before === undefined || holdsRef(ref, before);
     });

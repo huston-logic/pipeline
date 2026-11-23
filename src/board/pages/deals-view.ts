@@ -33,7 +33,7 @@ ${empty("No deals match this view.", "Ask your AI app to change its filters.")}`
 <ul class="cards">${list.items.map(dealCard)}</ul>`;
   return renderPage({
     title: view.name,
-    description: `Your saved view ${view.name}: ${shows}`,
+    description: "A saved view of your deals.",
     current: "/pipeline",
     frame: ctx,
     body: html`<h1>${view.name}</h1>

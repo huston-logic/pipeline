@@ -222,3 +222,18 @@ test("undo of adding a status, a sub-status's status or a stage that a saved vie
   );
   assert.match(await refusal(undoChange(ctxFor(db, "undo_change"), stage.changeId)), /view Demos shows Demo booked/);
 });
+
+test("undo of adding a stage or status is blocked by a live saved view, not an archived one", async () => {
+  const db = await openTestDb();
+  const stage = await addStage(ctxFor(db, "add_stage"), { label: "Demo booked" });
+  const status = await addPersonStatus(ctxFor(db, "add_person_status"), { label: "Supplier" });
+  await addView(ctxFor(db, "add_view"), { name: "Demos", module: "deals", filters: { stage: "demo_booked" } });
+  await addView(ctxFor(db, "add_view"), { name: "Suppliers", module: "people", filters: { personStatus: "Supplier" } });
+  assert.match(await refusal(undoChange(ctxFor(db, "undo_change"), stage.changeId)), /view Demos shows Demo booked/);
+  assert.match(await refusal(undoChange(ctxFor(db, "undo_change"), status.changeId)), /view Suppliers shows Supplier/);
+
+  await archiveView(ctxFor(db, "archive_view"), "Demos");
+  await archiveView(ctxFor(db, "archive_view"), "Suppliers");
+  await undoChange(ctxFor(db, "undo_change"), stage.changeId);
+  await undoChange(ctxFor(db, "undo_change"), status.changeId);
+});

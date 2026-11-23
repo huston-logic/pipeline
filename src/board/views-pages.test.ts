@@ -80,6 +80,7 @@ test("a saved people view shows its filters and sort, follows the built-in and d
   assert.equal(status, 200);
   const main = mainOf(body);
   assert.equal(titleOf(body).split(" · ")[0], "Partners at Acme");
+  assert.match(body, /<meta name="description" content="A saved view of your people\.">/);
   assert.match(main, /<h1>Partners at Acme<\/h1>/);
   assert.match(switchOf(main, "Show people as"), /Partner<\/a><\/li>\n<li><a href="\/people\?view=vw_[a-z2-7]{12}" aria-current="page">Partners at Acme<\/a><\/li>\n<\/ul>/);
   assert.match(main, /<p class="lede">Shows person status Partner, search &quot;acme&quot;; by name, A to Z\./);

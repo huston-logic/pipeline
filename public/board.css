@@ -830,6 +830,7 @@ ol.panel {
   border-radius: var(--r-field);
   color: var(--ink-2);
   font-weight: 600;
+  overflow-wrap: anywhere;
   text-decoration: none;
 }
 

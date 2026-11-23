@@ -43,7 +43,7 @@ export async function peopleViewPage(ctx: PageContext): Promise<string | null> {
     const shows = `${words.length === 0 ? "Everyone" : `Shows ${words.join(", ")}`}; ${sortLine(sort)}.`;
     return page(ctx, { kind: "saved", id: view.id }, {
       title: view.name,
-      description: `Your saved view ${view.name}: ${shows}`,
+      description: "A saved view of your people.",
       body: results(shows, list, empty("Nobody matches this view yet.", "Ask your AI app to change its filters, or give people the details it looks for.")),
     });
   }
@@ -55,7 +55,7 @@ export async function peopleViewPage(ctx: PageContext): Promise<string | null> {
   const list = await peopleInView(db, now, tz, { person_status: status.key }, sort, VIEW_ROW_LIMIT);
   return page(ctx, { kind: "status", id: status.key }, {
     title: status.label,
-    description: `Everyone whose person status is ${status.label}, with their company, sub-status, last activity and next task.`,
+    description: "Everyone with this person status.",
     body: results(`Everyone whose person status is ${status.label}, ${sortLine(sort)}.`, list, empty(`Nobody has the person status ${status.label} yet.`, "Set it on a person's Edit page, or by talking to your AI app.")),
   });
 }
