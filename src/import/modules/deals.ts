@@ -3,7 +3,8 @@
 // values only). A person added with a deal is a contact, not a lead, as add_deal adds them; an unqualified lead who
 // gets an open deal becomes Qualified in the same change (invariant 1, decision 0022). A deal in a Won, Lost or Not
 // now stage comes in only when the owner confirms closed deals as history. Every value from the file is outside text:
-// the change lists it in the record's untrusted_fields.
+// the change lists it in the record's untrusted_fields, except the name, email and business of a person it adds when
+// the owner ticks "This is my own list" and the value is short and on one line (decision 0038).
 import type { ContactRow, DealRow, DealStatus, StageKind, StageRow } from "../../db/db.ts";
 import { isContactId, isDealId, newId } from "../../ids.ts";
 import { type ChangeInput, type RowChange, updatedRow } from "../../services/change.ts";
@@ -11,6 +12,7 @@ import { withArticle } from "../../services/describe.ts";
 import { businessKey, qualifyIfLead } from "../../services/lead-change.ts";
 import { isUnqualified } from "../../services/lead-status.ts";
 import type { ColumnDef, ImportModule, ImportOptions, MappedRow, PlanBase } from "../engine.ts";
+import { confirmedColumns, type OwnListColumn } from "../own-list.ts";
 import {
   ARCHIVED_IN_FILE,
   checkedFields,
@@ -70,6 +72,8 @@ export interface NewPerson {
   name: string;
   email: string | null;
   business: string | null;
+  /** Own list (decision 0038): the columns stored as the owner's. Left out when there are none. */
+  confirmed?: OwnListColumn[];
 }
 
 export interface DealCreate {
@@ -116,6 +120,9 @@ function statusOf(text: string): DealStatus | null {
 }
 
 type Resolved = { kind: "skip"; reason: string } | { kind: "onFile"; contact: ContactRow } | { kind: "added"; index: number } | { kind: "new" };
+
+/** The columns of a person the import adds that the own-list box may confirm; a deal's own columns never. */
+const PERSON_COLUMNS = ["name", "email", "business"] as const satisfies readonly OwnListColumn[];
 
 const personKey = (name: string | null, business: string | null) => `${nameKey(name)}\u0000${businessKey(business)}`;
 
@@ -293,7 +300,10 @@ export function planDeals(rows: readonly MappedRow[], ctx: DealsCtx, options: De
     } else {
       const index = plan.people.length;
       const email = values.email ?? null;
-      plan.people.push({ line, id: contactId, name: values.name ?? "", email, business: values.business ?? null });
+      const added: NewPerson = { line, id: contactId, name: values.name ?? "", email, business: values.business ?? null };
+      const confirmed = confirmedColumns(options.ownList, added, PERSON_COLUMNS);
+      if (confirmed.length > 0) added.confirmed = confirmed;
+      plan.people.push(added);
       if (contactId !== null) addedById.set(contactId, index);
       if (email !== null) addedByEmail.set(emailKey(email), index);
       addedByPerson.set(personKey(values.name ?? null, values.business ?? null), index);
@@ -343,7 +353,9 @@ export function dealsChange(plan: DealsPlan, ctx: DealsCtx, now: Date): ChangeIn
       source: null,
       notes: null,
       fields: "{}",
-      untrusted_fields: JSON.stringify(["name", ...(person.email === null ? [] : ["email"]), ...(person.business === null ? [] : ["business"])]),
+      untrusted_fields: JSON.stringify(
+        PERSON_COLUMNS.filter((column) => (column === "name" || person[column] !== null) && !(person.confirmed ?? []).includes(column)),
+      ),
       archived: 0,
       version: 1,
       created_at: stamp,
