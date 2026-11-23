@@ -8,6 +8,7 @@ import {
   createDraft,
   deleteExpiredDrafts,
   DRAFT_LIFETIME_MS,
+  draftGuard,
   draftText,
   getDraft,
   markApplied,
@@ -77,13 +78,29 @@ test("a mapping is saved only on the version read, and only before the import is
 
   assert.ok(saved);
   const result = { created: 1, filled: 0, unchanged: 0, skipped: 0, duplicates: 0, fields: 0 };
-  await db.batch(appliedStatements(db, saved, result, "chg_draft0001"));
+  await db.batch([draftGuard(db, saved, NOW), ...appliedStatements(db, saved, result, "chg_draft0001")]);
   const applied = await getDraft(db, id, NOW);
   assert.deepEqual([applied?.result, applied?.changeId], [result, "chg_draft0001"]);
   assert.deepEqual(await parts(db, id), [], "the file is deleted the moment it is applied");
-  await assert.rejects(db.batch(appliedStatements(db, saved, result, "chg_draft0002")), /CHECK constraint failed/, "a second apply fails its guard");
+  await assert.rejects(
+    db.batch([draftGuard(db, saved, NOW), ...appliedStatements(db, saved, result, "chg_draft0002")]),
+    /CHECK constraint failed/,
+    "a second apply fails its guard",
+  );
   assert.equal(await saveMapping(db, applied as NonNullable<typeof applied>, [], false), false, "an applied draft keeps its mapping");
-  assert.equal(await markApplied(db, applied as NonNullable<typeof applied>, result), false);
+  assert.equal(await markApplied(db, applied as NonNullable<typeof applied>, result, NOW), false);
+});
+
+test("the apply guard and markApplied refuse a draft that has expired, even one read before it expired", async () => {
+  const db = await openTestDb();
+  const id = await createDraft(db, { module: "people", text: CSV, mapping: [], asLeads: false, now: NOW });
+  const draft = await getDraft(db, id, NOW);
+  assert.ok(draft);
+  const late = at(DRAFT_LIFETIME_MS);
+  await assert.rejects(db.batch([draftGuard(db, draft, late)]), /CHECK constraint failed/);
+  const result = { created: 0, filled: 0, unchanged: 1, skipped: 0, duplicates: 0, fields: 0 };
+  assert.equal(await markApplied(db, draft, result, late), false);
+  assert.equal(await markApplied(db, draft, result, NOW), true);
 });
 
 test("an import that writes nothing is marked applied once, without a change", async () => {
@@ -92,8 +109,8 @@ test("an import that writes nothing is marked applied once, without a change", a
   const draft = await getDraft(db, id, NOW);
   assert.ok(draft);
   const result = { created: 0, filled: 0, unchanged: 1, skipped: 0, duplicates: 0, fields: 0 };
-  assert.equal(await markApplied(db, draft, result), true);
-  assert.equal(await markApplied(db, draft, result), false);
+  assert.equal(await markApplied(db, draft, result, NOW), true);
+  assert.equal(await markApplied(db, draft, result, NOW), false);
   const applied = await getDraft(db, id, NOW);
   assert.deepEqual([applied?.result, applied?.changeId], [result, null]);
   assert.deepEqual(await parts(db, id), []);

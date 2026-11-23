@@ -1,9 +1,11 @@
 // The board import for People (decision 0036), in three steps and a result: choose a file (or paste one), match its
 // columns, check what will happen, then the import's counts with its change and Undo. The file's values never reach a
-// page: only its header names, escaped and labelled "From your file", line numbers, counts and ids of people on file.
+// page: only its header names, escaped and labelled "From your file" in each column's legend (never in a message or a
+// link), line numbers, counts and people on file. These GET pages never write; expired drafts are deleted by the import
+// posts and the hourly run.
 import type { ContactRow, FieldDefRow } from "../../db/db.ts";
 import { listFieldDefs } from "../../db/queries.ts";
-import { deleteExpiredDrafts, type Draft, draftText, getDraft, type ImportResult } from "../../import/drafts.ts";
+import { type Draft, draftText, getDraft, type ImportResult } from "../../import/drafts.ts";
 import { autoMatch, IMPORT_MAX_BYTES, IMPORT_MAX_ROWS, readCsv, type Target } from "../../import/engine.ts";
 import { peopleModule } from "../../import/modules/people.ts";
 import { isTrusted } from "../../services/labels.ts";
@@ -154,7 +156,7 @@ ${group.options.map((option) => html`<option value="${option.value}"${option.val
 </div>
 <div class="field${labelError === undefined ? "" : " field-invalid"}">
 <label for="${labelId}">Label</label>
-<p class="field-hint" id="${labelId}-hint">Used by New field and Add to notes.</p>
+<p class="field-hint" id="${labelId}-hint">New field needs one. Add to notes uses the column's name if you leave it empty.</p>
 ${errorLine(labelId, labelError)}<input id="${labelId}" name="${labelField(index)}" type="text" value="${label}" maxlength="60" autocomplete="off"${aria([`${labelId}-hint`, labelError === undefined ? null : `${labelId}-error`], labelError !== undefined)}>
 </div>
 </fieldset>
@@ -209,7 +211,7 @@ ${header.map((name, index) =>
 /** The stored mapping as the matching step first draws it. */
 export function mappingState(draft: Draft, header: readonly string[], fallback: Target[]): MappingState {
   const targets = draft.mapping.length === header.length ? draft.mapping : fallback;
-  return { targets, labels: header.map((name, i) => defaultLabel(targets[i], name)), asLeads: draft.asLeads, problems: [] };
+  return { targets, labels: header.map((_, i) => defaultLabel(targets[i])), asLeads: draft.asLeads, problems: [] };
 }
 
 const lineList = (lines: number[]): string => {
@@ -368,19 +370,18 @@ ${undo}
 /** An import that has expired, or never was. */
 export function importGonePage(ctx: PageContext): string {
   return renderPage({
-    title: "Import expired",
-    description: "This import isn't kept any more. Start again with your file.",
+    title: "Import finished or expired",
+    description: "This import isn't open any more. If you finished it, it's in Changes; if not, start again.",
     current: IMPORT_PATH,
     frame: ctx,
-    body: html`<h1>This import has expired</h1>
-<p class="lede">An import you haven't finished is kept for 2 hours. Nothing from it was saved. Start again with your file.</p>
-<p class="card-actions"><a class="button" href="${startPath(false)}">Start again</a></p>`,
+    body: html`<h1>This import has finished or expired</h1>
+<p class="lede">An import is kept open for 2 hours. If you finished it, it's in Changes. If you didn't, nothing from it was saved: start again with your file.</p>
+<p class="form-actions"><a class="button" href="${startPath(false)}">Start again</a><a class="form-cancel" href="/changes">See Changes</a></p>`,
   });
 }
 
 /** GET /import: step 1. `as=leads` (from Leads) makes new people leads. Any module but people is not a page. */
 export async function importStart(ctx: PageContext): Promise<string | null> {
-  await deleteExpiredDrafts(ctx.db, ctx.now);
   const module = ctx.query.get("module");
   if (module !== null && module !== "people") return null;
   return importStartPage(ctx, ctx.query.get("as") === "leads");
@@ -388,7 +389,6 @@ export async function importStart(ctx: PageContext): Promise<string | null> {
 
 /** GET /import/<id>: step 2 before the import is applied, the result after. Null when it has expired. */
 export async function importDraft(ctx: PageContext, id: string): Promise<string | null> {
-  await deleteExpiredDrafts(ctx.db, ctx.now);
   const draft = await getDraft(ctx.db, id, ctx.now);
   if (draft === null) return null;
   if (draft.result !== null) return importDonePage(ctx, draft, draft.result);
@@ -399,7 +399,6 @@ export async function importDraft(ctx: PageContext, id: string): Promise<string 
 
 /** GET /import/<id>/preview: step 3, planned against the people on file now. Null when it has expired. */
 export async function importPreview(ctx: PageContext, id: string): Promise<string | null> {
-  await deleteExpiredDrafts(ctx.db, ctx.now);
   const draft = await getDraft(ctx.db, id, ctx.now);
   if (draft === null) return null;
   if (draft.result !== null) return importDonePage(ctx, draft, draft.result);

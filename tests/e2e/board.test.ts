@@ -219,6 +219,7 @@ test("the board import (decision 0036): upload, match, check, apply and undo a 3
   fields.set("as", "contacts");
   fields.set("col.2", "notes");
   fields.set("col.3", "new_field");
+  fields.set("label.3", "Budget");
   const mapped = await postFields(`${draft}/map`, fields);
   assert.equal(mapped.status, 303);
   assert.equal(mapped.headers.get("Location"), `${draft}/preview`);

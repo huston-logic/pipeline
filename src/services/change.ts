@@ -65,6 +65,11 @@ export interface ChangeInput {
   changes: RowChange[];
   /** Statements that run in the same batch but are not part of the snapshot, so undo leaves them alone. */
   extra?: D1PreparedStatement[];
+  /**
+   * Like `extra`, but first in the batch, before the row writes: a guard of the caller's own (an import draft still
+   * unapplied, decision 0036), so a lost race fails there with a StaleWriteError rather than on a row it would write.
+   */
+  leading?: D1PreparedStatement[];
   /** Set by undoChange, which needs the id before the batch is built. */
   changeId?: string;
   /** Set by undoChange: the change this one reverses. */
@@ -493,7 +498,7 @@ export async function commitChange(ctx: Ctx, input: ChangeInput): Promise<Change
   const prepare = ({ sql, params }: SqlStatement) =>
     params.length === 0 ? db.prepare(sql) : db.prepare(sql).bind(...params);
   try {
-    await db.batch([...writes.map(prepare), ...(input.extra ?? []), ...audit.map(prepare)]);
+    await db.batch([...(input.leading ?? []), ...writes.map(prepare), ...(input.extra ?? []), ...audit.map(prepare)]);
   } catch (error) {
     if (isGuardFailure(error)) {
       throw new StaleWriteError(`${staleRow(input)} changed since you read it. Read it again and retry.`, { cause: error });

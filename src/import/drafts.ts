@@ -2,7 +2,7 @@
 // and, once applied, the counts and the change id. Scratch space like write_guard: not audited, not exported, and
 // nothing here writes a log line. The file lives only in import_draft_parts, in pieces of at most CHUNK_BYTES as a SQL
 // literal, and is deleted in the same batch that applies the import. A draft expires DRAFT_LIFETIME_MS after it is
-// made; deleteExpiredDrafts runs on every import request and in the hourly run.
+// made; deleteExpiredDrafts runs on every import post and in the hourly run (the import's pages never write).
 import type { Db, ImportDraftPartRow, ImportDraftRow } from "../db/db.ts";
 import { newId } from "../ids.ts";
 import { CHUNK_BYTES, sqlBytes } from "../services/bulk.ts";
@@ -160,15 +160,21 @@ export async function saveMapping(db: Db, draft: Draft, mapping: Target[], asLea
 }
 
 /**
- * The statements that mark the draft applied, for the import's own batch (ChangeInput.extra): a guard that fails the
- * whole batch unless the draft is still unapplied at the version read, so a second apply writes nothing, then the
- * result and change id, then the file's deletion.
+ * The guard for the import's own batch (ChangeInput.leading, first in the batch): it fails the whole batch unless the
+ * draft is still unapplied, unexpired and at the version read, so a second or racing apply writes nothing.
  */
+export function draftGuard(db: Db, draft: Draft, now: Date): D1PreparedStatement {
+  return db
+    .prepare(
+      "INSERT INTO write_guard (ok) SELECT COUNT(*) = 1 FROM import_drafts " +
+        "WHERE id = ? AND version = ? AND result IS NULL AND expires_at > ?",
+    )
+    .bind(draft.id, draft.version, now.toISOString());
+}
+
+/** The statements that mark the draft applied (ChangeInput.extra): the result and change id, then the file's deletion. */
 export function appliedStatements(db: Db, draft: Draft, result: ImportResult, changeId: string): D1PreparedStatement[] {
   return [
-    db
-      .prepare("INSERT INTO write_guard (ok) SELECT COUNT(*) = 1 FROM import_drafts WHERE id = ? AND version = ? AND result IS NULL")
-      .bind(draft.id, draft.version),
     db
       .prepare("UPDATE import_drafts SET result = ?, change_id = ?, version = version + 1 WHERE id = ?")
       .bind(JSON.stringify(result), changeId, draft.id),
@@ -176,12 +182,14 @@ export function appliedStatements(db: Db, draft: Draft, result: ImportResult, ch
   ];
 }
 
-/** Marks an import that writes nothing as applied, once. True when this call marked it. */
-export async function markApplied(db: Db, draft: Draft, result: ImportResult): Promise<boolean> {
+/** Marks an import that writes nothing as applied, once, while it hasn't expired. True when this call marked it. */
+export async function markApplied(db: Db, draft: Draft, result: ImportResult, now: Date): Promise<boolean> {
   const [marked] = await db.batch([
     db
-      .prepare("UPDATE import_drafts SET result = ?, version = version + 1 WHERE id = ? AND version = ? AND result IS NULL")
-      .bind(JSON.stringify(result), draft.id, draft.version),
+      .prepare(
+        "UPDATE import_drafts SET result = ?, version = version + 1 WHERE id = ? AND version = ? AND result IS NULL AND expires_at > ?",
+      )
+      .bind(JSON.stringify(result), draft.id, draft.version, now.toISOString()),
     db
       .prepare("DELETE FROM import_draft_parts WHERE draft_id = ? AND EXISTS (SELECT 1 FROM import_drafts WHERE id = ? AND result IS NOT NULL)")
       .bind(draft.id, draft.id),

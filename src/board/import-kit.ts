@@ -1,6 +1,8 @@
 // What the board import's pages and posts share (decision 0036): its paths, the mapping form's names and how a posted
 // mapping is read, and planning a draft against the data as it is now. Only the People module is on the board yet.
 import type { ContactRow, Db, FieldDefRow } from "../db/db.ts";
+import { contactsOnFile } from "../import/load.ts";
+import { UserError } from "../services/errors.ts";
 import { listFieldDefs } from "../db/queries.ts";
 import type { Draft, ImportResult } from "../import/drafts.ts";
 import { type FilePlan, type MappedFile, mapFile, type Target } from "../import/engine.ts";
@@ -38,9 +40,16 @@ export function targetValue(target: Target): string {
   }
 }
 
-/** The text the label box starts with: a stored label, else the header cell as one short line. */
-export function defaultLabel(target: Target | undefined, header: string): string {
-  if (target?.kind === "new_field" || target?.kind === "notes") return target.label;
+/**
+ * The text the label box starts with: a stored label, else nothing. A new field's label becomes a field the board
+ * trusts, so the owner types it; the header beside it is outside text and never fills it (decision 0036).
+ */
+export function defaultLabel(target: Target | undefined): string {
+  return target?.kind === "new_field" || target?.kind === "notes" ? target.label : "";
+}
+
+/** A header cell as one short line: what an "Add to notes" line is labelled when the label box is left empty. */
+function headerLabel(header: string): string {
   return header
     .replace(/[\u0000-\u001f\u007f-\u009f]+/g, " ")
     .trim()
@@ -48,28 +57,33 @@ export function defaultLabel(target: Target | undefined, header: string): string
     .trim();
 }
 
-export type PostedMapping = { targets: Target[]; asLeads: boolean; unchosen: number[] };
+export type PostedMapping = { targets: Target[]; asLeads: boolean; unchosen: number[]; unlabelled: number[] };
 
 /**
  * The mapping the form posted, one target per header cell. A select value the page never offers (a missing or forged
- * field) is listed in `unchosen` by column; mapRows checks everything else.
+ * field) is listed in `unchosen` by column, and a New field with no label in `unlabelled`; mapRows checks everything
+ * else. An "Add to notes" column with no label is labelled with its header (notes are outside text anyway).
  */
 export function postedMapping(form: URLSearchParams, header: readonly string[]): PostedMapping {
   const unchosen: number[] = [];
-  const targets = header.map((_, index): Target => {
+  const unlabelled: number[] = [];
+  const targets = header.map((cell, index): Target => {
     const value = form.get(columnField(index)) ?? "";
     const label = form.get(labelField(index)) ?? "";
     const [kind, key = ""] = value.split(/:(.*)/s, 2);
     if (value === "skip") return { kind: "skip" };
-    if (value === "new_field") return { kind: "new_field", label };
-    if (value === "notes") return { kind: "notes", label };
+    if (value === "new_field") {
+      if (label.trim() === "") unlabelled.push(index);
+      return { kind: "new_field", label };
+    }
+    if (value === "notes") return { kind: "notes", label: label.trim() === "" ? headerLabel(cell) : label };
     if ((kind === "builtin" && peopleModule.columns.some((column) => column.key === key)) || (kind === "field" && key !== "")) {
       return { kind, key };
     }
     unchosen.push(index);
     return { kind: "skip" };
   });
-  return { targets, asLeads: form.get(AS_FIELD) === "leads", unchosen };
+  return { targets, asLeads: form.get(AS_FIELD) === "leads", unchosen, unlabelled };
 }
 
 /** A draft planned against the people and fields on file now: the mapped file, the plan and the people it read. */
@@ -81,9 +95,9 @@ export interface DraftPlan {
 
 /** Plans the draft once (the preview and the apply are separate requests, and each plans once). */
 export async function planDraft(db: Db, draft: Draft, text: string, now: Date, allowDuplicates: boolean): Promise<DraftPlan> {
-  if (draft.module !== "people") throw new Error(`The board can't import ${draft.module} yet.`);
+  if (draft.module !== "people") throw new UserError(`The board can't import ${draft.module} yet. Start again with a file of people.`);
   const fieldDefs: FieldDefRow[] = await listFieldDefs(db, { includeArchived: true });
-  const contacts = (await db.prepare("SELECT * FROM contacts ORDER BY rowid").all<ContactRow>()).results;
+  const contacts = await contactsOnFile(db);
   const mapped = mapFile(peopleModule, text, draft.mapping, fieldDefs, now);
   const plan = peopleModule.plan(mapped.rows, contacts, { asLeads: draft.asLeads, allowDuplicates, fieldDefs: mapped.fieldDefs });
   return { mapped, plan: { ...plan, skippedColumns: mapped.skippedColumns }, contacts };

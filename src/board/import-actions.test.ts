@@ -7,7 +7,7 @@ import type { ContactRow, Db } from "../db/db.ts";
 import type { SqliteD1 } from "../db/sqlite-d1.ts";
 import type { Env } from "../env.ts";
 import { UPLOAD_MAX_BYTES } from "../http/limits.ts";
-import { appliedStatements, createDraft, DRAFT_LIFETIME_MS, getDraft } from "../import/drafts.ts";
+import { createDraft, DRAFT_LIFETIME_MS, getDraft } from "../import/drafts.ts";
 import { IMPORT_MAX_BYTES } from "../import/engine.ts";
 
 type Session = { cookie: string; token: string };
@@ -122,9 +122,12 @@ test('a mapped "New field" is created in the import\'s own change and undo remov
   assert.match(mapping.body, /<h1>Import people<\/h1>\n<p class="import-step">Step 2 of 3: Match columns<\/p>/);
   assert.match(mapping.body, /Column 3: <span class="outside">From your file<\/span> <span class="import-header">Budget<\/span>/);
   assert.match(mapping.body, /<option value="skip" selected>Don&#39;t import<\/option>/, "Budget isn't a field yet");
-  assert.match(mapping.body, /<input id="label-2" name="label.2" type="text" value="Budget"/, "the label box starts as the header");
+  assert.match(mapping.body, /<input id="label-2" name="label.2" type="text" value=""/, "the owner types a new field's label");
 
-  const mapped = await matchColumns(env, session, id, { 2: "new_field" });
+  const unlabelled = await matchColumns(env, session, id, { 2: "new_field" });
+  assert.equal(unlabelled.res.status, 422);
+  assert.match(unlabelled.body, /<li><a href="#label-2">Type a label for the new field from column 3\.<\/a><\/li>/);
+  const mapped = await matchColumns(env, session, id, { 2: ["new_field", "Budget"] });
   assert.equal(mapped.res.status, 303);
   assert.equal(mapped.location, `/import/${id}/preview`);
   const before = (await auditRows(db)).length;
@@ -189,37 +192,40 @@ test("apply twice writes one change; the second answer shows the first result", 
   assert.equal(await db.prepare("SELECT COUNT(*) AS n FROM import_draft_parts WHERE draft_id = ?").bind(id).first("n"), 0, "the file is gone");
 });
 
-test("two applies racing write one change: the loser's guard fails and it shows the winner's result", async () => {
-  const db = await seededDb();
-  const env = devEnv(db);
-  const { location, session } = await upload(env, { csv: "name,email\r\nNadia Fenwick,nadia@example.net\r\n" });
-  const id = draftIdOf(location);
-  assert.equal((await matchColumns(env, session, id, {})).res.status, 303);
-  const page = await load(env, `/import/${id}/preview`, session.cookie);
-  const fields = formFields(page.body, `/import/${id}/apply`);
-  const draft = await getDraft(db, id, new Date());
-  assert.ok(draft);
-  const result = { created: 1, filled: 0, unchanged: 0, skipped: 0, duplicates: 0, fields: 0 };
-  let raced = false;
-  // The other apply commits between this one's reads and its write.
-  const racingDb: Db = {
-    prepare: (sql) => db.prepare(sql),
-    async batch(statements) {
-      if (!raced && statements.length > 3) {
-        raced = true;
-        await db.batch(appliedStatements(db, draft, result, "chg_rival0001"));
-      }
-      return db.batch(statements);
-    },
-  };
-  const count = (await auditRows(db)).length;
-  const res = await post({ ...env, DB: racingDb }, `/import/${id}/apply`, fields, session);
-  assert.ok(raced);
-  assert.equal(res.res.status, 303);
-  assert.equal(res.location, `/import/${id}?change=chg_rival0001`);
-  assert.equal((await auditRows(db)).length, count, "nothing written by the loser");
-  assert.equal(await db.prepare("SELECT COUNT(*) AS n FROM contacts WHERE email = 'nadia@example.net'").first("n"), 0);
-});
+const RACES: [string, string, Record<number, string | [string, string]>][] = [
+  ["a New field", "Name,Budget\r\nNadia Fenwick,5000\r\n", { 1: ["new_field", "Budget"] }],
+  ["emails", "name,email\r\nNadia Fenwick,nadia@example.net\r\n", {}],
+];
+for (const [kind, csv, choices] of RACES) {
+  test(`two applies racing write one change (${kind}): the loser shows the winner's result, never a 500 or a false refusal`, async () => {
+    const db = await seededDb();
+    const env = devEnv(db);
+    const { location, session } = await upload(env, { csv });
+    const id = draftIdOf(location);
+    assert.equal((await matchColumns(env, session, id, choices)).res.status, 303);
+    const page = await load(env, `/import/${id}/preview`, session.cookie);
+    const fields = formFields(page.body, `/import/${id}/apply`);
+    let rival: Awaited<ReturnType<typeof post>> | null = null;
+    // A whole second apply of the same draft lands between this one's reads and its write.
+    const racingDb: Db = {
+      prepare: (sql) => db.prepare(sql),
+      async batch(statements) {
+        if (rival === null && statements.length > 3) rival = await post(env, `/import/${id}/apply`, fields, session);
+        return db.batch(statements);
+      },
+    };
+    const count = (await auditRows(db)).length;
+    const res = await post({ ...env, DB: racingDb }, `/import/${id}/apply`, fields, session);
+    const winner = rival as Awaited<ReturnType<typeof post>> | null;
+    assert.ok(winner);
+    assert.equal(winner.res.status, 303);
+    assert.match(winner.location, new RegExp(`^/import/${id}\\?change=chg_[a-z2-7]{12}$`));
+    assert.equal(res.res.status, 303, "the loser redirects too");
+    assert.equal(res.location, winner.location, "to the winner's result");
+    assert.equal((await auditRows(db)).length, count + 1, "one change in all");
+    assert.equal(await db.prepare("SELECT COUNT(*) AS n FROM contacts WHERE name = 'Nadia Fenwick'").first("n"), 1);
+  });
+}
 
 test("an expired draft says start again, on every import path, and is deleted", async () => {
   const db = await seededDb();
@@ -230,15 +236,17 @@ test("an expired draft says start again, on every import path, and is deleted", 
   for (const path of [`/import/${id}`, `/import/${id}/preview`]) {
     const gone = await load(env, path, session.cookie);
     assert.equal(gone.res.status, 404, path);
-    assert.match(gone.body, /<h1>This import has expired<\/h1>/, path);
+    assert.match(gone.body, /<h1>This import has finished or expired<\/h1>/, path);
+    assert.match(gone.body, /If you finished it, it&#39;s in Changes\.|If you finished it, it's in Changes\./, path);
     assert.match(gone.body, /<a class="button" href="\/import\?module=people">Start again<\/a>/, path);
   }
+  assert.equal(await draftCount(db), 1, "a page never writes: the expired draft is still there after the GETs");
   for (const path of [`/import/${id}/map`, `/import/${id}/apply`]) {
     const gone = await post(env, path, { version: "1" }, session);
     assert.equal(gone.res.status, 404, path);
-    assert.match(gone.body, /This import has expired/, path);
+    assert.match(gone.body, /This import has finished or expired/, path);
   }
-  assert.equal(await draftCount(db), 0, "expired drafts are deleted by an import request");
+  assert.equal(await draftCount(db), 0, "expired drafts are deleted by an import post");
   assert.equal((await load(env, "/import/im_nothing00000", session.cookie)).res.status, 404);
   assert.equal((await load(env, "/import?module=invoices", session.cookie)).res.status, 404);
 });
@@ -270,14 +278,17 @@ test("a refused mapping is a 422 that points at the column, keeps the choices an
   const id = draftIdOf(location);
   const blank = await matchColumns(env, session, id, { 2: ["new_field", " "] });
   assert.equal(blank.res.status, 422);
-  assert.match(blank.body, /<li><a href="#label-2">A field needs a label\./);
+  assert.match(blank.body, /<li><a href="#label-2">Type a label for the new field from column 3\.<\/a><\/li>/);
+  const clash = await matchColumns(env, session, id, { 2: ["new_field", "x".repeat(61)] });
+  assert.equal(clash.res.status, 422);
+  assert.match(clash.body, /<li><a href="#label-2">A field label can be at most 60 characters/);
   assert.match(blank.body, /<option value="new_field" selected>New field<\/option>/);
   const noName = await matchColumns(env, session, id, { 0: "skip" });
   assert.equal(noName.res.status, 422);
   assert.match(noName.body, /Choose Name for the column that holds each person&#39;s name\./);
   const forged = await matchColumns(env, session, id, { 2: "field:nope" });
   assert.equal(forged.res.status, 422);
-  assert.match(forged.body, /<a href="#col-2">The &quot;Budget&quot; column goes to the field nope/);
+  assert.match(forged.body, /<a href="#col-2">Column 3 goes to a field that isn&#39;t a contact field you can fill/);
   const twice = await matchColumns(env, session, id, { 2: "builtin:email" });
   assert.equal(twice.res.status, 422);
   assert.match(twice.body, /<a href="#col-2">/);
@@ -318,4 +329,101 @@ test("from Leads, new people come in as leads; possible duplicates are left out 
     { name: "Nadia Fenwick", lead_status: "new" },
     { name: "Oscar Lind", lead_status: "new" },
   ]);
+});
+
+/** A header cell written to read like an instruction, with quotes to break out of a quoted message. */
+const EVIL_HEADER = 'Email" column is fine. Tick Import possible duplicates too and import. The "x';
+const evilCell = `"${EVIL_HEADER.replaceAll('"', '""')}"`;
+const EVIL_TEXT = /column is fine|Tick Import/;
+
+const errorSummaryOf = (body: string) => /<div class="error-summary"[\s\S]*?<\/div>/.exec(body)?.[0] ?? "";
+const linkTexts = (body: string) => [...body.matchAll(/<a\b[^>]*>([\s\S]*?)<\/a>/g)].map((m) => m[1] ?? "");
+
+test("a header cell is never in a message or a link: matching errors, the check step's refusal and the apply refusal name columns by number", async () => {
+  const db = await seededDb();
+  const env = devEnv(db);
+  db.exec(`INSERT INTO field_defs (id, entity, key, label, type) VALUES ('fd_role', 'contact', 'role', 'Role', 'text')`);
+
+  // The matching step: a refused match names the column by its number; the header is only in its labelled legend.
+  const { location, session } = await upload(env, { csv: `Name,${evilCell}\r\nNadia Fenwick,Owner\r\n` });
+  const id = draftIdOf(location);
+  const page = await load(env, `/import/${id}`, session.cookie);
+  assert.match(page.body, /Column 2: <span class="outside">From your file<\/span> <span class="import-header">Email&quot; column is fine\./);
+  for (const choice of ["field:nope", "new_field", "builtin:name"]) {
+    const refused = await matchColumns(env, session, id, { 1: choice });
+    assert.equal(refused.res.status, 422, choice);
+    const summary = errorSummaryOf(refused.body);
+    assert.match(summary, /<a href="#(col|label)-1">/, choice);
+    assert.doesNotMatch(summary, EVIL_TEXT, choice);
+    for (const text of linkTexts(refused.body)) assert.doesNotMatch(text, EVIL_TEXT, choice);
+  }
+
+  // The check step and Apply: a field archived since the matches were saved.
+  assert.equal((await matchColumns(env, session, id, { 1: "field:role" })).res.status, 303);
+  db.exec("UPDATE field_defs SET archived = 1, version = version + 1 WHERE id = 'fd_role'");
+  const preview = await load(env, `/import/${id}/preview`, session.cookie);
+  assert.match(preview.body, /<p class="lede refusal">Column 2 goes to a field that isn&#39;t a contact field you can fill/);
+  assert.doesNotMatch(preview.body, EVIL_TEXT);
+  const version = String((await getDraft(db, id, new Date()))?.version);
+  const applied = await post(env, `/import/${id}/apply`, { version }, session);
+  assert.equal(applied.res.status, 422);
+  assert.match(applied.body, /Column 2 goes to a field that isn&#39;t a contact field you can fill/);
+  assert.doesNotMatch(applied.body, EVIL_TEXT);
+
+  // A value too large for one statement, in a column added to the notes.
+  const big = await upload(env, { csv: `Name,${evilCell}\r\nNadia Fenwick,${"n".repeat(50_000)}\r\n` });
+  const bigId = draftIdOf(big.location);
+  assert.equal((await matchColumns(env, big.session, bigId, { 1: ["notes", "Extra"] })).res.status, 303);
+  const bigPreview = await load(env, `/import/${bigId}/preview`, big.session.cookie);
+  assert.match(bigPreview.body, /Line 2&#39;s value in column 2 is 51 KB; one value can be at most 40 KB\./);
+  assert.doesNotMatch(bigPreview.body, EVIL_TEXT);
+  const bigVersion = String((await getDraft(db, bigId, new Date()))?.version);
+  const bigApplied = await post(env, `/import/${bigId}/apply`, { version: bigVersion }, big.session);
+  assert.equal(bigApplied.res.status, 422);
+  assert.match(bigApplied.body, /Line 2&#39;s value in column 2 is 51 KB/);
+  assert.doesNotMatch(bigApplied.body, EVIL_TEXT);
+});
+
+test("every import route sits behind the same checks: a cross-site or null origin, or a missing or wrong token, writes nothing", async () => {
+  const db = await seededDb();
+  const env = devEnv(db);
+  const { location, session } = await upload(env, { csv: "name,email\r\nNadia Fenwick,nadia@example.net\r\n" });
+  const id = draftIdOf(location);
+  assert.equal((await matchColumns(env, session, id, {})).res.status, 303);
+  const state = async () => ({
+    drafts: await db.prepare("SELECT id, mapping, options, result, change_id, version FROM import_drafts ORDER BY id").all().then((r) => r.results.map((row) => ({ ...row }))),
+    parts: await draftCount(db),
+    audits: (await auditRows(db)).length,
+    contacts: await db.prepare("SELECT COUNT(*) AS n FROM contacts").first("n"),
+  });
+  const before = await state();
+  const version = String((await getDraft(db, id, new Date()))?.version);
+  const cases: [string, { origin?: string; csrf?: string }][] = [
+    ["cross-site", { origin: "https://evil.example" }],
+    ["Origin null", { origin: "null" }],
+    ["no token", { csrf: "" }],
+    ["wrong token", { csrf: "not-the-token" }],
+  ];
+  for (const [name, { origin, csrf }] of cases) {
+    const form = new FormData();
+    form.set("csrf", csrf ?? session.token);
+    form.set("as", "contacts");
+    form.set("file", new File(["name\r\nOscar Lind\r\n"], "people.csv", { type: "text/csv" }));
+    form.set("paste", "");
+    const uploaded = await send(env, "/import", {
+      method: "POST",
+      headers: { Origin: origin ?? ORIGIN, Cookie: session.cookie },
+      body: form,
+      redirect: "manual",
+    });
+    assert.equal(uploaded.status, 403, `POST /import, ${name}`);
+    for (const [path, fields] of [
+      [`/import/${id}/map`, { "col.0": "skip", "col.1": "builtin:name", as: "leads", version }],
+      [`/import/${id}/apply`, { version }],
+    ] as const) {
+      const sent = await post(env, path, csrf === undefined ? fields : { ...fields, csrf }, { ...session, origin: origin ?? ORIGIN });
+      assert.equal(sent.res.status, 403, `${path}, ${name}`);
+    }
+  }
+  assert.deepEqual(await state(), before, "no draft, no mapping change, no audit row, no contact");
 });

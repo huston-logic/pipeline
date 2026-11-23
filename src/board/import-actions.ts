@@ -1,7 +1,7 @@
 // The board import's posts and pages (decision 0036). POST /import stores the uploaded file as a draft; POST
 // /import/<id>/map saves the column matches; POST /import/<id>/apply plans the file again against the people on file
 // now and writes it as one audited change (actor owner, tool "import"), in the same batch that marks the draft applied,
-// so a second apply writes nothing and shows the first result. Every import request first deletes expired drafts.
+// so a second apply writes nothing and shows the first result. Every import post first deletes expired drafts.
 import { listFieldDefs } from "../db/queries.ts";
 import { isImportId, newId } from "../ids.ts";
 import { IMPORT_ACTOR } from "../import/change.ts";
@@ -10,6 +10,7 @@ import {
   createDraft,
   deleteExpiredDrafts,
   type Draft,
+  draftGuard,
   draftText,
   getDraft,
   markApplied,
@@ -108,8 +109,13 @@ function mappingProblems(
   posted: ReturnType<typeof postedMapping>,
   fieldDefs: Awaited<ReturnType<typeof listFieldDefs>>,
 ): MappingProblem[] {
-  const name = (i: number) => ((header[i] ?? "").trim() === "" ? `column ${i + 1}` : `the "${(header[i] ?? "").trim()}" column`);
-  const problems: MappingProblem[] = posted.unchosen.map((column) => ({ column, message: `Choose where ${name(column)} goes.` }));
+  // Columns are named by number: the header is outside text, shown only in the column's own legend.
+  const problems: MappingProblem[] = [
+    ...posted.unchosen.map((column): MappingProblem => ({ column, message: `Choose where column ${column + 1} goes.` })),
+    ...posted.unlabelled.map(
+      (column): MappingProblem => ({ column, control: "label", message: `Type a label for the new field from column ${column + 1}.` }),
+    ),
+  ];
   if (problems.length > 0) return problems;
   if (!posted.targets.some((target) => target.kind === "builtin" && target.key === "name")) {
     return [{ message: "Choose Name for the column that holds each person's name." }];
@@ -171,19 +177,26 @@ async function apply(ctx: ActionContext, id: string): Promise<ActionResult> {
   }
   const input = fileChange(peopleModule, planned.plan, planned.contacts, ctx.now, planned.mapped.newFields);
   if (input === null) {
-    await markApplied(ctx.db, draft, resultOf(planned, false));
+    await markApplied(ctx.db, draft, resultOf(planned, false), ctx.now);
     return redirect(draftPath(draft.id));
   }
   const changeId = newId("chg");
   try {
     await commitChange(
       { db: ctx.db, now: ctx.now, ...IMPORT_ACTOR },
-      { ...input, changeId, extra: appliedStatements(ctx.db, draft, resultOf(planned, true), changeId) },
+      {
+        ...input,
+        changeId,
+        leading: [draftGuard(ctx.db, draft, ctx.now)],
+        extra: appliedStatements(ctx.db, draft, resultOf(planned, true), changeId),
+      },
     );
   } catch (error) {
+    // Another apply of this draft may have won the race: whatever failed, show its result rather than an error.
+    const latest = await getDraft(ctx.db, draft.id, ctx.now);
+    if (latest?.result) return redirect(doneHref(latest));
+    if (latest === null) return page(404, importGonePage(pageContext(ctx, startPath(false))));
     if (error instanceof StaleWriteError) {
-      const now = await getDraft(ctx.db, draft.id, ctx.now);
-      if (now?.result) return redirect(doneHref(now));
       return refused("Someone in this file was changed while it was importing, so nothing was saved. Check the import again.");
     }
     if (isDuplicateEmailFailure(error)) {
