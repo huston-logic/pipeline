@@ -64,12 +64,15 @@ test("the default is a dry run: it reads the contacts, shows the plan and writes
   const h = await harness(t, CSV);
   const code = await importContacts(parseImportArgs(["--file", h.file, "--copy", "acme"]), h.deps);
   assert.equal(code, 0);
-  assert.equal(h.calls.length, 2);
+  assert.equal(h.calls.length, 4);
   const cfg = relative(ROOT, join(h.copyDir, "wrangler.jsonc"));
   assert.deepEqual(h.calls[0]?.cmd, [
     "wrangler", "d1", "execute", "DB", "--remote", "-c", cfg, "--json", "--yes", "--command", "SELECT * FROM contacts ORDER BY rowid",
   ]);
   assert.deepEqual(h.calls[1]?.cmd.slice(-2), ["--command", "SELECT * FROM field_defs ORDER BY rowid"]);
+  // The copy's person statuses (decision 0040), so a person_status column is read against them.
+  assert.deepEqual(h.calls[2]?.cmd.slice(-2), ["--command", "SELECT * FROM person_statuses ORDER BY rowid"]);
+  assert.deepEqual(h.calls[3]?.cmd.slice(-2), ["--command", "SELECT * FROM person_substatuses ORDER BY rowid"]);
   assert.deepEqual(h.calls[0]?.env, { CLOUDFLARE_ACCOUNT_ID: STUB_ACCOUNT_ID });
   const out = h.lines.join("\n");
   assert.match(out, /1 new contact, 1 filled in, 0 unchanged, 1 skipped/);
@@ -85,8 +88,8 @@ test("--apply writes one audited change through a SQL file, then removes the fil
   const h = await harness(t, CSV);
   const code = await importContacts(parseImportArgs(["--file", h.file, "--copy", "acme", "--apply"]), h.deps);
   assert.equal(code, 0);
-  assert.equal(h.calls.length, 3);
-  const [, , apply] = h.calls;
+  assert.equal(h.calls.length, 5);
+  const [, , , , apply] = h.calls;
   const cfg = relative(ROOT, join(h.copyDir, "wrangler.jsonc"));
   assert.deepEqual(apply?.cmd.slice(0, 7), ["wrangler", "d1", "execute", "DB", "--remote", "-c", cfg]);
   assert.deepEqual(apply?.cmd.slice(7, 8), ["--file"]);
@@ -179,7 +182,7 @@ test("an unknown --as value is refused in plain English", () => {
 test("nothing to import writes nothing, and bad arguments say how to fix them", async (t) => {
   const h = await harness(t, "name,email\r\nPat,pat@example.com\r\n");
   assert.equal(await importContacts(parseImportArgs(["--file", h.file, "--copy", "acme", "--apply"]), h.deps), 0);
-  assert.equal(h.calls.length, 2);
+  assert.equal(h.calls.length, 4);
   assert.ok(h.lines.some((line) => line === "Nothing to import: no new contacts and no details to fill in."));
 
   assert.throws(() => parseImportArgs(["--copy", "acme"]), /--file/);

@@ -181,10 +181,12 @@ test("round trip: a merge fills an empty custom field into fields and untrusted_
 
 test("a CSV round trip keeps lead_status; lead_status and lead_status_at are in the export", async () => {
   const source = await createTestDb();
-  source.exec(`INSERT INTO contacts (id, name, email, untrusted_fields, lead_status, lead_status_at) VALUES
-    ('ct_a', 'Avery Lead', 'avery@example.com', '[]', 'contacted', '2026-11-10T00:00:00.000Z'),
-    ('ct_b', 'Blake Plain', 'blake@example.com', '[]', NULL, NULL),
-    ('ct_c', 'Cam Closed', 'cam@example.com', '[]', 'not_a_fit', '2026-11-11T00:00:00.000Z')`);
+  source.exec(`INSERT INTO contacts (id, name, email, untrusted_fields, lead_status, lead_status_at, person_status, sub_status) VALUES
+    ('ct_a', 'Avery Lead', 'avery@example.com', '[]', 'contacted', '2026-11-10T00:00:00.000Z', 'lead', 'contacted'),
+    ('ct_b', 'Blake Plain', 'blake@example.com', '[]', NULL, NULL, 'contact', NULL),
+    ('ct_c', 'Cam Closed', 'cam@example.com', '[]', 'not_a_fit', '2026-11-11T00:00:00.000Z', 'lead', 'not_a_fit'),
+    ('ct_d', 'Dee Qualified', 'dee@example.com', '[]', 'qualified', '2026-11-12T00:00:00.000Z', 'contact', 'client'),
+    ('ct_e', 'Eli Partner', 'eli@example.com', '[]', NULL, NULL, 'partner', NULL)`);
   const csv = await exportTableCsv(source, "contacts");
   const header = csv.split("\r\n")[0] ?? "";
   assert.match(header, /(^|,)lead_status,lead_status_at(,|$)/);
@@ -194,11 +196,16 @@ test("a CSV round trip keeps lead_status; lead_status and lead_status_at are in 
   const input = importChange(plan, [], NOW);
   assert.ok(input);
   runFile(target, renderImport(input, NOW).sql);
-  const byEmail = Object.fromEntries((await contacts(target)).map((row) => [row.email, row.lead_status]));
+  const byEmail = Object.fromEntries(
+    (await contacts(target)).map((row) => [row.email, [row.lead_status, row.person_status, row.sub_status]]),
+  );
+  // The person status and sub-status come back too (decision 0040), and Qualified stays as history.
   assert.deepEqual(byEmail, {
-    "avery@example.com": "contacted",
-    "blake@example.com": null,
-    "cam@example.com": "not_a_fit",
+    "avery@example.com": ["contacted", "lead", "contacted"],
+    "blake@example.com": [null, "contact", null],
+    "cam@example.com": ["not_a_fit", "lead", "not_a_fit"],
+    "dee@example.com": ["qualified", "contact", "client"],
+    "eli@example.com": [null, "partner", null],
   });
 });
 

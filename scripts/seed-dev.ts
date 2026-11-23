@@ -131,6 +131,8 @@ export function devSeed(now: Date, tz: string): DevSeed {
     version: 1,
     created_at: created,
     updated_at: created,
+    person_status: "contact",
+    sub_status: null,
     ...extra,
   });
   const role = (text: string) => JSON.stringify({ role: text });
@@ -169,7 +171,10 @@ export function devSeed(now: Date, tz: string): DevSeed {
       fields: role("Imaging department lead"),
     }),
     contact(12, "Sofia Marin", "sofia.marin@example.org", "Northgate Medical Offices", "referral", day(-40, "10:00")),
-    contact(13, "Hannah Cole", "hannah@example.net", "Alder & Finch Architects", "referral", day(-7, "10:00")),
+    // A Partner (decision 0040): an architect who sends the firm work, not a customer.
+    contact(13, "Hannah Cole", "hannah@example.net", "Alder & Finch Architects", "referral", day(-7, "10:00"), {
+      person_status: "partner",
+    }),
     contact(14, "Jake Moreno", "jake@example.com", "Summit Ridge Builders", "repeat client", day(-14, "08:00"), {
       fields: role("Site superintendent"),
     }),
@@ -186,6 +191,8 @@ export function devSeed(now: Date, tz: string): DevSeed {
     }),
   ];
 
+  const leadColumns = (status: string): Row =>
+    status === "qualified" ? { person_status: "contact", sub_status: null } : { person_status: "lead", sub_status: status };
   // Leads (decision 0022): people the firm means to approach, one of each kind of status. Only the contacts have
   // `lead_status`; the other 18 people stay as they were.
   const lead = (
@@ -214,6 +221,8 @@ export function devSeed(now: Date, tz: string): DevSeed {
     updated_at: day(-statusDaysAgo, "10:00"),
     lead_status: status,
     lead_status_at: day(-statusDaysAgo, "10:00"),
+    // A Lead with the same sub-status; Qualified is a Contact now (decision 0040).
+    ...leadColumns(status),
     ...extra,
   });
   contacts.push(
@@ -686,16 +695,16 @@ export function devSeed(now: Date, tz: string): DevSeed {
   const imaniText = activityOf("text to ct_lead03", (a) => a.contact_id === "ct_lead03");
   change(17, day(-6, "10:00"), "owner", "log_activity", ["activities", String(imaniText.id)], `Logged a note on ${imani.name}: ${imaniText.summary}; moved to Contacted`, [
     { table: "activities", id: String(imaniText.id), before: null, after: imaniText },
-    { table: "contacts", id: "ct_lead03", before: earlier(imani, { lead_status: "new", lead_status_at: String(imani.created_at), updated_at: String(imani.created_at) }), after: imani },
+    { table: "contacts", id: "ct_lead03", before: earlier(imani, { lead_status: "new", ...leadColumns("new"), lead_status_at: String(imani.created_at), updated_at: String(imani.created_at) }), after: imani },
   ]);
   const colin = C("ct_lead06");
   change(18, day(-9, "10:00"), "owner", "update_contact", ["contacts", "ct_lead06"], `Updated ${colin.name}: lead status to Not now; added task "${T("tk_seed12").title}", due ${formatLocal(day(10, "09:00"), tz)}`, [
-    { table: "contacts", id: "ct_lead06", before: earlier(colin, { lead_status: "contacted", lead_status_at: day(-10, "11:00"), updated_at: day(-10, "11:00") }), after: colin },
+    { table: "contacts", id: "ct_lead06", before: earlier(colin, { lead_status: "contacted", ...leadColumns("contacted"), lead_status_at: day(-10, "11:00"), updated_at: day(-10, "11:00") }), after: colin },
     { table: "tasks", id: "tk_seed12", before: null, after: T("tk_seed12") },
   ]);
   const gwen = C("ct_lead12");
   change(19, day(-3, "10:00"), "owner", "qualify_lead", ["contacts", "ct_lead12"], `Qualified ${gwen.name}; added deal "${D("dl_seed21").title}" in New inquiry`, [
-    { table: "contacts", id: "ct_lead12", before: earlier(gwen, { lead_status: "contacted", lead_status_at: day(-5, "09:00"), updated_at: day(-5, "09:00") }), after: gwen },
+    { table: "contacts", id: "ct_lead12", before: earlier(gwen, { lead_status: "contacted", ...leadColumns("contacted"), lead_status_at: day(-5, "09:00"), updated_at: day(-5, "09:00") }), after: gwen },
     { table: "deals", id: "dl_seed21", before: null, after: D("dl_seed21") },
   ]);
 

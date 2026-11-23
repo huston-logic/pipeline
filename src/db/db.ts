@@ -25,6 +25,8 @@ export const TABLE_NAMES = [
   "email_log",
   "import_drafts",
   "import_draft_parts",
+  "person_statuses",
+  "person_substatuses",
 ] as const;
 
 export type TableName = (typeof TABLE_NAMES)[number];
@@ -66,6 +68,36 @@ export type StageRow = {
   updated_at: string;
 };
 
+/** One person status (migration 0011, decision 0040). The key is the slug of its first label and never changes. */
+export type PersonStatusRow = {
+  key: string;
+  label: string;
+  position: number;
+  /** What the sub-status field is called for this status. */
+  sub_label: string;
+  /** 1: can be renamed and moved but never archived (Lead and Contact). */
+  locked: Flag;
+  archived: Flag;
+  version: number;
+  created_at: string;
+  updated_at: string;
+};
+
+/** One value of a status's sub-status list. Lead's keys are the lead status keys and never change. */
+export type PersonSubstatusRow = {
+  /** "<status key>.<key>". */
+  id: string;
+  status_key: string;
+  key: string;
+  label: string;
+  /** 1-based place within its status. */
+  position: number;
+  archived: Flag;
+  version: number;
+  created_at: string;
+  updated_at: string;
+};
+
 export type FieldDefRow = {
   id: string;
   entity: FieldEntity;
@@ -100,6 +132,13 @@ export type ContactRow = {
   lead_status: LeadStatus | null;
   /** When lead_status last changed; null when it never was set. */
   lead_status_at: string | null;
+  /**
+   * A person_statuses key (migration 0011, decision 0040): what kind of person they are. "lead" exactly when
+   * lead_status is an unqualified status, and then sub_status equals lead_status (personStatusPatch keeps them so).
+   */
+  person_status: string;
+  /** A person_substatuses key of that status, or null for none. */
+  sub_status: string | null;
 };
 
 export type DealRow = {

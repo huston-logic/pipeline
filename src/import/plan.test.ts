@@ -25,6 +25,8 @@ test("a header row is required: names columns case-insensitively and lists unkno
       business: null,
       source: null,
       notes: "hi",
+      personStatus: "contact",
+      subStatus: null,
       leadStatus: null,
       fields: {},
     },
@@ -158,6 +160,75 @@ test("a lead_status column is used only when it is exactly a key or a label; oth
   const without = planImport(csv.replace("C Three,c@example.com,Contacted!\r\nD Four,d@example.com,hot\r\n", ""), []);
   assert.ok(!without.skippedColumns.includes("lead_status"), "the column counts as imported without --as leads too");
   assert.deepEqual(without.create.map((row) => row.leadStatus), ["contacted", "not_a_fit", null]);
+});
+
+test("person_status and sub_status columns: a live status and one of its sub-statuses, by key or label (decision 0040)", () => {
+  const csv = [
+    "name,email,person_status,sub_status,lead_status",
+    "A One,a@example.com,partner,,",
+    "B Two,b@example.com, contact ,client,",
+    "C Three,c@example.com,Lead,Not now,",
+    "D Four,d@example.com,lead,,",
+    "E Five,e@example.com,,Client,",
+    "F Six,f@example.com,customer,,",
+    "G Seven,g@example.com,partner,gold,",
+    "H Eight,h@example.com,contact,vip,",
+    "I Nine,i@example.com,contact,,contacted",
+    "J Ten,j@example.com,,,bad",
+    "K Eleven,k@example.com,,,qualified",
+  ].join("\r\n");
+  const plan = planImport(csv, []);
+  assert.deepEqual(
+    plan.create.map((row) => [row.name, row.personStatus, row.subStatus, row.leadStatus]),
+    [
+      ["A One", "partner", null, null],
+      ["B Two", "contact", "client", null],
+      ["C Three", "lead", "not_now", "not_now"],
+      ["D Four", "lead", "new", "new"],
+      ["E Five", "contact", "client", null],
+      // A file that says both: the person status wins, and having been a lead stays as Qualified.
+      ["I Nine", "contact", null, "qualified"],
+      // lead_status alone still works: Lead with it, or Contact for Qualified.
+      ["J Ten", "lead", "bad", "bad"],
+      ["K Eleven", "contact", null, "qualified"],
+    ],
+  );
+  assert.deepEqual(plan.skipped, [
+    { line: 7, reason: "person_status isn't a person status. Use one of: lead, contact, partner (or the same in words)." },
+    { line: 8, reason: "sub_status is set, but that person status has no sub-statuses. Leave sub_status empty." },
+    { line: 9, reason: "sub_status isn't a sub-status of that person status. Use one of: client (or the same in words)." },
+  ]);
+  assert.doesNotMatch(JSON.stringify(plan.skipped), /customer|gold|vip/, "outside text is not repeated");
+});
+
+test("person_status reads the copy's own statuses: renamed labels, added ones, and never an archived one", () => {
+  const statuses = [
+    { key: "lead", label: "Prospect", archived: false, subs: [{ key: "bad", label: "Dead end", archived: false }] },
+    { key: "contact", label: "Contact", archived: false, subs: [{ key: "client", label: "Client", archived: true }] },
+    { key: "partner", label: "Partner", archived: true, subs: [] },
+    { key: "supplier", label: "Supplier", archived: false, subs: [{ key: "wholesale", label: "Wholesale", archived: false }] },
+  ];
+  const csv = [
+    "name,person_status,sub_status,lead_status",
+    "A One,Prospect,,",
+    "B Two,Supplier,wholesale,",
+    "C Three,partner,,",
+    "D Four,contact,client,",
+    "E Five,,,Dead end",
+  ].join("\r\n");
+  const plan = planImport(csv, [], { asLeads: false, allowDuplicates: false, fieldDefs: [], statuses });
+  assert.deepEqual(
+    plan.create.map((row) => [row.name, row.personStatus, row.subStatus, row.leadStatus]),
+    [
+      ["A One", "lead", "new", "new"],
+      ["B Two", "supplier", "wholesale", null],
+      ["E Five", "lead", "bad", "bad"],
+    ],
+  );
+  assert.deepEqual(plan.skipped.map((row) => [row.line, row.reason.split(".")[0]]), [
+    [4, "person_status isn't a person status"],
+    [5, "sub_status is set, but that person status has no sub-statuses"],
+  ]);
 });
 
 test("a merge never changes a person's status", () => {

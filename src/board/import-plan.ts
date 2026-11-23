@@ -11,6 +11,7 @@ import { type PeoplePlan, peopleModule } from "../import/modules/people.ts";
 import { type TasksCtx, type TasksPlan, tasksModule } from "../import/modules/tasks.ts";
 import { plannedChange, plannedResult } from "../import/planned.ts";
 import type { ChangeInput } from "../services/change.ts";
+import { statusEntries } from "../services/person-status.ts";
 
 /**
  * What the check step's boxes say: People's possible duplicates too, Deals' closed deals as history, and People's and
@@ -32,7 +33,8 @@ export async function planDraft(db: Db, draft: Draft, text: string, now: Date, c
     case "people": {
       const mapped = mapFile(peopleModule, text, draft.mapping, fieldDefs, now);
       const ctx = await contactsOnFile(db);
-      const options = { asLeads: draft.asLeads, allowDuplicates: confirmed.duplicates, ownList: confirmed.ownList, fieldDefs: mapped.fieldDefs };
+      const statuses = await statusEntries(db);
+      const options = { asLeads: draft.asLeads, allowDuplicates: confirmed.duplicates, ownList: confirmed.ownList, fieldDefs: mapped.fieldDefs, statuses };
       const plan = planRows(peopleModule, mapped.rows, ctx, options);
       return { module: "people", mapped, ctx, newFields: mapped.newFields, plan: { ...plan, skippedColumns: mapped.skippedColumns } };
     }

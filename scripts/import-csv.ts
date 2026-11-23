@@ -8,11 +8,12 @@
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import type { ContactRow, FieldDefRow } from "../src/db/db.ts";
+import type { ContactRow, FieldDefRow, PersonStatusRow, PersonSubstatusRow } from "../src/db/db.ts";
 import { renderImport } from "../src/import/change.ts";
 import { type FilePlan, planCsv } from "../src/import/engine.ts";
 import { peopleModule } from "../src/import/modules/index.ts";
 import type { PeoplePlan } from "../src/import/modules/people.ts";
+import { statusEntriesOf } from "../src/services/person-move.ts";
 import { parseFlags, UsageError } from "./cli-args.mjs";
 import { copyNameProblem, copyPaths, databaseTarget, isCopyName, makeRunner, query } from "./copies.mjs";
 import { ROOT, run as defaultRun, type RunOptions, type RunResult } from "./wrangler-run.mjs";
@@ -112,7 +113,11 @@ export async function importContacts(options: ImportOptions, deps: ImportDeps): 
   const runner = makeRunner(deps, target.accountId);
   const existing = query(runner, target, "SELECT * FROM contacts ORDER BY rowid") as ContactRow[];
   const fieldDefs = query(runner, target, "SELECT * FROM field_defs ORDER BY rowid") as FieldDefRow[];
-  const plan = planCsv(peopleModule, csv, existing, { asLeads: options.asLeads, allowDuplicates: options.allowDuplicates, fieldDefs });
+  const statuses = statusEntriesOf(
+    query(runner, target, "SELECT * FROM person_statuses ORDER BY rowid") as PersonStatusRow[],
+    query(runner, target, "SELECT * FROM person_substatuses ORDER BY rowid") as PersonSubstatusRow[],
+  );
+  const plan = planCsv(peopleModule, csv, existing, { asLeads: options.asLeads, allowDuplicates: options.allowDuplicates, fieldDefs, statuses });
   deps.log(`Import plan for ${options.local ? "the local dev database" : `the copy "${options.copy}"`}:`);
   showPlan(plan, deps.log);
   if (!options.apply) {

@@ -22,6 +22,7 @@ import { contactName, isTrusted, taskTitle } from "./labels.ts";
 import { followUpTask, noOpenDeal, openDealCount } from "./lead-change.ts";
 import { isLeadStatus, isUnqualified, LEAD_STATUS_LABELS, type LeadStatus } from "./lead-status.ts";
 import { type FieldValues, findContact, mergeFields, ownerTimezone, parseObject, parseStringArray } from "./lookup.ts";
+import { moveForLeadStatus, personStatusPatch } from "./person-move.ts";
 
 /** commitChange, with a duplicate email that another writer got in first turned into a plain answer. */
 export async function commitWithEmail(ctx: Ctx, input: ChangeInput, email: string | null): Promise<ChangeResult> {
@@ -130,8 +131,8 @@ export async function updateContact(ctx: Ctx, contactRef: string, patch: Contact
       throw new UserError(`${capitalize(contactName(before))} is archived, so they can't be given a lead status.`);
     }
     await checkLeadStatus(ctx, before, patch.leadStatus);
-    set.lead_status = patch.leadStatus;
-    set.lead_status_at = ctx.now.toISOString();
+    // Lead with this sub-status, through the one function that keeps both pairs of columns in step (decision 0040).
+    Object.assign(set, personStatusPatch(before, moveForLeadStatus(before, patch.leadStatus), ctx.now));
   }
   const followUp = clean(patch.followUpDate);
   const tz = await ownerTimezone(db);
@@ -150,7 +151,9 @@ export async function updateContact(ctx: Ctx, contactRef: string, patch: Contact
   let task: TaskRow | null = due === null ? null : followUpTask(after, due, ctx.now);
   // The same request twice (a double post) must not stack a second identical check-back.
   if (task !== null && (await openCheckBack(db, before.id, task))) task = null;
-  const changed = changedColumns(before, after).filter((c) => !["version", "updated_at", "lead_status_at"].includes(c));
+  const changed = changedColumns(before, after).filter(
+    (c) => !["version", "updated_at", "lead_status_at", "person_status", "sub_status"].includes(c),
+  );
   if (changed.length === 0 && task === null) {
     throw new UserError(`Nothing to change for ${contactName(before)}: every value you gave is already set.`);
   }

@@ -194,6 +194,18 @@ test("two active rules and one paused, one of them a lead_followup", async () =>
   assert.equal(rules[2]?.created_by, "owner");
 });
 
+test("every person has a person status in step with their lead status, and one is a Partner (decision 0040)", async () => {
+  const db = await seeded();
+  const people = await rows<ContactRow>(db, "SELECT * FROM contacts ORDER BY id");
+  for (const person of people) {
+    const lead = person.lead_status !== null && person.lead_status !== "qualified";
+    assert.equal(person.person_status === "lead", lead, `${person.id}: Lead exactly when an unqualified lead`);
+    if (lead) assert.equal(person.sub_status, person.lead_status, `${person.id}: the sub-status is the lead status`);
+  }
+  assert.deepEqual(people.filter((p) => p.person_status === "partner").map((p) => p.id), ["ct_seed13"]);
+  assert.equal(people.find((p) => p.id === "ct_lead12")?.person_status, "contact", "the qualified lead is a Contact");
+});
+
 test("twelve made-up leads across every status, on example domains, with reach, follow-ups and one imported", async () => {
   const db = await seeded();
   const leads = await rows<ContactRow>(db, "SELECT * FROM contacts WHERE id LIKE 'ct_lead%' ORDER BY id");

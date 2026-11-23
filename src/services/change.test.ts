@@ -36,6 +36,8 @@ function contactRow(id: string, name: string): ContactRow {
     updated_at: NOW.toISOString(),
     lead_status: null,
     lead_status_at: null,
+    person_status: "contact",
+    sub_status: null,
   };
 }
 

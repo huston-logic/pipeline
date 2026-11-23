@@ -11,6 +11,7 @@ import { checkValue, clean, whenOrNull } from "./input.ts";
 import { contactName, dealLabel, dealTitle, withoutUntrusted } from "./labels.ts";
 import { qualifyIfLead } from "./lead-change.ts";
 import { LEAD_STATUS_LABELS } from "./lead-status.ts";
+import { clientIfWon, clientLabel } from "./person-status.ts";
 import {
   type FieldValues,
   findDeal,
@@ -110,6 +111,9 @@ export async function updateDeal(ctx: Ctx, dealRef: string, patch: DealPatch): P
   // Reopening a closed deal gives its person an open deal again, so a lead among them is Qualified (decision 0022).
   const qualified = before.status !== "open" && after.status === "open" ? qualifyIfLead(contact, ctx.now) : null;
   if (qualified !== null) changes.push(qualified);
+  // A deal marked Won makes a Contact a Client in the same change, so undo puts both back (decision 0040).
+  const client = before.status !== "won" && after.status === "won" ? await clientIfWon(db, contact, ctx.now) : null;
+  if (client !== null) changes.push(client);
   const labels = await stageLabels(db);
   if (moved) {
     const activity: ActivityRow = {
@@ -138,6 +142,7 @@ export async function updateDeal(ctx: Ctx, dealRef: string, patch: DealPatch): P
     .map((c) => (c === "fields" ? fieldsLabel(parseObject(before.fields), parseObject(after.fields)) : columnLabel(c)));
   if (others.length > 0) parts.push(`changed ${joinAnd(others)}`);
   if (qualified !== null) parts.push(`${contactName(contact)} is now ${LEAD_STATUS_LABELS.qualified}`);
+  if (client !== null) parts.push(`${contactName(contact)} is now ${withArticle(await clientLabel(db))}`);
   const summary = moved
     ? [`Moved ${who} to ${stage.label}`, ...parts].join("; ")
     : `Updated ${who}: ${parts.join("; ") || (changed.includes("untrusted_fields") ? "confirmed the title" : `set the status to ${STATUS_WORDS[after.status]}`)}`;

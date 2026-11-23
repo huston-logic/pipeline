@@ -75,7 +75,8 @@ test("moving to a won, lost or not_now stage sets the status, and moving back to
   const { db, dealId } = await setup();
   const won = await updateDeal(ctxAt(db, NOW), dealId, { stage: "won" });
   assert.equal((await deal(db, dealId)).status, "won");
-  assert.match(won.summary, /^Moved "Website refresh" \(Pat Example\) to Won \(change/);
+  // A Contact whose deal is marked Won becomes a Client in the same change (decision 0040).
+  assert.match(won.summary, /^Moved "Website refresh" \(Pat Example\) to Won; Pat Example is now a Client \(change/);
 
   await updateDeal(ctxAt(db, NOW), dealId, { stage: "replied" });
   const row = await deal(db, dealId);
