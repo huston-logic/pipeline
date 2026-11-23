@@ -85,7 +85,7 @@ test("a header named twice is refused with the same message as before", () => {
   // The same check holds for a mapping chosen by hand, not only one autoMatch made.
   const { header, records } = readCsv("name,Job,Title\r\nA,b,c\r\n");
   const byHand = [{ kind: "builtin", key: "name" }, { kind: "field", key: "role" }, { kind: "field", key: "role" }] as const;
-  assert.throws(() => mapRows(peopleModule, records, [...byHand], header), /names "role" twice/);
+  assert.throws(() => mapRows(peopleModule, records, [...byHand], header, defs([{}])), /names "role" twice/);
   assert.throws(() => planCsv(peopleModule, "email,lead_status\r\n", [], PLAIN), {
     message:
       'The first line must be a header row naming the columns, with at least "name" (name, email, phone, business, source, notes). ' +
@@ -183,12 +183,6 @@ test("a module definition is all a new module needs", async () => {
   const audit = await db.prepare("SELECT * FROM audit_log").first<AuditRow>();
   assert.equal(audit?.tool, "import");
   assert.equal(audit?.summary, "Imported 1 tasks (change chg_faketasks01)");
-});
-
-test("the notes and new_field targets are not supported yet", () => {
-  const { header, records } = readCsv("name,Extra\r\nA,b\r\n");
-  assert.throws(() => mapRows(peopleModule, records, [{ kind: "builtin", key: "name" }, { kind: "notes", label: "Extra" }], header), /not supported yet/);
-  assert.throws(() => mapRows(peopleModule, records, [{ kind: "builtin", key: "name" }, { kind: "new_field", label: "Extra" }], header), /not supported yet/);
 });
 
 test("readCsv takes at most 2,000 data rows and 1 MB, and says how to split a bigger file", () => {

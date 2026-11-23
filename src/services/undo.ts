@@ -67,6 +67,8 @@ type JsonRef = {
   table: "contacts" | "deals" | "rules";
   column: string;
   path: string;
+  /** The top-level key `path` reads, to check a snapshot row the same way in code. */
+  key: string;
   equals?: string;
   what: (labels: string, n: number) => string;
 };
@@ -77,6 +79,7 @@ const JSON_DEPENDENTS: Partial<Record<ChangeTable, (row: Row) => JsonRef[]>> = {
       table: row.entity === "contact" ? "contacts" : "deals",
       column: "fields",
       path: `$."${String(row.key)}"`,
+      key: String(row.key),
       what: (labels) => `${short(String(row.label), 60)} is set on ${labels}`,
     },
   ],
@@ -85,6 +88,7 @@ const JSON_DEPENDENTS: Partial<Record<ChangeTable, (row: Row) => JsonRef[]>> = {
       table: "rules",
       column: "params",
       path: "$.stage",
+      key: "stage",
       equals: String(row.key),
       what: (labels, n) => `${labels} ${n === 1 ? "watches" : "watch"} ${short(String(row.label), 60)}`,
     },
@@ -343,6 +347,9 @@ async function dependents(ctx: Ctx, changeId: string, entries: Entry[]): Promise
   const referrers = await jsonReferrers(ctx.db, [...refs, ...choices.map((choice) => choice.ref)]);
 
   const removed = new Set(deleting.map((entry) => rowKey(entry.table, entry.id)));
+  // Rows the same undo puts back to a `before` that doesn't hold the reference stop holding it too (an import that
+  // added a field and filled it on people already on file).
+  const restored = new Map(updatesOf(entries).map((entry) => [rowKey(entry.table, entry.id), entry.before as Row]));
   const counts = new Map<string, { n: number; one: string; many: string }>();
   for (const entry of deleting) {
     const pkValue = entry.after?.[primaryKey(entry.table)];
@@ -361,7 +368,12 @@ async function dependents(ctx: Ctx, changeId: string, entries: Entry[]): Promise
   const tallies = [...counts.values()].map((t) => `${t.n} ${t.n === 1 ? t.one : t.many}`);
   const parts = tallies.length === 0 ? [] : [joinAnd(tallies)];
   const users = (ref: JsonRef, i: number) =>
-    (referrers[i] ?? []).filter((row) => !removed.has(rowKey(ref.table, String(row.id))));
+    (referrers[i] ?? []).filter((row) => {
+      const key = rowKey(ref.table, String(row.id));
+      if (removed.has(key)) return false;
+      const before = restored.get(key);
+      return before === undefined || holdsRef(ref, before);
+    });
   refs.forEach((ref, i) => {
     const rows = users(ref, i);
     if (rows.length > 0) parts.push(ref.what(labelList(rows.map((row) => refLabel(ref.table, row))), rows.length));
@@ -409,6 +421,18 @@ async function jsonReferrers(db: Db, refs: readonly JsonRef[]): Promise<Row[][]>
     for (const { undo_ref: ref, ...row } of rows.results) out[Number(ref)]?.push(row);
   }
   return out;
+}
+
+/** Whether a row holds the reference, read the way jsonReferrers' SQL reads it (a null value doesn't count). */
+function holdsRef(ref: JsonRef, row: Row): boolean {
+  let value: unknown;
+  try {
+    const parsed: unknown = JSON.parse(String(row[ref.column] ?? "{}"));
+    value = typeof parsed === "object" && parsed !== null ? (parsed as Record<string, unknown>)[ref.key] : undefined;
+  } catch {
+    return true;
+  }
+  return ref.equals === undefined ? value !== undefined && value !== null : value === ref.equals;
 }
 
 const updatesOf = (entries: Entry[]) => entries.filter((entry) => entry.before !== null && entry.after !== null);

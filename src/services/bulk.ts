@@ -18,6 +18,15 @@ export function sqlBytes(text: string): number {
   return (NON_ASCII.test(text) ? encoder.encode(text).byteLength : text.length) + quotes;
 }
 
+/** One record can't fit a statement even alone. Not a UserError: only a caller that knows what the record is can say
+ * what to do (the board import answers it in plain English). */
+export class RecordTooLargeError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "RecordTooLargeError";
+  }
+}
+
 /**
  * `items` in order, cut so each chunk written as a JSON array (brackets and commas counted) measures at most `max`.
  * `bytes` is one item's own size. An item that can't fit even alone is refused, never cut.
@@ -29,7 +38,7 @@ export function chunkBy<T>(items: readonly T[], bytes: (item: T) => number, max 
   for (const item of items) {
     const cost = bytes(item) + 1;
     if (2 + cost > max) {
-      throw new Error(`One record is too large for one statement (${Math.ceil(cost / 1000)} KB; the most is ${Math.floor(max / 1000)} KB).`);
+      throw new RecordTooLargeError(`One record is too large for one statement (${Math.ceil(cost / 1000)} KB; the most is ${Math.floor(max / 1000)} KB).`);
     }
     if (current.length > 0 && size + cost > max) {
       chunks.push(current);

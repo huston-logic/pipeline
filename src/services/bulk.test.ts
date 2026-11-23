@@ -9,7 +9,7 @@ import { IMPORT_ACTOR, importChange, renderImport } from "../import/change.ts";
 import { planImport } from "../import/plan.ts";
 import { MAX_STATEMENT_BYTES, renderStatement } from "../import/sql.ts";
 import { addDeal } from "./add-deal.ts";
-import { CHUNK_BYTES, chunkRows, sqlBytes } from "./bulk.ts";
+import { CHUNK_BYTES, chunkRows, RecordTooLargeError, sqlBytes } from "./bulk.ts";
 import { racing } from "../../tests/helpers/race-db.ts";
 import { buildChange, type ChangeInput, commitChange, readSnapshot, type Row, StaleWriteError } from "./change.ts";
 import { updateContact } from "./contacts.ts";
@@ -133,7 +133,11 @@ test("chunks stay under the limit when every name is quotes and emoji", () => {
     assert.ok(new TextEncoder().encode(literal).byteLength <= CHUNK_BYTES + 20, "rendered as SQL text it is still under");
   }
   assert.deepEqual(chunkRows([]), []);
-  assert.throws(() => chunkRows([{ id: "ct_big", notes: "x".repeat(100) }], 50), /too large/);
+  assert.throws(
+    () => chunkRows([{ id: "ct_big", notes: "x".repeat(100) }], 50),
+    (error: unknown) => error instanceof RecordTooLargeError && /too large/.test(error.message),
+    "its own error class, so the board can answer it in plain English",
+  );
 
   // The same names (cut to fit a 1 MB file) through a whole import: every statement, bound or rendered, stays under
   // D1's limits.

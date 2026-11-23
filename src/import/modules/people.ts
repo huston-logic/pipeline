@@ -130,6 +130,14 @@ const isEmptyField = (value: unknown) => value === undefined || value === null |
 
 const NUMBER = /^-?\d+(\.\d+)?$/;
 
+const isBlank = (text: string | null) => text === null || text.trim() === "";
+
+/** The non-empty texts, one per line; null when there are none. */
+function joinLines(texts: readonly (string | null)[]): string | null {
+  const kept = texts.filter((text): text is string => !isBlank(text));
+  return kept.length === 0 ? null : kept.join("\n");
+}
+
 export function planPeople(
   rows: readonly MappedRow[],
   existing: readonly ExistingContact[],
@@ -158,8 +166,9 @@ export function planPeople(
       string | null
     >;
     const skip = (reason: string) => plan.skipped.push({ line, reason });
+    const lines = row.notes.map((note) => `${note.label}: ${note.text}`);
 
-    if (IMPORT_COLUMNS.every((column) => values[column] === null)) {
+    if (IMPORT_COLUMNS.every((column) => values[column] === null) && lines.length === 0) {
       skip("empty row");
       continue;
     }
@@ -204,9 +213,16 @@ export function planPeople(
       if (match) {
         const changes: MergeRow["changes"] = {};
         for (const column of FILL_COLUMNS) {
-          const value = values[column];
+          const value = column === "notes" ? joinLines([values.notes, ...lines]) : values[column];
           const current = match[column];
           if (value !== null && (current === null || current.trim() === "")) changes[column] = value;
+        }
+        // Notes on file keep everything they have; "Add to notes" lines they don't hold yet go after it.
+        const added = isBlank(match.notes) ? [] : lines.filter((text) => !(match.notes ?? "").split("\n").includes(text));
+        if (added.length > 0) changes.notes = [match.notes, ...added].join("\n");
+        if ((changes.notes?.length ?? 0) > IMPORT_LIMITS.notes) {
+          skip(`notes is longer than ${IMPORT_LIMITS.notes} characters`);
+          continue;
         }
         const stored = storedFields(match);
         const { fields: filled, problem } = checked(given.filter(({ def }) => isEmptyField(stored[def.key])));
@@ -249,8 +265,13 @@ export function planPeople(
         continue;
       }
     }
+    const notes = joinLines([values.notes, ...lines]);
+    if ((notes?.length ?? 0) > IMPORT_LIMITS.notes) {
+      skip(`notes is longer than ${IMPORT_LIMITS.notes} characters`);
+      continue;
+    }
     if (business !== "" && !seenBusinesses.has(business)) seenBusinesses.set(business, line);
-    plan.create.push({ line, ...values, name, leadStatus, fields: custom });
+    plan.create.push({ line, ...values, notes, name, leadStatus, fields: custom });
   }
   return plan;
 }
