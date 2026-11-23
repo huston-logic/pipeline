@@ -63,9 +63,9 @@ test("mapRows refuses a field that is missing, archived or a deal field, and a m
       (error: unknown) => error instanceof UserError && message.test(error.message),
     );
   const toRole: Target[] = [builtin("name"), { kind: "field", key: "role" }];
-  refused(toRole, [], /^The "Job" column goes to the field role, which isn't a contact field you can fill/);
-  refused(toRole, [field({ archived: 1 })], /^The "Job" column goes to the field role/);
-  refused(toRole, [field({ entity: "deal" })], /^The "Job" column goes to the field role/);
+  refused(toRole, [], /^Column 2 goes to a field that isn't a contact field you can fill/);
+  refused(toRole, [field({ archived: 1 })], /^Column 2 goes to a field that isn't/);
+  refused(toRole, [field({ entity: "deal" })], /^Column 2 goes to a field that isn't/);
   assert.doesNotThrow(() => mapRows(peopleModule, records, toRole, header, [field({})]));
   refused([builtin("name")], [], /^The column matches don't fit this file: it has 2 columns and 1 was matched\. Match the columns again\.$/);
   refused([builtin("name"), { kind: "skip" }, { kind: "skip" }], [], /it has 2 columns and 3 were matched/);
@@ -93,7 +93,7 @@ test('"Add to notes" writes Label: value lines, after any notes column, and a se
   assert.deepEqual(planned(csv, targets, [again as unknown as ContactRow]).plan.unchanged, [{ line: 2, id: "ct_robin" }]);
 
   assert.throws(() => planned(csv, [...targets.slice(0, 3), { kind: "notes", label: "  " }, { kind: "skip" }], []), (error: unknown) =>
-    error instanceof MappingError && error.column === 3 && /notes label for the "Referred by" column/.test(error.message),
+    error instanceof MappingError && error.column === 3 && /^Give the notes label for column 4 some words/.test(error.message),
   );
 });
 
@@ -122,7 +122,7 @@ test("New field: addField's label rules and key; refused when a live field has t
       () => mapFile(peopleModule, csv, [builtin("name"), { kind: "new_field", label }, { kind: "skip" }], fieldDefs, NOW),
       (error: unknown) => error instanceof MappingError && error.column === 1 && message.test(error.message),
     );
-  refused([field({ key: "budget", label: "Money" })], "Budget", /^There's already a contact field with the key budget \(Money\)\. Choose it for the "Budget" column/);
+  refused([field({ key: "budget", label: "Money" })], "Budget", /^There's already a contact field with the key budget \(Money\)\. Choose it for column 2 instead/);
   refused([field({ key: "spend", label: "Budget" })], "budget", /^There's already a contact field called Budget \(spend\)\. Pick a different label\.$/);
   refused([], "", /^A field needs a label/);
   refused([], "x".repeat(61), /^A field label can be at most 60 characters/);

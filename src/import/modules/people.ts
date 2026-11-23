@@ -113,7 +113,7 @@ function fieldProblem(def: FieldDefRow): string {
     case "choice":
       return `needs one of: ${(JSON.parse(def.choices ?? "[]") as string[]).join(", ")}`;
     case "text":
-      return "is too long for that field";
+      return "is too long";
   }
 }
 
@@ -183,15 +183,16 @@ export function planPeople(
       continue;
     }
     // What each custom column holds in this row; checked below, only for the fields a row actually fills.
-    const given = row.fields.map(({ key, column, text }) => ({ def: contactField(key), columnName: column, text }));
+    const given = row.fields.map(({ key, text }) => ({ def: contactField(key), text }));
     const checked = (list: typeof given): { fields: CreateRow["fields"]; problem: string | null } => {
       const out: CreateRow["fields"] = {};
-      for (const { def, columnName, text } of list) {
+      for (const { def, text } of list) {
         const value = def.type === "number" && NUMBER.test(text) ? Number(text) : text;
         try {
           validateFieldValues([def], "contact", { [def.key]: value });
         } catch {
-          return { fields: out, problem: `the "${columnName}" column ${fieldProblem(def)}` };
+          // Named by the field's label (the owner's), never by the file's header.
+          return { fields: out, problem: `the "${def.label}" field ${fieldProblem(def)}` };
         }
         out[def.key] = value;
       }

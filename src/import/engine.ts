@@ -47,10 +47,10 @@ export interface ImportOptions {
   fieldDefs: readonly FieldDefRow[];
 }
 
-/** A custom field value one row gives, with the header of the column it came from (for skip reasons). */
+/** A custom field value one row gives, with the 0-based index of the column it came from. */
 export interface MappedField {
   key: string;
-  column: string;
+  column: number;
   text: string;
 }
 
@@ -178,10 +178,12 @@ export function skippedColumnNames(header: readonly string[], targets: readonly 
   });
 }
 
-/** "the "Budget" column", or "column 3" when its header cell is blank. */
-function columnName(header: readonly string[], index: number): string {
-  const name = (header[index] ?? "").trim();
-  return name === "" ? `column ${index + 1}` : `the "${name}" column`;
+/**
+ * "column 3": a column by its number, never by its header cell, which is outside text (the matching step shows the
+ * header beside the number, escaped and labelled). `header` is kept so every caller names the same column the same way.
+ */
+function columnName(_header: readonly string[], index: number): string {
+  return `column ${index + 1}`;
 }
 
 const capitalize = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
@@ -228,8 +230,8 @@ function checkTargets(module: ModuleShape, header: readonly string[], targets: r
       !fieldDefs.some((def) => def.key === target.key && def.entity === module.entity && def.archived === 0)
     ) {
       throw new MappingError(
-        `${capitalize(columnName(header, index))} goes to the field ${target.key}, which isn't a ${module.noun.one} field you can ` +
-          "fill (it may have been archived). Choose again for that column.",
+        `${capitalize(columnName(header, index))} goes to a field that isn't a ${module.noun.one} field you can fill (it may ` +
+          "have been archived). Choose again for that column.",
         index,
       );
     }
@@ -318,6 +320,12 @@ export function mapRows(
   checkTargets(module, header, targets, fieldDefs);
   const columns = new Map(module.columns.map((column) => [column.key, column]));
   const labels = targets.map((target, index) => (target.kind === "notes" ? noteLabel(target.label, header, index) : ""));
+  // What a size refusal calls each column: a built-in column's key or a field's label (both trusted), else its number.
+  const names = targets.map((target, index) => {
+    if (target.kind === "builtin") return `"${target.key}" value`;
+    const def = target.kind === "field" ? fieldDefs.find((candidate) => candidate.key === target.key && candidate.entity === module.entity) : undefined;
+    return def ? `"${def.label}" value` : `value in column ${index + 1}`;
+  });
   return records.map(({ line, fields: cells }) => {
     const values: Record<string, string | null> = Object.fromEntries(module.columns.map((column) => [column.key, null]));
     const fields: MappedField[] = [];
@@ -325,14 +333,14 @@ export function mapRows(
     const sizes = new RowSize(line);
     targets.forEach((target, index) => {
       const raw = cells[index] ?? "";
-      const column = (header[index] ?? "").trim();
+      const name = names[index] ?? `value in column ${index + 1}`;
       if (target.kind === "builtin") {
-        values[target.key] = sizes.add(cleanValue(raw, columns.get(target.key)?.multiline ?? false), column);
+        values[target.key] = sizes.add(cleanValue(raw, columns.get(target.key)?.multiline ?? false), name);
       } else if (target.kind === "field") {
-        const text = sizes.add(cleanValue(raw, false), column);
-        if (text !== null) fields.push({ key: target.key, column, text });
+        const text = sizes.add(cleanValue(raw, false), name);
+        if (text !== null) fields.push({ key: target.key, column: index, text });
       } else if (target.kind === "notes") {
-        const text = sizes.add(cleanValue(raw, false), column);
+        const text = sizes.add(cleanValue(raw, false), name);
         if (text !== null) notes.push({ label: labels[index] ?? "", text });
       }
     });
@@ -365,7 +373,8 @@ class RowSize {
     this.#line = line;
   }
 
-  add(text: string | null, column: string): string | null {
+  /** `name` is how the refusal names the value: `"notes" value`, `"Budget" value` or `value in column 3`. */
+  add(text: string | null, name: string): string | null {
     if (text === null) return null;
     // Stored, one UTF-16 unit takes at most 7 bytes (a lone surrogate, \\uXXXX escaped twice), so a short value
     // needs no measuring.
@@ -374,7 +383,7 @@ class RowSize {
       const bytes = storedBytes(text);
       if (bytes > IMPORT_MAX_VALUE_BYTES) {
         throw new UserError(
-          `Line ${this.#line}'s ${column === "" ? "unnamed" : `"${column}"`} value is ${kb(bytes)}; one value can be at most ` +
+          `Line ${this.#line}'s ${name} is ${kb(bytes)}; one value can be at most ` +
             `${kb(IMPORT_MAX_VALUE_BYTES)}. Shorten it and try again.`,
         );
       }
