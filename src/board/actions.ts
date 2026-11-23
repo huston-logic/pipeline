@@ -12,10 +12,11 @@ import { getChange } from "../services/read.ts";
 import { type Removal, undoChange, undoRemovals } from "../services/undo.ts";
 import { joinAnd } from "../services/describe.ts";
 import { canUndo, undoAction } from "./banner.ts";
-import { MAX_BODY_BYTES, RECORD_FORM_MAX_BYTES } from "../http/limits.ts";
+import { MAX_BODY_BYTES, RECORD_FORM_MAX_BYTES, UPLOAD_MAX_BYTES } from "../http/limits.ts";
 import { type ActionContext, type ActionResult, asOwner, backTo, type MatchedAction, notFound, page, redirect, refusedPage, type Route } from "./action-kit.ts";
 import { isUnqualified } from "../services/lead-status.ts";
 import { EDIT_ROUTES } from "./edit-actions.ts";
+import { IMPORT_ROUTES } from "./import-actions.ts";
 import { PUSH_ROUTES } from "./push-actions.ts";
 import { type FormContext, hidden, postForm } from "./forms.ts";
 import { html } from "./html.ts";
@@ -156,13 +157,16 @@ const ROUTES: Route[] = [
   ...EDIT_ROUTES,
   ...PUSH_ROUTES,
   ...LEAD_ROUTES,
+  ...IMPORT_ROUTES,
 ];
 
 /** The handler for a board write path and its body cap, or null: every other POST keeps the 405 answer. */
 export function matchBoardAction(pathname: string): MatchedAction | null {
   for (const route of ROUTES) {
     const id = route.path.exec(pathname)?.[1];
-    if (id !== undefined) return { run: (ctx) => route.handle(ctx, id), maxBytes: route.big ? RECORD_FORM_MAX_BYTES : MAX_BODY_BYTES };
+    if (id === undefined) continue;
+    const maxBytes = route.upload ? UPLOAD_MAX_BYTES : route.big ? RECORD_FORM_MAX_BYTES : MAX_BODY_BYTES;
+    return { run: (ctx) => route.handle(ctx, id), maxBytes, upload: route.upload === true };
   }
   return null;
 }

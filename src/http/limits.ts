@@ -1,5 +1,6 @@
 // Shared request limits for the two places that take a body from a browser or another server: /intake (decision
-// 0012) and the board's form posts (decision 0014).
+// 0012) and the board's form posts (decision 0014), including the import's file upload (decision 0036).
+import { IMPORT_MAX_BYTES } from "../import/engine.ts";
 
 /** Body size cap for /intake and board posts. */
 export const MAX_BODY_BYTES = 16 * 1024;
@@ -11,13 +12,25 @@ export const MAX_BODY_BYTES = 16 * 1024;
 export const RECORD_FORM_MAX_BYTES = 128 * 1024;
 
 /**
+ * Body size cap for the board import's upload (decision 0036), the one multipart route: the largest file one import
+ * takes, plus 64 KB for the form's other fields and the multipart framing.
+ */
+export const UPLOAD_MAX_BYTES = IMPORT_MAX_BYTES + 64 * 1024;
+
+/**
  * Reads at most `max` bytes, whatever Content-Length claims, and answers null for a longer body without reading the
  * rest.
  */
 export async function readCappedBody(request: Request, max = MAX_BODY_BYTES): Promise<string | null> {
+  const bytes = await readCappedBytes(request, max);
+  return bytes === null ? null : new TextDecoder().decode(bytes);
+}
+
+/** readCappedBody's bytes, not decoded: a multipart body is parsed from them. */
+export async function readCappedBytes(request: Request, max: number): Promise<Uint8Array | null> {
   const declared = Number(request.headers.get("Content-Length"));
   if (Number.isFinite(declared) && declared > max) return null;
-  if (!request.body) return "";
+  if (!request.body) return new Uint8Array(0);
   const reader = request.body.getReader();
   const chunks: Uint8Array[] = [];
   let total = 0;
@@ -37,7 +50,7 @@ export async function readCappedBody(request: Request, max = MAX_BODY_BYTES): Pr
     bytes.set(chunk, offset);
     offset += chunk.byteLength;
   }
-  return new TextDecoder().decode(bytes);
+  return bytes;
 }
 
 async function sha256(text: string): Promise<Uint8Array> {

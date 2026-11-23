@@ -1848,6 +1848,130 @@ button.button {
   }
 }
 
+/* ---------- The board import (decision 0036) ---------- */
+
+/* Where you are in the import, under the h1. */
+.import-step {
+  margin: 0 0 0.5rem;
+  color: var(--ink-2);
+  font-weight: 600;
+}
+
+.import-upload input[type="file"] {
+  min-height: 3rem;
+  padding: 0.625rem 0.875rem;
+}
+
+.import-help > li {
+  padding-block: 0.75rem;
+}
+
+.import-map legend {
+  padding: 0;
+  font-weight: 600;
+}
+
+/* "New people come in as": a card holding the legend, then the two choices. */
+.import-as {
+  min-width: 0;
+  margin: 0;
+}
+
+.import-as legend {
+  float: left;
+  width: 100%;
+  margin-bottom: 0.25rem;
+}
+
+.import-as .check {
+  clear: left;
+}
+
+.check input[type="radio"] {
+  border-radius: var(--r-pill);
+}
+
+/* One card per column of the file: its header (from the file), where it goes, and the label box. */
+.import-columns {
+  display: grid;
+  gap: 0.75rem;
+  margin: 1rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.import-column fieldset {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.import-column legend {
+  float: left;
+  width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.import-column legend + .field {
+  clear: left;
+}
+
+.import-header,
+.import-noname {
+  font-family: var(--font-display);
+  font-size: 1.125rem;
+}
+
+.import-noname {
+  color: var(--ink-2);
+}
+
+.import-counts {
+  max-width: 28rem;
+}
+
+.import-key {
+  color: var(--ink-2);
+  font-size: 0.9375rem;
+}
+
+.import-lines {
+  max-width: 40rem;
+  margin: 0;
+}
+
+.import-apply {
+  margin: 1.5rem 0 0;
+}
+
+.import-change {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  margin: 1rem 0 0;
+}
+
+.import-change p,
+.import-undone {
+  margin: 0;
+  font-weight: 600;
+}
+
+.import-undone {
+  margin-top: 1rem;
+}
+
+@media (min-width: 40rem) {
+  .import-columns {
+    grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr));
+    gap: 1rem;
+  }
+}
+
 /* ---------- Wider screens ---------- */
 
 @media (min-width: 40rem) {

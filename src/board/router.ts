@@ -8,7 +8,7 @@ import { herePath, type PageContext } from "./context.ts";
 import { lookOf } from "./layout.ts";
 import { briefPage } from "./pages/brief.ts";
 import { changesPage } from "./pages/changes.ts";
-import { isContactId, isDealId } from "../ids.ts";
+import { isContactId, isDealId, isImportId } from "../ids.ts";
 import { companiesPage } from "./pages/companies.ts";
 import { contactPage } from "./pages/contact.ts";
 import { contactEditPage } from "./pages/contact-edit.ts";
@@ -20,6 +20,7 @@ import { qualifyPage } from "./pages/qualify.ts";
 import { dealPage } from "./pages/deal.ts";
 import { EMAIL_LOG_PATH, emailLogPage } from "./pages/email-log.ts";
 import { exportPage } from "./pages/export.ts";
+import { importDraft, importGonePage, importPreview, importStart } from "./pages/import.ts";
 import { LEAD_PATH, leadPage } from "./pages/lead-new.ts";
 import { leadsPage } from "./pages/leads.ts";
 import { morePage } from "./pages/more.ts";
@@ -59,15 +60,23 @@ const PAGES = new Map<string, Page>([
   [PERSON_DEAL_PATH, (ctx) => personDealPage(ctx)],
 ]);
 
-/** Anything isDealId or isContactId refuses can't be a record, so it gets the plain 404 without a lookup. */
-const RECORD_PATHS: { path: RegExp; isId: (id: string) => boolean; page: RecordPage }[] = [
+/**
+ * Anything isDealId or isContactId refuses can't be a record, so it gets the plain 404 without a lookup. A record that
+ * isn't there gets the plain 404 too, or its own `gone` page (an import draft that expired, decision 0036).
+ */
+const RECORD_PATHS: { path: RegExp; isId: (id: string) => boolean; page: RecordPage; gone?: (ctx: PageContext) => string }[] = [
   { path: /^\/deals\/([^/]+)$/, isId: isDealId, page: dealPage },
   { path: /^\/contacts\/([^/]+)$/, isId: isContactId, page: contactPage },
   { path: /^\/deals\/([^/]+)\/edit$/, isId: isDealId, page: (ctx, id) => dealEditPage(ctx, id) },
   { path: /^\/contacts\/([^/]+)\/edit$/, isId: isContactId, page: (ctx, id) => contactEditPage(ctx, id) },
   { path: /^\/contacts\/([^/]+)\/deals\/new$/, isId: isContactId, page: (ctx, id) => newDealPage(ctx, id) },
   { path: /^\/contacts\/([^/]+)\/qualify$/, isId: isContactId, page: (ctx, id) => qualifyPage(ctx, id) },
+  { path: /^\/import\/([^/]+)$/, isId: isImportId, page: importDraft, gone: importGonePage },
+  { path: /^\/import\/([^/]+)\/preview$/, isId: isImportId, page: importPreview, gone: importGonePage },
 ];
+
+/** /import: the start of the board import. Only the People module is a page (decision 0036). */
+const IMPORT_START = "/import";
 
 async function contextFor({ db, now, url, csrf }: Omit<PageRequest, "pushKey" | "emailLogAddress">): Promise<PageContext> {
   const here = herePath(url);
@@ -85,13 +94,21 @@ async function contextFor({ db, now, url, csrf }: Omit<PageRequest, "pushKey" | 
 export function matchBoardPage(pathname: string): BoardPage | null {
   const page = PAGES.get(pathname);
   if (page) return async (request) => ({ status: 200, body: await page(await contextFor(request), request) });
+  if (pathname === IMPORT_START) {
+    return async (request) => {
+      const ctx = await contextFor(request);
+      const body = await importStart(ctx);
+      return body === null ? { status: 404, body: notFoundPage({ look: ctx.look }) } : { status: 200, body };
+    };
+  }
   for (const record of RECORD_PATHS) {
     const id = record.path.exec(pathname)?.[1];
     if (id === undefined || !record.isId(id)) continue;
     return async (request) => {
       const ctx = await contextFor(request);
       const body = await record.page(ctx, id);
-      return body === null ? { status: 404, body: notFoundPage({ look: ctx.look }) } : { status: 200, body };
+      if (body !== null) return { status: 200, body };
+      return { status: 404, body: record.gone ? record.gone(ctx) : notFoundPage({ look: ctx.look }) };
     };
   }
   return null;

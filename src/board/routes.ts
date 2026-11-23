@@ -5,7 +5,8 @@
 // through the website form, so its page shows outside text; ct_seed07 has an open and a won deal. The form pages
 // (decisions 0018, 0028) are Add a lead, Add a deal, editing the form lead's contact (ct_seed02, outside values
 // labelled), a new deal for ct_seed07, editing dl_seed01 and Qualify for ct_lead03. ct_lead03 is a Contacted lead
-// (decision 0029).
+// (decision 0029). The import pages (decision 0036) are the seed's drafts: im_seed01 at the matching step, im_seed02
+// at the check step, im_seed03 applied.
 
 export type IconName =
   | "today"
@@ -17,6 +18,7 @@ export type IconName =
   | "changes"
   | "report"
   | "export"
+  | "import"
   | "notifications"
   | "email";
 
@@ -51,6 +53,10 @@ export const boardRoutes: string[] = [
   "/contacts/ct_seed07/deals/new",
   "/contacts/ct_lead03/qualify",
   "/deals/dl_seed01/edit",
+  "/import",
+  "/import/im_seed01",
+  "/import/im_seed02/preview",
+  "/import/im_seed03",
 ];
 
 /** The phone tab bar and the top of the side bar, in this order. */
@@ -63,7 +69,7 @@ export const navItems: NavItem[] = [
     href: "/more",
     label: "More",
     icon: "more",
-    description: "Rules, changes, the monthly report, export, notifications and email logging.",
+    description: "Rules, changes, the monthly report, export, import, notifications and email logging.",
     hint: " pages",
   },
 ];
@@ -74,6 +80,7 @@ export const moreItems: NavItem[] = [
   { href: "/changes", label: "Changes", icon: "changes", description: "Every change from the last 30 days, with its change id." },
   { href: "/report", label: "What it caught", icon: "report", description: "Last month: what your rules did, and how many nudges you acted on." },
   { href: "/export", label: "Export", icon: "export", description: "Download a copy of everything, as JSON or CSV." },
+  { href: "/import", label: "Import", icon: "import", description: "Bring in people from a spreadsheet, as a CSV file." },
   { href: "/notifications", label: "Notifications", icon: "notifications", description: "A phone notification when the daily brief is ready." },
   { href: "/email-log", label: "Email logging", icon: "email", description: "The address to add in Bcc, so an email you send is logged." },
 ];

@@ -5,14 +5,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import type { ActivityRow, AuditRow, ContactRow, DealRow, TaskRow } from "../src/db/db.ts";
+import type { ActivityRow, AuditRow, ContactRow, DealRow, ImportDraftRow, TaskRow } from "../src/db/db.ts";
 import { createTestDb, type SqliteD1 } from "../src/db/sqlite-d1.ts";
 import { UserError } from "../src/services/errors.ts";
 import { listDealsFiltered } from "../src/services/read.ts";
 import { previewRuleFor } from "../src/services/rules.ts";
 import { undoChange } from "../src/services/undo.ts";
 import { dayBoundsUtc, DEFAULT_TZ, localDate } from "../src/time.ts";
-import { buildDevSeed, DEMO_BUSINESS_NAME, parseSeedArgs } from "./seed-dev.ts";
+import { buildDevSeed, DEMO_BUSINESS_NAME, parseSeedArgs, SEED_DRAFT_EXPIRES } from "./seed-dev.ts";
 
 const NOW = new Date("2026-11-19T18:00:00.000Z"); // 10:00 in Los Angeles
 const CONTACT_TYPES = new Set(["form", "email", "call", "meeting", "note"]);
@@ -223,6 +223,22 @@ test("twelve made-up leads across every status, on example domains, with reach, 
   }
   for (const lead of leads.filter((l) => l.lead_status !== "qualified")) {
     assert.deepEqual(await rows(db, `SELECT id FROM deals WHERE contact_id = '${lead.id}'`), [], `${lead.id}: no deal`);
+  }
+});
+
+test("three board import drafts that never expire: matching, check and applied, with fake people only", async () => {
+  const db = await seeded();
+  const drafts = await rows<ImportDraftRow>(db, "SELECT * FROM import_drafts ORDER BY id");
+  assert.deepEqual(drafts.map((d) => [d.id, d.expires_at, d.result === null, d.change_id]), [
+    ["im_seed01", SEED_DRAFT_EXPIRES, true, null],
+    ["im_seed02", SEED_DRAFT_EXPIRES, true, null],
+    ["im_seed03", SEED_DRAFT_EXPIRES, false, "chg_seed00000016"],
+  ]);
+  assert.ok(await db.prepare("SELECT id FROM audit_log WHERE id = 'chg_seed00000016' AND tool = 'import'").first("id"));
+  const parts = await rows<{ draft_id: string; text: string }>(db, "SELECT draft_id, text FROM import_draft_parts ORDER BY draft_id, seq");
+  assert.deepEqual(parts.map((p) => p.draft_id), ["im_seed01", "im_seed02"], "an applied draft keeps no file");
+  for (const { text } of parts) {
+    for (const email of text.match(/[^\s,]+@[^\s,]+/g) ?? []) assert.match(email, /@example\.(com|org|net)$/);
   }
 });
 

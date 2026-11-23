@@ -31,7 +31,13 @@ export interface DevSeed {
   rules: Row[];
   briefs: Row[];
   audit: Row[];
+  /** The board import's drafts (decision 0036): one at each step, never expiring. */
+  importDrafts: Row[];
+  importDraftParts: Row[];
 }
+
+/** The seed's drafts never expire, so the import pages in boardRoutes always have one to show. */
+export const SEED_DRAFT_EXPIRES = "2999-01-01T00:00:00.000Z";
 
 function sqlValue(value: SqlValue): string {
   if (value === null) return "NULL";
@@ -742,7 +748,51 @@ export function devSeed(now: Date, tz: string): DevSeed {
     },
   ];
 
-  return { fieldDefs, contacts, deals, activities, tasks, rules, briefs, audit };
+  // Board import drafts (decision 0036): fake files at the matching step, the check step and applied. The applied one
+  // is the seed's import change above.
+  const csv = (lines: string[]) => `${lines.join("\r\n")}\r\n`;
+  const draft = (n: number, mapping: unknown[], asLeads: boolean, result: Row | null, changeId: string | null, created: string): Row => ({
+    id: `im_seed${n2(n)}`,
+    module: "people",
+    created_at: created,
+    expires_at: SEED_DRAFT_EXPIRES,
+    mapping: JSON.stringify(mapping),
+    options: JSON.stringify({ asLeads }),
+    result: result === null ? null : JSON.stringify(result),
+    change_id: changeId,
+    version: 1,
+  });
+  const to = (key: string) => ({ kind: "builtin", key });
+  const importDrafts: Row[] = [
+    draft(1, [to("name"), to("email"), to("phone"), to("business"), { kind: "notes", label: "How we met" }, { kind: "new_field", label: "Budget" }], false, null, null, day(0, "08:00")),
+    draft(2, [to("name"), to("email"), to("phone"), to("business"), { kind: "notes", label: "Referred by" }, { kind: "skip" }], false, null, null, day(0, "08:10")),
+    draft(3, [to("name"), to("email"), to("business"), to("source")], true, { created: 1, filled: 0, unchanged: 0, skipped: 0, duplicates: 0, fields: 0 }, "chg_seed00000016", day(-3, "09:55")),
+  ];
+  const importDraftParts: Row[] = [
+    {
+      draft_id: "im_seed01",
+      seq: 1,
+      text: csv([
+        "Full name,E-mail,Mobile,Company,How we met,Budget",
+        "Nadia Fenwick,nadia.fenwick@example.com,555-0141,Fenwick Bakery,Trade show,5000",
+        "Oscar Lindqvist,oscar.lindqvist@example.net,,Lindqvist Joinery,Referral,",
+      ]),
+    },
+    {
+      draft_id: "im_seed02",
+      seq: 1,
+      text: csv([
+        "Name,Email,Phone,Company,Referred by,Colour",
+        "Nadia Fenwick,nadia.fenwick@example.com,555-0141,Fenwick Bakery,Pat at the fair,blue",
+        "Oscar Lindqvist,oscar.lindqvist@example.net,,Lindqvist Joinery,,green",
+        "Ruth Adams,ruth.adams@example.org,,,Hannah Cole,",
+        "Bea Quinn,not-an-email,555-0144,Quinn Studio,,",
+        ",,555-0145,,,",
+      ]),
+    },
+  ];
+
+  return { fieldDefs, contacts, deals, activities, tasks, rules, briefs, audit, importDrafts, importDraftParts };
 }
 
 export function buildDevSeed(now: Date, tz: string): string {
@@ -759,6 +809,8 @@ export function buildDevSeed(now: Date, tz: string): string {
     ...seed.rules.map((row) => insert("rules", row)),
     ...seed.briefs.map((row) => insert("briefs", row)),
     ...seed.audit.map((row) => insert("audit_log", row)),
+    ...seed.importDrafts.map((row) => insert("import_drafts", row)),
+    ...seed.importDraftParts.map((row) => insert("import_draft_parts", row)),
     "",
   ].join("\n");
 }

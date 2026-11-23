@@ -3,7 +3,10 @@
 import type { Db, TableName } from "../db/db.ts";
 import { toCsv } from "./csv.ts";
 
-/** Every table that holds the copy's data, in the order the export lists them. write_guard is empty scratch space. */
+/**
+ * Every table that holds the copy's data, in the order the export lists them. write_guard and the board import's drafts
+ * (decision 0036) are scratch space.
+ */
 export const EXPORT_TABLES = [
   "contacts",
   "deals",
