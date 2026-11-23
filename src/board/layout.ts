@@ -65,11 +65,13 @@ function scriptTag(script: boolean | "push"): Html | "" {
   return script ? html`<script src="/board.js" defer></script>\n` : "";
 }
 
-/** The nav item a page belongs to without being it: a deal is in Pipeline; a contact, Leads, a new lead and Companies
- * are in People; Rules, Changes, Export, Notifications and Email logging are in More. */
+/** The nav item a page belongs to without being it: a deal is in Pipeline; a contact, Leads, a new lead, Companies
+ * and the People views (/people, decision 0042) are in People; Rules, Changes, Export, Notifications and Email
+ * logging are in More. */
 function sectionOf(path: string): string | null {
   if (path.startsWith("/deals/")) return "/pipeline";
-  if (path.startsWith("/contacts/") || path === "/companies" || path === "/leads" || path.startsWith("/leads/")) return "/contacts";
+  const people = ["/companies", "/leads", "/people"];
+  if (path.startsWith("/contacts/") || people.includes(path) || path.startsWith("/leads/")) return "/contacts";
   if (moreItems.some((item) => item.href === path)) return "/more";
   return null;
 }

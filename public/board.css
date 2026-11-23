@@ -808,8 +808,11 @@ ol.panel {
 }
 
 /* Contacts: the People / Companies switch, and the search form (a GET form, no JavaScript). */
+/* Saved and status views (decision 0042) can make it long: it wraps rather than scrolling the page sideways. */
 .view-switch {
   display: inline-flex;
+  flex-wrap: wrap;
+  max-width: 100%;
   gap: 0.25rem;
   margin: 0.5rem 0 1.25rem;
   padding: 0.25rem;
