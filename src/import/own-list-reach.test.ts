@@ -35,8 +35,8 @@ const OWN_LIST_LINES: Record<string, RegExp> = {
   "src/import/own-list.ts": /ownList/,
   // The board plan passes the check step's answer on, and holds it off by default.
   "src/board/import-plan.ts": /ownList: (boolean|false|confirmed\.ownList)\b/,
-  // The one place that sets it: the apply post's box.
-  "src/board/import-actions.ts": /^ownList: draft\.module !== "tasks" && ctx\.form\.get\(OWN_LIST_FIELD\) === "yes",$/,
+  // The one place that sets it: the apply post's box, never for a draft the AI app sent rows to (decision 0039).
+  "src/board/import-actions.ts": /^ownList: draft\.module !== "tasks" && !draft\.fromMcp && ctx\.form\.get\(OWN_LIST_FIELD\) === "yes",$/,
 };
 
 test("own list is set only by the board's apply post, passed only by the board's plan and read only by the modules", () => {

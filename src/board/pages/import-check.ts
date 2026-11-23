@@ -264,7 +264,8 @@ ${body}`,
     ...sections,
   ];
   const canApply = plan.create.length + plan.merge.length > 0 || box !== "";
-  const own = canApply ? ownListBox(planned) : "";
+  // Rows the AI app sent (decision 0039) are never offered as the owner's own list.
+  const own = canApply && !draft.fromMcp ? ownListBox(planned) : "";
   const apply = canApply
     ? postForm(
         "import-apply",
@@ -282,6 +283,7 @@ ${own}
 <p class="form-actions"><a class="button button-quiet" href="${draftPath(draft.id)}">Back to matching</a><a class="form-cancel" href="${startPath(draft.module, draft.asLeads)}">Start again</a></p>`;
   return frame(
     html`<p class="lede">Nothing is saved until you tap Import. The import is one change, so one Undo takes it all back.</p>
+${draft.fromMcp ? html`<p>These rows came from your AI app.</p>` : ""}
 ${section("import-counts", "What will happen", html`<div class="card import-counts">${countsList(draft.module, result, draft.asLeads, false)}</div>`)}
 ${all.filter((part) => part !== "")}
 ${apply}`,

@@ -9,6 +9,7 @@ import type { Env } from "../env.ts";
 import { UPLOAD_MAX_BYTES } from "../http/limits.ts";
 import { createDraft, DRAFT_LIFETIME_MS, getDraft } from "../import/drafts.ts";
 import { IMPORT_MAX_BYTES } from "../import/engine.ts";
+import { importRows } from "../services/import-rows.ts";
 
 type Session = { cookie: string; token: string };
 
@@ -710,4 +711,41 @@ test("own list: an instruction-shaped name changes nothing else and is escaped o
   for (const body of [contactPage, skyPage, people]) assert.doesNotMatch(body, /<b>rules<\/b>/, "no markup from the file");
   const won = (tables: Record<string, unknown[]>) => (tables.deals as { id: string; status: string }[]).filter((d) => d.status === "won").map((d) => d.id);
   assert.deepEqual(won(after), won(before), "no deal was marked won");
+});
+
+test("rows the AI app sent never get the own-list box on the board, and a posted own_list is ignored for them", async () => {
+  const db = await seededDb();
+  const env = devEnv(db);
+  const page = await load(env, "/import?module=people");
+  const session = { cookie: page.cookie, token: page.token };
+  const started = await importRows({ db, now: new Date() }, { module: "people", columns: ["name", "email"], rows: [["Fake Mcp", "fake.mcp@example.net"]] });
+  const mcp = await applyImport(env, session, started.data.draft as string, { own_list: "yes" });
+  assert.match(mcp.preview, /<p>These rows came from your AI app\.<\/p>/);
+  assert.doesNotMatch(mcp.preview, /own_list|my own list/);
+  assert.equal(mcp.res.status, 303);
+  assert.deepEqual(JSON.parse((await contactByEmail(db, "fake.mcp@example.net"))?.untrusted_fields ?? ""), ["name", "email"]);
+
+  // An uploaded file the AI app then added rows to counts as the AI app's too.
+  const board2 = await upload(env, { csv: "name,email\r\nFake Board,fake.board2@example.net\r\n" });
+  const id2 = draftIdOf(board2.location);
+  assert.equal((await matchColumns(env, board2.session, id2, {})).res.status, 303);
+  assert.match((await load(env, `/import/${id2}/preview`, board2.session.cookie)).body, OWN_BOX, "a board file has the box");
+  await importRows({ db, now: new Date() }, { module: "people", draft: id2, columns: ["name", "email"], rows: [["Fake Added", "fake.added@example.net"]] });
+  const added = await applyImport(env, board2.session, id2, { own_list: "yes" });
+  assert.match(added.preview, /These rows came from your AI app\./);
+  assert.doesNotMatch(added.preview, /own_list/);
+  assert.equal(added.res.status, 303);
+  for (const email of ["fake.board2@example.net", "fake.added@example.net"]) {
+    assert.deepEqual(JSON.parse((await contactByEmail(db, email))?.untrusted_fields ?? ""), ["name", "email"], email);
+  }
+});
+
+test("the upload is refused while 10 imports wait, and nothing is saved", async () => {
+  const db = await seededDb();
+  const env = devEnv(db);
+  for (let i = 0; i < 10; i++) await createDraft(db, { module: "people", text: "name\r\nFake\r\n", mapping: [], asLeads: false, now: new Date() });
+  const { res, body } = await upload(env, { csv: "name\r\nFake Person\r\n" });
+  assert.equal(res.status, 422);
+  assert.match(body, /There are already 10 imports waiting\. Finish one, or wait two hours for them to expire, then try again\./);
+  assert.equal(await draftCount(db), 10);
 });

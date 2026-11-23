@@ -95,7 +95,13 @@ async function upload(ctx: ActionContext): Promise<ActionResult> {
     throw error;
   }
   const mapping = autoMatch(IMPORT_MODULES[module], header, await listFieldDefs(ctx.db));
-  const id = await createDraft(ctx.db, { module, text, mapping, asLeads, now: ctx.now });
+  let id: string;
+  try {
+    id = await createDraft(ctx.db, { module, text, mapping, asLeads, now: ctx.now });
+  } catch (error) {
+    if (error instanceof UserError) return refuse(error.message);
+    throw error;
+  }
   return redirect(draftPath(id));
 }
 
@@ -192,8 +198,9 @@ async function apply(ctx: ActionContext, id: string): Promise<ActionResult> {
   const confirmed = {
     duplicates: ctx.form.get(ALLOW_DUPLICATES_FIELD) === "yes",
     closed: ctx.form.get(CLOSED_FIELD) === "yes",
-    // The only way to set it (decision 0038): the box on this form. Tasks have no identity columns to confirm.
-    ownList: draft.module !== "tasks" && ctx.form.get(OWN_LIST_FIELD) === "yes",
+    // The only way to set it (decision 0038): the box on this form. Tasks have no identity columns to confirm, and rows
+    // the AI app sent (decision 0039) are never the owner's own list.
+    ownList: draft.module !== "tasks" && !draft.fromMcp && ctx.form.get(OWN_LIST_FIELD) === "yes",
   };
   let planned: Awaited<ReturnType<typeof planDraft>>;
   try {

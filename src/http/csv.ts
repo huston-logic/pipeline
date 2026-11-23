@@ -24,8 +24,15 @@ function cell(value: unknown): string {
 export function toCsv(rows: readonly Record<string, unknown>[], columns?: readonly string[]): string {
   const names = columns ?? [...new Set(rows.flatMap((row) => Object.keys(row)))];
   if (names.length === 0) return "";
-  const lines = [names.map(quote).join(","), ...rows.map((row) => names.map((name) => cell(row[name])).join(","))];
-  return lines.map((line) => `${line}\r\n`).join("");
+  return `${names.map(quote).join(",")}\r\n${csvLines(rows.map((row) => names.map((name) => row[name])))}`;
+}
+
+/**
+ * Rows of cells as CSV records, each ending in CRLF, quoted and formula-guarded like toCsv's: the rows an MCP import
+ * sends, kept in the same format as an uploaded file (decision 0039). An empty row is an empty line.
+ */
+export function csvLines(rows: readonly (readonly unknown[])[]): string {
+  return rows.map((row) => `${row.map(cell).join(",")}\r\n`).join("");
 }
 
 /** Records as arrays of fields. Accepts CRLF, LF or CR line ends and one byte order mark at the start of the file. */

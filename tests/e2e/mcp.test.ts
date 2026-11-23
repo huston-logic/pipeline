@@ -28,11 +28,13 @@ test("lists the tools over Streamable HTTP, with the server instructions", async
     "add_rule",
     "add_stage",
     "add_task",
+    "apply_import",
     "archive_stage",
     "complete_task",
     "get_deal",
     "get_rulebook",
     "get_settings",
+    "import_rows",
     "list_deals",
     "list_fields",
     "list_leads",
@@ -149,4 +151,24 @@ test("building blocks go through real D1: a stage added and renumbered in one ba
   const settings = await ok(client, "update_settings", { briefHour: 9 });
   assert.match(settings.headline, /^Updated settings: brief hour to 9:00 \(change /);
   await ok(client, "undo_change", { changeId: (settings.data as { changeId: string }).changeId });
+});
+
+test("an import over MCP: rows in two calls, a preview, one change on apply, and one undo takes it back", async () => {
+  const columns = ["Name", "Email"];
+  const first = await ok(client, "import_rows", { module: "people", columns, rows: [["Fake Import 1", "fake.import1@example.com"]] });
+  const { draft } = first.data as { draft: string };
+  const second = await ok(client, "import_rows", { module: "people", draft, columns, rows: [["Fake Import 2", "fake.import2@example.com"]] });
+  assert.match(second.headline, new RegExp(`^Import ${draft} \\(2 rows, not saved\\): 2 new contacts,`));
+  const { version } = second.data as { version: number };
+  assert.match(await fails(client, "apply_import", { draft, version: version - 1 }), /^The import changed since that preview\./);
+  const applied = await ok(client, "apply_import", { draft, version });
+  assert.match(applied.headline, /^Imported 2 contacts and filled details on 0 \(change chg_[a-z0-9]{12}\)$/);
+  const again = await ok(client, "apply_import", { draft, version });
+  assert.equal(again.headline, `Import ${draft} was already applied: ${applied.headline}`);
+  const found = (await ok(client, "search_contacts", { query: "Fake Import" })).data as { contacts: { untrusted_fields: string[] }[] };
+  assert.equal(found.contacts.length, 2);
+  for (const contact of found.contacts) assert.deepEqual(contact.untrusted_fields, ["name", "email"]);
+  const { changeId } = applied.data as { changeId: string };
+  assert.match((await ok(client, "undo_change", { changeId })).headline, new RegExp(`^Undid ${changeId}`));
+  assert.equal(((await ok(client, "search_contacts", { query: "Fake Import" })).data as { contacts: unknown[] }).contacts.length, 0);
 });

@@ -4,6 +4,7 @@
 import { McpServer } from "@modelcontextprotocol/server";
 import { SERVER_INSTRUCTIONS } from "./instructions.ts";
 import type { ToolDeps } from "./tool.ts";
+import { registerImportTools } from "./tools-import.ts";
 import { registerReadTools } from "./tools-read.ts";
 import { registerWriteTools } from "./tools-write.ts";
 
@@ -13,5 +14,6 @@ export function createMcpServer(deps: ToolDeps): McpServer {
   const server = new McpServer(SERVER_INFO, { instructions: SERVER_INSTRUCTIONS });
   registerReadTools(server, deps);
   registerWriteTools(server, deps);
+  registerImportTools(server, deps);
   return server;
 }
