@@ -480,6 +480,29 @@ test("audit_parts: one row per change and seq, valid JSON, and only for a change
   assert.equal(await db.prepare("SELECT parts FROM audit_log WHERE id = 'chg_fake'").first("parts"), 0);
 });
 
+test("import drafts: a known module, JSON mapping and options, and the parts go with their draft", async () => {
+  const db = await createTestDb();
+  const draft = (id: string, module = "people", mapping = "[]", options = "{}") =>
+    db
+      .prepare("INSERT INTO import_drafts (id, module, expires_at, mapping, options) VALUES (?, ?, '2026-11-18T19:00:00.000Z', ?, ?)")
+      .bind(id, module, mapping, options)
+      .run();
+  await draft("im_a");
+  await assert.rejects(draft("im_b", "invoices"), /CHECK/);
+  await assert.rejects(draft("im_c", "people", "{}"), /CHECK/);
+  await assert.rejects(draft("im_d", "people", "[]", "[]"), /CHECK/);
+  const part = (id: string, seq: number) =>
+    db.prepare("INSERT INTO import_draft_parts (draft_id, seq, text) VALUES (?, ?, 'name')").bind(id, seq).run();
+  await part("im_a", 1);
+  await assert.rejects(part("im_a", 1), /UNIQUE constraint failed/);
+  await assert.rejects(part("im_missing", 1), /FOREIGN KEY constraint failed/);
+  const row = await db.prepare("SELECT result, change_id, version, created_at FROM import_drafts").first<Record<string, unknown>>();
+  assert.equal(row?.result, null);
+  assert.equal(row?.version, 1);
+  await db.prepare("DELETE FROM import_drafts WHERE id = 'im_a'").run();
+  assert.equal(await count(db, "import_draft_parts"), 0, "deleting a draft deletes its parts");
+});
+
 test("briefs: one per local date, items must be a JSON array", async () => {
   const db = await createTestDb();
   const insert = (id: string, date: string, items = "[]") =>
@@ -525,6 +548,8 @@ const FAKE_ROWS: Record<string, string> = {
     "INSERT INTO push_subscriptions (id, endpoint, p256dh, auth) VALUES ('ps_fake', 'https://push.example.net/send/fake', 'BAAA', 'AAAA')",
   email_log:
     "INSERT INTO email_log (message_key, received_at, local_date, matched, unmatched) VALUES ('<fake@mail.example.com>', '2026-11-18T17:00:00.000Z', '2026-11-18', 1, 0)",
+  import_drafts: "INSERT INTO import_drafts (id, module, expires_at) VALUES ('im_fake', 'people', '2026-11-18T19:00:00.000Z')",
+  import_draft_parts: "INSERT INTO import_draft_parts (draft_id, seq, text) VALUES ('im_fake', 1, 'name\r\nPat Example\r\n')",
 };
 
 /** Tables that hold no rows between batches or belong to SQLite or wrangler. */

@@ -23,6 +23,8 @@ export const TABLE_NAMES = [
   "briefs",
   "push_subscriptions",
   "email_log",
+  "import_drafts",
+  "import_draft_parts",
 ] as const;
 
 export type TableName = (typeof TABLE_NAMES)[number];
@@ -250,6 +252,26 @@ export type AuditRow = {
    */
   parts: number;
 };
+
+/** The board import's draft (migration 0010, decision 0036): scratch space, never audited, exported or logged. */
+export type ImportDraftRow = {
+  id: string;
+  module: "people" | "deals" | "tasks";
+  created_at: string;
+  expires_at: string;
+  /** The column matches, as a JSON array of import targets. */
+  mapping: string;
+  /** JSON object: how new people come in (asLeads). */
+  options: string;
+  /** JSON counts once applied; null before. */
+  result: string | null;
+  /** The import's change, once applied and when it wrote anything. */
+  change_id: string | null;
+  version: number;
+};
+
+/** One piece of a draft's file, at most CHUNK_BYTES as a SQL literal, in seq order. */
+export type ImportDraftPartRow = { draft_id: string; seq: number; text: string };
 
 /** One piece of a big change's snapshot (migration 0009): the same shape as before_json/after_json, for some rows. */
 export type AuditPartRow = {

@@ -113,7 +113,7 @@ function fieldProblem(def: FieldDefRow): string {
     case "choice":
       return `needs one of: ${(JSON.parse(def.choices ?? "[]") as string[]).join(", ")}`;
     case "text":
-      return "is too long for that field";
+      return "is too long";
   }
 }
 
@@ -129,6 +129,14 @@ function storedFields(contact: ExistingContact): Record<string, unknown> {
 const isEmptyField = (value: unknown) => value === undefined || value === null || (typeof value === "string" && value.trim() === "");
 
 const NUMBER = /^-?\d+(\.\d+)?$/;
+
+const isBlank = (text: string | null) => text === null || text.trim() === "";
+
+/** The non-empty texts, one per line; null when there are none. */
+function joinLines(texts: readonly (string | null)[]): string | null {
+  const kept = texts.filter((text): text is string => !isBlank(text));
+  return kept.length === 0 ? null : kept.join("\n");
+}
 
 export function planPeople(
   rows: readonly MappedRow[],
@@ -158,8 +166,9 @@ export function planPeople(
       string | null
     >;
     const skip = (reason: string) => plan.skipped.push({ line, reason });
+    const lines = row.notes.map((note) => `${note.label}: ${note.text}`);
 
-    if (IMPORT_COLUMNS.every((column) => values[column] === null)) {
+    if (IMPORT_COLUMNS.every((column) => values[column] === null) && lines.length === 0) {
       skip("empty row");
       continue;
     }
@@ -174,15 +183,16 @@ export function planPeople(
       continue;
     }
     // What each custom column holds in this row; checked below, only for the fields a row actually fills.
-    const given = row.fields.map(({ key, column, text }) => ({ def: contactField(key), columnName: column, text }));
+    const given = row.fields.map(({ key, text }) => ({ def: contactField(key), text }));
     const checked = (list: typeof given): { fields: CreateRow["fields"]; problem: string | null } => {
       const out: CreateRow["fields"] = {};
-      for (const { def, columnName, text } of list) {
+      for (const { def, text } of list) {
         const value = def.type === "number" && NUMBER.test(text) ? Number(text) : text;
         try {
           validateFieldValues([def], "contact", { [def.key]: value });
         } catch {
-          return { fields: out, problem: `the "${columnName}" column ${fieldProblem(def)}` };
+          // Named by the field's label (the owner's), never by the file's header.
+          return { fields: out, problem: `the "${def.label}" field ${fieldProblem(def)}` };
         }
         out[def.key] = value;
       }
@@ -204,9 +214,16 @@ export function planPeople(
       if (match) {
         const changes: MergeRow["changes"] = {};
         for (const column of FILL_COLUMNS) {
-          const value = values[column];
+          const value = column === "notes" ? joinLines([values.notes, ...lines]) : values[column];
           const current = match[column];
           if (value !== null && (current === null || current.trim() === "")) changes[column] = value;
+        }
+        // Notes on file keep everything they have; "Add to notes" lines they don't hold yet go after it.
+        const added = isBlank(match.notes) ? [] : lines.filter((text) => !(match.notes ?? "").split("\n").includes(text));
+        if (added.length > 0) changes.notes = [match.notes, ...added].join("\n");
+        if ((changes.notes?.length ?? 0) > IMPORT_LIMITS.notes) {
+          skip(`notes is longer than ${IMPORT_LIMITS.notes} characters`);
+          continue;
         }
         const stored = storedFields(match);
         const { fields: filled, problem } = checked(given.filter(({ def }) => isEmptyField(stored[def.key])));
@@ -249,8 +266,13 @@ export function planPeople(
         continue;
       }
     }
+    const notes = joinLines([values.notes, ...lines]);
+    if ((notes?.length ?? 0) > IMPORT_LIMITS.notes) {
+      skip(`notes is longer than ${IMPORT_LIMITS.notes} characters`);
+      continue;
+    }
     if (business !== "" && !seenBusinesses.has(business)) seenBusinesses.set(business, line);
-    plan.create.push({ line, ...values, name, leadStatus, fields: custom });
+    plan.create.push({ line, ...values, notes, name, leadStatus, fields: custom });
   }
   return plan;
 }

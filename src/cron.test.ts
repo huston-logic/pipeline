@@ -8,6 +8,7 @@ import type { Ctx } from "./services/change.ts";
 import { updateDeal } from "./services/deals.ts";
 import { addDeal } from "./services/add-deal.ts";
 import { addRule } from "./services/rules.ts";
+import { createDraft, getDraft } from "./import/drafts.ts";
 
 const NOW = new Date("2026-11-19T18:00:00.000Z");
 const later = (days: number) => new Date(NOW.getTime() + days * 86_400_000);
@@ -30,8 +31,10 @@ test("the hourly run fires the rules and logs only a fixed event name and counts
   assert.deepEqual(lines, [
     { event: "cron_rules_done", rules: 1, fired: 1, alreadyFired: 0, failed: 0, deferred: 0 },
     { event: "cron_brief_done", composed: 1, sent: 0, failed: 0 },
+    { event: "cron_import_drafts_done", deleted: 0 },
     { event: "cron_rules_done", rules: 1, fired: 0, alreadyFired: 0, failed: 0, deferred: 0 },
     { event: "cron_brief_done", composed: 0, sent: 0, failed: 0 },
+    { event: "cron_import_drafts_done", deleted: 0 },
   ]);
   assert.doesNotMatch(JSON.stringify(lines), /Pat|Website/);
 });
@@ -48,8 +51,21 @@ test("a failing job logs a fixed failure event without details, and the other jo
   assert.deepEqual(errors.mock.calls.map((call) => call.arguments[0]), [JSON.stringify({ event: "cron_first_failed" })]);
 });
 
-test("the brief runs after the rules, so tasks the rules just made are in it", () => {
-  assert.deepEqual(CRON_JOBS.map(([name]) => name), ["rules", "brief"]);
+test("the brief runs after the rules, so tasks the rules just made are in it; expired import drafts go last", () => {
+  assert.deepEqual(CRON_JOBS.map(([name]) => name), ["rules", "brief", "import_drafts"]);
+});
+
+test("the hourly run deletes expired import drafts and logs only the count (decision 0036)", async (t) => {
+  const logged = t.mock.method(console, "log", () => {});
+  const db = await openTestDb();
+  const old = await createDraft(db, { module: "people", text: "name\r\nPat Example\r\n", mapping: [], asLeads: false, now: later(-1) });
+  const fresh = await createDraft(db, { module: "people", text: "name\r\nRobin Sample\r\n", mapping: [], asLeads: false, now: NOW });
+  const [, job] = CRON_JOBS.find(([name]) => name === "import_drafts") ?? [];
+  assert.ok(job);
+  assert.deepEqual(await job(envFor(db), NOW), { deleted: 1 });
+  assert.equal(await getDraft(db, old, NOW), null);
+  assert.ok(await getDraft(db, fresh, NOW));
+  assert.doesNotMatch(JSON.stringify(logged.mock.calls), /Pat|Robin/);
 });
 
 test("the brief includes a task the rules created in the same run, and logs no text from it", async (t) => {

@@ -20,6 +20,8 @@ export interface ActionContext {
   now: Date;
   csrf: string;
   form: URLSearchParams;
+  /** The parsed multipart body, on the one upload route (decision 0036); its text fields are in `form` too. */
+  upload?: FormData;
   look: Look;
 }
 
@@ -27,11 +29,14 @@ export type ActionResult = { kind: "redirect"; location: string } | { kind: "pag
 
 export type BoardAction = (ctx: ActionContext) => Promise<ActionResult>;
 
-/** A matched write route: its handler and how big a form body it reads. */
-export type MatchedAction = { run: BoardAction; maxBytes: number };
+/** A matched write route: its handler, how big a form body it reads, and whether that body is multipart. */
+export type MatchedAction = { run: BoardAction; maxBytes: number; upload: boolean };
 
-/** One write route. `big` routes (record forms, Log) read up to RECORD_FORM_MAX_BYTES, the rest 16 KB. */
-export type Route = { path: RegExp; handle: (ctx: ActionContext, id: string) => Promise<ActionResult>; big?: true };
+/**
+ * One write route. `big` routes (record forms, Log) read up to RECORD_FORM_MAX_BYTES, the rest 16 KB. The `upload`
+ * route (the import's file, decision 0036) reads multipart/form-data, and only multipart, up to UPLOAD_MAX_BYTES.
+ */
+export type Route = { path: RegExp; handle: (ctx: ActionContext, id: string) => Promise<ActionResult>; big?: true; upload?: true };
 
 export const asOwner = (ctx: ActionContext, tool: string): Ctx => ({ db: ctx.db, now: ctx.now, actor: "owner", tool });
 

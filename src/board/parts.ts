@@ -29,14 +29,19 @@ export function contactLink(id: string, name: string, outside: boolean): Html {
 
 const ADD = { deal: { path: "/deals/new", label: "Add a deal" }, lead: { path: "/leads/new", label: "Add a lead" } } as const;
 
+/** The board import's start (decision 0036): from Leads, new people come in as leads. */
+const importHref = (from: string) => `/import?module=people${from === "leads" ? "&as=leads" : ""}`;
+
 /**
  * Add a deal and Add a lead under a page's lede (decision 0028), the first as the primary button and any other as a
- * quiet one. `from` is the page they are on, where Cancel goes back to.
+ * quiet one. `from` is the page they are on, where Cancel goes back to. "import" is the Import button (decision 0036).
  */
-export const addButtons = (from: "today" | "pipeline" | "contacts" | "leads", kinds: readonly ("deal" | "lead")[]): Html =>
-  html`<p class="page-action">${kinds.map(
-    (kind, i) => html`<a class="button${i === 0 ? "" : " button-quiet"}" href="${ADD[kind].path}?from=${from}">${ADD[kind].label}</a>`,
-  )}</p>`;
+export const addButtons = (from: "today" | "pipeline" | "contacts" | "leads", kinds: readonly ("deal" | "lead" | "import")[]): Html =>
+  html`<p class="page-action">${kinds.map((kind, i) => {
+    const className = `button${i === 0 ? "" : " button-quiet"}`;
+    if (kind === "import") return html`<a class="${className}" href="${importHref(from)}">Import</a>`;
+    return html`<a class="${className}" href="${ADD[kind].path}?from=${from}">${ADD[kind].label}</a>`;
+  })}</p>`;
 
 export const when =(iso: string, local: string): Html => html`<time datetime="${iso}">${local}</time>`;
 

@@ -199,12 +199,18 @@ test("Today, Pipeline and Contacts each have Add a deal and Add a lead buttons t
   const db = await seededDb();
   const env = devEnv(db);
   for (const [path, from] of [["/", "today"], ["/pipeline", "pipeline"], ["/contacts", "contacts"]] as const) {
+    // Contacts and Leads also have Import (decision 0036); from Leads, new people come in as leads.
+    const importing = from === "contacts" ? '<a class="button button-quiet" href="/import\\?module=people">Import</a>' : "";
     assert.match(
       (await load(env, path)).body,
-      new RegExp(`<p class="page-action"><a class="button" href="/deals/new\\?from=${from}">Add a deal</a><a class="button button-quiet" href="/leads/new\\?from=${from}">Add a lead</a></p>`),
+      new RegExp(`<p class="page-action"><a class="button" href="/deals/new\\?from=${from}">Add a deal</a><a class="button button-quiet" href="/leads/new\\?from=${from}">Add a lead</a>${importing}</p>`),
       path,
     );
   }
+  assert.match(
+    (await load(env, "/leads")).body,
+    /<p class="page-action"><a class="button" href="\/leads\/new\?from=leads">Add a lead<\/a><a class="button button-quiet" href="\/import\?module=people&amp;as=leads">Import<\/a><\/p>/,
+  );
   const today = (await load(env, "/")).body;
   assert.ok(formOf(today, "/tasks/tk_seed01/complete"), "Today's task cards have Done");
 });

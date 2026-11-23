@@ -180,3 +180,77 @@ test("a move from the board: cookie and token from the page, 303 with the change
     await client.close();
   }
 });
+
+test("the board import (decision 0036): upload, match, check, apply and undo a 3-row file", async () => {
+  const start = await fetch(`${server.url}/import?module=people`);
+  assert.equal(start.status, 200);
+  const cookie = (start.headers.getSetCookie()[0] ?? "").split(";")[0] ?? "";
+  const token = /<input type="hidden" name="csrf" value="([^"]+)">/.exec(await start.text())?.[1] ?? "";
+  const headers = { Origin: server.url, Cookie: cookie };
+  const get = async (path: string) => (await fetch(`${server.url}${path}`, { headers })).text();
+  const postFields = (path: string, fields: URLSearchParams) =>
+    fetch(`${server.url}${path}`, {
+      method: "POST",
+      headers: { ...headers, "Content-Type": "application/x-www-form-urlencoded" },
+      body: fields.toString(),
+      redirect: "manual",
+    });
+
+  const csv = [
+    "Name,Email,Met at,Budget",
+    "Ava Importer,ava.importer@example.net,the fair,500",
+    "Ben Importer,ben.importer@example.net,,",
+    "Cleo Importer,not-an-email,a referral,700",
+  ].join("\r\n");
+  const form = new FormData();
+  form.set("csrf", token);
+  form.set("return_to", "/import?module=people");
+  form.set("module", "people");
+  form.set("as", "contacts");
+  form.set("file", new File([csv], "people.csv", { type: "text/csv" }));
+  form.set("paste", "");
+  const uploaded = await fetch(`${server.url}/import`, { method: "POST", headers, body: form, redirect: "manual" });
+  assert.equal(uploaded.status, 303);
+  const draft = uploaded.headers.get("Location") ?? "";
+  assert.match(draft, /^\/import\/im_[a-z2-7]{12}$/);
+
+  const fields = formFields(await get(draft), `${draft}/map`);
+  fields.delete("as");
+  fields.set("as", "contacts");
+  fields.set("col.2", "notes");
+  fields.set("col.3", "new_field");
+  fields.set("label.3", "Budget");
+  const mapped = await postFields(`${draft}/map`, fields);
+  assert.equal(mapped.status, 303);
+  assert.equal(mapped.headers.get("Location"), `${draft}/preview`);
+
+  const preview = await get(`${draft}/preview`);
+  assert.match(preview, /<dt>New contacts<\/dt><dd>2<\/dd>/);
+  assert.match(preview, /<li>Line 4: the email doesn&#39;t look like an email address\.<\/li>/);
+  assert.doesNotMatch(preview, /Importer|the fair/, "no value from the file on the page");
+  const applied = await postFields(`${draft}/apply`, formFields(preview, `${draft}/apply`));
+  assert.equal(applied.status, 303);
+  const done = applied.headers.get("Location") ?? "";
+  const changeId = /change=(chg_[a-z0-9]+)/.exec(done)?.[1] ?? "";
+  assert.ok(changeId);
+  const result = await get(done);
+  assert.match(result, new RegExp(`<p class="banner-text">Imported 2 contacts and filled details on 0; added 1 contact field \\(change ${changeId}\\)</p>`));
+
+  const client: Client = await connectHttp(`${server.url}/mcp`);
+  try {
+    const found = (await ok(client, "search_contacts", { query: "Importer" })).data as { contacts: { name: string; notes?: string | null }[] };
+    assert.deepEqual(found.contacts.map((c) => c.name).sort(), ["Ava Importer", "Ben Importer"]);
+    const again = await postFields(`${draft}/apply`, formFields(preview, `${draft}/apply`));
+    assert.equal(again.headers.get("Location"), done, "a second apply shows the first result");
+
+    const undone = await postFields(`/changes/${changeId}/undo`, new URLSearchParams({ csrf: token, return_to: draft, confirm: "yes" }));
+    assert.equal(undone.status, 303);
+    assert.match(await get(draft), /This import was undone\./);
+    const gone = (await ok(client, "search_contacts", { query: "Importer" })).data as { contacts: unknown[] };
+    assert.deepEqual(gone.contacts, []);
+    const fieldsLeft = (await ok(client, "list_fields")).data as { fields: { key: string }[] };
+    assert.ok(!fieldsLeft.fields.some((f) => f.key === "budget"), "the new field went with the undo");
+  } finally {
+    await client.close();
+  }
+});

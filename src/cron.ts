@@ -2,14 +2,20 @@
 // next. Logs hold fixed event names and counts only, never record data or error text.
 import { runBrief } from "./brief/run.ts";
 import type { Env } from "./env.ts";
+import { deleteExpiredDrafts } from "./import/drafts.ts";
 import { runRules } from "./services/rules.ts";
 
 export type CronJob = (env: Env, now: Date) => Promise<Record<string, number>>;
 
-/** Run in order on every trigger. The brief comes after the rules, so tasks they just created are in it. */
+/**
+ * Run in order on every trigger. The brief comes after the rules, so tasks they just created are in it. Clearing
+ * expired board import drafts (decision 0036) is last and best effort: if it fails, the next hour or the next import
+ * request clears them.
+ */
 export const CRON_JOBS: [name: string, job: CronJob][] = [
   ["rules", (env, now) => runRules(env.DB, now)],
   ["brief", (env, now) => runBrief(env, now)],
+  ["import_drafts", async (env, now) => ({ deleted: await deleteExpiredDrafts(env.DB, now) })],
 ];
 
 export async function runScheduled(env: Env, now: Date, jobs: [string, CronJob][] = CRON_JOBS): Promise<void> {

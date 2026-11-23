@@ -60,22 +60,25 @@ function cleanChoices(choices: string[] | undefined, label: string): string[] {
   return list;
 }
 
-export async function addField(ctx: Ctx, input: FieldInput): Promise<ChangeResult & { fieldId: string; key: string }> {
-  const { db } = ctx;
+/**
+ * The row add_field adds, without writing it: the label checked, the choices cleaned, a clash with a live field of the
+ * same label refused, and the key slugged from the label, made unique among `existing` (archived fields included, since
+ * a key is never reused). The board import plans a new field with it (decision 0036).
+ */
+export function newFieldRow(existing: readonly FieldDefRow[], input: FieldInput, now: Date): FieldDefRow {
   const label = cleanLabel(input.label);
   const choices = input.type === "choice" ? cleanChoices(input.choices, label) : null;
   if (input.type !== "choice" && input.choices !== undefined && input.choices.length > 0) {
     throw new UserError(`Only choice fields take choices; ${label} is ${input.type === "number" ? "a number" : `a ${input.type}`} field. Leave choices out.`);
   }
-  const existing = (await listFieldDefs(db, { entity: input.entity, includeArchived: true }));
-  const clash = existing.find((f) => f.archived === 0 && sameText(f.label, label));
+  const mine = existing.filter((f) => f.entity === input.entity);
+  const clash = mine.find((f) => f.archived === 0 && sameText(f.label, label));
   if (clash) {
     throw new UserError(`There's already a ${input.entity} field called ${clash.label} (${clash.key}). Pick a different label.`);
   }
-  const key = uniqueKey(slugOf(label), new Set(existing.map((f) => f.key)));
-
-  const now = ctx.now.toISOString();
-  const row: FieldDefRow = {
+  const key = uniqueKey(slugOf(label), new Set(mine.map((f) => f.key)));
+  const stamp = now.toISOString();
+  return {
     id: newId("fd"),
     entity: input.entity,
     key,
@@ -84,16 +87,22 @@ export async function addField(ctx: Ctx, input: FieldInput): Promise<ChangeResul
     choices: choices === null ? null : JSON.stringify(choices),
     archived: 0,
     version: 1,
-    created_at: now,
-    updated_at: now,
+    created_at: stamp,
+    updated_at: stamp,
   };
+}
+
+export async function addField(ctx: Ctx, input: FieldInput): Promise<ChangeResult & { fieldId: string; key: string }> {
+  const existing = await listFieldDefs(ctx.db, { entity: input.entity, includeArchived: true });
+  const row = newFieldRow(existing, input, ctx.now);
+  const choices = row.choices === null ? null : parseStringArray(row.choices);
   const kind = choices === null ? input.type : `choice: ${choices.join(", ")}`;
   const result = await commitChange(ctx, {
     target: { table: "field_defs", id: row.id },
-    summary: `Added ${input.entity} field ${label} (key ${key}, ${kind})`,
+    summary: `Added ${input.entity} field ${row.label} (key ${row.key}, ${kind})`,
     changes: [{ table: "field_defs", id: row.id, before: null, after: row }],
   });
-  return { ...result, fieldId: row.id, key };
+  return { ...result, fieldId: row.id, key: row.key };
 }
 
 /** A field by id, "entity.key", or key or label (ignoring case), archived ones included. */

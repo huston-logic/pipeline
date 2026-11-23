@@ -1,11 +1,12 @@
 // A board form post (decisions 0014, 0017), checked in this order before any handler reads the form: the sign-in
 // (index.ts has already refused a misconfigured dev mode), the same origin, a form body of at most 16 KB (128 KB for
-// record forms and Log, decision 0018), then the
-// CSRF token. Each refusal writes nothing.
+// record forms and Log, decision 0018), then the CSRF token. Each refusal writes nothing. The import's upload route
+// (decision 0036) is the only one that reads multipart/form-data, capped at UPLOAD_MAX_BYTES before it is parsed, with
+// the CSRF token read from its form part; every other route refuses multipart.
 import type { AccessResult } from "../auth/access.ts";
 import { getSettings } from "../db/queries.ts";
 import type { Env } from "../env.ts";
-import { readCappedBody } from "../http/limits.ts";
+import { readCappedBody, readCappedBytes } from "../http/limits.ts";
 import { htmlResponse, seeOther, textResponse } from "../http/respond.ts";
 import type { MatchedAction } from "./action-kit.ts";
 import { CSRF_FIELD, type CsrfMode, csrfFromCookies, csrfMatches } from "./csrf.ts";
@@ -15,6 +16,7 @@ import { RETURN_FIELD } from "./forms.ts";
 import { boardReturnPath } from "./return-to.ts";
 
 const FORM_TYPE = "application/x-www-form-urlencoded";
+const MULTIPART_TYPE = "multipart/form-data";
 export const OUT_OF_DATE = "This page is out of date. Reload it and try again.";
 
 /**
@@ -27,7 +29,33 @@ export function isSameOrigin(request: Request): boolean {
   return request.headers.get("Sec-Fetch-Site") === "same-origin";
 }
 
-const isFormType = (contentType: string | null) => (contentType ?? "").split(";")[0]?.trim().toLowerCase() === FORM_TYPE;
+const mediaType = (contentType: string | null) => (contentType ?? "").split(";")[0]?.trim().toLowerCase() ?? "";
+
+type Body = { form: URLSearchParams; upload?: FormData } | { refused: Response };
+
+/** The form as sent: urlencoded, or multipart on the upload route, read up to the route's cap before it is parsed. */
+async function readForm(request: Request, action: MatchedAction): Promise<Body> {
+  const wanted = action.upload ? MULTIPART_TYPE : FORM_TYPE;
+  if (mediaType(request.headers.get("Content-Type")) !== wanted) return { refused: textResponse(`Send the form as ${wanted}.`, 415) };
+  if (!action.upload) {
+    const body = await readCappedBody(request, action.maxBytes);
+    if (body === null) return { refused: textResponse(`That form is too large. Send at most ${action.maxBytes / 1024} KB.`, 413) };
+    return { form: new URLSearchParams(body) };
+  }
+  const bytes = await readCappedBytes(request, action.maxBytes);
+  if (bytes === null) {
+    return { refused: textResponse("That file is too large. One import takes at most 1 MB. Split it into smaller files and import each one.", 413) };
+  }
+  let upload: FormData;
+  try {
+    upload = await new Response(bytes, { headers: { "Content-Type": request.headers.get("Content-Type") ?? "" } }).formData();
+  } catch {
+    return { refused: textResponse("That form couldn't be read. Choose the file again and send it.", 400) };
+  }
+  const form = new URLSearchParams();
+  for (const [name, value] of upload) if (typeof value === "string") form.append(name, value);
+  return { form, upload };
+}
 
 function outOfDatePage(look: Look, back: string): string {
   return renderPage({
@@ -50,12 +78,9 @@ export async function handleBoardPost(
   const auth = await signIn();
   if (!auth.ok) return textResponse(auth.message, auth.status);
   if (!isSameOrigin(request)) return textResponse("This form didn't come from this board, so nothing was changed.", 403);
-  if (!isFormType(request.headers.get("Content-Type"))) {
-    return textResponse(`Send the form as ${FORM_TYPE}.`, 415);
-  }
-  const body = await readCappedBody(request, action.maxBytes);
-  if (body === null) return textResponse(`That form is too large. Send at most ${action.maxBytes / 1024} KB.`, 413);
-  const form = new URLSearchParams(body);
+  const body = await readForm(request, action);
+  if ("refused" in body) return body.refused;
+  const { form, upload } = body;
 
   const look = lookOf(await getSettings(env.DB));
   const cookie = csrfFromCookies(request, mode);
@@ -63,6 +88,6 @@ export async function handleBoardPost(
     return htmlResponse(outOfDatePage(look, boardReturnPath(form.get(RETURN_FIELD)) ?? "/"), 403);
   }
 
-  const result = await action.run({ db: env.DB, env, now: new Date(), csrf: cookie, form, look });
+  const result = await action.run({ db: env.DB, env, now: new Date(), csrf: cookie, form, ...(upload ? { upload } : {}), look });
   return result.kind === "redirect" ? seeOther(result.location) : htmlResponse(result.body, result.status);
 }

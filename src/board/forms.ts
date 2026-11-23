@@ -16,9 +16,17 @@ export const formBasics = (form: FormContext): Html => html`${hidden(CSRF_FIELD,
 /**
  * A POST form to a board write route. A record form is `novalidate` (decision 0018): the server checks every value
  * and answers with its own errors, and the browser's rules (stricter than intake's for an email) would otherwise
- * block saving a form that holds outside data. The input types stay, for the phone's keyboard.
+ * block saving a form that holds outside data. The input types stay, for the phone's keyboard. `multipart` is only
+ * for the import's upload (decision 0036), the one route that reads multipart/form-data.
  */
-export function postForm(className: string, action: string, form: FormContext, inner: Html, options: { novalidate?: boolean } = {}): Html {
+export function postForm(
+  className: string,
+  action: string,
+  form: FormContext,
+  inner: Html,
+  options: { novalidate?: boolean; multipart?: boolean } = {},
+): Html {
   const novalidate = options.novalidate ? html` novalidate` : "";
-  return html`<form class="${className}" method="post" action="${action}"${novalidate}>${formBasics(form)}${inner}</form>`;
+  const enctype = options.multipart ? html` enctype="multipart/form-data"` : "";
+  return html`<form class="${className}" method="post" action="${action}"${enctype}${novalidate}>${formBasics(form)}${inner}</form>`;
 }

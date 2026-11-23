@@ -181,10 +181,10 @@ test("a column named like a contact field, by key or by label, fills that field;
   assert.deepEqual(byLabel.create[0]?.fields, { role: "Owner" });
 });
 
-test("a value that does not fit its field skips the row, naming the column and not the value", () => {
+test("a value that does not fit its field skips the row, naming the field by its label, not the value or the header", () => {
   const fieldDefs = defs([{ key: "size", label: "Team size", type: "number" }]);
   const plan = planImport("name,Team size\r\nA One,lots\r\nB Two,5\r\n", [], { ...LEADS, fieldDefs });
-  assert.deepEqual(plan.skipped, [{ line: 2, reason: 'the "Team size" column needs a number' }]);
+  assert.deepEqual(plan.skipped, [{ line: 2, reason: 'the "Team size" field needs a number' }]);
   assert.deepEqual(plan.create.map((row) => row.name), ["B Two"]);
   assert.throws(() => planImport("name,Role,role\r\nA,b,c\r\n", [], { ...LEADS, fieldDefs: defs([{}]) }), /twice/);
 });
@@ -199,7 +199,7 @@ test("a merge fills only EMPTY custom fields, leaves a set one alone, and ignore
   const none = planImport("name,email,Role\r\nPat,pat@example.com,Manager\r\n", [withRole], { ...LEADS, fieldDefs });
   assert.deepEqual(none.unchanged, [{ line: 2, id: "ct_pat" }]);
   const bad = planImport("name,email,Team size,phone\r\nPat,pat@example.com,lots,555 0101\r\n", [withRole], { ...LEADS, fieldDefs });
-  assert.deepEqual(bad.skipped, [{ line: 2, reason: 'the "Team size" column needs a number' }]);
+  assert.deepEqual(bad.skipped, [{ line: 2, reason: 'the "Team size" field needs a number' }]);
   const set: ExistingContact = { ...withRole, fields: '{"size":3}' };
   const ignored = planImport("name,email,Team size,phone\r\nPat,pat@example.com,lots,555 0101\r\n", [set], { ...LEADS, fieldDefs });
   assert.equal(ignored.skipped.length, 0, "a value for a field that is already set is not checked");

@@ -168,7 +168,7 @@ ${clear}`;
     frame: ctx,
     body: html`<h1>Leads</h1>
 ${peopleSwitch("leads")}
-${addButtons("leads", ["lead"])}
+${addButtons("leads", ["lead", "import"])}
 ${searchForm(asked, list.sources, token)}
 ${results}`,
   });

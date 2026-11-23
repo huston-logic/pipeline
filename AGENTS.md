@@ -35,12 +35,14 @@ this file before changing the repo, and update it when a rule changes.
   token, the look and the change banner) and return `renderPage({ title, description, body, current, frame: ctx })`
   from `src/board/layout.ts` (the layout appends " · <business name>" to the title and draws the banner). Every board
   path is listed in `src/board/routes.ts` (import-free; the accessibility test, `npm run screenshots` and `lighthouserc.cjs` read it),
-  with the nav (`navItems`: Today, Pipeline, People, Brief, More; `moreItems`: Rules, Changes, Export). Pages are
+  with the nav (`navItems`: Today, Pipeline, People, Brief, More; `moreItems`: Rules, Changes, Export, Import). Pages are
   GET and HEAD with `Cache-Control: no-store`; a page that finds no CSRF cookie sets one.
 - **Board edits** (decisions 0014, 0017): every board write path is in the route table in `src/board/actions.ts`; a
   POST to any other path is 405. `src/board/post.ts` checks, in order, the sign-in, the same origin, a form body
-  (`application/x-www-form-urlencoded`, at most 16 KB, or 128 KB on a route marked `big`: record forms and Log) and the CSRF token (hidden `csrf` field matching the cookie),
-  before the handler. A handler calls the same service function as the matching MCP tool (actor `owner`, tool = that
+  (`application/x-www-form-urlencoded`, at most 16 KB, or 128 KB on a route marked `big`: record forms and Log) and the
+  CSRF token (hidden `csrf` field matching the cookie), before the handler. Only a route marked `upload` (the import's
+  `POST /import`, decision 0036) takes `multipart/form-data`, and only that: its raw body is capped at
+  `UPLOAD_MAX_BYTES` (1 MB plus 64 KB) before it is parsed, and the CSRF token is read from its form part. A handler calls the same service function as the matching MCP tool (actor `owner`, tool = that
   tool's name), never SQL of its own, so every edit is audited and undoable; it answers 303 to the form's `return_to`
   (checked by `src/board/return-to.ts`) with `?change=<id>`, which the page shows in the change banner with an Undo
   button. A `UserError` is a 422 page with the message. Closing a deal (Won, Lost, Not now), and an Undo that would
@@ -140,6 +142,19 @@ this file before changing the repo, and update it when a rule changes.
   `IMPORT_MAX_ROW_BYTES`), and the change is `bulk` (`ChangeInput.bulk`): set-based statements with one JSON
   parameter of at most `CHUNK_BYTES` each (`src/services/bulk.ts`), its snapshot in `audit_parts` (migration 0009),
   so no statement nears D1's 100 KB or 100 bound parameters. Read a snapshot only with `readSnapshot`.
+  A mapping chosen by hand goes through `mapFile` (`planNewFields`, then `mapRows`, which checks every target); a
+  `notes` target adds `Label: value` lines to the notes, a `new_field` target creates a text field with `add_field`'s
+  rules (`newFieldRow`) inserted first in the import's own change (`fileChange`).
+- **Board import** (decision 0036): `/import` (step 1), `/import/<id>` (step 2, or the result once applied) and
+  `/import/<id>/preview` (step 3) are pages; `POST /import`, `/import/<id>/map` and `/import/<id>/apply` are in
+  `src/board/import-actions.ts`. The file waits between steps in `import_drafts`/`import_draft_parts` (migration 0010,
+  `src/import/drafts.ts`, ids `im_`): scratch space like `write_guard`, never audited, exported or logged, in pieces of
+  at most `CHUNK_BYTES`, deleted in the same batch that applies the import, which also guards that the draft is still
+  unapplied (a second apply writes nothing). Drafts expire after 2 hours; every import post and the hourly run
+  delete expired ones; the import's GET pages never write. A page shows only the file's header names (escaped, "From
+  your file", in each column's legend), line numbers and counts, never a value from it; no message, skip reason or link
+  quotes a header (columns are named by number, fields by label); the file is never in an address, a cookie or a log
+  line.
 - **Email logging** (decision 0031): the `email` handler in `src/index.ts` loads `src/email/log.ts` with a dynamic
   `import()` (only `src/email/` imports `postal-mime`). Mail is logged only when the envelope `to` is
   `EMAIL_LOG_ADDRESS`, the envelope and header From are owner emails, it is at most 1 MB and Cloudflare's
