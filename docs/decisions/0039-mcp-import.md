@@ -26,7 +26,10 @@ the second apply of one import answers.
     "apply_import with version N". `apply_import` refuses any other version: "The import changed since that preview.
     Check it again (import_rows with the draft, the same columns and no rows), show the owner, then apply." So rows, a
     mapping or a choice saved after the preview the owner said yes to (over MCP or by the board's match step) never go
-    in unseen. An applied draft answers its first result whatever version is sent (the result is checked first).
+    in unseen. An applied draft answers its first result whatever version is sent (the result is checked first). The
+    version a preview answers is the one its own guarded write made (1 for a new draft, the read version + 1 for an
+    append), never read back afterwards, so a change landing between the write and the answer makes the apply refuse
+    (fix round 2).
 - **Drafts are the board's** (`import_drafts`, `import_draft_parts`, migration 0010). The rows are stored as CSV text,
   the header being `columns` (`toCsv`, and `csvLines` for the rows, with the export's formula guard), so the board and
   MCP read one format. Adding rows is one batch (`appendDraft`): the draft guard, the new parts, the mapping and

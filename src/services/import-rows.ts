@@ -18,6 +18,7 @@ import {
   type Draft,
   type DraftChoices,
   draftGuard,
+  DRAFT_LIFETIME_MS,
   draftText,
   getDraft,
   markApplied,
@@ -323,19 +324,21 @@ export async function importRows(ctx: ImportCtx, input: ImportRowsInput): Promis
   checkSize(text, before + input.rows.length);
   // Planned before anything is saved, so a mapping that can't work is refused with nothing written.
   const planned = await planDraft(db, input.module, text, mapping, choices, now);
-  let draft: Draft | null;
+  // The preview answers the version its own guarded write made, never a re-read: a change landing after the write
+  // would give a later version with this plan, and apply_import would then save something no one was shown.
+  let draft: Draft;
   if (opened === null) {
     const id = await createDraft(db, { module: input.module, text, mapping, ...choices, now });
-    draft = await getDraft(db, id, now);
+    const expiresAt = new Date(now.getTime() + DRAFT_LIFETIME_MS).toISOString();
+    draft = { id, module: input.module, expiresAt, mapping, ...choices, result: null, changeId: null, version: 1 };
   } else {
     if (!(await appendDraft(db, opened.draft, { text: added, mapping, choices }, now))) {
       throw new UserError(
         `Import ${opened.draft.id} changed while these rows were being added (another call, or the board), so they weren't added. Send them again.`,
       );
     }
-    draft = await getDraft(db, opened.draft.id, now);
+    draft = { ...opened.draft, mapping, ...choices, version: opened.draft.version + 1 };
   }
-  if (draft === null) throw new UserError(IMPORT_GONE);
   return previewOf(draft, planned, before + input.rows.length);
 }
 
