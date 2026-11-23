@@ -8,6 +8,7 @@ import type { Db, ImportDraftPartRow, ImportDraftRow } from "../db/db.ts";
 import { newId } from "../ids.ts";
 import { CHUNK_BYTES, sqlBytes } from "../services/bulk.ts";
 import { isGuardFailure } from "../services/change.ts";
+import { UserError } from "../services/errors.ts";
 import type { ImportModuleKey, Target } from "./engine.ts";
 
 /** Two hours. */
@@ -43,6 +44,11 @@ export interface Draft {
    */
   allowDuplicates: boolean;
   closedAsHistory: boolean;
+  /**
+   * Started or added to by import_rows (`options.source = "mcp"`, decision 0039): the rows came from the AI app, so the
+   * board never offers "This is my own list" for it. Kept by every later save.
+   */
+  fromMcp: boolean;
   result: ImportResult | null;
   changeId: string | null;
   version: number;
@@ -116,40 +122,65 @@ export interface DraftChoices {
   asLeads: boolean;
   allowDuplicates?: boolean;
   closedAsHistory?: boolean;
+  fromMcp?: boolean;
 }
 
 function choicesOf(json: string): Required<DraftChoices> {
-  let value: { asLeads?: unknown; allowDuplicates?: unknown; closedAsHistory?: unknown } = {};
+  let value: { asLeads?: unknown; allowDuplicates?: unknown; closedAsHistory?: unknown; source?: unknown } = {};
   try {
     value = JSON.parse(json) as typeof value;
   } catch {
     // Reads as no choices.
   }
-  return { asLeads: value.asLeads === true, allowDuplicates: value.allowDuplicates === true, closedAsHistory: value.closedAsHistory === true };
+  return {
+    asLeads: value.asLeads === true,
+    allowDuplicates: value.allowDuplicates === true,
+    closedAsHistory: value.closedAsHistory === true,
+    fromMcp: value.source === "mcp",
+  };
 }
 
-/** The options column: `{"asLeads":…}`, plus import_rows' two choices when it sets them. */
+/** The options column: `{"asLeads":…}`, plus import_rows' two choices when it sets them, and `source` for MCP. */
 function choicesJson(choices: DraftChoices): string {
-  const { asLeads, allowDuplicates, closedAsHistory } = choices;
-  if (allowDuplicates === undefined && closedAsHistory === undefined) return JSON.stringify({ asLeads });
-  return JSON.stringify({ asLeads, allowDuplicates: allowDuplicates === true, closedAsHistory: closedAsHistory === true });
+  const { asLeads, allowDuplicates, closedAsHistory, fromMcp } = choices;
+  const picked = allowDuplicates === undefined && closedAsHistory === undefined ? {} : { allowDuplicates: allowDuplicates === true, closedAsHistory: closedAsHistory === true };
+  return JSON.stringify({ asLeads, ...picked, ...(fromMcp === true ? { source: "mcp" } : {}) });
 }
 
-/** Stores a new draft and its file in one batch; answers its id. */
+/** The most imports that may wait at once, unapplied and unexpired (decision 0039). */
+export const MAX_OPEN_DRAFTS = 10;
+
+export const TOO_MANY_DRAFTS = `There are already ${MAX_OPEN_DRAFTS} imports waiting. Finish one, or wait two hours for them to expire, then try again.`;
+
+/**
+ * Stores a new draft and its file in one batch; answers its id. Refuses (TOO_MANY_DRAFTS) when MAX_OPEN_DRAFTS are
+ * already waiting; callers delete expired drafts first.
+ */
 export async function createDraft(
   db: Db,
   input: { module: ImportModuleKey; text: string; mapping: Target[]; now: Date } & DraftChoices,
 ): Promise<string> {
   const id = newId("im");
+  const stamp = input.now.toISOString();
   const expires = new Date(input.now.getTime() + DRAFT_LIFETIME_MS).toISOString();
-  await db.batch([
-    db
-      .prepare("INSERT INTO import_drafts (id, module, created_at, expires_at, mapping, options) VALUES (?, ?, ?, ?, ?, ?)")
-      .bind(id, input.module, input.now.toISOString(), expires, JSON.stringify(input.mapping), choicesJson(input)),
-    ...splitText(input.text).map((text, i) =>
-      db.prepare("INSERT INTO import_draft_parts (draft_id, seq, text) VALUES (?, ?, ?)").bind(id, i + 1, text),
-    ),
-  ]);
+  try {
+    await db.batch([
+      // In the batch, so two imports started at once can't both take the last place.
+      db
+        .prepare("INSERT INTO write_guard (ok) SELECT COUNT(*) < ? FROM import_drafts WHERE result IS NULL AND expires_at > ?")
+        .bind(MAX_OPEN_DRAFTS, stamp),
+      db
+        .prepare("INSERT INTO import_drafts (id, module, created_at, expires_at, mapping, options) VALUES (?, ?, ?, ?, ?, ?)")
+        .bind(id, input.module, stamp, expires, JSON.stringify(input.mapping), choicesJson(input)),
+      ...splitText(input.text).map((text, i) =>
+        db.prepare("INSERT INTO import_draft_parts (draft_id, seq, text) VALUES (?, ?, ?)").bind(id, i + 1, text),
+      ),
+      db.prepare("DELETE FROM write_guard"),
+    ]);
+  } catch (error) {
+    if (isGuardFailure(error)) throw new UserError(TOO_MANY_DRAFTS, { cause: error });
+    throw error;
+  }
   return id;
 }
 
@@ -187,7 +218,7 @@ export async function saveMapping(db: Db, draft: Draft, mapping: Target[], asLea
     .prepare(
       "UPDATE import_drafts SET mapping = ?, options = ?, version = version + 1 WHERE id = ? AND version = ? AND result IS NULL",
     )
-    .bind(JSON.stringify(mapping), JSON.stringify({ asLeads }), draft.id, draft.version)
+    .bind(JSON.stringify(mapping), choicesJson({ asLeads, fromMcp: draft.fromMcp }), draft.id, draft.version)
     .run();
   return result.meta.changes === 1;
 }

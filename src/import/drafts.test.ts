@@ -13,6 +13,7 @@ import {
   getDraft,
   appendDraft,
   markApplied,
+  MAX_OPEN_DRAFTS,
   saveMapping,
   splitText,
 } from "./drafts.ts";
@@ -37,6 +38,7 @@ test("a draft is made, read back with its file, and gone once it expires", async
     asLeads: true,
     allowDuplicates: false,
     closedAsHistory: false,
+    fromMcp: false,
     result: null,
     changeId: null,
     version: 1,
@@ -161,4 +163,31 @@ test("appendDraft adds rows after the file and saves the choices, once per versi
   assert.deepEqual(await parts(db, id), []);
   const guard = await db.prepare("SELECT COUNT(*) AS n FROM write_guard").first<{ n: number }>();
   assert.equal(guard?.n, 0);
+});
+
+test("a new draft is refused while MAX_OPEN_DRAFTS wait; applied and expired ones don't count", async () => {
+  const db = await openTestDb();
+  const make = (now: Date) => createDraft(db, { module: "people", text: CSV, mapping: [], asLeads: false, now });
+  const ids: string[] = [];
+  for (let i = 0; i < MAX_OPEN_DRAFTS; i++) ids.push(await make(NOW));
+  await assert.rejects(make(NOW), { message: "There are already 10 imports waiting. Finish one, or wait two hours for them to expire, then try again." });
+  const count = async () => (await db.prepare("SELECT COUNT(*) AS n FROM import_drafts").first<{ n: number }>())?.n;
+  assert.equal(await count(), MAX_OPEN_DRAFTS, "nothing written");
+  const one = await getDraft(db, ids[0] ?? "", NOW);
+  assert.ok(one);
+  await markApplied(db, one, { created: 0, filled: 0, unchanged: 0, skipped: 0, duplicates: 0, fields: 0, people: 0, closed: 0, archived: 0 }, NOW);
+  await make(NOW);
+  await assert.rejects(make(NOW));
+  await make(at(DRAFT_LIFETIME_MS));
+});
+
+test("a draft from MCP keeps its source when the board saves its matches", async () => {
+  const db = await openTestDb();
+  const id = await createDraft(db, { module: "people", text: CSV, mapping: [], asLeads: false, fromMcp: true, now: NOW });
+  const draft = await getDraft(db, id, NOW);
+  assert.equal(draft?.fromMcp, true);
+  assert.ok(draft);
+  assert.equal(await saveMapping(db, draft, [{ kind: "builtin", key: "name" }, { kind: "skip" }], true), true);
+  const saved = await getDraft(db, id, NOW);
+  assert.deepEqual([saved?.fromMcp, saved?.asLeads, saved?.allowDuplicates], [true, true, false]);
 });

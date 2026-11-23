@@ -159,9 +159,11 @@ test("an import over MCP: rows in two calls, a preview, one change on apply, and
   const { draft } = first.data as { draft: string };
   const second = await ok(client, "import_rows", { module: "people", draft, columns, rows: [["Fake Import 2", "fake.import2@example.com"]] });
   assert.match(second.headline, new RegExp(`^Import ${draft} \\(2 rows, not saved\\): 2 new contacts,`));
-  const applied = await ok(client, "apply_import", { draft });
+  const { version } = second.data as { version: number };
+  assert.match(await fails(client, "apply_import", { draft, version: version - 1 }), /^The import changed since that preview\./);
+  const applied = await ok(client, "apply_import", { draft, version });
   assert.match(applied.headline, /^Imported 2 contacts and filled details on 0 \(change chg_[a-z0-9]{12}\)$/);
-  const again = await ok(client, "apply_import", { draft });
+  const again = await ok(client, "apply_import", { draft, version });
   assert.equal(again.headline, `Import ${draft} was already applied: ${applied.headline}`);
   const found = (await ok(client, "search_contacts", { query: "Fake Import" })).data as { contacts: { untrusted_fields: string[] }[] };
   assert.equal(found.contacts.length, 2);

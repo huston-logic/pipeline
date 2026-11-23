@@ -6,7 +6,7 @@
 // Every answer gives counts, line numbers, ids, built-in column keys and the owner's field and stage labels, never a
 // value from a row or a column's name: columns are named by number. The plan's options are built from fixed keys here;
 // nothing an MCP call sends reaches them except the three choices below.
-import type { ContactRow, Db, FieldDefRow, StageRow } from "../db/db.ts";
+import type { Db, FieldDefRow, StageRow } from "../db/db.ts";
 import { listFieldDefs } from "../db/queries.ts";
 import { csvLines, toCsv } from "../http/csv.ts";
 import { isImportId, newId } from "../ids.ts";
@@ -20,12 +20,10 @@ import {
   draftGuard,
   draftText,
   getDraft,
-  type ImportResult,
   markApplied,
 } from "../import/drafts.ts";
 import {
   autoMatch,
-  fileChange,
   IMPORT_MAX_BYTES,
   IMPORT_MAX_ROWS,
   type ImportModuleKey,
@@ -39,12 +37,13 @@ import {
   type Target,
 } from "../import/engine.ts";
 import { contactsOnFile, dealsOnFile, tasksOnFile } from "../import/load.ts";
-import { type DealsCtx, type DealsPlan, dealsModule } from "../import/modules/deals.ts";
+import { type DealsPlan, dealsModule } from "../import/modules/deals.ts";
 import { IMPORT_MODULES } from "../import/modules/index.ts";
-import { type PeoplePlan, peopleModule } from "../import/modules/people.ts";
-import { type TasksCtx, type TasksPlan, tasksModule } from "../import/modules/tasks.ts";
+import { peopleModule } from "../import/modules/people.ts";
+import { tasksModule } from "../import/modules/tasks.ts";
+import { type PlannedImport, plannedChange, plannedResult } from "../import/planned.ts";
 import { RecordTooLargeError } from "./bulk.ts";
-import { type ChangeInput, commitChange, isDuplicateEmailFailure, isDuplicateIdFailure, StaleWriteError } from "./change.ts";
+import { commitChange, isDuplicateEmailFailure, isDuplicateIdFailure, StaleWriteError } from "./change.ts";
 import { UserError } from "./errors.ts";
 
 /** The most rows one import_rows call takes. */
@@ -65,7 +64,8 @@ export interface ImportRowsInput {
   draft?: string | undefined;
   columns: readonly string[];
   rows: readonly (readonly string[])[];
-  mapping?: Readonly<Record<string, string>> | undefined;
+  /** Checked here, not by the schema, so no refusal echoes a column's name (zod names a record's key). */
+  mapping?: Readonly<Record<string, unknown>> | undefined;
   as?: "contacts" | "leads" | undefined;
   allowDuplicates?: boolean | undefined;
   closedDeals?: boolean | undefined;
@@ -81,10 +81,7 @@ const plural = (n: number, one: string, many: string) => `${count(n)} ${n === 1 
 
 const IMPORT_NOUN: Record<ImportModuleKey, string> = { people: "your contacts", deals: "your deals", tasks: "your tasks" };
 
-type Planned =
-  | { module: "people"; plan: PeoplePlan; ctx: ContactRow[]; newFields: FieldDefRow[] }
-  | { module: "deals"; plan: DealsPlan; ctx: DealsCtx; newFields: FieldDefRow[] }
-  | { module: "tasks"; plan: TasksPlan; ctx: TasksCtx; newFields: FieldDefRow[] };
+type Planned = PlannedImport;
 
 interface Mapped {
   rows: MappedRow[];
@@ -114,7 +111,9 @@ function mapDraft(module: ModuleShape, text: string, targets: readonly Target[],
 
 type Choices = Required<DraftChoices>;
 
-async function planDraft(db: Db, module: ImportModuleKey, text: string, mapping: readonly Target[], choices: Choices, now: Date): Promise<Planned> {
+type PlanChoices = Pick<Choices, "asLeads" | "allowDuplicates" | "closedAsHistory">;
+
+async function planDraft(db: Db, module: ImportModuleKey, text: string, mapping: readonly Target[], choices: PlanChoices, now: Date): Promise<Planned> {
   const fieldDefs = await listFieldDefs(db, { includeArchived: true });
   switch (module) {
     case "people": {
@@ -134,46 +133,6 @@ async function planDraft(db: Db, module: ImportModuleKey, text: string, mapping:
       const ctx = await tasksOnFile(db, mapped.rows);
       return { module, ctx, newFields: mapped.newFields, plan: planRows(tasksModule, mapped.rows, ctx, { fieldDefs: mapped.fieldDefs }) };
     }
-  }
-}
-
-function changeOf(planned: Planned, now: Date): ChangeInput | null {
-  switch (planned.module) {
-    case "people":
-      return fileChange(peopleModule, planned.plan, planned.ctx, now, planned.newFields);
-    case "deals":
-      return fileChange(dealsModule, planned.plan, planned.ctx, now, planned.newFields);
-    case "tasks":
-      return fileChange(tasksModule, planned.plan, planned.ctx, now, planned.newFields);
-  }
-}
-
-/** The counts the board's check step forecasts (wrote false) and an applied draft keeps. */
-function resultOf(planned: Planned, wrote: boolean): ImportResult {
-  const { plan } = planned;
-  const base: ImportResult = {
-    created: plan.create.length,
-    filled: plan.merge.length,
-    unchanged: plan.unchanged.length,
-    skipped: plan.skipped.length,
-    duplicates: 0,
-    fields: wrote ? planned.newFields.length : 0,
-    people: 0,
-    closed: 0,
-    archived: 0,
-  };
-  switch (planned.module) {
-    case "people":
-      return { ...base, duplicates: planned.plan.duplicates.length, archived: planned.plan.archived.length };
-    case "deals":
-      return {
-        ...base,
-        people: planned.plan.people.length,
-        closed: planned.plan.create.filter((row) => row.status !== "open").length,
-        archived: planned.plan.archived.length,
-      };
-    case "tasks":
-      return base;
   }
 }
 
@@ -204,17 +163,27 @@ function targetOf(module: (typeof IMPORT_MODULES)[ImportModuleKey], value: strin
   }
 }
 
-/** Where each column goes: the mapping's choice, by column name, else matched by name as the board does. */
+/** The most characters a mapping key (a column's name, as columns gives it) and a mapping value may have. */
+const MAPPING_KEY_MAX = 500;
+const MAPPING_VALUE_MAX = 200;
+
+/**
+ * Where each column goes: the mapping's choice, by column name, over `base` (the draft's saved mapping, or the columns
+ * matched by name for a new import). Refuses, naming columns by number only, a key that isn't a column and a value
+ * that isn't a short text.
+ */
 function targetsFor(
   module: (typeof IMPORT_MODULES)[ImportModuleKey],
   columns: readonly string[],
-  mapping: Readonly<Record<string, string>> | undefined,
-  fieldDefs: readonly FieldDefRow[],
+  mapping: Readonly<Record<string, unknown>> | undefined,
+  base: readonly Target[],
 ): Target[] {
-  const auto = autoMatch(module, [...columns], fieldDefs);
-  if (mapping === undefined) return auto;
+  if (mapping === undefined) return [...base];
   const chosen = new Map<number, string>();
   for (const [name, value] of Object.entries(mapping)) {
+    if (name.length > MAPPING_KEY_MAX) {
+      throw new UserError(`A mapping key can be at most ${MAPPING_KEY_MAX} characters: use each column's name exactly as columns gives it.`);
+    }
     const at = columns.flatMap((column, i) => (column === name ? [i] : []));
     const [first, second] = at;
     if (first === undefined) {
@@ -225,11 +194,17 @@ function targetsFor(
         `Columns ${first + 1} and ${second + 1} have the same name, so the mapping can't tell them apart. Give them different names in columns.`,
       );
     }
+    if (typeof value !== "string") {
+      throw new UserError(`The mapping for column ${first + 1} must be text: builtin:<key>, field:<key>, new_field:<label>, notes:<label> or skip.`);
+    }
+    if (value.length > MAPPING_VALUE_MAX) {
+      throw new UserError(`The mapping for column ${first + 1} is longer than ${MAPPING_VALUE_MAX} characters. Shorten its label.`);
+    }
     chosen.set(first, value);
   }
   return columns.map((_, i) => {
     const value = chosen.get(i);
-    return value === undefined ? (auto[i] ?? { kind: "skip" }) : targetOf(module, value, i);
+    return value === undefined ? (base[i] ?? { kind: "skip" }) : targetOf(module, value, i);
   });
 }
 
@@ -253,6 +228,17 @@ function checkRows(input: ImportRowsInput): void {
   }
   if (columns.length > IMPORT_MAX_MCP_COLUMNS) {
     throw new UserError(`This sheet has ${columns.length} columns. One import takes at most ${IMPORT_MAX_MCP_COLUMNS}. Leave out the columns you don't need.`);
+  }
+  // /mcp has no body cap of its own (the platform's is 100 MB), so a call too big to ever fit one import is refused
+  // before its CSV is built.
+  const encoder = new TextEncoder();
+  let bytes = 0;
+  for (const row of rows) for (const value of row) bytes += encoder.encode(value).byteLength;
+  if (bytes > IMPORT_MAX_BYTES) {
+    const mb = (Math.ceil((bytes * 10) / IMPORT_MAX_BYTES) / 10).toFixed(1);
+    throw new UserError(
+      `This call's values add up to ${mb} MB. One import takes at most 1 MB in all. Send fewer rows a call, or split the sheet into smaller imports.`,
+    );
   }
   const long = rows.findIndex((row) => row.length > columns.length);
   if (long !== -1) {
@@ -282,8 +268,6 @@ async function openDraft(db: Db, id: string, input: ImportRowsInput, now: Date):
   }
   return { draft, text };
 }
-
-const joined = (text: string, more: string) => (text === "" || /[\r\n]$/.test(text) ? text + more : `${text}\r\n${more}`);
 
 function checkSize(text: string, rows: number): void {
   if (rows > IMPORT_MAX_ROWS) {
@@ -320,16 +304,21 @@ export async function importRows(ctx: ImportCtx, input: ImportRowsInput): Promis
     throw new UserError("Send at least one row. Only a call with draft may send no rows (to change the mapping or the choices).");
   }
   const module = IMPORT_MODULES[input.module];
-  const fieldDefs = await listFieldDefs(db, { includeArchived: true });
-  const mapping = input.mapping === undefined && opened !== null ? opened.draft.mapping : targetsFor(module, input.columns, input.mapping, fieldDefs);
   const previous = opened?.draft;
+  // A later call's mapping changes only the columns it names; the rest keep what the draft has.
+  const saved = previous !== undefined && previous.mapping.length === input.columns.length ? previous.mapping : null;
+  const base = saved ?? autoMatch(module, [...input.columns], await listFieldDefs(db, { includeArchived: true }));
+  const mapping = targetsFor(module, input.columns, input.mapping, base);
   const choices: Choices = {
     asLeads: input.module === "people" && (input.as === undefined ? previous?.asLeads === true : input.as === "leads"),
     allowDuplicates: input.module === "people" && (input.allowDuplicates ?? previous?.allowDuplicates ?? false),
     closedAsHistory: input.module === "deals" && (input.closedDeals ?? previous?.closedAsHistory ?? false),
+    fromMcp: true,
   };
-  const added = csvLines(input.rows);
-  const text = opened === null ? toCsv([], input.columns) + added : joined(opened.text, added);
+  const lines = csvLines(input.rows);
+  // Exactly what is planned is what is stored: a file that doesn't end in a line break gets one before the rows.
+  const added = opened === null || lines === "" || /[\r\n]$/.test(opened.text) ? lines : `\r\n${lines}`;
+  const text = opened === null ? toCsv([], input.columns) + added : opened.text + added;
   const before = opened === null ? 0 : readCsv(opened.text).records.length;
   checkSize(text, before + input.rows.length);
   // Planned before anything is saved, so a mapping that can't work is refused with nothing written.
@@ -364,7 +353,7 @@ function closedByStage(closed: DealsPlan["closed"], stages: readonly StageRow[])
 /** The board's check-step preview as data: counts, line numbers, ids and labels only. */
 function previewOf(draft: Draft, planned: Planned, rows: number): ImportPreview {
   const { plan } = planned;
-  const result = { ...resultOf(planned, false), fields: planned.newFields.length };
+  const result = { ...plannedResult(planned, false), fields: planned.newFields.length };
   const notes: string[] = [];
   const counts: Record<string, number> = {
     new: result.created,
@@ -374,6 +363,7 @@ function previewOf(draft: Draft, planned: Planned, rows: number): ImportPreview 
   };
   const data: Record<string, unknown> = {
     draft: draft.id,
+    version: draft.version,
     module: draft.module,
     expiresAt: draft.expiresAt,
     rows,
@@ -451,7 +441,7 @@ function previewOf(draft: Draft, planned: Planned, rows: number): ImportPreview 
   const fields = planned.newFields.length > 0 ? `, ${plural(planned.newFields.length, "new field", "new fields")}` : "";
   const headline =
     `Import ${draft.id} (${plural(rows, "row", "rows")}, not saved): ${parts.join(", ")}${fields}. ` +
-    "Show the owner this preview; apply_import saves it once they say yes.";
+    `Show the owner this preview; apply_import with version ${draft.version} saves it once they say yes.`;
   return { headline, data };
 }
 
@@ -481,25 +471,38 @@ async function settled(db: Db, id: string, now: Date): Promise<AppliedImport | n
 
 const AGAIN = "Check the preview again (import_rows with this draft, the same columns and no rows), then apply.";
 
-/** apply_import: the draft planned against the records on file now, written as one change. */
-export async function applyImport(ctx: ImportCtx, id: string): Promise<AppliedImport> {
+export const IMPORT_CHANGED =
+  "The import changed since that preview. Check it again (import_rows with the draft, the same columns and no rows), show the owner, then apply.";
+
+/** A stored draft planned as apply_import plans it, with the draft's own choices (and a test compares the board's). */
+export function planStoredDraft(db: Db, draft: Draft, text: string, now: Date): Promise<PlannedImport> {
+  const choices = { asLeads: draft.asLeads, allowDuplicates: draft.allowDuplicates, closedAsHistory: draft.closedAsHistory };
+  return planDraft(db, draft.module, text, draft.mapping, choices, now);
+}
+
+/**
+ * apply_import: the draft planned against the records on file now, written as one change, only at the version the
+ * preview the owner saw answered (rows, a mapping or a choice saved since, here or on the board, refuse). An applied
+ * draft answers its first result whatever the version.
+ */
+export async function applyImport(ctx: ImportCtx, id: string, version: number): Promise<AppliedImport> {
   const { db, now } = ctx;
   await deleteExpiredDrafts(db, now);
   const draft = isImportId(id) ? await getDraft(db, id, now) : null;
   if (draft === null) throw new UserError(IMPORT_GONE);
   if (draft.result !== null) return appliedAnswer(db, draft);
+  if (draft.version !== version) throw new UserError(IMPORT_CHANGED);
   let planned: Planned;
   try {
-    const choices = { asLeads: draft.asLeads, allowDuplicates: draft.allowDuplicates, closedAsHistory: draft.closedAsHistory };
-    planned = await planDraft(db, draft.module, await draftText(db, draft.id), draft.mapping, choices, now);
+    planned = await planStoredDraft(db, draft, await draftText(db, draft.id), now);
   } catch (error) {
     const answer = await settled(db, draft.id, now);
     if (answer !== null) return answer;
     throw error;
   }
-  const input = changeOf(planned, now);
+  const input = plannedChange(planned, now);
   if (input === null) {
-    if (await markApplied(db, draft, resultOf(planned, false), now)) {
+    if (await markApplied(db, draft, plannedResult(planned, false), now)) {
       return { summary: `Nothing in import ${draft.id} would change ${IMPORT_NOUN[draft.module]}, so nothing was saved.`, changeId: null, draft: draft.id, alreadyApplied: false };
     }
     const answer = await settled(db, draft.id, now);
@@ -510,7 +513,7 @@ export async function applyImport(ctx: ImportCtx, id: string): Promise<AppliedIm
   try {
     const { summary } = await commitChange(
       { db, now, actor: "ai", tool: TOOL },
-      { ...input, changeId, leading: [draftGuard(db, draft, now)], extra: appliedStatements(db, draft, resultOf(planned, true), changeId) },
+      { ...input, changeId, leading: [draftGuard(db, draft, now)], extra: appliedStatements(db, draft, plannedResult(planned, true), changeId) },
     );
     return { summary, changeId, draft: draft.id, alreadyApplied: false };
   } catch (error) {
