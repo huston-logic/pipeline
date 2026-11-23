@@ -21,7 +21,9 @@ PR #29 ("install lessons from the first live copy") corroborates, and its config
 git-ignored `.copies/`. What that copy runs now can't be checked from the repo or `gh`: whether it has been updated to
 run 4's code (migrations 0006 to 0008) is open until you confirm it (Needs Grant 1).
 
-**Open.** One PR (the minor findings, see the Changelog). What is left is in "Needs Grant" and in "Minor findings" below.
+**Open.** Run 5, "Import and people", is in progress (docs/PLAN.md, "Run 5"; plan
+`docs/superpowers/plans/2026-11-22-run5-import-and-people.md`). Its closing PR updates this file. What is left from
+earlier runs is in "Needs Grant" and in "Minor findings" below.
 
 **Dependencies** (exact-pinned in `package.json`): runtime `agents` 0.33.0, `@modelcontextprotocol/server` 2.4.0,
 `@cloudflare/workers-oauth-provider` 1.2.4, `postal-mime` 4.2.1, `zod` 4.6.7. Development: `@playwright/test` 1.65.0,
@@ -44,7 +46,8 @@ run on this Mac (Needs Grant 5); CI runs it.
 - 2026-11-21, status format: STATUS.md reshaped into Current state, Changelog, Needs Grant and For the master, facts
   re-checked against the repo and `gh`; "Status and source of truth" added to CLAUDE.md. #44.
 - 2026-11-21, minor findings: seven of the run 4 minor findings fixed with tests first; the rest sorted into "wording"
-  and "your call" in the section below. This PR.
+  and "your call" in the section below. #45.
+- 2026-11-22, run 5 started: the Run 5 table in PLAN.md and the plan. This PR.
 
 ## Needs Grant
 
