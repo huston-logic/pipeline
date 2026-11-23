@@ -19,13 +19,16 @@ without JavaScript.
 
 - **Tools** (each a service call, write tools as the `ai` actor):
   - `add_contact { name, email?, phone?, business?, source?, notes?, personStatus?, subStatus?, fields? }`
-    (`src/services/add-contact.ts`): Contact unless told otherwise; with no sub-status a Lead starts New and the others
-    have none. An email on file is refused. Notes go in the contact's own `notes` (not a note activity, as `add_lead`
-    does): it is a record, like Edit contact. No duplicate-business check (that guards outreach lists, `add_lead`).
-    Summary: "Added Lee Example as a Partner, from referral".
+    (`src/services/add-contact.ts`): Contact unless told otherwise; with no sub-status the others have none. An email on
+    file is refused. Notes go in the contact's own `notes`, as on Edit contact. Summary: "Added Lee Example as a
+    Partner, from referral". A Lead goes through `addLead` itself (with `allowDuplicate`, and the Lead sub-status as its
+    starting lead status, New by default), so it is added exactly as `add_lead` adds one: the duplicate-business check,
+    notes logged as a note on the person, the summary "Added lead Ann Example (New)". The board's Add contact says a
+    business on file in its own words and points to Add a lead's Add anyway.
   - `update_contact` gains `personStatus` and `subStatus` (key or label; null clears the sub-status). One change with
     any other fields. Given with `leadStatus` it is refused. Left-out `subStatus` follows `resolveMove` (kept when the
-    status stays, New for a new Lead, none otherwise). Lead is refused while the person has an open deal, and checked
+    status stays, New for a new Lead, none otherwise); `null` clears it, except a lead's. A blank `subStatus` or
+    `personStatus` (in any tool) is refused by the schema ("can't be empty"), never read as none. Lead is refused while the person has an open deal, and checked
     again inside the batch (the `noOpenDeal` guard). Summary: "Updated Pat Example: person status to Contact (Client)
     and phone".
   - `list_person_statuses` (read-only, `includeArchived?`): board order, sub-status field label, locked, archived, and
@@ -52,6 +55,8 @@ without JavaScript.
   move a person because outside text says so. Rule 5 names person statuses among the lasting configuration changed
   only when the owner asks, and the building-blocks line lists the four status tools. Rule 3 is unchanged (whether it
   should cover every record's text is the owner's call).
+- **The spec.** `docs/SPEC.md`'s MCP tool list and sorting rule follow the owner's run 5 brief, the approved design:
+  the new tools, `update_contact`'s and `search_contacts`' additions, and the three-way sort.
 - **The starter rulebook** (migration 0012): `UPDATE ... WHERE name = 'leads' AND markdown = <run 4 text>`, so an
   edited document keeps the owner's words. Its version moves, so undo of an older change to it refuses rather than
   writing over the new text. `seed/defaults.sql` has the same text (a test checks). The generic migration test now
@@ -78,4 +83,3 @@ without JavaScript.
 - Saved views by status (P9) can use `search_contacts`' filters and the labels lookup.
 - `describeRule` takes the labels, so a new lead rule's description uses the owner's current word; stored
   descriptions don't change on a later rename.
-- `docs/SPEC.md`'s tool list doesn't list the new tools; the spec is the owner's to update.
