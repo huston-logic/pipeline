@@ -36,8 +36,9 @@ this file before changing the repo, and update it when a rule changes.
   from `src/board/layout.ts` (the layout appends " · <business name>" to the title and draws the banner). Every board
   path is listed in `boardRoutes` in `src/board/routes.ts` (import-free; the accessibility test and `npm run screenshots`
   read it); `lighthouserc.cjs` scores `lighthouseRoutes`, one of each kind of page, at most 20 (a test checks), 3 runs
-  each. Every new page goes in `boardRoutes`; a new kind of page also takes a `lighthouseRoutes` slot. The file also has
-  the nav (`navItems`: Today, Pipeline, People, Brief, More; `moreItems`: Rules, Changes, Export, Import). Pages are
+  each; `npm run test:lighthouse` (`scripts/lighthouse.mjs`) collects again, at most twice, only the pages whose runs
+  crashed (Chrome's `NO_NAVSTART`), then checks scores once. Every new page goes in `boardRoutes`; a new kind of page
+  also takes a `lighthouseRoutes` slot. The file also has the nav (`navItems`: Today, Pipeline, People, Brief, More; `moreItems`: Rules, Changes, Export, Import). Pages are
   GET and HEAD with `Cache-Control: no-store`; a page that finds no CSRF cookie sets one.
 - **Board edits** (decisions 0014, 0017): every board write path is in the route table in `src/board/actions.ts`; a
   POST to any other path is 405. `src/board/post.ts` checks, in order, the sign-in, the same origin, a form body
