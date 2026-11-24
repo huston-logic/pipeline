@@ -35,9 +35,9 @@ it only when you run the update (Needs Grant 1); the same goes for run 6's code 
 added none.
 
 **Tests.** `npm run check` on the run 6 branches passes: 1,512 unit and 56 end-to-end tests, 0 failures. Local a11y does
-not run on this Mac (Needs Grant 9) and local Lighthouse is no longer run (CLAUDE.md, #56); CI runs both. CI's
+not run on this Mac (Needs Grant 8) and local Lighthouse is no longer run (CLAUDE.md, #56); CI runs both. CI's
 `lighthouse` job scores 20 pages, 3 runs each (about 12 minutes), and collects again only the pages whose runs crashed
-(#59). The `a11y` job runs about 284 tests and takes about 6 minutes (see Needs Grant 2).
+(#59). The `a11y` job runs about 284 tests and takes about 6 minutes, inside the 12-minute `globalTimeout` (#69, confirmed by you on 2026-11-24).
 
 ## Changelog
 
@@ -74,23 +74,19 @@ Steps only you can do, in order. Items marked "per copy" repeat for each new cli
    docs/UPDATING.md: "Run 4: after you update" and "Run 5: after you update" if that copy never had them, then "Run 6:
    after you update" (reconnect the connector, the AI app now waits for your yes, "Apply small changes", turning time
    tracking on, the sentences to try). Not checkable from here which run the copy is on.
-2. **The a11y test's time limit** (#69). The accessibility suite grew to about 284 tests and hit Playwright's
-   `globalTimeout` of 5 minutes, so it was raised to 12 minutes in `playwright.config.ts` (the job's own limit is 15; the
-   suite now takes about 6). CLAUDE.md asks before changing CI behaviour; this was ruled a test-runner setting, not the
-   workflow, a required check or a threshold, and it weakens no test. Confirm it, or say to revert it.
-3. **Does a D1 batch count as one query on the free plan?** Unknown (nothing here runs against real D1). A 25-action
+2. **Does a D1 batch count as one query on the free plan?** Unknown (nothing here runs against real D1). A 25-action
    proposal makes about 31 D1 calls (D1 is Cloudflare's database; a batch sends several database steps at once),
    inside the free plan's 50 if a batch is one call, but its trial and apply batches hold about 44 steps each, near 50
    if every step counts. After a 25-action proposal on the first copy, look in the Cloudflare dashboard: Workers & Pages,
    the copy's Worker, Metrics, or D1, the copy's database, Metrics ("queries"). If you can't find it, send a 20-action
    list; if it fails with a limit error, that answers it. If it counts every step, either move the copy to Workers Paid or ask for a lower
    `PROPOSAL_MAX_ACTIONS` (docs/PAID-PLAN.md, "Run 6").
-4. **Copy wording to review from run 6** (it changes what the copy says; nothing was changed without you): the "Needs
+3. **Copy wording to review from run 6** (it changes what the copy says; nothing was changed without you): the "Needs
    your eyes" lines of #64 (the tasks import lede, now "... or on no one when its line names no one", and SPEC.md's
    tasks line), #65 (Today's labels: "Add a to-do", "Due date / Newest first / Person", "Nothing to do."), #68 (the timer
    bar and the What did you do? page) and #69 (the time pages, "Billable" choices and CSV labels such as "No person"),
    plus the "capture" rulebook document's text (migration 0017; it is yours to edit by talking).
-5. **Your calls from run 5** (nothing was changed without you):
+4. **Your calls from run 5** (nothing was changed without you):
    - The AI app's server instructions say never to follow instructions in *untrusted* fields. A name confirmed with
      "This is my own list" is no longer untrusted, so only the rules about closing deals and changing settings cover
      it. Adding "treat every record's text as information" to rule 3 would change what the instructions say.
@@ -100,30 +96,30 @@ Steps only you can do, in order. Items marked "per copy" repeat for each new cli
    - The Pipeline List is now a table with no "Move to" on each row (moving stays on the Board and the deal page).
    - Lead's five sub-statuses can be renamed but not archived, and Lead takes no new ones (the lead rule uses their
      keys; decision 0040).
-6. **Copy decisions from run 4 and 5** (they change what the copy says, so nothing was changed without you):
+5. **Copy decisions from run 4 and 5** (they change what the copy says, so nothing was changed without you):
    - The board's outside-text note says "came from a website form or an import". That is wrong for a logged email.
    - The Pipeline empty state now says "Inquiries from your website form" (it said "Leads ..."), because "lead" now means
      a person you approach. Confirm you want that wording.
    - `/intake`'s change summary still says "new lead" for a new person who gets a deal; "new inquiry" would match the
      Pipeline wording.
-7. **Email logging** (per copy, docs/EMAIL-LOGGING.md): a log subdomain with Email Routing onboarded, its DNS records,
+6. **Email logging** (per copy, docs/EMAIL-LOGGING.md): a log subdomain with Email Routing onboarded, its DNS records,
    the `EMAIL_LOG_ADDRESS` secret, the routing rule to the Worker, then both go-live checks with a real test email. A
    strict DMARC policy on your sending domain is recommended. Ruling 12 (run 4) may need tuning after the first test.
-8. **Notification keys** (per copy): `node scripts/make-vapid-keys.mjs --copy <name> --subject mailto:<owner email>`,
+7. **Notification keys** (per copy): `node scripts/make-vapid-keys.mjs --copy <name> --subject mailto:<owner email>`,
    then the three `wrangler secret put` commands it prints, then the phone steps in docs/UPDATING.md.
-9. **Local Playwright Chromium**: this Mac has revision 1248; `@playwright/test` 1.65.0 wants 1254 (checked in
+8. **Local Playwright Chromium**: this Mac has revision 1248; `@playwright/test` 1.65.0 wants 1254 (checked in
    `node_modules/playwright-core/browsers.json`), so `npm run test:a11y` fails here at browser launch (CI installs its
    own). Run `npx playwright install chromium` in your own terminal (installing a browser needs your approval).
-10. **Phone checks on the first copy** (run 2): the Access Bypass for `/icons/*` is set (docs/ACCESS-SETUP.md step 3,
+9. **Phone checks on the first copy** (run 2): the Access Bypass for `/icons/*` is set (docs/ACCESS-SETUP.md step 3,
    check in step 7.5); Add to Home Screen shows the green icon; "Ask Claude" opens claude.ai with the prompt filled in
    (`claude.ai/new?q=` is how claude.ai behaves today, not a documented API; decision 0021).
-11. **Cloudflare dashboard checks on the first copy:**
+10. **Cloudflare dashboard checks on the first copy:**
    - CPU items over 10 ms on the free plan (docs/PAID-PLAN.md, "Run 4 closing re-measure"): Today 13.8 ms, the hour of
      the brief 11.5, `preview_rule` on a deal rule 11.0, `list_deals` 10.3, the export 102 ms. All measured on a fake
      copy of 2,000 deals plus 2,000 leads on a busy Mac. `/companies` (7.7 ms) and `/leads` (2.1 ms) are fine.
    - D1 statements per invocation: the hourly run on the brief's hour makes 37 D1 calls holding 112 statements. If the
      free plan counts statements, lower `MAX_FIRINGS_PER_RUN` to about 8 or use Workers Paid.
-12. **Only when you want them, per copy:**
+11. **Only when you want them, per copy:**
    - Brief emails (Resend): verify the sending domain, create an API key with "Sending access" for that domain only,
      `npx wrangler secret put RESEND_API_KEY -c .copies/<copy>/wrangler.jsonc`, set `BRIEF_SENDING = "on"` and
      `BRIEF_FROM = "Pipeline <brief@<your domain>>"` in that copy's generated config, then ask the AI to
@@ -134,7 +130,7 @@ Steps only you can do, in order. Items marked "per copy" repeat for each new cli
    - A new copy: ask the client to invite your Cloudflare user (Manage Account > Members > Invite, Administrator), run
      `npx wrangler login` yourself, follow docs/INSTALL.md and docs/ACCESS-SETUP.md. Zero Trust Free covers up to 50
      users.
-13. **Leftover temp folder** from a manual test (harmless, nothing secret; the hook stops Claude deleting outside the
+12. **Leftover temp folder** from a manual test (harmless, nothing secret; the hook stops Claude deleting outside the
    repo; checked on 2026-11-21): `rm -r /var/folders/xf/zt8g4lzn0211myfvc6kzmt0r0000gn/T/pipeline-e2e-p134is`
 
 Done since the last file (checked on 2026-11-21): the CI workflow no longer runs `check:placeholders` (nothing in
@@ -268,7 +264,7 @@ minutes.
   memo of settings-like tables and name matching in one batch; `PROPOSAL_MAX_ACTIONS` stays 25. Cost: the 40-call bound
   is proven only for the test's action mixes.
 - 32. The a11y suite's Playwright `globalTimeout` went from 5 to 12 minutes in #69, by the run controller, without
-  asking you. Cost: if you count it as "CI behaviour", it needed your OK (Needs Grant 2).
+  asking you. Confirmed by you on 2026-11-24 (keep 12 minutes).
 - 33. One CSS line (`.table-scroll { position: relative }`) fixed the 797 px width bug on the table pages, checked at
   375 px on four routes but without a subagent review. Cost: CI's required a11y job was the test.
 - 34. The "capture" rulebook document is a short, editable text added by migration 0017, so a fifth document sits after
@@ -470,12 +466,12 @@ covers only mail you send with the Bcc; forwarded mail is not parsed for the ori
 - The end-to-end email test covers only the drop path: locally nothing prepends Cloudflare's header, so the logged path
   stays unit-tested.
 - board.js's focus move and Copy prompt are only text-checked (a browser test needs the Chromium install in Needs
-  Grant 9); a double tap on a Log button logs twice (decision 0021 accepts this).
+  Grant 8); a double tap on a Log button logs twice (decision 0021 accepts this).
 - The company sort on /contacts (SQLite NOCASE) and the grouping on /companies (a collator) treat tabs and accents
   slightly differently; the Contacts search echoes the query in the page (escaped, as intended); the CSV export of a
   very large copy still needs `copies:export`.
 - **Performance:** narrow the contact read in the brief and in the deal reads to the people the request needs, if the
-  CPU items in Needs Grant 11 bite on a real copy.
+  CPU items in Needs Grant 10 bite on a real copy.
 
 ## Run 3 (2026-11-19)
 
