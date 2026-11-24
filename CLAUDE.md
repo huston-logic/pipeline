@@ -15,13 +15,18 @@ clearly one or the other, ask me.
 - One branch per change, named `type/short-name` (for example `feat/faq-section`,
   `fix/nav-focus`, `chore/claude-md`).
 - Plan first and wait for my approval before editing anything.
-- Run `npm run check` before every commit. If it fails, stop and show me the
-  exact error; do not commit.
-- When the work is done, open a pull request. Never merge it yourself; I merge.
+- If a check fails (the hooks run them, see "Protected folders"), stop and show me the exact
+  error; do not commit or push.
+- When the work is done, open a pull request. Once its review passes, queue auto-merge with exactly
+  `gh pr merge <number> --auto --squash` (the hook also lets `--auto --merge` through); the ruleset's
+  required checks are the gate. Never merge any other way: no merge without `--auto`, no `--admin`
+  (`guard-bash.mjs` blocks them). If the hook blocks even the allowed form, do not work around it: leave
+  the PR open, say "PR #N ready for auto-merge" the moment its review passes, and record it in
+  STATUS.md as "open, ready for auto-merge".
 - This repo has no production deploy of its own: merging into `main` deploys nothing.
-  I update every client copy myself with `npm run copies:update` (decision 0007, docs/UPDATING.md),
-  using my own wrangler login, which each client has invited into their Cloudflare account.
-  Never run `wrangler deploy` by hand (a hook blocks it).
+  I provision and update every client copy myself with `npm run copies:provision` / `npm run copies:update`
+  (decision 0007, docs/INSTALL.md, docs/UPDATING.md), using my own wrangler login, which each client has
+  invited into their Cloudflare account. Never run `wrangler deploy` by hand (a hook blocks it).
 
 ## Protect main (GitHub ruleset)
 Read from GitHub on 2026-11-13 (`gh api repos/[[GITHUB_OWNER]]/[[REPO_NAME]]/rulesets`).
@@ -79,44 +84,49 @@ These can go stale if the ruleset is changed in Settings, so re-check before rel
   blocked or asked about by the hooks; edit them normally. The "Decision authority" and PR
   description rules below still apply (for example, ask before adding a dependency, and list
   changes to these files on the "Needs your eyes" line).
-- `gh pr merge` is blocked by `guard-bash.mjs` except exactly `gh pr merge <number> --auto --squash`
-  (or `--auto --merge`), which only queues a merge behind the required checks. `--admin` and any
-  merge without `--auto` stay blocked. Outside an autonomous run I still do not merge.
+- The pre-commit hook (`.claude/hooks/precommit-check.mjs`) runs `npm run check:fast` on every
+  commit. A push hook runs the full `npm run check` before every `git push` and `gh pr create`.
+  CI runs the full suite on every PR (docs/PROCESS.md, decision 0052).
 
 ## Decision authority (fast lane)
 - Default for every task: plan, decide and build without asking me. Make implementation, layout, naming, refactor and test-placement decisions yourself, following AGENTS.md, docs/SPEC.md and docs/PLAN.md.
 - Board copy is plain and short and adds no claims the spec does not make. If the spec leaves behavior open, decide, write a decision record in docs/decisions/ and list it in the PR description; do not ask.
-- Local checks: npm run check only. CI runs a11y, Lighthouse, dependency review and CodeQL. Run local a11y too when the task changes board markup or `public/board.css`. Don't run Lighthouse locally: it takes 20+ minutes here, and CI's required `lighthouse` job is the check.
+- Decisions are indexed in docs/decisions/README.md, one line each. Read the index and open only the decisions you need; add a line for every new decision.
+- Plans are at most 150 lines. `docs/pipeline/` is a copy of huston-logic/site-template's handbook: read it only for a task about hooks, CI or deploy.
+- Local checks: the hooks cover `check:fast` and the full `npm run check`; CI runs a11y, Lighthouse, dependency review and CodeQL. Run local a11y too when the task changes board markup or `public/board.css`. Don't run Lighthouse locally: it takes 20+ minutes here, and CI's required `lighthouse` job is the check.
 - Ask me only before: adding or upgrading a dependency; changing required checks, lighthouserc thresholds or CI behavior; anything involving credentials, secrets, accounts, DNS, email sending or payments; deleting user data; a change to the meaning of copy.
 - Every PR description starts with a "Needs your eyes" line listing any change to AGENTS.md, CLAUDE.md, package.json or README, or "none".
-- Open the PR and stop. The owner enables auto-merge; never try to merge.
 
 ## Autonomous runs
 Applies only when I start a task by saying it is an autonomous run. Then these rules replace, for that run only:
-"Plan first and wait for my approval", "Never merge it yourself; I merge", "The owner enables auto-merge; never try to
-merge" and the "Ask me only before: adding or upgrading a dependency" item. Everything else in this file still holds.
-The task list is `docs/PLAN.md` and the progress log is `docs/STATUS.md`. Update STATUS.md after every task; while PRs
-are still open and unmerged, update it only in the first PR and one closing PR so the PRs do not conflict.
-- Work through the whole list without asking questions. Make judgment calls yourself and list them in the final summary.
-  If a task is blocked, queue it in STATUS.md and move on.
-- One PR per task. Before each branch: `git switch main && git pull --ff-only`. No force pushes.
-- Run `superpowers:requesting-code-review` before each merge and `superpowers:verification-before-completion` before
-  calling anything done. If CI fails, use `superpowers:systematic-debugging`, fix the cause and push. Never weaken a
-  test, threshold or axe rule to make it pass.
-- When the review passes and the hook allows it, enable auto-merge with `gh pr merge <number> --auto --squash`. The
-  ruleset's required checks are the gate. Do not wait on CI: start the next task if it does not depend on the last one.
-  The owner-only hook `.claude/hooks/guard-bash.mjs` allows exactly `gh pr merge <number> --auto --squash` and
-  `--auto --merge`; `--admin` and any merge without `--auto` stay blocked. If the hook blocks even the allowed form, do
-  not work around it: leave the PR open, say "PR #N ready for auto-merge" the moment its review passes, and record it in
-  STATUS.md as "open, ready for auto-merge". Later tasks branch from `main` and must not depend on an unmerged PR.
-- Stop, queue the item and continue with other tasks on: secrets or credentials, DNS, accounts or money, sending real
-  email, deleting user data, lowering any threshold or required check, or any owner-only path (`.claude/hooks`,
-  `.claude/agents`, `.claude/skills`, `.claude/settings*.json`, `.github/workflows`). For an owner-only change, write
-  `<file>.proposed` to the scratchpad and list it for hand-copying.
-- New dependencies: exact-pinned, at least 7 days old (`npm view <pkg> time`), and `dependency-review` must pass. Flag
-  each one in the summary.
-- The run ends with one summary: every PR link and whether it merged, anything flagged, the stop queue, and the exact
-  hand-copy commands for all proposals in one batch.
+"Plan first and wait for my approval" and the "Ask me only before: adding or upgrading a dependency" item.
+Everything else in this file still holds.
+- Read docs/PROCESS.md first. The task list is the run's plan in `docs/superpowers/plans/` (max 150 lines).
+- One branch and PR per feature area (a run usually has 2 to 4), not one per task. Before each branch:
+  `git switch main && git pull --ff-only`. No force pushes. Do not wait on CI: start the next area if it does
+  not depend on an unmerged PR (branch from `main`).
+- Commit per task; the hook runs `npm run check:fast` on each commit and the full `npm run check` before
+  `git push` and `gh pr create`.
+- Per-task review by one Sonnet subagent (`superpowers:requesting-code-review`); `review-security` only when
+  the change touches sign-in, /mcp, /intake, email or secrets; `review-a11y` only when it touches board markup
+  or CSS. `superpowers:verification-before-completion` before calling anything done;
+  `superpowers:systematic-debugging` when CI fails (fix the cause; never weaken a test, threshold or axe rule).
+- Model routing: Opus plans, coordinates and does the final whole-run review; Sonnet implements and reviews
+  each task; Haiku reads, searches, summarizes, writes docs and STATUS, and makes mechanical edits. Give each
+  subagent only the files it needs.
+- Work through the whole list without asking; judgment calls go in the final summary; a blocked task is queued
+  in STATUS.md and the run moves on.
+- Stop, queue the item and continue with other tasks on: secrets or credentials, DNS, accounts or money,
+  sending real email, deleting user data, lowering any threshold or required check, anything that reaches a
+  real client copy, or any owner-only path (see "Protected folders"; write `<file>.proposed` to the scratchpad
+  and list it for hand-copying).
+- New dependencies follow AGENTS.md "Security" (exact pin, at least 7 days old) and `dependency-review` must
+  pass. Flag each one in the summary.
+- Update docs/STATUS.md once, at the end of the run, in the closing PR.
+- Every run ends with a timing table in STATUS.md: per PR, the wall-clock time, number of commits, time in
+  checks and time waiting on CI.
+- The run ends with one summary: every PR link and whether it merged, anything flagged, the stop queue, and
+  the exact hand-copy commands for all proposals in one batch.
 
 ## Commands
 - `npm run dev`: builds `out/`, then runs the Worker locally with `wrangler dev --local` at
@@ -124,18 +134,12 @@ are still open and unmerged, update it only in the first PR and one closing PR s
   If the port is busy, tell me what is using it instead of killing it.
 - `npm run preview`: the same on port 4822 with a fresh `.wrangler/preview-<timestamp>` state
   folder. The accessibility and Lighthouse checks start it themselves.
-- `npm run build`: writes the static files (`out/`) the Worker serves.
-- `npm run check`: `check:config`, lint, typecheck, `test:worker`, then build.
-- `npm run check:config`: fails if client data could be tracked (decision 0002).
-- `npm run types`: regenerates `src/worker-configuration.d.ts` after `wrangler.jsonc` changes.
-- `npm run test:a11y`: Playwright + axe accessibility check against `npm run preview` (run
-  `npm run build` first). Installing Chromium for it is a separate approval.
-- `npm run test:lighthouse`: Lighthouse CI against `npm run preview` (run `npm run build` first).
-  Uses the installed Google Chrome; no browser download.
+- The check scripts are in AGENTS.md "Checks"; `npm run types` is in its "Types" bullet. Run `npm run build`
+  before `test:a11y` and `test:lighthouse`.
 - Wrangler only through these npm scripts, only locally. Never `wrangler deploy`, `wrangler login`
   or anything with `--remote`.
 - `npm run copies:provision`, `copies:update`, `copies:export` and `import:contacts` reach real client
-  accounts: only I run them for real. You may run them only with `--dry-run`, with `--local`, or with
+  accounts: only I run them for real. You and CI may run them only with `--dry-run`, with `--local`, or with
   `PIPELINE_WRANGLER` pointing at `tests/helpers/wrangler-stub.mjs`.
 - You may run `import:contacts` only with `--local` or the stub: even its default dry run reads the copy's
   remote database.
@@ -151,32 +155,22 @@ are still open and unmerged, update it only in the first PR and one closing PR s
   `2>&1`. If you need a script or a temp file, write it with the Write tool first, then run it
   as its own command.
 
-## Sources of truth
-- Product: `docs/SPEC.md` (binding).
-- Tasks and progress: `docs/PLAN.md` and `docs/STATUS.md`.
-- Judgment calls: `docs/decisions/` (one file per call).
-- Board look: the palette tokens in `public/board.css`; check pages at 375 px and 1280 px wide.
-- If a source and the code disagree, or a rule isn't clearly covered by either, tell me.
-
 ## Status and source of truth
-- Business priorities live in the Google Doc "00 Huston Logic: Source of Truth". This repo's status lives in docs/STATUS.md, and the master links to it.
-- Read docs/STATUS.md before starting a run.
+- Where facts live: docs/PROCESS.md "Where facts live". Business priorities live in the Google Doc "00 Huston Logic: Source of Truth", which links to docs/STATUS.md and docs/PROCESS.md; never copy business facts into this public repo.
+- Read docs/STATUS.md before starting a run. It is at most 150 lines; older runs go to docs/history/STATUS-history.md.
 - At the end of every run, update docs/STATUS.md in place:
   - Current state: what's live, what's merged, what's open
   - Changelog: one dated line per batch, with PR numbers
   - Needs Grant: steps only Grant can do (secrets, deploys, approvals), in order
-  - For the master: any change to scope, product or a decision, one line each
+  - For the master: only changes to scope, product or a business decision, one plain line each, no PR numbers, at most 12 lines
 - Don't create dated handoff files. Update STATUS.md instead.
 - Check the facts against the repo and `gh` (PR states, open alerts, migrations, pinned versions) when you update it,
   not against the old text. Where something can't be checked from here (a client copy's live state), say so.
-- In an autonomous run, the "Autonomous runs" rule on when STATUS.md is edited (first PR and one closing PR while PRs
-  are open) still decides which PR carries the update.
 
 ## Secrets
-- No secrets in code, ever. Names only in `docs/SECRETS.md`.
-- `.env` and `.dev.vars` files are never committed (only `.env.example`). If a command would
-  stage one, stop and tell me.
-- Nothing under `/.copies/` or `/exports/` is ever committed: they hold per-copy ids and data.
+- If a command would stage a `.env` or `.dev.vars` file (only `.env.example` is ever committed), or anything
+  under `/.copies/` or `/exports/` (they hold per-copy ids and data), stop and tell me. The rules on secrets
+  themselves are in AGENTS.md "Security".
 
 ## Browser tools
 - Only open localhost addresses and our own preview URLs. Do not browse other sites
