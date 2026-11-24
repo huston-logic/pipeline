@@ -21,15 +21,14 @@ after(async () => {
   await server?.stop();
 });
 
-type Stored = { id: string; title: string; contact_id: string | null; deal_id: string | null; due_at: string | null };
-const storedTasks = async (): Promise<Stored[]> =>
-  ((await (await fetch(`${server.url}/api/export.json`)).json()) as { tables: { tasks: Stored[] } }).tables.tasks;
+type Stored = { id: string; title: string; contactId: string | null; dealId: string | null; dueAt: string | null };
+const storedTasks = async (): Promise<Stored[]> => ((await ok(client, "list_tasks", { limit: 100 })).data as { tasks: Stored[] }).tasks;
 
 type Task = { record: string; id: string; fields: { field: string; to: string }[] };
 type Proposed = { proposal: string; list: { tasks: Task[] } };
 
-/** A date a few days out in the owner's timezone, so the test never depends on the day it runs. */
-const friday = (): string => addDays(localDate(new Date(), "America/Los_Angeles"), 4);
+/** A date four days out in the owner's timezone, so the test never depends on the day it runs. */
+const fourDaysOut = (): string => addDays(localDate(new Date(), "America/Los_Angeles"), 4);
 
 test("capture: three tasks, one yes, one undo", async () => {
   // Matt is a fake person the test adds; the demo seed's "Dana Whitfield" is the one person a bare "Dana" names.
@@ -38,7 +37,7 @@ test("capture: three tasks, one yes, one undo", async () => {
   assert.equal((await search("Dana")).length, 1, "a bare Dana names one person");
   assert.equal((await search("Matt")).length, 1, "a bare Matt names one person");
 
-  const due = friday();
+  const due = fourDaysOut();
   const proposed = await okText(client, "propose_changes", {
     actions: [
       { action: "add_task", contact: "Dana", title: "Call Dana", dueAt: due },
@@ -63,11 +62,11 @@ test("capture: three tasks, one yes, one undo", async () => {
   const written = (await storedTasks()).filter((task) => task.id && list.tasks.some((listed) => listed.id === task.id));
   assert.equal(written.length, 3);
   const byTitle = (title: string) => written.find((task) => task.title === title);
-  assert.equal(byTitle("Call Dana")?.contact_id, "ct_seed01", "Dana's task is on Dana");
-  assert.ok(String(byTitle("Call Dana")?.due_at).startsWith(due), "and due on the date");
-  assert.equal(byTitle("Send Matt the deck")?.contact_id, matt.contactId, "Matt's task is on Matt");
+  assert.equal(byTitle("Call Dana")?.contactId, "ct_seed01", "Dana's task is on Dana");
+  assert.ok(String(byTitle("Call Dana")?.dueAt).startsWith(due), "and due on the date");
+  assert.equal(byTitle("Send Matt the deck")?.contactId, matt.contactId, "Matt's task is on Matt");
   const ink = byTitle("Buy printer ink");
-  assert.deepEqual([ink?.contact_id, ink?.deal_id], [null, null], "the ink task belongs to nobody");
+  assert.deepEqual([ink?.contactId, ink?.dealId], [null, null], "the ink task belongs to nobody");
 
   const undone = await ok(client, "undo_change", { changeId });
   assert.match(undone.headline, new RegExp(`^Undid ${changeId}: `));

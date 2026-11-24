@@ -12,7 +12,7 @@ import { LEAD_SORTS, listLeads } from "../services/leads-read.ts";
 import { LEAD_STATUSES, type LeadStatus } from "../services/lead-status.ts";
 import { personStatusOverview } from "../services/person-status.ts";
 import { type StatusLabels, statusLabels } from "../services/status-labels.ts";
-import { getDealBrief, listDealsFiltered, pipelineSummary, recentChanges, searchContacts, whatsDue } from "../services/read.ts";
+import { getDealBrief, listDealsFiltered, listTaskItems, pipelineSummary, recentChanges, searchContacts, whatsDue } from "../services/read.ts";
 import { listRules, previewRuleFor, type RulePreview } from "../services/rules.ts";
 import { formatLocal, parseWhen } from "../time.ts";
 import { toolResult } from "./format.ts";
@@ -237,6 +237,34 @@ export function registerReadTools(server: McpServer, deps: ToolDeps): void {
               `${count(due.todayTasks.length, "task")} due today, ${count(due.overdueDeals.length, "overdue deal")}, ` +
               `${count(due.todayDeals.length, "deal")} with a next step today.`;
         return toolResult(headline, due);
+      },
+    },
+    deps,
+  );
+
+  registerTool(
+    server,
+    {
+      name: "list_tasks",
+      title: "List tasks",
+      kind: "read",
+      description:
+        "The owner's to-dos: open ones by default (snoozed ones included, and ones with no date or no person), or done " +
+        "ones with status done. Overdue first, undated last, then newest. Filters: contact (id or name; their own " +
+        "tasks and their deals'), deal (id or name), standalone true (only tasks with no person and no deal), limit " +
+        "(1 to 100, default 50). Use it for \"What's on my list?\" and to find a task's id.",
+      input: z.strictObject({
+        status: z.enum(["open", "done"]).optional().describe("open (the default) or done."),
+        contact: shortText("Only this person's tasks and their deals' tasks: id or exact name.").optional(),
+        deal: shortText("Only this deal's tasks: id or title.").optional(),
+        standalone: z.boolean().optional().describe("true: only tasks that belong to no person and no deal."),
+        limit: z.number().int().min(1).max(100).optional().describe("At most this many, default 50."),
+      }),
+      async run({ status, contact, deal, standalone, limit }, { db }) {
+        const tasks = await listTaskItems(db, { status, contact, deal, standalone, limit }, await ownerTimezone(db));
+        const kind = status === "done" ? "done" : "open";
+        const headline = tasks.length === 0 ? `No ${kind} tasks.` : count(tasks.length, `${kind} task`);
+        return toolResult(tasks.length === 0 ? headline : `${headline}.`, { tasks });
       },
     },
     deps,
