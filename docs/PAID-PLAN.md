@@ -297,3 +297,21 @@ must fit. Counted on the fixture seed by `src/services/proposals-d1.test.ts` (ea
   Workers Paid's 1,000 (or a smaller list) fits; the first real copy confirms it (see "What the owner confirms").
 - On Workers Paid the 1,000 would allow a far larger list; the cap is also there for the owner, who reads and answers
   the whole list.
+
+### Today with 3,140 open tasks
+
+Today read every open, awake task, sorted them in the Worker and drew 50 per list. It now asks the database for each
+list already filtered, sorted and cut to 50, with one grouped count for "Showing 50 of N", in one D1 batch (decision
+0047). Measured with the run 6 CPU method (`scripts/cpu-check.ts`'s method (b): the Worker's own `fetch` in Node over
+the `node:sqlite` shim, est. Worker CPU = process CPU minus CPU inside D1 calls; medians of 20 runs after 5 warm-ups)
+on the scaled copy plus 2,000 added open tasks (3,140 open in all, 1,000 standalone, 500 undated), before and after
+on the same Mac at the same load (load average about 2.7 to 4.3):
+
+| request | est. Worker CPU ms before | after | D1 calls before | after | body KB |
+| --- | --- | --- | --- | --- | --- |
+| `/` (Today) | 15.7 | 7.4 | 12 | 12 (14 statements, 3 in one batch) | 358 |
+| `/?sort=subject` | 15.8 | 6.9 | 12 | 12 | 360 |
+| `/?sort=newest&show=standalone` | 15.6 | 6.9 | 12 | 12 | 357 |
+
+Today is back under the free plan's 10 ms on this copy (the seed alone measured 8.0 ms in the run 6 re-measure, on a
+busier Mac). What is left is mostly drawing the 100 cards and the rest of the page; the sort itself is the database's.

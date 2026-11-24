@@ -6,7 +6,8 @@ import {
   type DealItem,
   latestBrief,
   type OpenTask,
-  openTasks,
+  type OpenTaskLists,
+  openTaskLists,
   pipelineSummary,
   type PipelineSummary,
   whatsDue,
@@ -18,14 +19,14 @@ import type { PageContext } from "../context.ts";
 import { renderPage } from "../layout.ts";
 import type { FormContext } from "../forms.ts";
 import { count, dealLink, formatNumber, empty, labelled, addButtons, pairs, section, tag, when } from "../parts.ts";
-import { arrangeTasks, isStandalone, TASK_SHOWS, TASK_SORTS, type TaskShow, type TaskSort, type TaskView, taskView } from "../task-list.ts";
+import { isStandalone, TASK_SHOWS, TASK_SORTS, type TaskShow, type TaskSort, type TaskView, taskView } from "../task-list.ts";
 import { quickAddForm, taskActions } from "../task-forms.ts";
 import { briefDate, briefLine, sendStatusText } from "./brief.ts";
 import { stageCountText, summaryLine } from "./pipeline.ts";
 
 const EXCERPT_ITEMS = 4;
 
-/** Each of the two task lists shows this many rows, after the sort, so the soonest and overdue are never cut (0047). */
+/** Each of the two task lists shows this many rows, sorted first in SQL, so the soonest and overdue are never cut (0047). */
 export const TASK_LIST_LIMIT = 50;
 
 const has = (fields: readonly string[], key: string) => fields.includes(key);
@@ -89,14 +90,14 @@ ${choice("todo-show", "show", "Show", TASK_SHOWS, SHOW_LABELS, view.show)}
 </form>`;
 }
 
-function taskSections(tasks: OpenTask[], view: TaskView, startOfToday: string, form: FormContext): Html {
-  const { todo, undated } = arrangeTasks(tasks, view);
+function taskSections(lists: OpenTaskLists, startOfToday: string, form: FormContext): Html {
+  const { todo, undated, totals } = lists;
   if (todo.length + undated.length === 0) return empty("Nothing to do.", "Add a to-do above, or add a task on a deal or contact page.");
-  const list = (items: OpenTask[]) =>
-    html`<ul class="cards">${items.slice(0, TASK_LIST_LIMIT).map((t) => taskCard(t, t.dueAt !== null && t.dueAt < startOfToday, form))}</ul>
-${items.length > TASK_LIST_LIMIT ? html`<p class="stage-more">Showing ${formatNumber(TASK_LIST_LIMIT)} of ${formatNumber(items.length)} to-dos.</p>` : ""}`;
-  return html`${todo.length > 0 ? section("todo-heading", "To do", list(todo)) : ""}
-${undated.length > 0 ? section("undated-heading", "Needs a due date", list(undated)) : ""}`;
+  const list = (items: OpenTask[], total: number) =>
+    html`<ul class="cards">${items.map((t) => taskCard(t, t.dueAt !== null && t.dueAt < startOfToday, form))}</ul>
+${total > items.length ? html`<p class="stage-more">Showing ${formatNumber(items.length)} of ${formatNumber(total)} to-dos.</p>` : ""}`;
+  return html`${todo.length > 0 ? section("todo-heading", "To do", list(todo, totals.todo)) : ""}
+${undated.length > 0 ? section("undated-heading", "Needs a due date", list(undated, totals.undated)) : ""}`;
 }
 
 function dealCards(deals: DealItem[], overdue: boolean): Html {
@@ -150,14 +151,14 @@ ${shown.length === 0 ? html`<p>Nothing was due that day.</p>` : html`<ul class="
 export async function todayPage(ctx: PageContext): Promise<string> {
   const { db, now } = ctx;
   const tz = await ownerTimezone(db);
+  const view = taskView(ctx.query);
   const [summary, due, brief, tasks] = await Promise.all([
     pipelineSummary(db, now, tz),
     whatsDue(db, now, tz),
     latestBrief(db),
-    openTasks(db, now, tz),
+    openTaskLists(db, now, tz, view, TASK_LIST_LIMIT),
   ]);
   const date = localDate(now, tz);
-  const view = taskView(ctx.query);
   const note = viewNote(view);
   const description = "Your open to-dos, the deals due, your open deals by stage and the latest daily brief";
   return renderPage({
@@ -175,7 +176,7 @@ ${addButtons("today", ["deal", "lead", "import"])}
 <div class="today-due">
 ${quickAddForm(ctx)}
 ${taskTools(view)}
-${taskSections(tasks, view, dayBoundsUtc(date, tz).start.toISOString(), ctx)}
+${taskSections(tasks, dayBoundsUtc(date, tz).start.toISOString(), ctx)}
 ${dueDeals(due)}
 </div>
 <div class="today-glance">

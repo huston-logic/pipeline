@@ -10,13 +10,17 @@ what is due. The brief fixed the labels, the query keys and the route; it left o
 
 ## Decision
 
-- **Two lists** from one read (`openTasks` in `src/services/read.ts`: every open task that is not snoozed past now,
-  dated or not): **To do** (has a due date) and **Needs a due date** (none). A snoozed task shows again once its time
-  has passed. The sort and filter are pure code in `src/board/task-list.ts`.
+- **Two lists** (`openTaskLists` in `src/services/read.ts`: the open tasks that are not snoozed past now): **To do**
+  (has a due date) and **Needs a due date** (none). A snoozed task shows again once its time has passed. The address's
+  sort and filter are read in `src/board/task-list.ts`; since the run 6 final review the database filters, sorts and
+  cuts each list (one query per list, `LIMIT 50`, plus one grouped count for "Showing 50 of N"), all in one D1 batch,
+  instead of every open task being read and sorted in the Worker (16 ms of Worker CPU with 3,140 open tasks; now about
+  7 ms, docs/PAID-PLAN.md).
 - **Address:** `sort=due|newest|subject` and `show=all|linked|standalone`, nothing else, never record text. An unknown
   value is the default (`due`, `all`). `due` is soonest first, so overdue tasks come first; `newest` is by when the
   task was made, newest first; `subject` is by the person's name (a task on a deal uses the deal's person), without
-  regard to case, standalone tasks last, then by due date. Ties go by when made, then id. "Linked" means on a deal or a
+  regard to case (SQLite's `lower()`, so ASCII case only, as with name matching in decision 0044), standalone tasks
+  last, then by due date. Ties go by when made, then id. "Linked" means on a deal or a
   person; "standalone" means on neither.
 - **The form for them is a GET form** (`/` with two selects and a Show button), so it works with JavaScript off. A page
   with a non-default view says so in its `<title>` and description ("Today, newest first"), so every route in
@@ -43,7 +47,7 @@ what is due. The brief fixed the labels, the query keys and the route; it left o
 
 ## Consequences
 
-- Today now lists every open task, not only the ones due today, in one query; the page draws at most 50 per list.
+- Today now lists every open task, not only the ones due today; it reads and draws at most 50 per list.
 - Each of the two lists shows at most 50 rows (`TASK_LIST_LIMIT`), cut after the sort and filter so overdue and soonest
   tasks are never the ones left out; a list with more says "Showing 50 of 63 to-dos." beneath it, in the pipeline's
   style. There is no "show all" link: the address takes only the two fixed keys (a later decision may add one).
