@@ -1,3 +1,5 @@
+> This folder is an unchanged copy of huston-logic/site-template's handbook; that copy is the truth. Read this folder only for a task about hooks, CI or deploy.
+
 # Delivery pipeline handbook
 
 The technical handbook of the delivery pipeline used by this repo, written for the AI agents and
