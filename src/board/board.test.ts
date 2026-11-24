@@ -265,7 +265,7 @@ test("an empty pipeline still draws every open stage as a column, and the closed
   assert.deepEqual(moveForms(main), []);
 });
 
-test("the pipeline list view: every open deal as a row under its stage, each with its Move to form, and no script", async () => {
+test("the pipeline list view: every open deal as a table row (decision 0043), and no script", async () => {
   const db = await seededDb();
   const { res, body } = await get(db, "/pipeline?view=list");
   assert.equal(res.status, 200);
@@ -273,12 +273,8 @@ test("the pipeline list view: every open deal as a row under its stage, each wit
   assert.equal(titleOf(body), "Pipeline list · Pipeline");
   const main = mainOf(body);
   assert.match(main, /<li><a href="\/pipeline">Board<\/a><\/li>\n<li><a href="\/pipeline\?view=list" aria-current="page">List<\/a><\/li>/);
-  assert.match(main, /<section class="stage" aria-labelledby="stage-1">\n<div class="stage-head">\n<h2 id="stage-1">New inquiry<\/h2>\n<p class="stage-count">2 deals<\/p>/);
-  assert.equal(main.match(/<li class="deal-row">/g)?.length, 6);
-  assert.match(main, /<li class="deal-row">\n<div class="deal-row-main">\n<div class="card-head">\n<h3 class="card-title"><a href="\/deals\/dl_seed01">/);
-  const forms = moveForms(main);
-  assert.equal(forms.length, 6);
-  assert.match(forms[0]?.inner ?? "", /name="return_to" value="\/pipeline\?view=list"/);
+  assert.equal(main.match(/<tbody>[\s\S]*<\/tbody>/)?.[0].match(/<tr>/g)?.length, 6);
+  assert.match(main, /<th scope="row"><a href="\/deals\/dl_seed01">/);
   assert.doesNotMatch(main, /class="board"/);
   assert.match(navOf(body), /<a href="\/pipeline" aria-current="page">/);
 });

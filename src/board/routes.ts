@@ -8,6 +8,7 @@
 // (decision 0029). The import pages (decision 0036) are the seed's drafts: im_seed01 at the matching step, im_seed02
 // at the check step, im_seed03 applied; the deals and tasks imports' first steps are their own pages (decision 0037).
 // The views (decision 0042) are Partner's default view and the seed's saved views: vw_seed01 (people), vw_seed02 (deals).
+// The table layout (decision 0043) is the Pipeline's List (a table by default), Contacts and a saved people view.
 
 export type IconName =
   | "today"
@@ -39,6 +40,8 @@ export const boardRoutes: string[] = [
   "/people?status=partner",
   "/people?view=vw_seed01",
   "/pipeline?view=vw_seed02",
+  "/contacts?layout=table",
+  "/people?view=vw_seed01&layout=table",
   "/brief",
   "/more",
   "/rules",

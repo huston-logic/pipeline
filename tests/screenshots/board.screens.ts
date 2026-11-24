@@ -9,13 +9,13 @@ const TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa", "best-prac
 const OUT = ".owner-review/screenshots";
 const NOT_FOUND_PATH = "/this-page-does-not-exist";
 
-// "/pipeline?view=list" becomes "pipeline-list".
+// "/pipeline?view=list" becomes "pipeline-list", "/contacts?layout=table" "contacts-layout-table".
 const nameOf = (path: string) =>
   path === "/"
     ? "today"
     : path === NOT_FOUND_PATH
       ? "not-found"
-      : path.slice(1).replace(/\?view=/, "-").replaceAll("/", "-");
+      : path.slice(1).replace(/\?view=/, "-").replaceAll("/", "-").replace(/[?&=]+/g, "-");
 
 for (const path of [...boardRoutes, NOT_FOUND_PATH]) {
   test(`${path}: screenshot, no axe violations, no horizontal scroll`, async ({ page }) => {

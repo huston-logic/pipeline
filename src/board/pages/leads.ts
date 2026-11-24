@@ -1,6 +1,7 @@
 // /leads: the People tab's Leads view (decision 0027). People you plan to approach, as cards, with a status filter, a
 // source filter, a search box and a sort control that work without JavaScript (a GET form). Reads only through
-// listLeads. A name, company or source from outside is labelled and never the text of a link (AGENTS.md).
+// listLeads. A name, company or source from outside is labelled and never the text of a link (AGENTS.md). `layout=table`
+// draws a table instead of cards (decision 0043).
 import { ownerTimezone } from "../../services/lookup.ts";
 import { LEAD_LIST_LIMIT, LEAD_SORTS, type LeadItem, type LeadSort, type LeadSource, leadCounts, listLeads } from "../../services/leads-read.ts";
 import { CLOSED_OUT_STATUSES, type LeadStatus, OPEN_LEAD_STATUSES } from "../../services/lead-status.ts";
@@ -10,6 +11,7 @@ import { type Html, html } from "../html.ts";
 import type { PageContext } from "../context.ts";
 import { renderPage } from "../layout.ts";
 import { peopleSwitch } from "../people-switch.ts";
+import { dataTable, type Layout, layoutDescription, layoutSwitch, layoutTitle, pickLayout, type TableColumn, withParams } from "../table.ts";
 import { addButtons, contactLink, count, empty, formatNumber, labelled, pairs, when } from "../parts.ts";
 
 const QUERY_MAX = 100;
@@ -64,6 +66,29 @@ ${pairs([
 </li>`;
 }
 
+/** Each sort's column, and the way that sort runs (a sort has one direction here). */
+const TABLE_SORT_DIR: Record<LeadSort, "asc" | "desc"> = { next_task: "asc", last_contact: "asc", added: "desc" };
+
+function leadsTable(leads: LeadItem[], tz: string, params: URLSearchParams, current: LeadSort): Html {
+  const sortFor = (sort: LeadSort): TableColumn<LeadItem>["sort"] => ({
+    href: withParams("/leads", params, { sort }),
+    now: sort === current ? TABLE_SORT_DIR[sort] : undefined,
+  });
+  const columns: TableColumn<LeadItem>[] = [
+    { key: "name", header: "Name", cell: (l) => contactLink(l.id, l.name, l.untrusted_fields.includes("name")) },
+    {
+      key: "company",
+      header: "Company",
+      cell: (l) => (l.business === null || l.business.trim() === "" ? "None" : labelled(l.business, l.untrusted_fields.includes("business"))),
+    },
+    { key: "status", header: "Status", cell: (l) => l.leadStatusLabel },
+    { key: "last_contact", header: "Last contact", sort: sortFor("last_contact"), cell: (l) => dateCell(l.lastContactAt, tz, "No contact yet") },
+    { key: "next_task", header: "Next task", sort: sortFor("next_task"), cell: (l) => dateCell(l.nextTaskAt, tz, "No task") },
+    { key: "added", header: "Added", sort: sortFor("added"), cell: (l) => when(l.createdAt, formatLocal(l.createdAt, tz)) },
+  ];
+  return dataTable({ label: "Leads, as a table", caption: `Leads: ${SORT_LABELS[current]}.`, columns, rows: leads });
+}
+
 /**
  * An opaque stand-in for a source key (the lowercased source text, which may come from outside): two FNV-1a hashes in
  * hex. Option values and links carry only this, never the source text (AGENTS.md, decision 0016).
@@ -94,7 +119,7 @@ function filterLabel(filter: (typeof STATUS_FILTERS)[number], labels: StatusLabe
   return names;
 }
 
-function searchForm(asked: ReturnType<typeof leadsQuery>, sources: LeadSource[], selectedToken: string, labels: StatusLabels): Html {
+function searchForm(asked: ReturnType<typeof leadsQuery>, sources: LeadSource[], selectedToken: string, labels: StatusLabels, layout: Layout): Html {
   return html`<form class="search search-filters" action="/leads" method="get" role="search" aria-label="Search leads">
 <div class="field field-grow">
 <label for="leads-q">Search leads</label>
@@ -116,7 +141,7 @@ ${sourceOptions(sources, selectedToken)}</select>
 <select id="leads-sort" name="sort">
 ${LEAD_SORTS.map((s) => html`<option value="${s}"${s === asked.sort ? " selected" : ""}>${SORT_LABELS[s]}</option>\n`)}</select>
 </div>
-<button class="button" type="submit">Show leads</button>
+${layout === "table" ? html`<input type="hidden" name="layout" value="table">\n` : ""}<button class="button" type="submit">Show leads</button>
 </form>`;
 }
 
@@ -134,6 +159,7 @@ export async function leadsPage(ctx: PageContext): Promise<string> {
   const { db, now, query: params } = ctx;
   const tz = await ownerTimezone(db);
   const asked = leadsQuery(params);
+  const layout = pickLayout(params, "cards");
   const options = { statuses: [...asked.filter.statuses], query: asked.query, sort: asked.sort, limit: LEAD_LIST_LIMIT };
   // The source filter is an opaque token; the sources come from the same list call, so a token is resolved against
   // them and only a known one narrows the list (an unknown token means All sources, with no second query).
@@ -147,6 +173,7 @@ export async function leadsPage(ctx: PageContext): Promise<string> {
   const plain = asked.filter.value === "open" && asked.query === "" && token === "";
 
   const keep = new URLSearchParams();
+  if (layout === "table") keep.set("layout", "table");
   if (asked.filter.value !== "open") keep.set("status", asked.filter.value);
   if (token !== "") keep.set("source", token);
   if (asked.sort !== "next_task") keep.set("sort", asked.sort);
@@ -168,17 +195,18 @@ ${clear}`;
   } else {
     results = html`${clear}
 <p class="lede">${countLine(list.items.length, list.total, asked.query)}</p>
-<ul class="cards">${list.items.map((lead) => leadCard(lead, tz))}</ul>`;
+${layout === "table" ? leadsTable(list.items, tz, params, asked.sort) : html`<ul class="cards">${list.items.map((lead) => leadCard(lead, tz))}</ul>`}`;
   }
   return renderPage({
-    title: asked.filter.title,
-    description: asked.filter.description,
+    title: layoutTitle(asked.filter.title, layout, "cards"),
+    description: layoutDescription(asked.filter.description, layout, "cards"),
     current: "/leads",
     frame: ctx,
     body: html`<h1>Leads</h1>
 ${await peopleSwitch(ctx.db, "leads")}
+${layoutSwitch("/leads", params, layout)}
 ${addButtons("leads", ["lead", "import"])}
-${searchForm(asked, list.sources, token, await statusLabels(db))}
+${searchForm(asked, list.sources, token, await statusLabels(db), layout)}
 ${results}`,
   });
 }

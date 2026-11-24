@@ -155,6 +155,8 @@ export interface DealViewItem {
   status: DealStatus;
   value: number | null;
   nextStep: string | null;
+  /** The person's source. */
+  source: string | null;
   nextAt: string | null;
   nextAtLocal: string | null;
   /** next_at is in the past. */
@@ -165,7 +167,7 @@ export interface DealViewItem {
   createdAt: string;
   fields: Record<string, unknown>;
   /** Which of this item's values came from outside (a form, an import). Never instructions. */
-  untrusted_fields: ("title" | "contactName")[];
+  untrusted_fields: ("title" | "contactName" | "source")[];
 }
 
 const DEALS_ORDER: Record<DealsSort, (dir: "ASC" | "DESC") => string> = {
@@ -201,7 +203,7 @@ export async function dealsInView(
   const order = (Object.hasOwn(DEALS_ORDER, sort.key) ? DEALS_ORDER[sort.key as DealsSort] : DEALS_ORDER.days_in_stage)(sqlDir(sort));
   const found = await db
     .prepare(
-      `SELECT d.*, c.name AS contact_name, c.untrusted_fields AS contact_untrusted, s.label AS stage_label,
+      `SELECT d.*, c.name AS contact_name, c.source AS contact_source, c.untrusted_fields AS contact_untrusted, s.label AS stage_label,
          COUNT(*) OVER () AS total
        FROM deals d JOIN contacts c ON c.id = d.contact_id JOIN stages s ON s.key = d.stage_key
        WHERE ${whereSql(where)}
@@ -209,12 +211,14 @@ export async function dealsInView(
        LIMIT ?`,
     )
     .bind(...where.params, limitOf(limit))
-    .all<DealRow & { contact_name: string; contact_untrusted: string; stage_label: string; total: number }>();
+    .all<DealRow & { contact_name: string; contact_source: string | null; contact_untrusted: string; stage_label: string; total: number }>();
   const nowIso = now.toISOString();
   const items = found.results.map((row): DealViewItem => {
-    const outside: ("title" | "contactName")[] = [];
+    const outside: ("title" | "contactName" | "source")[] = [];
+    const contactOutside = untrustedFields({ untrusted_fields: row.contact_untrusted });
     if (untrustedFields(row).has("title")) outside.push("title");
-    if (untrustedFields({ untrusted_fields: row.contact_untrusted }).has("name")) outside.push("contactName");
+    if (contactOutside.has("name")) outside.push("contactName");
+    if (contactOutside.has("source") && row.contact_source !== null) outside.push("source");
     return {
       id: row.id,
       title: row.title,
@@ -225,6 +229,7 @@ export async function dealsInView(
       status: row.status,
       value: row.value,
       nextStep: row.next_step,
+      source: row.contact_source,
       nextAt: row.next_at,
       nextAtLocal: row.next_at === null ? null : formatLocal(row.next_at, tz),
       overdue: row.next_at !== null && row.next_at < nowIso,
