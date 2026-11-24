@@ -36,7 +36,7 @@ export function boardChanged({ event, labels, files }) {
 
 function changedFiles(base) {
   if (!base) return null;
-  const r = spawnSync("git", ["diff", "--name-only", `${base}...HEAD`], { encoding: "utf8" });
+  const r = spawnSync("git", ["diff", "--name-only", "--no-renames", `${base}...HEAD`], { encoding: "utf8" });
   return r.status === 0 ? r.stdout.split("\n").filter(Boolean) : null;
 }
 

@@ -73,7 +73,17 @@ function workerInput(persist, extraVars) {
   };
 }
 
-async function switchTo(extraVars) {
+const WORKER_TIMEOUT_MS = 60_000;
+
+function within(promise, message) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), WORKER_TIMEOUT_MS);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
+async function switchTo(extraVars, file) {
   const previous = current;
   const n = ++counter;
   const stateDir = join(work, `state-${n}`);
@@ -85,12 +95,12 @@ async function switchTo(extraVars) {
     workerPort = await freePort();
     current = next;
     worker = await unstable_startWorker(workerInput(stateDir, extraVars));
-    await worker.ready;
+    await within(worker.ready, "The test Worker did not start within 60 seconds.");
   } else {
     const reloaded = new Promise((resolve) => worker.raw.once("reloadComplete", resolve));
     current = next;
     await worker.setConfig(workerInput(stateDir, extraVars));
-    await reloaded;
+    await within(reloaded, `The test Worker did not restart for ${file || "this file"} within 60 seconds.`);
   }
   if (previous) rmSync(previous.stateDir, { recursive: true, force: true });
   return { url: `http://${HOST}:${workerPort}`, ...next };
@@ -105,7 +115,7 @@ function startControl() {
         const input = body ? JSON.parse(body) : {};
         if (req.method === "POST" && req.url === "/switch") {
           const extraVars = Array.isArray(input.extraVars) ? input.extraVars.map(String) : [];
-          const result = await switchTo(extraVars);
+          const result = await switchTo(extraVars, typeof input.file === "string" ? input.file : "");
           res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(result));
         } else if (req.method === "POST" && req.url === "/done") {
           res.writeHead(200).end("ok");
@@ -140,6 +150,17 @@ for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
   });
 }
 process.on("exit", () => rmSync(work, { recursive: true, force: true }));
+for (const [event, what] of [
+  ["uncaughtException", "An unexpected error stopped the e2e launcher."],
+  ["unhandledRejection", "An unexpected failure stopped the e2e launcher."],
+]) {
+  process.on(event, (error) => {
+    console.error(`${what} Cleaning up the test Worker and temp folders.`);
+    console.error(error?.stack ?? error);
+    child?.kill("SIGTERM");
+    cleanup().finally(() => process.exit(1));
+  });
+}
 
 try {
   mkdirSync(template);

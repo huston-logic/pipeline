@@ -13,7 +13,7 @@ scan (about 6 minutes) and Lighthouse (about 12 minutes), even PRs that changed 
 
 - **`npm run check:fast`** (`scripts/check-fast.mjs`) runs check:config, lint (ESLint cache), typecheck (tsc
   incremental, build info in `node_modules/.cache/`) and only the unit tests the change can reach
-  (`scripts/test-select.mjs`): the changed tests, the changed files' own tests, and the tests of their direct importers.
+  (`scripts/test-select.mjs`): the changed tests, the changed files' own tests, and the tests of their importers, all the way up (and those importers' own tests).
   "Changed" means not committed yet (against `HEAD`, plus untracked files), since each earlier commit was checked when
   it was made; `-- --branch` compares against where the branch left main.
   It runs every unit test when it can't tell: package files, tsconfig, ESLint config, `wrangler.jsonc`, `config/`,
@@ -51,4 +51,9 @@ in a PR is still checked before it lands on main.
   that breaks them makes `npm run test:e2e` fail loudly, and the fix is in `scripts/e2e.mjs` only.
 - A board change that the path list misses would skip the PR's audits but still be audited on the push to main.
   Add a path to `scripts/board-changed.mjs` when a new folder starts drawing the board.
+- Board code never imports `src/mcp` (`src/index.ts` loads it with a dynamic import), which is why `src/mcp/` is not a
+  board path. If that changes, add it to `scripts/board-changed.mjs`.
+- Scanner tests (unit tests that read the `src` or `scripts` folders themselves, such as the layering checks) always
+  run in `check:fast` when any code file changes, since a new file can break them without being imported by them.
+  Reach follows importers transitively, so a change deep in a chain still runs the tests at the top of it.
 - Adding any label to a PR re-runs its CI (the `labeled` event).

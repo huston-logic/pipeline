@@ -13,6 +13,8 @@ const RUN_ALL_FILES = [
 ];
 const NAMED_ONLY = [/\.md$/, /^tests\/(e2e|a11y)\//, /^\.claude\//, /^\.github\//];
 const IMPORT = /(?:\bfrom|\bimport)\s*\(?\s*(["'])([^"']+)\1/g;
+const READS_DIRECTORY = /\breaddir(?:Sync)?\b/;
+const SCANS_FOLDERS = /(?:^|[^\w-])(?:src|scripts)(?:\/|["'`])/;
 const MAX_SHARE = 0.6;
 
 const isCode = (p) => CODE_FILE.test(p) && CODE_DIRS.some((d) => p.startsWith(d));
@@ -40,7 +42,10 @@ export function selectTests({ changed, files }) {
     if (!CODE_FILE.test(path)) continue;
     for (const target of importsOf(path, text)) importers.set(target, [...(importers.get(target) ?? []), path]);
   }
-  const textsHaving = (needle) => unitTests.filter((t) => files.get(t).includes(needle));
+  // Tests that list the source folders themselves (layering and "only this file may do X" scans): a new or edited file
+  // anywhere can break them without importing anything, so they run whenever any code file changes.
+  const scanners = unitTests.filter((t) => SCANS_FOLDERS.test(files.get(t)) && READS_DIRECTORY.test(files.get(t)));
+  const textsHaving =(needle) => unitTests.filter((t) => files.get(t).includes(needle));
 
   const picked = new Set();
   const reasons = [];
@@ -60,12 +65,24 @@ export function selectTests({ changed, files }) {
       const own = siblingTests(path, files);
       const direct = importers.get(path) ?? [];
       const others = direct.filter((p) => !own.includes(p));
-      for (const t of [...own, ...direct.filter(isUnitTest)]) picked.add(t);
-      for (const importer of direct.filter((p) => !isUnitTest(p))) {
-        for (const t of siblingTests(importer, files)) picked.add(t);
-        for (const t of importers.get(importer) ?? []) if (isUnitTest(t)) picked.add(t);
+      // Everything that imports the file, all the way up through non-test files: their importing tests and sibling tests.
+      const closure = new Set([path]);
+      const queue = [path];
+      while (queue.length) {
+        const node = queue.shift();
+        for (const t of siblingTests(node, files)) picked.add(t);
+        for (const importer of importers.get(node) ?? []) {
+          if (isUnitTest(importer)) picked.add(importer);
+          else if (!closure.has(importer)) {
+            closure.add(importer);
+            queue.push(importer);
+          }
+        }
       }
-      reasons.push(`${path}: ${own.length ? "own test + " : "no own test + "}${others.length} importers`);
+      for (const t of scanners) picked.add(t);
+      reasons.push(
+        `${path}: ${own.length ? "own test + " : "no own test + "}${others.length} importers, ${closure.size - 1} file(s) up the chain, ${scanners.length} scanner test(s)`,
+      );
     } else if (NAMED_ONLY.some((re) => re.test(path))) {
       const named = textsHaving(path);
       named.forEach((t) => picked.add(t));

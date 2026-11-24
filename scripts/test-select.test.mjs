@@ -99,6 +99,31 @@ test("sibling test and importer's sibling test are selected even when they do no
   assert.deepEqual(sel(["src/e.ts"], f).tests, ["src/e.test.ts", "src/f.test.ts"]);
 });
 
+test("a test that reads the source folders runs whenever any code file changes", () => {
+  const f = new Map(files);
+  // Split so this very file does not look like a scanner to the rule it tests.
+  const reads = "read" + "dirSync";
+  f.set("src/scan.test.ts", `import { ${reads} } from "node:fs";\n${reads}("src/services");`);
+  f.set("scripts/scan2.test.mjs", `${reads}(join(ROOT, "scripts"));`);
+  f.set("src/other-reader.test.ts", `${reads}(tmp); // no source folder named`);
+  const r = sel(["src/solo.ts"], f);
+  assert.equal(r.mode, "some");
+  assert.deepEqual(r.tests, ["scripts/scan2.test.mjs", "src/scan.test.ts"]);
+  assert.deepEqual(sel(["tests/helpers/people.ts"], f).tests, ["scripts/scan2.test.mjs", "src/scan.test.ts", "src/uses-people.test.ts"]);
+  assert.equal(sel(["docs/other.md"], f).mode, "none");
+});
+
+test("reach follows importers all the way up, not just two steps", () => {
+  const f = new Map(files);
+  f.set("src/chain/a.ts", "export const a = 1;");
+  f.set("src/chain/b.ts", 'import { a } from "./a.ts";');
+  f.set("src/chain/c.ts", 'import { b } from "./b.ts";');
+  f.set("src/chain/d.ts", 'export * from "./c.ts";');
+  f.set("src/chain/c.test.ts", 'import "./c.ts";');
+  f.set("src/chain/d.test.ts", "// no import");
+  assert.deepEqual(sel(["src/chain/a.ts"], f).tests, ["src/chain/c.test.ts", "src/chain/d.test.ts"]);
+});
+
 test("helpers under tests/helpers select the tests that use them", () => {
   assert.deepEqual(sel(["tests/helpers/people.ts"]).tests, ["src/uses-people.test.ts"]);
 });

@@ -58,6 +58,12 @@ test("src/mcp alone does not, src/**/*.test.ts alone does not", () => {
   assert.equal(pr(["src/mcp/tools-read.ts", "src/services/deals.ts"]).board, true);
 });
 
+test("a file moved out of a board folder still counts: the old path is in the list", () => {
+  // With --no-renames git lists both the deleted old path and the new one.
+  assert.equal(pr(["public/board.css", "docs/board.css"]).board, true);
+  assert.equal(pr(["docs/board.css"]).board, false);
+});
+
 test("an empty change list does not", () => {
   assert.equal(pr([]).board, false);
 });

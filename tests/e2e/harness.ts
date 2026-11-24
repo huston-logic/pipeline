@@ -10,7 +10,7 @@ import { type ChildProcess, spawn } from "node:child_process";
 import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { childEnv, setupLocalDatabase, WRANGLER, wranglerDevArgs } from "../../scripts/dev.mjs";
 
@@ -136,10 +136,11 @@ async function sharedServer(control: string, extraVars: string[]): Promise<DevSe
   const call = async (path: string, body: unknown) => {
     const res = await fetch(`${control}${path}`, { method: "POST", body: JSON.stringify(body) });
     const text = await res.text();
+    if (res.status === 500 && path === "/switch") throw new Error(`Could not start the test Worker for this file.\n${text}`);
     if (res.status !== 200) throw new Error(`The e2e launcher answered ${res.status} for ${path}: ${text}`);
     return JSON.parse(text) as { url: string; stateDir: string; logFile: string };
   };
-  const { url, stateDir, logFile } = await call("/switch", { extraVars });
+  const { url, stateDir, logFile } = await call("/switch", { extraVars, file: basename(process.argv[1] ?? "") });
   const output = () => {
     try {
       return readFileSync(logFile, "utf8");

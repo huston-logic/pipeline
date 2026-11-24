@@ -22,7 +22,7 @@ function git(args) {
 
 function changedFiles(branch) {
   const untracked = git(["ls-files", "--others", "--exclude-standard"]);
-  if (!branch) return [...new Set([...git(["diff", "--name-only", "HEAD"]), ...untracked])];
+  if (!branch) return [...new Set([...git(["diff", "--name-only", "--no-renames", "HEAD"]), ...untracked])];
   let base;
   for (const ref of ["main", "origin/main"]) {
     try {
@@ -33,7 +33,7 @@ function changedFiles(branch) {
     }
   }
   if (!base) throw new Error("no merge-base with main or origin/main");
-  return [...new Set([...git(["diff", "--name-only", base]), ...untracked])];
+  return [...new Set([...git(["diff", "--name-only", "--no-renames", base]), ...untracked])];
 }
 
 function readFiles() {
