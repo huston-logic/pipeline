@@ -1,5 +1,5 @@
 // add_task, complete_task and snooze_task.
-import type { TaskRow } from "../db/db.ts";
+import type { ContactRow, DealRow, TaskRow } from "../db/db.ts";
 import { newId } from "../ids.ts";
 import { formatLocal, parseWhen } from "../time.ts";
 import { type ChangeResult, commitChange, type Ctx, type Row, updatedRow } from "./change.ts";
@@ -18,19 +18,28 @@ export interface TaskInput {
   dueAt?: string;
 }
 
+/** Who a task is for, as summaries name them: a deal and its person, a person, or null for a task of no one's. */
+function forWhomOf(deal: DealRow | null, contact: ContactRow | null): string | null {
+  if (deal && contact) return dealLabel(deal, contact);
+  return contact ? contactName(contact) : null;
+}
+
+const forText = (who: string | null) => (who === null ? "" : ` for ${who}`);
+
+/** Adds a task on a deal, a contact, or neither (a standalone task, decision 0046). */
 export async function addTask(ctx: Ctx, input: TaskInput): Promise<ChangeResult & { taskId: string }> {
   const { db } = ctx;
   const title = clean(input.title);
   if (title === null) throw new UserError("A task needs a title. Say in a few words what to do.");
   const tz = await ownerTimezone(db);
   const dueAt = whenOrNull(input.dueAt ?? null, tz);
-  const { deal, contact } = await findSubject(ctx, input);
+  const { deal, contact } = await findSubject(ctx, input, { optional: true });
   const now = ctx.now.toISOString();
 
   const task: TaskRow = {
     id: newId("tk"),
     deal_id: deal?.id ?? null,
-    contact_id: contact.id,
+    contact_id: contact?.id ?? null,
     title,
     due_at: dueAt,
     done_at: null,
@@ -41,11 +50,10 @@ export async function addTask(ctx: Ctx, input: TaskInput): Promise<ChangeResult 
     created_at: now,
     updated_at: now,
   };
-  const forWhom = deal ? dealLabel(deal, contact) : contactName(contact);
   const due = dueAt === null ? "" : `, due ${formatLocal(dueAt, tz)}`;
   const result = await commitChange(ctx, {
     target: { table: "tasks", id: task.id },
-    summary: `Added task "${title}" for ${forWhom}${due}`,
+    summary: `Added task "${title}"${forText(forWhomOf(deal, contact))}${due}`,
     changes: [{ table: "tasks", id: task.id, before: null, after: task }],
   });
   return { ...result, taskId: task.id };
@@ -62,12 +70,15 @@ async function findTask(src: Source, ref: string): Promise<TaskRow> {
   return found;
 }
 
-/** "\"Call back\" for \"Website refresh\" (Pat Example)", each part safe on its own. */
+/**
+ * "task \"Call back\" for \"Website refresh\" (Pat Example)", each part safe on its own; a standalone task is its name
+ * alone.
+ */
 async function describeTask(src: Source, task: TaskRow): Promise<string> {
   const deal = task.deal_id === null ? null : await dealById(src, task.deal_id);
-  const contact = await contactById(src, task.contact_id ?? deal?.contact_id ?? "");
-  const forWhom = deal && contact ? dealLabel(deal, contact) : contact ? contactName(contact) : null;
-  return forWhom === null ? taskName(task) : `${taskName(task)} for ${forWhom}`;
+  const contactId = task.contact_id ?? deal?.contact_id ?? null;
+  const contact = contactId === null ? null : await contactById(src, contactId);
+  return `${taskName(task)}${forText(forWhomOf(deal, contact))}`;
 }
 
 export async function completeTask(ctx: Ctx, ref: string): Promise<ChangeResult & { taskId: string }> {

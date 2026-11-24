@@ -136,8 +136,8 @@ export const logActivityInput = z.strictObject({
 });
 
 export const addTaskInput = z.strictObject({
-  deal: dealRef().optional(),
-  contact: contactRef().optional(),
+  deal: dealRef("The deal: its id (dl_...), its exact title, or its contact's exact name. Leave out deal and contact for a task of the owner's own.").optional(),
+  contact: contactRef("The contact: their id (ct_...) or exact name. Leave out deal and contact for a task of the owner's own.").optional(),
   title: shortText("What to do, in a few words."),
   dueAt: when("When it is due").optional(),
 });

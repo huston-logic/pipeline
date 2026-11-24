@@ -46,6 +46,17 @@ test("review first: add_task returns a proposal and writes nothing", async () =>
   assert.equal(await count("tasks"), tasks + 1);
 });
 
+test("review first: add_task with no deal or contact proposes a standalone task, and the yes adds it", async () => {
+  const { db, c } = await setup();
+  const answer = await okText(c, "add_task", { title: "Buy printer ink", dueAt: "2026-11-21" });
+  const proposal = proposalOf(answer.data);
+  assert.match(answer.headline, /\nTasks\n- New task "Buy printer ink": no person or deal; due Sat Nov 21\n/);
+  const applied = await ok(c, "apply_changes", { proposal });
+  assert.match(applied.headline, new RegExp(`^Applied ${proposal}: Added task "Buy printer ink", due Sat Nov 21, 12:00 AM \\(change chg_`));
+  const row = await db.prepare("SELECT deal_id, contact_id FROM tasks WHERE title = 'Buy printer ink'").first();
+  assert.deepEqual({ ...row }, { deal_id: null, contact_id: null });
+});
+
 test("review first: a record tool answers exactly what propose_changes answers for the same action", async () => {
   const { c } = await setup();
   const args = { deal: "dl_seed01", stage: "Proposal sent", nextStep: "Wait for Pat" };
