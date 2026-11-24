@@ -143,7 +143,8 @@ later action names a record an earlier one adds, how names are matched, and how 
 
 - A guard a service puts in `extra` checks the merged batch's final state, so setting a lead status and then adding a
   deal for the same person can't be one list (each alone is fine): the trial refuses it at propose time, naming both
-  actions. Every propose runs one extra rolled-back batch (and, only when it fails, a few more to name the cause).
+  actions. Every propose runs one extra rolled-back batch (and, only when it fails, at most two more to name the cause;
+  see "D1 calls").
 - A new guard statement in a record service should carry a reason (`withGuardReason`), or the refusal falls back to
   "action m changes what action j checks".
 - Names in actions are matched before planning, against the database, so an action can't name a record by a name an
@@ -159,3 +160,34 @@ later action names a record an earlier one adds, how names are matched, and how 
   sentinel's message).
 - Task A2 makes the record tools propose (the "AI edits" setting); D6 adds time actions, time-entry planned reads and
   the "Time" group.
+
+## D1 calls (run 6 final review, 2026-11-24)
+
+The free plan allows 50 D1 queries per Worker invocation (docs/PAID-PLAN.md). Counting each `first`/`all`/`run`/`raw`
+and each `batch()` as one call, a 25-action ramble made 158 calls to propose and 88 to apply, and 25 actions on 25
+different deals 256 and 131: every service read the settings, stages and labels again, every name was matched with up
+to five reads of its own, the list read each person it named one by one, and a refused list was planned again for every
+prefix. A maximum-size proposal now makes at most 40 calls each way, which leaves room under 50 for the request's own
+sign-in and settings reads; `src/services/proposals-d1.test.ts` counts them on the fixture seed (`tests/helpers/
+counting-db.ts`). Measured: a 1-action list 6 to propose and 5 to apply (16 and 11 before); the 25-action ramble (every
+record action kind, an `@n` task on a new lead, time tracking on) 31 and 30; 25 actions on 25 different deals 30 and 29.
+`PROPOSAL_MAX_ACTIONS` stays 25. How:
+
+- **A request memo** (`src/services/memo.ts`, `ctx.memo`), set by `proposeChanges` and `applyChanges` for the whole
+  request: the settings row, stages, person statuses and sub-statuses, field definitions and work types, read in one
+  batch the first time any is needed. Services read them through `memo.ts`'s readers with the ctx; without a memo (the
+  board, the hourly run, a direct write) the readers read the database as before. A record row is never kept there: the
+  plan's own planned reads still decide what each action sees, and a plan refuses a change to a memo table (no record
+  action writes one). In collect mode a deal is read with its person, and a task with its deal and person, in one
+  batch (`dealWithOwner`, `taskWithLinks`): the same rows, fewer calls.
+- **Name matching in one batch** (`matchAll`): one statement per kind of record for every ref of that kind (two bound
+  parameters a ref, 50 refs a statement), each ref's rows tagged with its number and picked exactly as a lone match
+  would pick them.
+- **The list's named rows in one batch**: the people, deals and tasks the list names that the plan doesn't write.
+- **A refusal with at most two more trials**: the rows alone first (failing, a record changed meanwhile); then the one
+  guard, or with two the first alone; the guard's action and the first later action that wrote a row the guard is
+  bound to (from the plan) are named. With more than two guards the answer is "This list can't be applied as one
+  change. Send it as smaller lists." The list is never planned again to explain itself.
+
+Workers Paid allows 1,000 D1 queries per invocation, which would allow a far longer list; the cap stays 25 for the
+owner's sake (a list to read and answer), not only for D1.

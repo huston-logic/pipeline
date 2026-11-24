@@ -12,6 +12,7 @@ import { clean } from "./input.ts";
 import { contactName } from "./labels.ts";
 import { noOpenDeal, openDealCount, withPersonStatus } from "./lead-change.ts";
 import { findContact } from "./lookup.ts";
+import { personStatusRows, type Reader, readerOf, subStatusRows } from "./memo.ts";
 import { CONTACT, LEAD, type PersonMove, type StatusEntry, statusEntriesOf } from "./person-move.ts";
 import { slugOf, uniqueKey } from "./slug.ts";
 
@@ -40,20 +41,9 @@ export interface PersonStatusView {
   subStatuses: SubStatusView[];
 }
 
-async function statusRows(db: Db): Promise<PersonStatusRow[]> {
-  const found = await db.prepare("SELECT * FROM person_statuses ORDER BY archived, position, key").all<PersonStatusRow>();
-  return found.results;
-}
+const statusRows = (src: Reader): Promise<PersonStatusRow[]> => personStatusRows(src);
 
-async function subRows(db: Db, statusKey?: string): Promise<PersonSubstatusRow[]> {
-  const sql = "SELECT * FROM person_substatuses";
-  const order = " ORDER BY status_key, archived, position, key";
-  const found =
-    statusKey === undefined
-      ? await db.prepare(sql + order).all<PersonSubstatusRow>()
-      : await db.prepare(`${sql} WHERE status_key = ?${order}`).bind(statusKey).all<PersonSubstatusRow>();
-  return found.results;
-}
+const subRows = (src: Reader, statusKey?: string): Promise<PersonSubstatusRow[]> => subStatusRows(src, statusKey);
 
 /** Every status with its sub-statuses, live ones first in board order, archived ones after. */
 export async function listPersonStatuses(db: Db): Promise<PersonStatusView[]> {
@@ -446,18 +436,18 @@ export interface ResolvedMove {
  * always has one.
  */
 export async function resolveMove(
-  db: Db,
+  src: Reader,
   current: Pick<ContactRow, "person_status" | "sub_status"> | null,
   input: PersonStatusInput,
 ): Promise<ResolvedMove> {
-  const statuses = await statusRows(db);
+  const statuses = await statusRows(src);
   const text = input.status.trim();
   const status = statuses.find((row) => row.key === text) ?? statuses.find((row) => row.archived === 0 && sameLabel(row.label, text));
   if (!status || status.archived === 1) {
     const list = statuses.filter((row) => row.archived === 0).map((row) => `${row.label} (${row.key})`).join(", ");
     throw new UserError(`There's no live person status "${text}". Use one of: ${list}.`);
   }
-  const subs = (await subRows(db, status.key)).filter((row) => row.archived === 0);
+  const subs = (await subRows(src, status.key)).filter((row) => row.archived === 0);
   let sub: PersonSubstatusRow | null = null;
   if (input.sub === undefined) {
     if (current !== null && status.key === current.person_status) sub = subs.find((row) => row.key === current.sub_status) ?? null;
@@ -538,7 +528,9 @@ export async function setPersonStatus(ctx: Ctx, contactRef: string, input: Perso
 }
 
 /** What the owner calls the Client sub-status now ("Client" unless renamed). */
-export async function clientLabel(db: Db): Promise<string> {
+export async function clientLabel(src: Reader): Promise<string> {
+  const { db, memo } = readerOf(src);
+  if (memo !== undefined) return (await subRows(src, CONTACT)).find((row) => row.id === "contact.client")?.label ?? "Client";
   return (await db.prepare("SELECT label FROM person_substatuses WHERE id = 'contact.client'").first<string>("label")) ?? "Client";
 }
 
@@ -546,11 +538,13 @@ export async function clientLabel(db: Db): Promise<string> {
  * Contact to Client when one of their deals is marked Won (decision 0040): the change for the caller's batch, or null
  * when the person isn't a Contact, is a Client already, or the Client sub-status is archived.
  */
-export async function clientIfWon(db: Db, contact: ContactRow, now: Date): Promise<RowChange | null> {
+export async function clientIfWon(src: Reader, contact: ContactRow, now: Date): Promise<RowChange | null> {
   if (contact.person_status !== CONTACT || contact.sub_status === "client") return null;
-  const live = await db
-    .prepare("SELECT 1 AS one FROM person_substatuses WHERE id = 'contact.client' AND archived = 0")
-    .first<{ one: number }>();
-  if (live === null) return null;
+  const { db, memo } = readerOf(src);
+  const live =
+    memo !== undefined
+      ? (await subRows(src, CONTACT)).some((row) => row.id === "contact.client" && row.archived === 0)
+      : (await db.prepare("SELECT 1 AS one FROM person_substatuses WHERE id = 'contact.client' AND archived = 0").first<{ one: number }>()) !== null;
+  if (!live) return null;
   return { table: "contacts", id: contact.id, before: contact, after: withPersonStatus(contact, { status: CONTACT, sub: "client" }, now) };
 }

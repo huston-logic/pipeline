@@ -22,7 +22,7 @@ Access (Zero Trust Free covers up to 50 users; a copy needs one or two).
 | CPU time: 10 ms per request | Measured locally on a 2,000-deal fake copy, not yet in production: in run 2 every request but the export fit, the largest at about 7 ms; with 2,000 leads added (run 4, a busier Mac) `list_deals`, deal `preview_rule`, the hour of the brief and Today are at or over 10 ms; `/companies` (7.7 ms) and `/leads` (2.1 ms) are inside it (see "CPU check" and "Run 4" below) | **Medium.** Every `/mcp` request builds a fresh MCP server and then runs the tool; JSON Schemas for `tools/list` are converted once per isolate (decision 0020). The tools that list every open deal (`pipeline_summary`, `list_deals`) grow with the pipeline and would reach 10 ms at about 2,000 open deals. If requests fail with "exceeded CPU", that is the sign to move the copy to Workers Paid (30 s default CPU limit). |
 | Cron Triggers | One hourly trigger (`0 * * * *`: the rules run, then the daily brief; tasks 6 and 7). Cron Triggers are included in the free plan (up to 5 per account) | Low for the trigger itself. |
 | CPU time of the hourly run (10 ms per invocation on the free plan) | Measured locally: about 2 ms with 50 firings due (25 written), about 7 ms on the hour that also composes the brief, on 1,200 open deals (see "CPU check" below) | **Medium as a pipeline grows.** Each run reads every open deal once, the fire keys of open deals and the active rules, then checks each deal against each stage rule: about open deals × stage rules comparisons, plus one D1 batch per new task. A one-person pipeline (tens to a few hundred open deals, a handful of rules) is small; thousands of open deals with many rules, or a run that has to create many tasks at once (for example right after a new rule is added), could go over 10 ms. Failed firings are retried on the next run, so going over is a delay, not lost work. A firing that cannot be written is counted, not thrown, so watch for `failed` above 0 in the `cron_rules_done` log line (several runs in a row), as well as for `cron_rules_failed` or "exceeded CPU"; those are the signs to move the copy to Workers Paid. |
-| Subrequests and D1 queries per invocation (free plan: 50 of each) | One batch per firing in the hourly run, plus the reads and the brief: measured, 37 D1 calls holding 112 statements on the hour of the brief (see "CPU check" below) | **Unknown until confirmed:** if Cloudflare counts each statement in a batch as a query, a run that writes 25 firings is over 50. Otherwise low since the final review: a run writes at most 25 firings (`MAX_FIRINGS_PER_RUN`, decision 0010), so a catch-up after a new rule cannot use up the invocation and starve the brief that runs after it. The rest fire next hour; `deferred` above 0 in `cron_rules_done` for many hours in a row means more tasks are due each hour than one run writes. |
+| Subrequests and D1 queries per invocation (free plan: 50 of each) | One batch per firing in the hourly run, plus the reads and the brief: measured, 37 D1 calls holding 112 statements on the hour of the brief (see "CPU check" below); a 25-action `propose_changes` or `apply_changes` about 31 D1 calls, the most 40 (see "Run 6: proposals and D1 calls" below) | **Unknown until confirmed:** if Cloudflare counts each statement in a batch as a query, a run that writes 25 firings is over 50. Otherwise low since the final review: a run writes at most 25 firings (`MAX_FIRINGS_PER_RUN`, decision 0010), so a catch-up after a new rule cannot use up the invocation and starve the brief that runs after it. The rest fire next hour; `deferred` above 0 in `cron_rules_done` for many hours in a row means more tasks are due each hour than one run writes. |
 | CPU time of `/api/export.json` (10 ms per request) | Reads and serializes every row of every table, `audit_log` included; streamed table by table since run 2 (decision 0020). Measured locally: about 63 ms for an 18 MB export of the 2,000-deal copy, about 3.5 ms per MB | **High on a big copy, growing without bound.** The export fits the free plan only up to about 2 to 3 MB (a few hundred deals with their history). For a large copy, export with `npm run copies:export -- --copy <name>` from the Mac instead (no Worker CPU limit), or move the copy to Workers Paid. |
 | CPU time of `preview_rule` (10 ms per request) | Reads every non-archived deal and the activities of the last 30 days plus the rule's own days, through an index (decisions 0010 and 0020). Measured locally: about 7 ms for a 7-day rule on the 2,000-deal copy | **Medium on a big pipeline.** It grows with the number of deals and with a few weeks' activity (a long rule, 365 days, reads a year). If previews fail with "exceeded CPU", that is the sign for Workers Paid. |
 | CPU time of the daily brief (part of the hourly invocation) | Measured locally: about 5 ms on 1,200 open deals | Low. Once a day it reads the due tasks, the gone-quiet deals (every open deal, as the rules do) and the deals added since the last brief, and writes one row. If `cron_brief_failed` appears, or "exceeded CPU" on the hour of the brief, the same sign applies. Sending is off by default; turning it on needs a Resend account (its free tier covers one email a day), not Workers Paid. |
@@ -272,3 +272,28 @@ saved view of each module added; medians of 10 runs (decision 0042):
   out before the filter and the 200-row limit (the same CTEs as the Leads list). About 90 ms of D1 time for a view of
   2,000 people is D1's work, not the Worker's, and well under D1's own limits; if a copy gets much bigger, filtering the
   people before those two CTEs is the first thing to change.
+
+## Run 6: proposals and D1 calls (final review, 2026-11-24)
+
+The free plan allows 50 D1 queries per Worker invocation; Workers Paid allows 1,000. A ramble becomes one
+`propose_changes` call and one `apply_changes` call, each planning every action through the ordinary services, so each
+must fit. Counted on the fixture seed by `src/services/proposals-d1.test.ts` (each `first`/`all`/`run`/`raw` and each
+`batch()` is one call; decision 0044, "D1 calls"):
+
+| list | propose before | propose now | apply before | apply now |
+| --- | --- | --- | --- | --- |
+| 1 action (a call logged on a deal named by its person) | 16 | 6 | 11 | 5 |
+| 10 actions of the ramble | 69 | 14 | 38 | 13 |
+| 25 actions (`PROPOSAL_MAX_ACTIONS`): every record action kind, an `@n` task on a new lead, time tracking on | 158 | 31 | 88 | 30 |
+| 25 actions on 25 different deals, by their person's name | 256 | 30 | 131 | 29 |
+
+- The test holds a maximum-size list to at most 40 calls each way, leaving 10 for the request's own sign-in and
+  settings reads; a 1-action list to at most 12. `PROPOSAL_MAX_ACTIONS` stays 25.
+- What made the difference: one memo per request for the settings-like reads (one batch), all names matched in one
+  batch, the list's named rows in one batch, a deal with its person in one batch, and a refused list explained with at
+  most two more trials instead of being planned again for every prefix.
+- Still unknown, as for the hourly run: whether Cloudflare counts each statement inside a batch as a query. If it does,
+  the trial and the apply batch (about 45 statements for 25 actions) are each near or over 50 on their own, and only
+  Workers Paid's 1,000 (or a smaller list) fits; the first real copy confirms it (see "What the owner confirms").
+- On Workers Paid the 1,000 would allow a far larger list; the cap is also there for the owner, who reads and answers
+  the whole list.

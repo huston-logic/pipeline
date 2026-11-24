@@ -2,8 +2,8 @@
 // never change; labels may, so every place that shows a status or a lead status to the owner (MCP answers, change
 // summaries, the board) reads them here. A key with no row falls back to the fixed label (LEAD_STATUS_LABELS, or the
 // seeded status labels), then to the key itself. Labels are the owner's own text, never outside text.
-import type { Db } from "../db/db.ts";
 import { LEAD_STATUS_LABELS, type LeadStatus } from "./lead-status.ts";
+import { personStatusRows, type Reader, readerOf, subStatusRows } from "./memo.ts";
 import { LEAD, SEEDED_STATUSES } from "./person-move.ts";
 
 export interface StatusLabels {
@@ -44,7 +44,15 @@ export function labelsFrom(rows: readonly { status_key: string; sub_key: string 
 }
 
 /** Every status's and sub-status's label, archived ones included, in one query. */
-export async function statusLabels(db: Db): Promise<StatusLabels> {
+export async function statusLabels(src: Reader): Promise<StatusLabels> {
+  const { db, memo } = readerOf(src);
+  if (memo !== undefined) {
+    const [statuses, subs] = [await personStatusRows(src), await subStatusRows(src)];
+    return labelsFrom([
+      ...statuses.map((row) => ({ status_key: row.key, sub_key: null, label: row.label })),
+      ...subs.map((row) => ({ status_key: row.status_key, sub_key: row.key, label: row.label })),
+    ]);
+  }
   const found = await db
     .prepare(
       `SELECT key AS status_key, NULL AS sub_key, label FROM person_statuses

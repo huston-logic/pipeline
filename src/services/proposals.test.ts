@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { buildFixtureSeed } from "../../tests/helpers/fixture-seed.ts";
 import { WORK_TYPES_SQL } from "../../tests/helpers/time-seed.ts";
 import { type AuditRow, type Db, type ProposalRow, TABLE_NAMES } from "../db/db.ts";
-import { createTestDb, type SqliteD1 } from "../db/sqlite-d1.ts";
+import { createTestDb, type SqliteD1, type SqliteStatement } from "../db/sqlite-d1.ts";
 import { DEFAULT_TZ } from "../time.ts";
 import type { ChangeInput, Ctx, Row } from "./change.ts";
 import { updateContact } from "./contacts.ts";
@@ -575,6 +575,55 @@ test("a list whose apply would fail is refused at propose", async () => {
   assert.equal((await audits(db)).length, 2);
 });
 
+/** The database, counting the trial batches (those ending in TRIAL_SENTINEL) it runs. */
+function countingTrials(db: SqliteD1): Db & { trials: () => number } {
+  let trials = 0;
+  return {
+    trials: () => trials,
+    prepare: (sql: string) => db.prepare(sql),
+    batch: async (statements) => {
+      if ((statements.at(-1) as unknown as SqliteStatement | undefined)?.sql === TRIAL_SENTINEL) trials++;
+      return db.batch(statements);
+    },
+  } as Db & { trials: () => number };
+}
+
+/** Three people with no open deal made Not now leads, and a deal for two of them: three "no open deal" guards. */
+const THREE_LEADS: RecordAction[] = [
+  { action: "update_contact", contact: "ct_seed07", leadStatus: "not_now" },
+  { action: "update_contact", contact: "ct_seed08", leadStatus: "not_now" },
+  { action: "update_contact", contact: "ct_lone", leadStatus: "not_now" },
+  { action: "add_deal", contact: "ct_seed08", dealTitle: "Brake service page" },
+  { action: "add_deal", contact: "ct_lone", dealTitle: "Shop front page" },
+];
+
+test("a refusal names its two actions with at most two more trials, and never plans the list again", async () => {
+  const db = await setup();
+  // Two guards (Alex's and Sam's); Sam's breaks: the second trial (Alex's guard alone) passes, so it's Sam's.
+  const two = countingTrials(db);
+  await assert.rejects(
+    proposeChanges(ctxFor(two), { actions: [THREE_LEADS[0], THREE_LEADS[1], THREE_LEADS[3]] as RecordAction[] }, DEPS),
+    /^UserError: Action 3 and action 2 can't be in one list: a lead can't have an open deal\. Send them as two lists\.$/,
+  );
+  assert.equal(two.trials(), 3, "the list's own trial, the rows alone, then the first guard alone");
+  const one = countingTrials(db);
+  await assert.rejects(propose(db, LEAD_THEN_DEAL), /^UserError: Action 2 and action 1 can't be in one list/);
+  await assert.rejects(proposeChanges(ctxFor(one), { actions: LEAD_THEN_DEAL }, DEPS), /can't be in one list/);
+  assert.equal(one.trials(), 2, "one guard: the rows alone are the only extra trial");
+});
+
+test("past two guards, the refusal is one fixed sentence that names no action", async () => {
+  const db = await setup();
+  db.exec("INSERT INTO contacts (id, name) VALUES ('ct_lone', 'Lone Example')");
+  const trials = countingTrials(db);
+  await assert.rejects(
+    proposeChanges(ctxFor(trials), { actions: THREE_LEADS }, DEPS),
+    /^UserError: This list can't be applied as one change\. Send it as smaller lists\.$/,
+  );
+  assert.equal(trials.trials(), 2, "the list's own trial and the rows alone");
+  assert.equal((await counts(db)).proposals, 0);
+});
+
 test("the trial writes nothing", async () => {
   const db = await setup();
   const before = await counts(db);
@@ -587,13 +636,17 @@ test("the trial writes nothing", async () => {
   assert.deepEqual({ ...alex }, { version: 1, lead_status: null });
 });
 
-/** The database, with `first` run just before its first batch: another write landing at that moment. */
+/** A batch of reads only: the request memo's and the name matching's batches (decision 0044, "D1 calls"). */
+const readsOnly = (statements: readonly D1PreparedStatement[]) =>
+  statements.every((statement) => /^\s*(SELECT|WITH)\b/i.test((statement as unknown as SqliteStatement).sql));
+
+/** The database, with `first` run just before its first batch that writes: another write landing at that moment. */
 function racing(db: SqliteD1, first: () => Promise<void>): Db {
   let done = false;
   return {
     prepare: (sql: string) => db.prepare(sql),
     batch: async (statements) => {
-      if (!done) {
+      if (!done && !readsOnly(statements)) {
         done = true;
         await first();
       }
@@ -604,7 +657,7 @@ function racing(db: SqliteD1, first: () => Promise<void>): Db {
 
 test("a record that moves between the plan and the trial is a fresh-list answer, not a conflict", async () => {
   const db = await setup();
-  // The first batch of the propose is the trial: Pat's row moves just before it, as another write would.
+  // The first batch of the propose that writes is the trial: Pat's row moves just before it, as another write would.
   const bump = async () => void (await db.prepare("UPDATE contacts SET version = version + 1 WHERE id = 'ct_seed01'").run());
   await assert.rejects(
     proposeChanges(ctxFor(racing(db, bump)), { actions: [{ action: "update_contact", contact: "ct_seed01", phone: "555-0199" }] }, DEPS),

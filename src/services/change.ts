@@ -6,6 +6,7 @@ import type { Actor, AuditPartRow, AuditRow, Db, TableName } from "../db/db.ts";
 import { newId } from "../ids.ts";
 import { CHUNK_BYTES, chunkBy, sqlBytes } from "./bulk.ts";
 import { UserError } from "./errors.ts";
+import type { ReadMemo } from "./memo.ts";
 import type { PlanCollector } from "./plan.ts";
 
 export type { Actor };
@@ -18,6 +19,8 @@ export interface Ctx {
   tool: string;
   /** Collect mode (decision 0044): commitChange records the change here instead of writing it. */
   plan?: PlanCollector;
+  /** A proposal's request memo (memo.ts): the settings-like reads, read once for the whole request. */
+  memo?: ReadMemo;
 }
 
 export type SqlValue = string | number | null;

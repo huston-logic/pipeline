@@ -4,13 +4,13 @@
 // Keys become the owner's labels; outside text is never shown: a record named from outside is named by id
 // (labels.ts), and an old value from outside reads "(text from outside)".
 import type { ContactRow, Db, DealRow } from "../db/db.ts";
-import { listFieldDefs } from "../db/queries.ts";
 import { formatLocal, localWhen } from "../time.ts";
 import type { ChangeInput, ChangeTable, Row } from "./change.ts";
 import { changedColumns, oneLine, rowKey } from "./change.ts";
 import { capitalize, columnLabel, joinAnd, rowLabel, short } from "./describe.ts";
 import { activityText, contactName, dealLabel, dealTitle, isTrusted, taskTitle, untrustedFields } from "./labels.ts";
 import { parseObject, stageLabels } from "./lookup.ts";
+import { fieldDefRows, memoWorkType, type Reader, readerOf } from "./memo.ts";
 import { LEAD } from "./person-move.ts";
 import { type StatusLabels, statusLabels } from "./status-labels.ts";
 import { timeLine, timerLine } from "./time-format.ts";
@@ -97,14 +97,63 @@ interface Names {
   statuses: StatusLabels;
   fields: Map<string, string>;
   planned: Map<string, Row>;
-  db: Db;
+  /** The rows the list names that the plan doesn't write, read up front in one batch (null: not found). */
+  read: Map<string, Row | null>;
+  src: Reader;
 }
 
 async function planned<T>(names: Names, table: "contacts" | "deals" | "tasks", id: string | null): Promise<T | null> {
   if (id === null) return null;
-  const row = names.planned.get(rowKey(table, id));
-  if (row !== undefined) return row as unknown as T;
-  return names.db.prepare(`SELECT * FROM ${table} WHERE id = ?`).bind(id).first<T>();
+  const key = rowKey(table, id);
+  const row = names.planned.get(key) ?? names.read.get(key);
+  if (row !== undefined) return row as unknown as T | null;
+  return readerOf(names.src).db.prepare(`SELECT * FROM ${table} WHERE id = ?`).bind(id).first<T>();
+}
+
+type Named = "contacts" | "deals" | "tasks";
+
+/** At most this many ids in one IN list (D1 takes 100 bound parameters a statement). */
+const IDS_PER_READ = 100;
+
+/** Every row of `ids` in one D1 batch, a statement per table and 100 ids; each id not found is null. */
+async function readRows(db: Db, ids: ReadonlyMap<Named, ReadonlySet<string>>, into: Map<string, Row | null>): Promise<void> {
+  const reads: { table: Named; ids: string[] }[] = [];
+  for (const [table, set] of ids) {
+    const list = [...set];
+    for (let i = 0; i < list.length; i += IDS_PER_READ) reads.push({ table, ids: list.slice(i, i + IDS_PER_READ) });
+  }
+  if (reads.length === 0) return;
+  const results = await db.batch<Row>(reads.map(({ table, ids: some }) => db.prepare(`SELECT * FROM ${table} WHERE id IN (${some.map(() => "?").join(", ")})`).bind(...some)));
+  reads.forEach(({ table, ids: some }, i) => {
+    for (const id of some) into.set(rowKey(table, id), null);
+    for (const row of results[i]?.results ?? []) into.set(rowKey(table, String(row.id)), row);
+  });
+}
+
+/**
+ * The people, deals and tasks the list names (a note's person, a task's deal, an entry's task, a deal's person) that
+ * the plan doesn't write, so each is read once, in at most two batches, instead of one read per line.
+ */
+async function namedRows(db: Db, input: ChangeInput, planned: ReadonlyMap<string, Row>): Promise<Map<string, Row | null>> {
+  const read = new Map<string, Row | null>();
+  const wanted = (rows: readonly Row[], deals: readonly Row[]): Map<Named, Set<string>> => {
+    const ids = new Map<Named, Set<string>>([["contacts", new Set()], ["deals", new Set()], ["tasks", new Set()]]);
+    const want = (table: Named, id: unknown) => {
+      if (typeof id === "string" && !planned.has(rowKey(table, id)) && !read.has(rowKey(table, id))) ids.get(table)?.add(id);
+    };
+    for (const row of rows) {
+      want("contacts", row.contact_id);
+      want("deals", row.deal_id);
+      want("tasks", row.task_id);
+    }
+    for (const deal of deals) want("contacts", deal.contact_id);
+    return ids;
+  };
+  const rows = input.changes.flatMap((change) => [change.before, change.after].filter((row): row is Row => row !== null));
+  await readRows(db, wanted(rows, []), read);
+  const deals = [...read].flatMap(([key, row]) => (key.startsWith("deals:") && row !== null ? [row] : []));
+  await readRows(db, wanted([], deals), read);
+  return read;
 }
 
 /** The most characters one value shows; the list is for reading, the record keeps the whole text. */
@@ -241,7 +290,9 @@ async function taskItem(names: Names, id: string, before: Row | null, after: Row
 /** A work type's name, archived ones too (work types are configuration: a plan never writes them). */
 async function workTypeName(names: Names, id: unknown): Promise<string | null> {
   if (typeof id !== "string") return null;
-  return names.db.prepare("SELECT name FROM work_types WHERE id = ?").bind(id).first<string>("name");
+  const memoized = await memoWorkType(names.src, id);
+  if (memoized !== undefined) return memoized?.name ?? null;
+  return readerOf(names.src).db.prepare("SELECT name FROM work_types WHERE id = ?").bind(id).first<string>("name");
 }
 
 /** "Time 1 h 30 min, Design, billable at $95.00/h ($142.50), for Pat Example", or "Timer started now, ..." for a running one. */
@@ -291,16 +342,18 @@ async function timeItem(names: Names, id: string, before: Row | null, after: Row
  * The list from the built change's rows. `tz` is the owner's timezone and `now` the plan's time. Rows whose change
  * shows nothing the owner would see (a deal's last-contact time) are left out.
  */
-export async function proposalList(db: Db, input: ChangeInput, tz: string, now: Date): Promise<ProposalList> {
-  const fieldDefs = await listFieldDefs(db, { includeArchived: true });
+export async function proposalList(src: Reader, input: ChangeInput, tz: string, now: Date): Promise<ProposalList> {
+  const fieldDefs = await fieldDefRows(src, { includeArchived: true });
+  const plannedRows = new Map(input.changes.flatMap((change) => (change.after === null ? [] : [[rowKey(change.table, change.id), change.after]])));
   const names: Names = {
     tz,
     now: now.toISOString(),
-    stages: await stageLabels(db),
-    statuses: await statusLabels(db),
+    stages: await stageLabels(src),
+    statuses: await statusLabels(src),
     fields: new Map(fieldDefs.map((def) => [`${def.entity}.${def.key}`, def.label])),
-    planned: new Map(input.changes.flatMap((change) => (change.after === null ? [] : [[rowKey(change.table, change.id), change.after]]))),
-    db,
+    planned: plannedRows,
+    read: await namedRows(readerOf(src).db, input, plannedRows),
+    src,
   };
   const list: ProposalList = { add: [], update: [], tasks: [], notes: [], time: [] };
   for (const { table, id, before, after } of input.changes) {

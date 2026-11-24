@@ -152,6 +152,18 @@ this file before changing the repo, and update it when a rule changes.
   The record tools themselves propose a one-action list the same way (decision 0045, the MCP bullet), and a refusal
   of that one action reads as the service's own message (no "Action 1: "). `src/mcp` imports services, never the
   reverse (`src/services/layering.test.ts`).
+  **D1 calls** (decision 0044, "D1 calls"; the free plan allows 50 a request): a maximum-size propose and its apply
+  make at most 40 each (`src/services/proposals-d1.test.ts` counts them with `tests/helpers/counting-db.ts`). So
+  `proposeChanges`/`applyChanges` set a request memo (`ctx.memo`, `src/services/memo.ts`): the settings row, stages,
+  person statuses and sub-statuses, field definitions and work types, read in one batch the first time any is needed.
+  A settings-like read in a service goes through a `memo.ts` reader (`settingsRow`, `stageRows`, `fieldDefRows`,
+  `personStatusRows`, `subStatusRows`, `liveWorkTypeRows`) or a helper built on one (`ownerTimezone`, `findStage`,
+  `statusLabels`, `requireTimeTracking`, ...), passed the ctx, never `ctx.db`; without a memo they read the database as
+  before. Never put a record row (contacts, deals, tasks, time entries, activities) in the memo: those go through the
+  planned-read helpers, and in collect mode a deal with its person (`dealWithOwner`) or a task with its deal and person
+  (`taskWithLinks`) is read in one batch. A plan refuses a write to a memo table. Name matching reads every ref in one
+  batch (`matchAll`); the list reads the people, deals and tasks it names in one batch; a trial that fails is explained
+  with at most two more trials, never a new plan.
 - **People and person status** (decisions 0022, 0023, 0040): every `contacts` row has a `person_status` (a
   `person_statuses` key: Lead, Contact, Partner and any the owner adds) and a `sub_status` (a `person_substatuses` key
   of that status, or null); there is no leads table. A lead is a person whose status is Lead, with no open deal.

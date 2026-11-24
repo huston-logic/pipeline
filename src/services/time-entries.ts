@@ -4,7 +4,7 @@
 // rate change never rewrites it; editing its work type, person or billable works the rate out again from today's rates.
 // Entries are archived, never deleted. Every read by id goes through lookup.ts, so a proposal's later actions see what
 // the earlier ones planned (decision 0044).
-import type { ContactRow, Db, DealRow, TaskRow, TimeEntryRow, WorkTypeRow } from "../db/db.ts";
+import type { ContactRow, DealRow, TaskRow, TimeEntryRow, WorkTypeRow } from "../db/db.ts";
 import { isTimeEntryId, newId } from "../ids.ts";
 import { formatLocal, parseWhen } from "../time.ts";
 import {
@@ -122,16 +122,17 @@ export async function resolveLinks(
 }
 
 /** The hourly rate an entry uses: the person's own rate for the work type beats the work type's; null with neither. */
-export async function rateFor(db: Db, workTypeId: string | null, contactId: string | null): Promise<number | null> {
+export async function rateFor(src: Source, workTypeId: string | null, contactId: string | null): Promise<number | null> {
   if (workTypeId === null) return null;
   if (contactId !== null) {
-    const own = await db
+    const own = await sourceOf(src)
+      .db
       .prepare("SELECT hourly_rate FROM client_rates WHERE work_type_id = ? AND contact_id = ? AND archived = 0")
       .bind(workTypeId, contactId)
       .first<number>("hourly_rate");
     if (own !== null) return own;
   }
-  return (await workTypeById(db, workTypeId))?.hourly_rate ?? null;
+  return (await workTypeById(src, workTypeId))?.hourly_rate ?? null;
 }
 
 /** The long-entry refusal, shared with the timer's stop. */
@@ -180,9 +181,8 @@ const linkColumns = (links: TimeLinks) => ({
 const billableOf = (input: boolean | undefined, workType: WorkTypeRow | null) => input ?? workType?.billable_default === 1;
 
 export async function addTimeEntry(ctx: Ctx, input: TimeEntryInput): Promise<ChangeResult & { entryId: string }> {
-  const { db } = ctx;
-  await requireTimeTracking(db);
-  const tz = await ownerTimezone(db);
+  await requireTimeTracking(ctx);
+  const tz = await ownerTimezone(ctx);
   const start = parseWhen(input.startedAt, tz);
   if (input.endedAt !== undefined && input.minutes !== undefined) throw new UserError("Give endedAt or minutes, not both.");
   const end = input.endedAt === undefined ? null : parseWhen(input.endedAt, tz);
@@ -199,7 +199,7 @@ export async function addTimeEntry(ctx: Ctx, input: TimeEntryInput): Promise<Cha
     minutes: span.minutes,
     work_type_id: workType?.id ?? null,
     billable: billable ? 1 : 0,
-    rate: billable ? await rateFor(db, workType?.id ?? null, links.contact?.id ?? null) : null,
+    rate: billable ? await rateFor(ctx, workType?.id ?? null, links.contact?.id ?? null) : null,
     notes: clean(input.notes ?? null),
     activity_id: null,
     archived: 0,
@@ -241,9 +241,8 @@ async function otherRunning(src: Source, id: string): Promise<TimeEntryRow | nul
 const ANOTHER_RUNNING = "Another timer is running. Stop it first, or leave this one archived.";
 
 export async function updateTimeEntry(ctx: Ctx, ref: string, patch: TimeEntryPatch): Promise<ChangeResult & { entryId: string }> {
-  const { db } = ctx;
-  await requireTimeTracking(db);
-  const tz = await ownerTimezone(db);
+  await requireTimeTracking(ctx);
+  const tz = await ownerTimezone(ctx);
   const before = await findEntry(ctx, ref);
   const label = rowLabel("time_entries", before);
   const edits = Object.entries(patch).some(([key, value]) => key !== "archived" && value !== undefined);
@@ -295,7 +294,7 @@ export async function updateTimeEntry(ctx: Ctx, ref: string, patch: TimeEntryPat
   set.billable = billable ? 1 : 0;
   const reprice = patch.workType !== undefined || patch.billable !== undefined || contactId !== before.contact_id;
   if (running || !billable) set.rate = null;
-  else if (reprice) set.rate = await rateFor(db, workTypeId, contactId);
+  else if (reprice) set.rate = await rateFor(ctx, workTypeId, contactId);
   if (patch.notes !== undefined) set.notes = clean(patch.notes);
   if (patch.archived !== undefined) set.archived = patch.archived ? 1 : 0;
 

@@ -7,6 +7,7 @@
 import { newId } from "../ids.ts";
 import type { ChangeInput, ChangeResult, ChangeTable, Ctx, Row, RowChange } from "./change.ts";
 import { guardIds, oneLine, rowKey } from "./change.ts";
+import { MEMO_TABLES } from "./memo.ts";
 
 type Entry = { table: ChangeTable; id: string; before: Row | null; after: Row | null };
 
@@ -21,6 +22,8 @@ export class PlanCollector {
   readonly #leadingSources: number[] = [];
   /** The action that added each row the plan adds, by id. */
   readonly #addedBy = new Map<string, number>();
+  /** The actions that wrote each row, by row key, in order. */
+  readonly #writtenBy = new Map<string, number[]>();
   readonly #summaries: string[] = [];
   #target: { table: ChangeTable; id: string } | null = null;
   #action = 0;
@@ -59,8 +62,11 @@ export class PlanCollector {
   }
 
   /** Called by commitChange when ctx.plan is set. */
-  record(_ctx: Ctx, input: ChangeInput): ChangeResult {
+  record(ctx: Ctx, input: ChangeInput): ChangeResult {
     if (input.bulk || input.undoOf !== undefined) throw new Error("A bulk change or an undo can't be planned.");
+    // The request memo (memo.ts) holds these tables for the whole plan: a planned write to one would leave it stale.
+    const memoized = ctx.memo === undefined ? undefined : input.changes.find((change) => MEMO_TABLES.includes(change.table));
+    if (memoized !== undefined) throw new Error(`A plan can't change ${memoized.table}: the request memo holds it.`);
     for (const change of input.changes) this.#merge(change);
     for (const statement of input.leading ?? []) {
       this.#leading.push(statement);
@@ -78,6 +84,7 @@ export class PlanCollector {
 
   #merge(change: RowChange): void {
     const key = rowKey(change.table, change.id);
+    this.#writtenBy.set(key, [...(this.#writtenBy.get(key) ?? []), this.#action]);
     const seen = this.#rows.get(key);
     if (seen === undefined) {
       this.#rows.set(key, { table: change.table, id: change.id, before: change.before, after: change.after });
@@ -90,6 +97,23 @@ export class PlanCollector {
       throw new Error(`${key} was read from the database after an earlier action planned it.`);
     }
     seen.after = change.after === null ? null : { ...change.after, version };
+  }
+
+  /**
+   * The first action after action `after` that wrote a row bound to one of `ids` (the row's id, or a column holding
+   * one, as a deal's contact_id), or undefined when none did: which later action changes what a guard bound to `ids`
+   * checks, read from the plan alone.
+   */
+  firstWriterAfter(after: number, ids: readonly string[]): number | undefined {
+    const wanted = new Set(ids);
+    let first: number | undefined;
+    for (const [key, entry] of this.#rows) {
+      const bound = [entry.id, ...Object.values(entry.before ?? {}), ...Object.values(entry.after ?? {})].some((value) => typeof value === "string" && wanted.has(value));
+      if (!bound) continue;
+      const writer = (this.#writtenBy.get(key) ?? []).find((action) => action > after);
+      if (writer !== undefined && (first === undefined || writer < first)) first = writer;
+    }
+    return first;
   }
 
   /** The planned row (after every action so far), undefined when untouched, null when planned deleted. */

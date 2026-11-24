@@ -11,7 +11,7 @@ import { rowLabel } from "./describe.ts";
 import { UserError } from "./errors.ts";
 import { clean, whenOrNull } from "./input.ts";
 import { isTrusted } from "./labels.ts";
-import { contactById, dealById, ownerTimezone, type Source, sourceOf, workTypeById } from "./lookup.ts";
+import { contactById, dealById, ownerTimezone, type Source, workTypeById } from "./lookup.ts";
 import { requireTimeTracking } from "./settings.ts";
 import {
   ENTRY_MAX_MINUTES,
@@ -58,7 +58,7 @@ export function sinceText(at: string, now: Date, tz: string): string {
 /** "A timer is already running for <label> since 9:10 AM. Stop it first." for the timer running now, or null. */
 export async function runningTimerRefusal(src: Source, now: Date): Promise<string | null> {
   const running = await runningTimer(src);
-  return running === null ? null : alreadyRunning(src, running, now, await ownerTimezone(sourceOf(src).db));
+  return running === null ? null : alreadyRunning(src, running, now, await ownerTimezone(src));
 }
 
 async function alreadyRunning(src: Source, running: TimeEntryRow, now: Date, tz: string): Promise<string> {
@@ -70,8 +70,8 @@ async function alreadyRunning(src: Source, running: TimeEntryRow, now: Date, tz:
 
 export async function startTimer(ctx: Ctx, subject: TimerSubject): Promise<ChangeResult & { entryId: string }> {
   const { db } = ctx;
-  await requireTimeTracking(db);
-  const tz = await ownerTimezone(db);
+  await requireTimeTracking(ctx);
+  const tz = await ownerTimezone(ctx);
   const running = await runningTimer(ctx);
   if (running) throw new UserError(await alreadyRunning(ctx, running, ctx.now, tz));
   const links = await resolveLinks(ctx, subject);
@@ -123,9 +123,8 @@ export async function stopTimer(
   ctx: Ctx,
   input: StopInput,
 ): Promise<ChangeResult & { entryId: string; activityId: string | null; taskId: string | null }> {
-  const { db } = ctx;
-  await requireTimeTracking(db);
-  const tz = await ownerTimezone(db);
+  await requireTimeTracking(ctx);
+  const tz = await ownerTimezone(ctx);
   const running = await runningTimer(ctx);
   if (!running) throw new UserError("No timer is running. Start one with start_timer, or add the time with add_time_entry.");
   if (ctx.plan?.reads()[rowKey("time_entries", running.id)] === null) {
@@ -213,7 +212,7 @@ export async function stopTimer(
       minutes,
       work_type_id: workType?.id ?? null,
       billable: billable ? 1 : 0,
-      rate: billable ? await rateFor(db, workType?.id ?? null, contact?.id ?? null) : null,
+      rate: billable ? await rateFor(ctx, workType?.id ?? null, contact?.id ?? null) : null,
       notes: notes ?? running.notes,
       activity_id: activityId ?? running.activity_id,
     },

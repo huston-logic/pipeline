@@ -9,6 +9,7 @@ import { joinAnd } from "./describe.ts";
 import { UserError } from "./errors.ts";
 import { checkEmail, clean } from "./input.ts";
 import { parseStringArray } from "./lookup.ts";
+import { type Reader, settingsRow } from "./memo.ts";
 
 /** settings.ai_edits (decision 0045): "review" is Review first, "small" is Apply small changes. */
 export type AiEdits = SettingsRow["ai_edits"];
@@ -25,8 +26,8 @@ const AI_EDITS_LABELS: Record<AiEdits, string> = { review: "Review first", small
 export const TIME_TRACKING_OFF = "Time tracking is off. The owner can turn it on (update_settings timeTracking true).";
 
 /** Refuses unless the owner turned time tracking on. */
-export async function requireTimeTracking(db: Db): Promise<void> {
-  if ((await getSettingsRow(db)).time_tracking !== 1) throw new UserError(TIME_TRACKING_OFF);
+export async function requireTimeTracking(src: Reader): Promise<void> {
+  if ((await settingsRow(src)).time_tracking !== 1) throw new UserError(TIME_TRACKING_OFF);
 }
 
 /** How the AI app's record tools write: propose everything, or apply small changes at once. */

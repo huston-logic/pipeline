@@ -36,10 +36,9 @@ export interface NewContactInput {
 }
 
 export async function addContact(ctx: Ctx, input: NewContactInput): Promise<ChangeResult & { contactId: string }> {
-  const { db } = ctx;
   const name = clean(input.name);
   if (name === null) throw new UserError("A contact needs a name. Give the person's name.");
-  const { status, sub, move } = await resolveMove(db, null, { status: input.personStatus ?? CONTACT, sub: input.subStatus });
+  const { status, sub, move } = await resolveMove(ctx, null, { status: input.personStatus ?? CONTACT, sub: input.subStatus });
   if (move.status === LEAD) {
     const { email, phone, business, source, notes, fields, allowDuplicate } = input;
     return addLead(ctx, { name, email, phone, business, source, notes, fields, allowDuplicate, status: (move.sub ?? "new") as LeadStatus });
@@ -53,7 +52,7 @@ export async function addContact(ctx: Ctx, input: NewContactInput): Promise<Chan
     }
   }
   const fields = withoutNulls(input.fields ?? {});
-  await checkFieldValues(db, "contact", fields);
+  await checkFieldValues(ctx, "contact", fields);
 
   const now = ctx.now.toISOString();
   const contact: ContactRow = {

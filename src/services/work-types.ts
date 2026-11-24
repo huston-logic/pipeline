@@ -17,6 +17,7 @@ import { UserError } from "./errors.ts";
 import { clean } from "./input.ts";
 import { contactName } from "./labels.ts";
 import { findContact, type Source, sourceOf, withPlanned, workTypeById } from "./lookup.ts";
+import { liveWorkTypeRows } from "./memo.ts";
 import { requireTimeTracking } from "./settings.ts";
 import { formatMoney, toCents } from "./time-format.ts";
 
@@ -68,11 +69,10 @@ async function checkNameFree(db: Db, name: string, except?: string): Promise<voi
 
 /** A live work type by id or name (ignoring case). Time entries and the timer use this. */
 export async function findWorkType(src: Source, ref: string): Promise<WorkTypeRow> {
-  const { db } = sourceOf(src);
   const text = ref.trim();
   const byId = text === "" ? null : await workTypeById(src, text);
   if (byId && byId.archived === 0) return byId;
-  const live = await liveWorkTypes(db);
+  const live = await liveWorkTypeRows(src);
   const match = live.find((row) => row.name.toLowerCase() === text.toLowerCase());
   if (match) return match;
   const shown = short(text, 40);
