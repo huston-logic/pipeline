@@ -22,7 +22,8 @@ git-ignored `.copies/`. What that copy runs now can't be checked from the repo o
 run 4's code (migrations 0006 to 0008) is open until you confirm it. Run 5's code (migrations 0009 to 0013) reaches
 it only when you run the update (Needs Grant 1).
 
-**Open.** Only this status update. What is left is in "Needs Grant" and in the minor findings below.
+**Open.** Run 6, "Daily work", is in progress (docs/PLAN.md, "Run 6"; section "Run 6" below). What is left from
+earlier runs is in "Needs Grant" and in the minor findings below.
 
 **Dependencies** (exact-pinned in `package.json`): runtime `agents` 0.33.0, `@modelcontextprotocol/server` 2.4.0,
 `@cloudflare/workers-oauth-provider` 1.2.4, `postal-mime` 4.2.1, `zod` 4.6.7. Development: `@playwright/test` 1.65.0,
@@ -142,6 +143,43 @@ Changes to scope, product or a decision since run 3, one line each:
 ---
 
 # History (kept from earlier runs; facts re-checked on 2026-11-23)
+
+## Run 6 (from 2026-11-23, in progress)
+
+Daily work (docs/PLAN.md, "Run 6"; plan `docs/superpowers/plans/2026-11-24-run6-daily-work.md`): approve before
+change, to-dos like a list, capture through the AI app, timer and time entries with billing rates. The closing PR
+fills in the table and the final state.
+
+| # | Task | PR | State |
+| --- | --- | --- | --- |
+| - | Plan | this PR | open |
+| A1 | Proposals: `propose_changes`, `apply_changes` (0044, migration 0014) | | planned |
+| A2 | The "AI edits" setting (0045, migration 0015) | | planned |
+| B3 | Standalone tasks (0046, migration 0016) | | planned |
+| B4 | Today works like a list (0047) | | planned |
+| C5 | Capture (0048, migration 0017) | | planned |
+| D6 | Time and rates: data and MCP (0049, migration 0018) | | planned |
+| D7 | The timer on the board (0050) | | planned |
+| D8 | Time pages and CSV (0051) | | planned |
+| E9 | Closing docs and status | | planned |
+
+### Run 6 rulings (cost if wrong)
+
+- 1. The brief ("run it unattended start to finish ... merge") is treated as an autonomous run under CLAUDE.md:
+  auto-merge after review, no questions. Cost: none.
+- 2. A proposal expires 2 hours after it is made, holds at most 25 actions, and at most 10 wait at once (the same
+  window and cap as import drafts). Cost: a yes given later than 2 hours needs a fresh list.
+- 3. `apply_changes` plans the actions again at apply time and refuses unless every record it reads has the same
+  version it had when proposed, so "changed since" is exact and the dates and times are the apply's. Cost: none.
+- 4. The proposal list is rendered from the rows the change would write, not from the AI's request, so it shows
+  side effects too (a lead becoming Contacted, a stage move's note). Cost: a slightly longer list.
+- 5. A record added in a proposal can be named by later actions (`@1`) only as the subject of a note, a task or time;
+  editing it in a later action is refused ("put those details in action 1"). Cost: the AI folds details into the add.
+- 6. "Apply small changes" applies at once only a logged call or note on an existing record, a ticked task, and (D6)
+  starting a timer or stopping one without a next-step date. Cost: other one-record edits still need a yes.
+- 7. Proposals are not shown on the board; the owner approves in the AI app. Cost: a board page later if wanted.
+- 8. A per-client rate is per person (a contact), not per company. Cost: a rate per person at the same company.
+- 9. Time tracking is off by default; the demo seed turns it on so the time pages are tested. Cost: none.
 
 ## Run 5 (2026-11-22 to 2026-11-23)
 

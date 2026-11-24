@@ -314,3 +314,22 @@ no terminal.
 | P9 | Saved views | Migration 0013: views (name, module, filters, sort, layout, columns); `list_views`, `add_view`, `update_view`, `archive_view`; a default view per Person status; views in the People switch |
 | P10 | Table layout | Cards or a table for every list (People views, Pipeline List): real table markup, first column pinned, sideways scroll on a phone, sortable headers, no JavaScript |
 | C11 | Closing docs | INSTALL.md section 8, UPDATING.md "Run 5: after you update", acceptance sentences for import, undo, add a contact, add a Person status and add a view, STATUS.md |
+
+## Run 6: daily work (2026-11-24)
+
+The owner's brief is the approved design. The detailed plan, with interfaces and tests per task, is
+`docs/superpowers/plans/2026-11-24-run6-daily-work.md`. Work in order: A1 first, because everything else builds on
+it. If the run gets long, tasks are cut from the bottom of the list up. One branch and PR per task, each from a fresh
+`main`.
+
+| # | Task | Done when |
+| --- | --- | --- |
+| A1 | FR-02 Approve before change | `propose_changes` stores a proposal (migration 0014) and writes nothing; the list is built by code from the planned rows, grouped Add / Update / Tasks / Notes / Time, `old -> new`; names matched in code, an ambiguous one is a question; `apply_changes` writes the whole proposal as one change with one undo, and refuses an expired or stale proposal; a revised proposal replaces the old one |
+| A2 | The "AI edits" setting | Setting (migration 0015), default Review first: the record write tools return a proposal; Apply small changes lets a logged call or note and a ticked task apply at once; server instructions say propose, show, apply after yes |
+| B3 | Standalone tasks | Migration 0016: a task can belong to a person, a deal or nothing; `add_task` with neither; brief, What it caught, rules, export and import keep counting right |
+| B4 | Today works like a list | Due-date order with overdue first, a "Needs a due date" list, sort by due, newest or person/deal, filter linked or standalone, quick add with no JavaScript |
+| C5 | Capture | Instructions, a `capture` rulebook document (migration 0017) and acceptance sentence 21: three tasks from one ramble, one yes, one undo |
+| D6 | Time and rates: data and MCP | Migration 0018: time entries, work types, client rates, the time-tracking setting (off); services and MCP tools; a timer is an entry with no end; rates fixed on save; proposals under Review first |
+| D7 | The timer on the board | Start on a person, deal or task; a Stop bar on every page; "What did you do?"; the note, the next-step task and an Ask Claude link |
+| D8 | Time pages and CSV | This week with totals, add and edit by hand, CSV of time by client and month, demo seed |
+| E9 | Closing | UPDATING.md "Run 6: after you update", acceptance sentences, CPU re-measure, STATUS.md |
