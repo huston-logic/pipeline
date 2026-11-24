@@ -131,7 +131,9 @@ this file before changing the repo, and update it when a rule changes.
   them (the collector refuses a write whose `before` isn't the planned row; the "apply equals running the actions one
   by one" test proves it). The list is rendered from the merged rows (`proposal-text.ts`), never from the action text,
   and the proposal (`proposals`, migration 0014, scratch space like import drafts) stores the resolved actions and
-  `reads` (every row written, with the version read). `apply_changes` plans again at apply time, refuses unless the
+  `reads` (every row written, with the version read), but only after a trial: apply's exact batch (`changeBatch`,
+  shared with `commitChange`) plus a sentinel that always fails, so it rolls back; any error but the sentinel's is a
+  plain refusal and nothing is stored (a guard in `extra` should carry a reason, `withGuardReason`). `apply_changes` plans again at apply time, refuses unless the
   fresh `reads` match in order ("<Record> changed since this list was made"), keeps the ids the list showed, and writes
   one change (tool `apply_changes`) with a leading guard that the proposal is still open and an extra statement marking
   it applied. `@n` names a record an earlier action adds, only as a note's or task's subject. At most 10 open, 2 hours

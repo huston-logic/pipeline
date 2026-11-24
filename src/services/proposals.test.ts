@@ -354,6 +354,62 @@ test("a list of more than 50 rows is written as a bulk change and undoes in one"
   assert.deepEqual([undone.contacts, undone.deals, undone.activities], [before.contacts, before.deals, before.activities]);
 });
 
+/** Alex (won deal, no open deal) made a Not now lead, then given a new deal: each alone is fine, together the
+ * first action's "no open deal" guard fails in the one batch. */
+const LEAD_THEN_DEAL: RecordAction[] = [
+  { action: "update_contact", contact: "ct_seed07", leadStatus: "not_now" },
+  { action: "add_deal", contact: "ct_seed07", dealTitle: "Gift card page" },
+];
+
+test("a list whose apply would fail is refused at propose", async () => {
+  const db = await setup();
+  const before = await counts(db);
+  await assert.rejects(
+    propose(db, LEAD_THEN_DEAL),
+    /^UserError: Action 2 and action 1 can't be in one list: a lead can't have an open deal\. Send them as two lists\.$/,
+  );
+  assert.deepEqual(await counts(db), before, "nothing stored");
+  // Each alone proposes and applies.
+  for (const action of LEAD_THEN_DEAL) {
+    const { id } = await propose(db, [action]);
+    await apply(db, id);
+  }
+  assert.equal((await audits(db)).length, 2);
+});
+
+test("the trial writes nothing", async () => {
+  const db = await setup();
+  const before = await counts(db);
+  const { id } = await propose(db, PATS_DAY);
+  assert.deepEqual(await counts(db), { ...before, proposals: before.proposals + 1 }, "a trial that would apply leaves only the proposal");
+  assert.equal((await proposal(db, id))?.status, "open");
+  await assert.rejects(propose(db, LEAD_THEN_DEAL), /can't be in one list/);
+  assert.deepEqual(await counts(db), { ...before, proposals: before.proposals + 1 }, "a trial that fails leaves nothing");
+  const alex = await db.prepare("SELECT version, lead_status FROM contacts WHERE id = 'ct_seed07'").first();
+  assert.deepEqual({ ...alex }, { version: 1, lead_status: null });
+});
+
+test("a record that moves between the plan and the trial is a fresh-list answer, not a conflict", async () => {
+  const db = await setup();
+  let bumped = false;
+  // The first batch of the propose is the trial: Pat's row moves just before it, as another write would.
+  const racing: Db = {
+    prepare: (sql: string) => db.prepare(sql),
+    batch: async (statements) => {
+      if (!bumped) {
+        bumped = true;
+        await db.prepare("UPDATE contacts SET version = version + 1 WHERE id = 'ct_seed01'").run();
+      }
+      return db.batch(statements);
+    },
+  } as Db;
+  await assert.rejects(
+    proposeChanges(ctxFor(racing), { actions: [{ action: "update_contact", contact: "ct_seed01", phone: "555-0199" }] }, DEPS),
+    /^UserError: A record in this list changed while the list was being made, so nothing was proposed\. Send the list again\.$/,
+  );
+  assert.equal((await counts(db)).proposals, 0);
+});
+
 test("the hourly run keeps applied and dropped proposals for a day", async () => {
   const db = await setup();
   const first = await propose(db, PATS_DAY);

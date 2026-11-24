@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import type { Client } from "@modelcontextprotocol/client";
-import { CHANGE_LINE, connectHttp, ok, okText } from "../helpers/mcp-client.ts";
+import { CHANGE_LINE, connectHttp, fails, ok, okText } from "../helpers/mcp-client.ts";
 import { type DevServer, startDevServer } from "./harness.ts";
 
 let server: DevServer;
@@ -27,6 +27,21 @@ test("tools/list includes propose_changes and apply_changes", async () => {
   const names = tools.map((tool) => tool.name);
   assert.ok(names.includes("propose_changes"));
   assert.ok(names.includes("apply_changes"));
+});
+
+test("a list whose apply would fail is refused at propose on real D1, and its trial writes nothing", async () => {
+  const added = (await ok(client, "add_contact", { name: "Trial Example", email: "trial@example.com" })).data as { contactId: string };
+  const message = await fails(client, "propose_changes", {
+    actions: [
+      { action: "update_contact", contact: added.contactId, leadStatus: "not_now" },
+      { action: "add_deal", contact: added.contactId, dealTitle: "Trial site" },
+    ],
+  });
+  assert.equal(message, "Action 2 and action 1 can't be in one list: a lead can't have an open deal. Send them as two lists.");
+  type Found = { contacts: { id: string; leadStatus: unknown; personStatus: unknown; deals: unknown[] }[] };
+  const found = (await ok(client, "search_contacts", { query: "Trial Example" })).data as Found;
+  const person = found.contacts.find((contact) => contact.id === added.contactId);
+  assert.deepEqual([person?.leadStatus, person?.personStatus, person?.deals], [null, "contact", []], "the trial left them as they were");
 });
 
 test("three tasks proposed, applied as one change, and one undo takes all three back", async () => {

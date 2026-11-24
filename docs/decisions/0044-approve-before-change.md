@@ -32,7 +32,21 @@ later action names a record an earlier one adds, how names are matched, and how 
   database fails loudly instead of losing an earlier action's edit. The test "apply equals running the actions one by
   one" proves the reads are complete for the record actions.
 - **Guards in `extra` check the final state.** In the merged batch, a service's guard (such as `noOpenDeal` for a new
-  lead status) runs after every row write, as it did in its own batch.
+  lead status) runs after every row write, as it did in its own batch. So two actions can each be fine alone and fail
+  together; the trial below refuses such a list at propose time.
+- **The trial.** A proposal is never stored if its apply would fail on the database as it is now. After planning,
+  propose runs apply's exact batch (`changeBatch` in `change.ts`, which `commitChange` also uses, so the statements
+  are built once): the proposal's own row, the leading "still open" guard, the row guards and writes, the extras with
+  the "mark applied" statement, and the audit rows, followed by a sentinel that always fails with a message nothing
+  else can give (`NOT NULL constraint failed: proposals.created_at`), so D1 always rolls the batch back. The sentinel's
+  error means the list would apply, and it is stored. Any other error stores nothing and is refused in plain English:
+  a guard failure is traced by trying the first m actions for m = 1, 2, …; the first prefix that fails, and the guard
+  from an earlier action j that fails on it, give "Action m and action j can't be in one list: <reason>. Send them as
+  two lists." (the reason is the guard's, `withGuardReason`; `noOpenDeal`'s is "a lead can't have an open deal").
+  When the rows alone fail, a record moved between the plan and the trial ("A record in this list changed while the
+  list was being made, so nothing was proposed. Send the list again."). A duplicate email and a foreign-key failure
+  have their own sentences. The collector keeps which action each extra came from (`startAction`, `extraSources`).
+  After a trial that passed, a guard failure at apply really is a change since.
 - **Actions** (`src/services/proposal-actions.ts`). Each is a record tool's input (`src/mcp/record-inputs.ts`, which
   the tools also use) plus `action`, the tool's name: `add_lead`, `add_deal`, `add_contact`, `update_contact`,
   `update_deal`, `qualify_lead`, `return_to_lead`, `log_activity`, `add_task`, `complete_task`, `snooze_task`.
@@ -101,9 +115,11 @@ later action names a record an earlier one adds, how names are matched, and how 
 
 ## Consequences
 
-- A guard a service puts in `extra` checks the merged batch's final state. Setting a lead status and then adding a deal
-  for the same person in one list plans, but its apply fails the "no open deal" guard and asks for a fresh list. Rare;
-  revisit if it shows up.
+- A guard a service puts in `extra` checks the merged batch's final state, so setting a lead status and then adding a
+  deal for the same person can't be one list (each alone is fine): the trial refuses it at propose time, naming both
+  actions. Every propose runs one extra rolled-back batch (and, only when it fails, a few more to name the cause).
+- A new guard statement in a record service should carry a reason (`withGuardReason`), or the refusal falls back to
+  "action m changes what action j checks".
 - Names in actions are matched before planning, against the database, so an action can't name a record by a name an
   earlier action gives it; it uses `@n` (as a subject) or the id.
 - Name matching uses SQLite's `LIKE` to find candidates, which ignores case for ASCII only: a name that differs only in

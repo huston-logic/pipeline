@@ -16,15 +16,31 @@ export class PlanCollector {
   readonly #rows = new Map<string, Entry>();
   readonly #leading: D1PreparedStatement[] = [];
   readonly #extra: D1PreparedStatement[] = [];
+  /** The action number each extra statement came from, in step with #extra. */
+  readonly #extraSources: number[] = [];
   readonly #summaries: string[] = [];
   #target: { table: ChangeTable; id: string } | null = null;
+  #action = 0;
+
+  /** Says which action (1-based) the next changes come from, so a failing extra statement can be traced to it. */
+  startAction(n: number): void {
+    this.#action = n;
+  }
+
+  /** The action number each of build()'s extra statements came from, in the same order. */
+  extraSources(): number[] {
+    return [...this.#extraSources];
+  }
 
   /** Called by commitChange when ctx.plan is set. */
   record(_ctx: Ctx, input: ChangeInput): ChangeResult {
     if (input.bulk || input.undoOf !== undefined) throw new Error("A bulk change or an undo can't be planned.");
     for (const change of input.changes) this.#merge(change);
     this.#leading.push(...(input.leading ?? []));
-    this.#extra.push(...(input.extra ?? []));
+    for (const statement of input.extra ?? []) {
+      this.#extra.push(statement);
+      this.#extraSources.push(this.#action);
+    }
     const summary = oneLine(input.summary);
     this.#summaries.push(summary);
     this.#target ??= input.target;

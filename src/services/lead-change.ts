@@ -3,7 +3,7 @@
 // one change, so the status always moves in the same change as the write that caused it.
 import type { ActivityType, ContactRow, Db, TaskRow } from "../db/db.ts";
 import { newId } from "../ids.ts";
-import { type RowChange, updatedRow } from "./change.ts";
+import { type RowChange, updatedRow, withGuardReason } from "./change.ts";
 import { isTrusted } from "./labels.ts";
 import { isUnqualified, type LeadStatus } from "./lead-status.ts";
 import { openDealsOf, type Source, sourceOf } from "./lookup.ts";
@@ -78,9 +78,12 @@ export function contactedIfNew(contact: ContactRow, type: ActivityType, data: st
 
 /** A write_guard statement that fails the batch unless the person has no open, unarchived deal (invariant 1). */
 export function noOpenDeal(db: Db, contactId: string): D1PreparedStatement {
-  return db
-    .prepare("INSERT INTO write_guard (ok) SELECT COUNT(*) = 0 FROM deals WHERE contact_id = ? AND status = 'open' AND archived = 0")
-    .bind(contactId);
+  return withGuardReason(
+    db
+      .prepare("INSERT INTO write_guard (ok) SELECT COUNT(*) = 0 FROM deals WHERE contact_id = ? AND status = 'open' AND archived = 0")
+      .bind(contactId),
+    "a lead can't have an open deal",
+  );
 }
 
 /** How many open, unarchived deals the person has, as the plan leaves them when the source carries one. */

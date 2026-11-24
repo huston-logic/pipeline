@@ -50,6 +50,18 @@ test("a row planned twice keeps its first before and its latest after, one versi
   assert.deepEqual(ctx.plan.target(), target);
 });
 
+test("extra statements keep the action they came from", async () => {
+  const ctx = await planCtx();
+  const target = { table: "deals", id: "dl_a" } as const;
+  const guard = (n: number) => ctx.db.prepare("INSERT INTO write_guard (ok) VALUES (?)").bind(n);
+  ctx.plan.startAction(1);
+  await commitChange(ctx, { target, summary: "One", changes: [], extra: [guard(1)] });
+  ctx.plan.startAction(3);
+  await commitChange(ctx, { target, summary: "Three", changes: [], extra: [guard(1), guard(1)] });
+  assert.equal(ctx.plan.build(target, "").extra?.length, 3);
+  assert.deepEqual(ctx.plan.extraSources(), [1, 3, 3]);
+});
+
 test("a write that read a planned row from the database, or a bulk change, is refused", async () => {
   const ctx = await planCtx();
   const target = { table: "deals", id: "dl_a" } as const;

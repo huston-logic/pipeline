@@ -196,7 +196,7 @@ function writeStatement(table: ChangeTable, pk: string, change: RowChange): SqlS
 }
 
 /** The error's message and those of every `cause` below it: D1 wraps the SQLite text in its own error. */
-function errorText(error: unknown): string {
+export function errorText(error: unknown): string {
   const parts: string[] = [];
   const seen = new Set<unknown>();
   for (let current = error; current !== undefined && current !== null && !seen.has(current); ) {
@@ -508,14 +508,38 @@ function staleRow(input: ChangeInput): string {
   return only && others.length === 0 ? rowNoun(only.table, only.id) : "A record this change touches";
 }
 
-export async function commitChange(ctx: Ctx, input: ChangeInput): Promise<ChangeResult> {
-  if (ctx.plan !== undefined) return ctx.plan.record(ctx, input);
+/**
+ * The one batch commitChange runs, prepared on ctx.db: the caller's leading guards, the row guards and writes, the
+ * extra statements, then the audit rows. A proposal's trial (decision 0044) runs exactly these.
+ */
+export function changeBatch(
+  ctx: Pick<Ctx, "db" | "now" | "actor" | "tool">,
+  input: ChangeInput,
+): { changeId: string; summary: string; statements: D1PreparedStatement[] } {
   const { db } = ctx;
   const { changeId, summary, writes, audit } = buildChange(ctx, input);
   const prepare = ({ sql, params }: SqlStatement) =>
     params.length === 0 ? db.prepare(sql) : db.prepare(sql).bind(...params);
+  const statements = [...(input.leading ?? []), ...writes.map(prepare), ...(input.extra ?? []), ...audit.map(prepare)];
+  return { changeId, summary, statements };
+}
+
+/** Why a guard statement a service puts in `extra` exists, in a few plain words, for a refusal that names it. */
+const GUARD_REASONS = new WeakMap<D1PreparedStatement, string>();
+
+export function withGuardReason(statement: D1PreparedStatement, reason: string): D1PreparedStatement {
+  GUARD_REASONS.set(statement, reason);
+  return statement;
+}
+
+export const guardReason = (statement: D1PreparedStatement): string | undefined => GUARD_REASONS.get(statement);
+
+export async function commitChange(ctx: Ctx, input: ChangeInput): Promise<ChangeResult> {
+  if (ctx.plan !== undefined) return ctx.plan.record(ctx, input);
+  const { db } = ctx;
+  const { changeId, summary, statements } = changeBatch(ctx, input);
   try {
-    await db.batch([...(input.leading ?? []), ...writes.map(prepare), ...(input.extra ?? []), ...audit.map(prepare)]);
+    await db.batch(statements);
   } catch (error) {
     if (isGuardFailure(error)) {
       throw new StaleWriteError(`${staleRow(input)} changed since you read it. Read it again and retry.`, { cause: error });

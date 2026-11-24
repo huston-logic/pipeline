@@ -8,12 +8,16 @@ import type { Db, ProposalRow } from "../db/db.ts";
 import { isProposalId, newId } from "../ids.ts";
 import { formatLocal } from "../time.ts";
 import {
+  changeBatch,
   type ChangeInput,
   type ChangeResult,
   commitChange,
   type Ctx,
+  errorText,
+  guardReason,
   isChangeTable,
   isDuplicateEmailFailure,
+  isForeignKeyFailure,
   isGuardFailure,
   primaryKey,
   type Row,
@@ -69,6 +73,7 @@ async function planActions(ctx: Ctx, actions: readonly ResolvedAction[], deps: D
   const planCtx: Ctx = { ...ctx, plan };
   const added: ActionResult[] = [];
   for (const [i, action] of actions.entries()) {
+    plan.startAction(i + 1);
     try {
       added.push(await runAction(planCtx, bindAction(action, added), deps));
     } catch (error) {
@@ -115,14 +120,20 @@ export async function proposeChanges(ctx: Ctx, input: { actions: RecordAction[];
   const id = newId("pr");
   const stamp = now.toISOString();
   const expiresAt = new Date(now.getTime() + PROPOSAL_TTL_MS).toISOString();
+  const stored = () =>
+    db
+      .prepare("INSERT INTO proposals (id, actions, reads, status, created_at, expires_at) VALUES (?, ?, ?, 'open', ?, ?)")
+      .bind(id, JSON.stringify(actions), JSON.stringify(plan.reads()), stamp, expiresAt);
+  // The trial: apply's own batch, after the proposal's row, rolled back. A list whose apply would fail isn't stored.
+  const failed = await trialError(ctx, appliedChange(db, plan, id, new Map(), now), [stored()]);
+  if (failed !== null) throw await refusalFor(ctx, actions, deps, failed);
+
   const statements = [
     // In the batch, so two lists proposed at once can't both take the last place. The one it replaces doesn't count.
     db
       .prepare("INSERT INTO write_guard (ok) SELECT COUNT(*) < ? FROM proposals WHERE status = 'open' AND expires_at > ? AND id IS NOT ?")
       .bind(PROPOSAL_MAX_OPEN, stamp, old?.id ?? null),
-    db
-      .prepare("INSERT INTO proposals (id, actions, reads, status, created_at, expires_at) VALUES (?, ?, ?, 'open', ?, ?)")
-      .bind(id, JSON.stringify(actions), JSON.stringify(plan.reads()), stamp, expiresAt),
+    stored(),
   ];
   if (old !== null) {
     statements.push(
@@ -197,6 +208,86 @@ function withShownIds(input: ChangeInput, ids: ReadonlyMap<string, string>): Cha
 const withShownText = (text: string, ids: ReadonlyMap<string, string>) =>
   [...ids].reduce((out, [from, to]) => out.split(from).join(to), text);
 
+const applyCtx = (ctx: Ctx): Ctx => ({ ...ctx, plan: undefined, tool: "apply_changes" });
+
+/**
+ * The one change apply_changes writes for a plan of proposal `id`: the plan's rows (with the ids the list showed), a
+ * leading guard that the proposal is still open, and an extra statement marking it applied. The trial runs it too.
+ */
+function appliedChange(db: Db, plan: PlanCollector, id: string, ids: ReadonlyMap<string, string>, now: Date): ChangeInput {
+  const target = plan.target();
+  if (target === null) throw new Error(`Proposal ${id} planned no change.`);
+  const summary = short(withShownText(`Applied ${id}: ${plan.summaries().join("; ")}`, ids), 500);
+  const built = withShownIds(plan.build(target, summary), ids);
+  return {
+    ...built,
+    changeId: plan.changeId,
+    bulk: built.changes.length > BULK_ROWS,
+    leading: [
+      db
+        .prepare("INSERT INTO write_guard (ok) SELECT COUNT(*) = 1 FROM proposals WHERE id = ? AND status = 'open' AND expires_at > ?")
+        .bind(id, now.toISOString()),
+      ...(built.leading ?? []),
+    ],
+    extra: [...(built.extra ?? []), db.prepare("UPDATE proposals SET status = 'applied', change_id = ? WHERE id = ?").bind(plan.changeId, id)],
+  };
+}
+
+/**
+ * The last statement of every trial: it always fails, with a message nothing else in the batch can give (commitChange
+ * never writes proposals), so the batch always rolls back and its error tells a trial that would apply from one that
+ * wouldn't.
+ */
+const SENTINEL = "INSERT INTO proposals (id, actions, reads, created_at, expires_at) VALUES ('pr_trial', '[]', '{}', NULL, '')";
+const isSentinel = (error: unknown) => /NOT NULL constraint failed: proposals\.created_at/.test(errorText(error));
+
+/** Runs the change's own batch (after `prelude`) and rolls it back: null when it would apply, else its error. */
+async function trialError(ctx: Ctx, input: ChangeInput, prelude: D1PreparedStatement[] = []): Promise<unknown> {
+  const { db } = ctx;
+  const { statements } = changeBatch(applyCtx(ctx), input);
+  try {
+    await db.batch([...prelude, ...statements, db.prepare(SENTINEL)]);
+  } catch (error) {
+    return isSentinel(error) ? null : error;
+  }
+  throw new Error("A proposal's trial batch was not rolled back.");
+}
+
+const RACE = "A record in this list changed while the list was being made, so nothing was proposed. Send the list again.";
+
+/**
+ * Why a list's apply would fail, in plain English, from its trial's error. A guard failure is traced by trying the
+ * first m actions for m = 1, 2, ...: the first prefix that fails, and the guard (from an earlier action j) that fails
+ * on it, name the two actions that can't be in one list. A guard that fails without that is a record changed meanwhile.
+ */
+async function refusalFor(ctx: Ctx, actions: readonly ResolvedAction[], deps: Deps, error: unknown): Promise<unknown> {
+  if (isDuplicateEmailFailure(error)) {
+    return new UserError("Two people in this list, or one in it and a contact on file, would have the same email. Check the emails and send the list again.", { cause: error });
+  }
+  if (isForeignKeyFailure(error)) return new UserError("A record this list names was removed while the list was being made. Send the list again.", { cause: error });
+  if (!isGuardFailure(error)) return error;
+  for (let m = 1; m <= actions.length; m++) {
+    const plan = await planActions(ctx, actions.slice(0, m), deps);
+    const target = plan.target();
+    if (target === null) continue;
+    const built = plan.build(target, "trial");
+    const input = { ...built, bulk: built.changes.length > BULK_ROWS };
+    if ((await trialError(ctx, { ...input, extra: [] })) !== null) return new UserError(RACE, { cause: error });
+    if ((await trialError(ctx, input)) === null) continue;
+    const sources = plan.extraSources();
+    for (const [k, statement] of (input.extra ?? []).entries()) {
+      const j = sources[k];
+      if (j === undefined || j >= m) continue;
+      const failed = await trialError(ctx, { ...input, extra: [statement] });
+      if (failed === null || !isGuardFailure(failed)) continue;
+      const reason = guardReason(statement) ?? `action ${m} changes what action ${j} checks`;
+      return new UserError(`Action ${m} and action ${j} can't be in one list: ${reason}. Send them as two lists.`, { cause: error });
+    }
+    return new UserError(RACE, { cause: error });
+  }
+  return new UserError(RACE, { cause: error });
+}
+
 async function appliedAnswer(db: Db, row: ProposalRow): Promise<ChangeResult & { applied: number }> {
   const changeId = row.change_id ?? "";
   const audit = await db.prepare("SELECT summary FROM audit_log WHERE id = ?").bind(changeId).first<{ summary: string }>();
@@ -232,26 +323,8 @@ export async function applyChanges(ctx: Ctx, id: string, deps: Deps): Promise<Ch
   }
   const compared = compareReads(parseReads(row.reads), plan.reads());
   if ("changed" in compared) throw new UserError(`${await recordNamed(db, compared.changed)} changed since this list was made. ${AGAIN}`);
-  const target = plan.target();
-  if (target === null) throw new Error(`Proposal ${row.id} planned no change.`);
-
-  const summary = short(withShownText(`Applied ${row.id}: ${plan.summaries().join("; ")}`, compared.ids), 500);
-  const built = withShownIds(plan.build(target, summary), compared.ids);
-  const stamp = now.toISOString();
   try {
-    const result = await commitChange(
-      { ...ctx, plan: undefined, tool: "apply_changes" },
-      {
-        ...built,
-        changeId: plan.changeId,
-        bulk: built.changes.length > BULK_ROWS,
-        leading: [
-          db.prepare("INSERT INTO write_guard (ok) SELECT COUNT(*) = 1 FROM proposals WHERE id = ? AND status = 'open' AND expires_at > ?").bind(row.id, stamp),
-          ...(built.leading ?? []),
-        ],
-        extra: [...(built.extra ?? []), db.prepare("UPDATE proposals SET status = 'applied', change_id = ? WHERE id = ?").bind(plan.changeId, row.id)],
-      },
-    );
+    const result = await commitChange(applyCtx(ctx), appliedChange(db, plan, row.id, compared.ids, now));
     return { ...result, applied: actions.length };
   } catch (error) {
     const latest = await getProposal(db, row.id);
