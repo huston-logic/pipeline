@@ -113,7 +113,7 @@ jobs:
 
       - name: Board unchanged
         if: steps.scope.outputs.board != 'true'
-        run: echo "Accessibility audit skipped: no board file changed. Add the label full-audit to force it." >> "$GITHUB_STEP_SUMMARY"
+        run: echo "Accessibility audit skipped because no board file changed. Add the label full-audit to force it." >> "$GITHUB_STEP_SUMMARY"
 
   # Lighthouse CI audit of the board (served by `npm run preview`, wrangler dev --local, so the Worker's own security
   # headers from src/security.ts apply). A required check in the "Protect main" ruleset (see
@@ -178,4 +178,4 @@ jobs:
 
       - name: Board unchanged
         if: steps.scope.outputs.board != 'true'
-        run: echo "Lighthouse audit skipped: no board file changed. Add the label full-audit to force it." >> "$GITHUB_STEP_SUMMARY"
+        run: echo "Lighthouse audit skipped because no board file changed. Add the label full-audit to force it." >> "$GITHUB_STEP_SUMMARY"
