@@ -147,7 +147,7 @@ test("write_guard accepts only ok = 1, so a stale version check aborts its batch
   assert.equal(await db.prepare("SELECT name FROM contacts WHERE id = 'ct_a'").first("name"), "Pat Example");
 });
 
-test("activities and tasks belong to a deal or a contact", async () => {
+test("activities belong to a deal or a contact; a task may belong to either", async () => {
   const db = await createTestDb();
   await assert.rejects(
     db
@@ -156,7 +156,6 @@ test("activities and tasks belong to a deal or a contact", async () => {
       .run(),
     /CHECK constraint failed/,
   );
-  await assert.rejects(db.prepare("INSERT INTO tasks (id, title) VALUES ('tk_a', 'Call back')").run(), /CHECK/);
   await addContact(db, "ct_a");
   await db.prepare("INSERT INTO tasks (id, contact_id, title) VALUES ('tk_b', 'ct_a', 'Call back')").run();
   assert.equal(await db.prepare("SELECT source FROM tasks WHERE id = 'tk_b'").first("source"), "owner");
@@ -654,6 +653,62 @@ test("0015 from the previous version: settings keep their values and AI edits st
   db.exec("UPDATE settings SET ai_edits = 'small'");
   assert.throws(() => db.exec("UPDATE settings SET ai_edits = 'always'"), /CHECK/);
   assert.throws(() => db.exec("UPDATE settings SET ai_edits = NULL"), /NOT NULL/);
+});
+
+test("0016 keeps every task and rule firing", async () => {
+  const db = new SqliteD1();
+  await applyMigrations(db, 15);
+  applySqlFile(db, "seed/defaults.sql");
+  db.exec(`INSERT INTO contacts (id, name) VALUES ('ct_a', 'Pat Example'), ('ct_b', 'Robin Sample');
+    INSERT INTO deals (id, contact_id, title, stage_key, stage_entered_at)
+      VALUES ('dl_a', 'ct_a', 'Example website', 'replied', '2026-11-18T17:00:00.000Z');
+    INSERT INTO rules (id, type, params, description, created_by)
+      VALUES ('ru_a', 'stage_followup', '{"type":"stage_followup","days":3}', 'Follow up', 'owner'),
+             ('ru_b', 'lead_followup', '{"type":"lead_followup"}', 'Chase leads', 'owner');
+    INSERT INTO tasks (id, deal_id, contact_id, title, due_at, done_at, snoozed_until, source, untrusted_fields, version, created_at, updated_at)
+      VALUES ('tk_rule', 'dl_a', NULL, 'Follow up with Pat', '2026-11-21T17:00:00.000Z', NULL, '2026-11-22T17:00:00.000Z', 'ru_a', '["title"]', 3, '2026-11-18T17:00:00.000Z', '2026-11-19T17:00:00.000Z'),
+             ('tk_lead', NULL, 'ct_b', 'Chase Robin', NULL, '2026-11-20T17:00:00.000Z', NULL, 'ru_b', '[]', 2, '2026-11-18T18:00:00.000Z', '2026-11-20T17:00:00.000Z'),
+             ('tk_own', 'dl_a', 'ct_a', 'Call back', NULL, NULL, NULL, 'owner', '[]', 1, '2026-11-18T19:00:00.000Z', '2026-11-18T19:00:00.000Z');
+    INSERT INTO rule_firings (id, rule_id, deal_id, contact_id, fire_key, task_id, fired_at)
+      VALUES ('rf_a', 'ru_a', 'dl_a', 'ct_a', 'ru_a:dl_a:k', 'tk_rule', '2026-11-18T17:00:00.000Z'),
+             ('rf_b', 'ru_b', NULL, 'ct_b', 'ru_b:ct_b:k', 'tk_lead', '2026-11-18T18:00:00.000Z'),
+             ('rf_c', 'ru_a', 'dl_a', 'ct_a', 'ru_a:dl_a:gone', NULL, '2026-11-18T19:00:00.000Z');`);
+  const before = await snapshot(db, ["tasks", "rule_firings"]);
+
+  assert.deepEqual(await applyMigrations(db, 16), ["0016_standalone_tasks.sql"]);
+
+  assert.deepEqual(await snapshot(db, ["tasks", "rule_firings"]), before, "every task and firing, id, version and link kept");
+  const firings = (await db.prepare("SELECT id, task_id FROM rule_firings ORDER BY id").all()).results.map((row) => ({ ...row }));
+  assert.deepEqual(firings, [
+    { id: "rf_a", task_id: "tk_rule" },
+    { id: "rf_b", task_id: "tk_lead" },
+    { id: "rf_c", task_id: null },
+  ]);
+  assert.deepEqual((await db.prepare("PRAGMA foreign_key_check").all()).results, []);
+  assert.equal(await db.prepare("PRAGMA integrity_check").first("integrity_check"), "ok");
+  const tables = (await db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'tasks%'").all<{ name: string }>()).results;
+  assert.deepEqual(tables.map((t) => t.name), ["tasks"], "no copy left behind");
+  const indexes = (await db.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'tasks' AND name LIKE 'tasks_%' ORDER BY name").all<{ name: string }>()).results;
+  assert.deepEqual(indexes.map((i) => i.name), ["tasks_contact", "tasks_deal", "tasks_open_due"]);
+  const firingsSql = await db.prepare("SELECT sql FROM sqlite_master WHERE name = 'rule_firings'").first<string>("sql");
+  assert.match(firingsSql ?? "", /REFERENCES "?tasks"? \(id\) ON DELETE SET NULL/);
+  // The rebuilt table keeps its other rules.
+  await assert.rejects(db.prepare("INSERT INTO tasks (id, deal_id, title) VALUES ('tk_x', 'dl_none', 'x')").run(), /FOREIGN KEY constraint failed/);
+  await assert.rejects(db.prepare("INSERT INTO tasks (id, title, untrusted_fields) VALUES ('tk_x', 'x', '{}')").run(), /CHECK/);
+  await assert.rejects(db.prepare("INSERT INTO tasks (id, title, version) VALUES ('tk_x', 'x', 'one')").run(), /cannot store TEXT/);
+  await assert.rejects(db.prepare("INSERT INTO tasks (id) VALUES ('tk_x')").run(), /NOT NULL/);
+  await db.prepare("DELETE FROM tasks WHERE id = 'tk_rule'").run();
+  assert.equal(await db.prepare("SELECT task_id FROM rule_firings WHERE id = 'rf_a'").first("task_id"), null, "the task link still clears");
+});
+
+test("a task with no deal or contact inserts after 0016", async () => {
+  const db = await createTestDb();
+  await db.prepare("INSERT INTO tasks (id, title) VALUES ('tk_a', 'Buy printer ink')").run();
+  const row = await db.prepare("SELECT deal_id, contact_id, source, untrusted_fields, version FROM tasks WHERE id = 'tk_a'").first();
+  assert.deepEqual({ ...row }, { deal_id: null, contact_id: null, source: "owner", untrusted_fields: "[]", version: 1 });
+  const at = await db.prepare("SELECT created_at, updated_at FROM tasks WHERE id = 'tk_a'").first<{ created_at: string; updated_at: string }>();
+  assert.match(at?.created_at ?? "", ISO);
+  assert.match(at?.updated_at ?? "", ISO);
 });
 
 /**
