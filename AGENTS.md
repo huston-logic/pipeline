@@ -190,6 +190,12 @@ this file before changing the repo, and update it when a rule changes.
   for that visit and never write. A real `<table>` in a sideways-scrolling `role="region"` wrapper, a `<caption>`,
   `<th scope="col">` sort links with `aria-sort`, the first cell a `<th scope="row">` with the record's link, a sticky
   first column, no JavaScript. The Pipeline List is a table by default; it has no Move to form (the Board does).
+- **Today as a list** (decision 0047): Today shows every open, awake task in two lists, To do (dated) and Needs a due
+  date, from `openTasks` (`src/services/read.ts`), arranged by `src/board/task-list.ts`. The address carries only
+  `sort=due|newest|subject` and `show=all|linked|standalone` (a GET form; unknown values are the defaults, and a
+  non-default view has its own title and description). Quick add is `POST /tasks/quick` (`quickAddForm` in
+  `src/board/task-forms.ts`, route in `edit-actions.ts`): `add_task` as the owner with no deal or contact. The deals
+  due keep their Overdue and Due today sections beneath.
 - **Sign-in:** `src/auth/dev.ts` until task 10. `AUTH_MODE=dev` works only with `ENVIRONMENT=development` on a
   loopback host; anywhere else every route answers 500. Without `AUTH_MODE`, `/mcp` answers 401.
 - **Types:** `src/env.ts` is the `Env` type the code uses. `src/worker-configuration.d.ts` holds the Workers runtime
