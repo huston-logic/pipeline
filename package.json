@@ -18,13 +18,13 @@
     "test:lighthouse": "node scripts/lighthouse.mjs",
     "screenshots": "playwright test -c playwright.screenshots.config.ts",
     "check:config": "node scripts/check-config.mjs",
-    "check:fast": "node scripts/check-fast.mjs",
+    "check:fast": "npm run check:process && node scripts/check-fast.mjs",
     "check:process": "node scripts/check-process.mjs",
     "copies:provision": "node scripts/copies.mjs provision",
     "copies:update": "node scripts/copies.mjs update",
     "copies:export": "node scripts/copies.mjs export",
     "import:contacts": "node scripts/import-csv.ts",
-    "check": "npm run check:config && npm run lint && npm run typecheck && npm run test:worker && npm run build"
+    "check": "npm run check:process && npm run check:config && npm run lint && npm run typecheck && npm run test:worker && npm run build"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.14.0",

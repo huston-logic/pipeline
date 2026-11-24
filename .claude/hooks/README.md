@@ -21,7 +21,7 @@ Or temporarily switch branches (`git switch main`) to get the last good copy.
 | File | Event | Does |
 |---|---|---|
 | `guard-bash.mjs` | before Bash | Blocks commits/pushes on main, force push, `--no-verify`, `gh pr merge` (except exactly `gh pr merge <number> --auto --squash` or `--auto --merge`, which only queues a merge behind the required checks), `wrangler deploy/publish`, risky `rm -r`, `curl \| sh`, staging or reading secret files, and Bash writes to the owner-only paths above. Bash writes to `package.json`, `CLAUDE.md`, `AGENTS.md`, `wrangler.jsonc` and `.gitignore` no longer ask. |
-| `precommit-check.mjs` | before Bash (`git commit`) | Runs the `check` script from `package.json`; blocks the commit if it fails and shows the error. |
+| `precommit-check.mjs` | before Bash (`git commit`, `git push`, `gh pr create`) | A real `git commit` runs the `check:fast` script from `package.json`; a real `git push` or `gh pr create` runs the full `check` script (once, even if the command also commits). Blocks the action if it fails and shows the last 60 lines of the error. `--help`, `-h` and `--dry-run` run nothing, and it skips on main/master (`guard-bash.mjs` blocks those). A missing script blocks too. |
 | `protect-config.mjs` | before Edit/Write | **Blocks** (exit 2) any change to `.claude/hooks/**`, `.claude/agents/**`, `.claude/skills/**`, `.github/workflows/**` and `.claude/settings*.json`. Edits to `wrangler.jsonc`, `.gitignore`, `CLAUDE.md`, `AGENTS.md` and `package.json` no longer ask. |
 | `scan-src.mjs` | after Edit/Write | Warn-only scan of changed `src/` files: hard-coded colors, `rounded-`/`shadow-`, `dangerouslySetInnerHTML`, copy in JSX. |
 

@@ -20,7 +20,7 @@ function makeRepo(name, branch, checkScript) {
   execFileSync("git", ["init", "-q", "-b", branch, dir]);
   writeFileSync(
     path.join(dir, "package.json"),
-    JSON.stringify({ name: "demo", scripts: { check: checkScript, ship: "wrangler deploy" } }),
+    JSON.stringify({ name: "demo", scripts: { check: checkScript, "check:fast": checkScript, ship: "wrangler deploy" } }),
   );
   return dir;
 }
@@ -153,6 +153,19 @@ const cases = [
   ["precommit-check.mjs", failing, bash('git commit -m "x"'), "block", "check fails, commit blocked"],
   ["precommit-check.mjs", feat, bash("git status"), "allow", "not a commit"],
   ["precommit-check.mjs", main, bash('git commit -m "x"'), "allow", "on main (Hook 1 handles it)"],
+  // Hook 2: a commit runs check:fast, a push or PR runs the full check (the notice names the script that ran)
+  ["precommit-check.mjs", feat, bash('git commit -m "x"'), "warn", "commit runs check:fast", "npm run check:fast took"],
+  ["precommit-check.mjs", feat, bash("git push -u origin feat/demo"), "warn", "push runs check", "npm run check took"],
+  ["precommit-check.mjs", feat, bash('gh pr create --title x --body "y"'), "warn", "gh pr create runs check", "npm run check took"],
+  ["precommit-check.mjs", feat, bash('git commit -m "x" && git push origin feat/demo'), "warn", "commit plus push runs only check", "npm run check took"],
+  ["precommit-check.mjs", feat, bash("git push --dry-run origin feat/demo"), "allow", "git push --dry-run runs nothing"],
+  ["precommit-check.mjs", feat, bash("git push --help"), "allow", "git push --help runs nothing"],
+  ["precommit-check.mjs", feat, bash("gh pr create --help"), "allow", "gh pr create --help runs nothing"],
+  ["precommit-check.mjs", feat, bash("gh pr view 10"), "allow", "gh pr view runs nothing"],
+  ["precommit-check.mjs", failing, bash("git push -u origin feat/failing"), "block", "check fails, push blocked", "LINT ERROR here"],
+  ["precommit-check.mjs", failing, bash('gh pr create --title x --body "y"'), "block", "check fails, gh pr create blocked", "LINT ERROR here"],
+  ["precommit-check.mjs", main, bash("git push origin main"), "allow", "push on main skipped (Hook 1 handles it)"],
+  ["precommit-check.mjs", main, bash('git commit -m "x"'), "allow", "commit on main skipped"],
   // Hook 3
   // Hook 3: these files used to ask; they no longer do
   ["protect-config.mjs", feat, file(feat, ".gitignore"), "allow", ".gitignore no longer asks"],
