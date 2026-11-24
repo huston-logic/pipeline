@@ -118,6 +118,66 @@ It prints three `npx wrangler secret put ... -c .copies/<name>/wrangler.jsonc` c
 A phone that is signed out of Access cannot install or update the service worker, so sign in again if it stops
 working. Notifications can be turned off from the same page ("Turn off on this phone").
 
+## Run 5: after you update
+
+Run 5 adds importing people, deals and tasks from a CSV on the board and over the AI app, Person statuses (Lead,
+Contact, Partner, and kinds the owner adds), Add a contact, saved views and a table layout for lists. Do these in
+order, per copy.
+
+### 1. Update the copy
+
+```bash
+git switch main && git pull --ff-only
+npm run copies:update -- --copy <name> --dry-run
+npm run copies:update -- --copy <name>
+```
+
+Migrations 0009 to 0013 apply when wrangler asks you to confirm: they add tables and columns (bigger audit records, import drafts, person
+statuses and sub-statuses, a rulebook document, saved views) and keep every row. People who were leads keep their lead status; each person
+gets a Person status (a lead is a Lead, everyone else a Contact). Access needs no change: the new pages sit behind the
+board's sign-in like the rest.
+
+### 2. Reconnect the AI app's connector if the tool list looks stale
+
+New tools: `import_rows` and `apply_import`; `add_contact`; `list_person_statuses`, `add_person_status`,
+`update_person_status`, `add_sub_status` and `update_sub_status`; `list_views`, `add_view`, `update_view` and
+`archive_view`. `update_contact` can now set a person status and sub-status, and `search_contacts` can filter by them or
+by a custom field's value. If your AI app does not show them, open its connector settings, remove the copy's connector
+and add it again (or use its reconnect or refresh option), then start a new conversation.
+
+### 3. Sentences to say to the AI app
+
+Say these one at a time. It reads the rulebook first. Every one is a change you can undo ("Undo that").
+
+- **Import a sheet.** "Import these people from my sheet." It sends the rows, shows you what would happen (how many
+  new, how many filled in, what is skipped) and saves only after you say yes. "Undo that import" takes back all of it.
+- **Add a contact.** "Add Pat Example from the Fernbrook trade show as a contact." A person with no deal and no lead
+  status.
+- **Add a kind of person.** "Add a new kind of person: Supplier." It then has its own page at `/people?status=supplier`.
+- **Make someone a Partner.** "Make Hannah Example a Partner."
+- **Give me a view.** "Give me a view of all my partners." It saves a view that shows in the People switch.
+
+On the board: Import is on Contacts, Leads, Pipeline and Today, and in More. A list can show as cards or as a table.
+
+### 4. Retire an old "Contact type" custom field by talking
+
+If the client made their own "Contact type" field (Partner, Supplier, ...) before Person statuses existed, move it over
+in three sentences. Nothing is deleted at any step, and each step is undoable.
+
+1. "Show me everyone whose Contact type is Partner." The AI app looks them up (`search_contacts` with the field and its
+   value) and lists them. Check the list.
+2. "Make them all Partners." The AI app sets each person's Person status to Partner (`update_contact`, one person at a
+   time, each its own change). If the kind does not exist yet, say "Add a new kind of person: Supplier" first and repeat
+   for each value.
+3. "Archive the Contact type field." (`update_field` with archived true.) The field leaves the forms and lists. The
+   values stay stored on each person, and "Bring the Contact type field back" (archived false) or Undo restores it.
+
+### 5. Importing a big list on the free plan
+
+A full 2,000-row import in the Worker takes about 11 ms of CPU on a big copy, a little over the free plan's 10 ms
+(docs/PAID-PLAN.md, "Run 5: import"). If a board import of a big file fails with "exceeded CPU", split the file, import
+it from your Mac (`npm run import:contacts`, docs/INSTALL.md step 8), or move the copy to Workers Paid.
+
 ## Before a release that has a new migration
 
 Migrations only go forward: there is no "undo" for a database change. Try a release on a copy's preview database
