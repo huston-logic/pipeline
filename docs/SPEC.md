@@ -21,7 +21,7 @@ Data (Cloudflare D1, forward-only migrations)
 * `contacts`: name, email (unique when present), phone, business, source, notes, custom field values (JSON, validated against `field_defs`), lead status (null: never a lead; `new`, `contacted`, `not_now`, `not_a_fit`, `bad`, `qualified`) and when it last changed, created and updated times. A lead is a person with a lead status and no open deal (decision 0022).
 * `deals`: contact, title, stage, value, next step, next date, status, custom field values, stage entered at, last activity at
 * `activities`: deal or contact, type (form, email, call, meeting, note, stage_change, system), summary, untrusted text, occurred at, actor (owner, ai, system)
-* `tasks`: deal or contact, title, due at, done at, snoozed until, source (owner or rule id)
+* `tasks`: a deal, a contact, or neither (decision 0046), title, due at, done at, snoozed until, source (owner or rule id)
 * `rules`: type, parameters (JSON), plain-English description, active, created by
 * `rule_firings`: rule, deal or contact, fire key (unique), task created
 * `rulebook`: name, markdown, updated at
