@@ -37,7 +37,18 @@ const owner = (db: SqliteD1, tool: string): Ctx => ({ db, now: new Date(), actor
 const mainOf = (body: string) => /<main id="main">([\s\S]*)<\/main>/.exec(body)?.[1] ?? "";
 const titleOf = (body: string) => /<title>([^<]*)<\/title>/.exec(body)?.[1] ?? "";
 const tableOf = (main: string) => /<table class="data-table">[\s\S]*?<\/table>/.exec(main)?.[0] ?? "";
-const headers = (table: string) => [...table.matchAll(/<th scope="col"[^>]*>([\s\S]*?)<\/th>/g)].map((m) => (m[1] ?? "").replace(/<span aria-hidden="true">[^<]*<\/span>/g, "").replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim());
+// A header's visible label: the text between its tags, less the sort arrow. Split, not replaced, so no tag can be
+// rebuilt from the pieces (CodeQL js/incomplete-multi-character-sanitization).
+const SORT_ARROWS = new Set(["&uarr;", "&darr;"]);
+const headers = (table: string) =>
+  [...table.matchAll(/<th scope="col"[^>]*>([\s\S]*?)<\/th>/g)].map((m) =>
+    (m[1] ?? "")
+      .split(/<[^>]*>/)
+      .filter((piece) => !SORT_ARROWS.has(piece))
+      .join("")
+      .replace(/\s+/g, " ")
+      .trim(),
+  );
 const rowHeads = (table: string) => [...table.matchAll(/<th scope="row">([\s\S]*?)<\/th>/g)].map((m) => m[1] ?? "");
 const switchOf = (main: string) => /<ul class="view-switch layout-switch" aria-label="Show as">[\s\S]*?<\/ul>/.exec(main)?.[0] ?? "";
 
