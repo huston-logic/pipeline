@@ -134,6 +134,20 @@ test("round trip into the same copy is all unchanged", async () => {
   assert.deepEqual(await snapshot(db), before, "nothing was written");
 });
 
+test("round trip: a standalone task exports and imports back as a standalone task, with its id", async () => {
+  const source = await fakeCopy();
+  source.exec("INSERT INTO tasks (id, title, due_at) VALUES ('tk_standalone', 'Buy printer ink', '2026-11-30T17:00:00.000Z')");
+  const files = await exported(source);
+  const target = await createTestDb();
+  target.exec(FIELDS);
+  await importPeople(target, files.contacts);
+  await importDeals(target, files.deals);
+  assert.deepEqual(await importTasks(target, files.tasks), { created: 7, filled: 0, unchanged: 0, skipped: 0 });
+  const row = await target.prepare("SELECT deal_id, contact_id, title, due_at FROM tasks WHERE id = 'tk_standalone'").first();
+  assert.deepEqual({ ...row }, { deal_id: null, contact_id: null, title: "Buy printer ink", due_at: "2026-11-30T17:00:00.000Z" });
+  assert.deepEqual(await importTasks(source, files.tasks), { created: 0, filled: 0, unchanged: 7, skipped: 0 }, "and into the same copy, unchanged");
+});
+
 async function snapshot(db: Db) {
   return {
     contacts: await rows<ContactRow>(db, "contacts"),

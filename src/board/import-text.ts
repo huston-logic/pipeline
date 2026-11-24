@@ -53,7 +53,7 @@ export const IMPORT_TEXT: Record<ImportModuleKey, ImportText> = {
     yours: "your tasks",
     group: "Task details",
     lede:
-      "Bring in tasks from a spreadsheet saved as a CSV file. Each task goes on a deal or a person already on file. You match " +
+      "Bring in tasks from a spreadsheet saved as a CSV file. Each task goes on a deal or a person already on file, or on no one when its line names no one. You match " +
       "the columns and check the result before anything is saved.",
     descriptions: {
       start: "Bring tasks in from a spreadsheet: choose a CSV file or paste its rows, then match the columns.",
