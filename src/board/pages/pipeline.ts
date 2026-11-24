@@ -1,6 +1,6 @@
 // /pipeline: open deals as a kanban, one column per open stage, or with ?view=list as rows grouped by stage. Every
 // deal has a Move to form; Won, Lost and Not now are move targets but not columns (decision 0017). /board.js adds drag
-// and drop on the board view, on top of the forms.
+// and drop on the board view, on top of the forms. ?view=<vw id> is a saved deals view (deals-view.ts, decision 0042).
 import type { StageRow } from "../../db/db.ts";
 import { listStages } from "../../db/queries.ts";
 import { ownerTimezone } from "../../services/lookup.ts";
@@ -10,6 +10,8 @@ import type { FormContext } from "../forms.ts";
 import { type Html, html } from "../html.ts";
 import { renderPage } from "../layout.ts";
 import { moveForm, safeDealName } from "../move.ts";
+import { viewSwitch } from "../people-switch.ts";
+import { dealsViewPage } from "./deals-view.ts";
 import { count, dealLink, empty, formatNumber, labelled, addButtons, pairs, tag, when } from "../parts.ts";
 
 type View = "board" | "list";
@@ -53,16 +55,6 @@ function openLine(summary: PipelineSummary): string {
   if (summary.total === 0) return summaryLine(summary);
   const value = summary.open.value > 0 ? `, total value ${formatNumber(summary.open.value)}` : "";
   return `${count(summary.open.count, "open deal")}${value}.`;
-}
-
-/** Board / List: two views of the Pipeline tab, like People / Companies. */
-function viewSwitch(current: View): Html {
-  const item = (view: View, href: string, label: string) =>
-    html`<li><a href="${href}"${view === current ? html` aria-current="page"` : ""}>${label}</a></li>`;
-  return html`<ul class="view-switch" aria-label="Show the pipeline as">
-${item("board", "/pipeline", "Board")}
-${item("list", "/pipeline?view=list", "List")}
-</ul>`;
 }
 
 function facts(deal: DealItem): Html | "" {
@@ -172,9 +164,12 @@ function stageListView(summary: PipelineSummary, stage: StageSummary, stages: St
 ${stageSection(stage, summary.stages.indexOf(stage), stages, form, STAGE_LIST_LIMIT, false)}`;
 }
 
-export async function pipelinePage(ctx: PageContext): Promise<string> {
+export async function pipelinePage(ctx: PageContext): Promise<string | null> {
   const { db, now } = ctx;
-  const view: View = ctx.query.get("view") === "list" ? "list" : "board";
+  const asked = ctx.query.get("view") ?? "";
+  // A saved deals view (decision 0042): an id that isn't a live deals view is the board's 404.
+  if (asked.startsWith("vw_")) return dealsViewPage(ctx, asked);
+  const view: View = asked === "list" ? "list" : "board";
   const tz = await ownerTimezone(db);
   const [summary, stages, counts] = await Promise.all([pipelineSummary(db, now, tz), listStages(db), stageCounts(db)]);
   // An unknown or closed stage, or one given to the board view, is ignored.
@@ -199,7 +194,7 @@ export async function pipelinePage(ctx: PageContext): Promise<string> {
     frame: ctx,
     script: view === "board",
     body: html`<h1>Pipeline</h1>
-${viewSwitch(view)}
+${await viewSwitch(db, "deals", { kind: "built_in", id: view })}
 <p class="lede">${openLine(summary)}</p>
 ${addButtons("pipeline", ["deal", "lead", "import"])}
 ${body}`,

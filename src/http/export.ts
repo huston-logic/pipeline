@@ -16,6 +16,7 @@ export const EXPORT_TABLES = [
   "person_statuses",
   "person_substatuses",
   "field_defs",
+  "views",
   "rules",
   "rule_firings",
   "rulebook",

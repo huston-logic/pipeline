@@ -127,7 +127,7 @@ ${await leadsHint(ctx, tz, query)}${clear}`;
     current: "/contacts",
     frame: ctx,
     body: html`<h1>Contacts</h1>
-${peopleSwitch("contacts")}
+${await peopleSwitch(ctx.db, "contacts")}
 ${addButtons("contacts", ["deal", "contact", "lead", "import"])}
 ${total === 0 && query === "" ? "" : searchForm(query, sortValue)}
 ${results}`,

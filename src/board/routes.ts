@@ -7,6 +7,7 @@
 // outside values labelled), a new deal for ct_seed07, editing dl_seed01 and Qualify for ct_lead03. ct_lead03 is a Contacted lead
 // (decision 0029). The import pages (decision 0036) are the seed's drafts: im_seed01 at the matching step, im_seed02
 // at the check step, im_seed03 applied; the deals and tasks imports' first steps are their own pages (decision 0037).
+// The views (decision 0042) are Partner's default view and the seed's saved views: vw_seed01 (people), vw_seed02 (deals).
 
 export type IconName =
   | "today"
@@ -35,6 +36,9 @@ export const boardRoutes: string[] = [
   "/companies",
   "/leads",
   "/leads?status=closed",
+  "/people?status=partner",
+  "/people?view=vw_seed01",
+  "/pipeline?view=vw_seed02",
   "/brief",
   "/more",
   "/rules",

@@ -27,6 +27,7 @@ import { leadsPage } from "./pages/leads.ts";
 import { morePage } from "./pages/more.ts";
 import { NOTIFICATIONS_PATH, notificationsPage } from "./pages/notifications.ts";
 import { notFoundPage } from "./pages/not-found.ts";
+import { PEOPLE_VIEW_PATH, peopleViewPage } from "./pages/people-view.ts";
 import { pipelinePage } from "./pages/pipeline.ts";
 import { REPORT_PATH, reportPage } from "./pages/report.ts";
 import { rulesPage } from "./pages/rules.ts";
@@ -40,7 +41,8 @@ export type PageResult = { status: 200 | 404; body: string };
  */
 export type PageRequest = { db: Db; now: Date; url: URL; csrf: string; pushKey: string | null; emailLogAddress: string | null };
 export type BoardPage = (request: PageRequest) => Promise<PageResult>;
-type Page = (ctx: PageContext, request: PageRequest) => Promise<string>;
+/** A page answers its markup, or null for the plain 404 (an unknown view, decision 0042). */
+type Page = (ctx: PageContext, request: PageRequest) => Promise<string | null>;
 type RecordPage = (ctx: PageContext, id: string) => Promise<string | null>;
 
 const PAGES = new Map<string, Page>([
@@ -49,6 +51,7 @@ const PAGES = new Map<string, Page>([
   ["/contacts", contactsPage],
   ["/companies", companiesPage],
   ["/leads", leadsPage],
+  [PEOPLE_VIEW_PATH, peopleViewPage],
   ["/brief", briefPage],
   ["/more", morePage],
   ["/rules", rulesPage],
@@ -95,7 +98,13 @@ async function contextFor({ db, now, url, csrf }: Omit<PageRequest, "pushKey" | 
 
 export function matchBoardPage(pathname: string): BoardPage | null {
   const page = PAGES.get(pathname);
-  if (page) return async (request) => ({ status: 200, body: await page(await contextFor(request), request) });
+  if (page) {
+    return async (request) => {
+      const ctx = await contextFor(request);
+      const body = await page(ctx, request);
+      return body === null ? { status: 404, body: notFoundPage({ look: ctx.look }) } : { status: 200, body };
+    };
+  }
   if (pathname === IMPORT_START) {
     return async (request) => {
       const ctx = await contextFor(request);

@@ -53,7 +53,7 @@ ${noCompany === null ? "" : html`<ul class="cards cards-wide">${companyCard(noCo
     current: "/companies",
     frame: ctx,
     body: html`<h1>Companies</h1>
-${peopleSwitch("companies")}
+${await peopleSwitch(ctx.db, "companies")}
 ${body}`,
   });
 }

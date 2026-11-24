@@ -141,6 +141,16 @@ this file before changing the repo, and update it when a rule changes.
   (`contactedIfNew`); `update_deal` marking a deal Won makes a Contact a Client (`clientIfWon`). Lead is refused
   while the person has an open deal. Nothing moves because outside text says so. `via: "text"` on a note comes only
   from the board's Text button, never from an MCP input.
+- **Views** (decision 0042): a saved view is a `views` row (migration 0013: name, module `people`|`deals`, filters,
+  sort, layout, columns, position); `src/services/view-spec.ts` says what each module takes (filters, sorts, columns),
+  `src/services/views.ts` checks and writes them (`add_view`, `update_view`, `archive_view`, `list_views`; filters
+  stored by key, camelCase over MCP) and `src/services/view-read.ts` reads the records (one query, at most 200, with
+  the total). Every live person status but Lead and Contact has a default view with no row, so a new status shows
+  with no code. Board: `/people?status=<key>` and `/people?view=<vw id>` (`src/board/pages/people-view.ts`),
+  `/pipeline?view=<vw id>` (`deals-view.ts`); unknown or archived is the 404. The People switch lists Contacts, Leads,
+  Companies, the status views, then saved views; the Pipeline's Board, List, then saved views (`viewSwitch` in
+  `src/board/people-switch.ts`). Addresses carry only status keys and view ids, never outside text; People stays one
+  tab, so the phone tab bar keeps five items.
 - **Sign-in:** `src/auth/dev.ts` until task 10. `AUTH_MODE=dev` works only with `ENVIRONMENT=development` on a
   loopback host; anywhere else every route answers 500. Without `AUTH_MODE`, `/mcp` answers 401.
 - **Types:** `src/env.ts` is the `Env` type the code uses. `src/worker-configuration.d.ts` holds the Workers runtime

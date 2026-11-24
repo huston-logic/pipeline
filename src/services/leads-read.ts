@@ -85,7 +85,7 @@ const REACH = `(a.type IN ('form', 'email', 'call', 'meeting') OR
  * it wakes (the later of its due date and the snooze; a snoozed task with no due date counts from the snooze). Two
  * `?`: now, now.
  */
-const NEXT_TASK_CTE = `next_task AS (
+export const NEXT_TASK_CTE = `next_task AS (
   SELECT COALESCE(t.contact_id, d.contact_id) AS contact_id,
     MIN(CASE WHEN t.snoozed_until > ? THEN MAX(COALESCE(t.due_at, t.snoozed_until), t.snoozed_until) ELSE t.due_at END) AS at
   FROM tasks t LEFT JOIN deals d ON d.id = t.deal_id

@@ -10,6 +10,9 @@ import { createTestDb, type SqliteD1 } from "../src/db/sqlite-d1.ts";
 import { UserError } from "../src/services/errors.ts";
 import { listDealsFiltered } from "../src/services/read.ts";
 import { previewRuleFor } from "../src/services/rules.ts";
+import { dealsInView, peopleInView } from "../src/services/view-read.ts";
+import { parseFilters, parseSort } from "../src/services/view-spec.ts";
+import { listViews } from "../src/services/views.ts";
 import { undoChange } from "../src/services/undo.ts";
 import { dayBoundsUtc, DEFAULT_TZ, localDate } from "../src/time.ts";
 import { buildDevSeed, DEMO_BUSINESS_NAME, parseSeedArgs, SEED_DRAFT_EXPIRES } from "./seed-dev.ts";
@@ -27,7 +30,7 @@ async function rows<T>(db: SqliteD1, sql: string): Promise<T[]> {
   return (await db.prepare(sql).all<T>()).results;
 }
 
-const TABLES = ["field_defs", "contacts", "deals", "activities", "tasks", "rules", "briefs", "audit_log"];
+const TABLES = ["field_defs", "contacts", "deals", "activities", "tasks", "rules", "briefs", "audit_log", "views"];
 
 test("the seed loads onto the defaults with clean foreign keys, and loading it twice adds nothing", async () => {
   const db = await seeded();
@@ -358,4 +361,20 @@ test("node scripts/seed-dev.ts --out <file> writes the seed", () => {
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test("two saved views (decision 0042): referrals, latest activity first, and open commercial jobs by value", async () => {
+  const db = await seeded();
+  const saved = (await listViews(db)).filter((view) => view.kind === "saved");
+  assert.deepEqual(saved.map((view) => [view.id, view.name, view.path]), [
+    ["vw_seed01", "Referrals", "/people?view=vw_seed01"],
+    ["vw_seed02", "Commercial jobs", "/pipeline?view=vw_seed02"],
+  ]);
+  const row = async (id: string) => (await db.prepare("SELECT * FROM views WHERE id = ?").bind(id).first<{ filters: string; sort: string }>())!;
+  const people = await row("vw_seed01");
+  const referrals = await peopleInView(db, NOW, DEFAULT_TZ, parseFilters(people.filters), parseSort("people", people.sort));
+  assert.ok(referrals.total >= 3, `${referrals.total} referrals`);
+  const deals = await row("vw_seed02");
+  const commercial = await dealsInView(db, NOW, DEFAULT_TZ, parseFilters(deals.filters), parseSort("deals", deals.sort));
+  assert.deepEqual(commercial.items.map((deal) => deal.value), [18000, 6800, 4800, null], "open commercial jobs, highest value first");
 });

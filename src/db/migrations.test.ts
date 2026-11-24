@@ -606,6 +606,24 @@ test("0011 from the previous version: leads become Lead with their status, every
   assert.deepEqual((await db.prepare("PRAGMA foreign_key_check").all()).results, []);
 });
 
+test("0013 adds the views table: a module, a JSON object of filters, a layout and a JSON array of columns", async () => {
+  const db = new SqliteD1();
+  await applyMigrations(db, 12);
+  applySqlFile(db, "seed/defaults.sql");
+  assert.deepEqual(await applyMigrations(db, 13), ["0013_views.sql"]);
+  db.exec("INSERT INTO views (id, name, module, sort, position) VALUES ('vw_a', 'Partners', 'people', 'name-asc', 1)");
+  const row = await db.prepare("SELECT filters, layout, columns, archived, version FROM views WHERE id = 'vw_a'").first();
+  assert.deepEqual({ ...row }, { filters: "{}", layout: "cards", columns: "[]", archived: 0, version: 1 });
+  const insert = (values: string) => () => db.exec(`INSERT INTO views (id, name, module, filters, sort, layout, columns, position) VALUES ${values}`);
+  assert.throws(insert("('vw_b', 'X', 'tasks', '{}', 'name-asc', 'cards', '[]', 1)"), /CHECK/);
+  assert.throws(insert("('vw_b', 'X', 'deals', '[]', 'value-desc', 'cards', '[]', 1)"), /CHECK/);
+  assert.throws(insert("('vw_b', 'X', 'deals', 'nope', 'value-desc', 'cards', '[]', 1)"), /CHECK|JSON/);
+  assert.throws(insert("('vw_b', 'X', 'deals', '{}', 'value-desc', 'grid', '[]', 1)"), /CHECK/);
+  assert.throws(insert("('vw_b', 'X', 'deals', '{}', 'value-desc', 'table', '{}', 1)"), /CHECK/);
+  insert("('vw_b', 'Big jobs', 'deals', '{\"stage\":\"won\"}', 'value-desc', 'table', '[\"deal\"]', 1)")();
+  assert.equal(await count(db, "views"), 2);
+});
+
 /**
  * Fake rows for every table, with only the columns the table had when it was created, so they load at any later
  * version. A migration that adds a table must add its rows here (the test below fails until it does).
@@ -642,6 +660,8 @@ const FAKE_ROWS: Record<string, string> = {
   person_statuses: "INSERT INTO person_statuses (key, label, position) VALUES ('supplier', 'Supplier', 4)",
   person_substatuses:
     "INSERT INTO person_substatuses (id, status_key, key, label, position) VALUES ('supplier.wholesale', 'supplier', 'wholesale', 'Wholesale', 1)",
+  views:
+    "INSERT INTO views (id, name, module, filters, sort, position) VALUES ('vw_fake', 'Suppliers', 'people', '{\"person_status\":\"supplier\"}', 'name-asc', 1)",
 };
 
 /**

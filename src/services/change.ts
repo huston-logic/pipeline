@@ -35,6 +35,7 @@ const PRIMARY_KEYS = {
   push_subscriptions: "id",
   person_statuses: "key",
   person_substatuses: "id",
+  views: "id",
 } as const satisfies Partial<Record<TableName, string>>;
 
 export type ChangeTable = keyof typeof PRIMARY_KEYS;
@@ -103,6 +104,7 @@ const ROW_NOUNS: Record<ChangeTable, string> = {
   push_subscriptions: "Notifications on device",
   person_statuses: "Person status",
   person_substatuses: "Sub-status",
+  views: "View",
 };
 
 export const rowKey = (table: ChangeTable, id: string) => `${table}:${id}`;
@@ -297,6 +299,7 @@ const BULK_ORDER: readonly ChangeTable[] = [
   "rules",
   "rulebook",
   "push_subscriptions",
+  "views",
 ];
 
 export const isBulkTable = (table: ChangeTable) => BULK_ORDER.includes(table);

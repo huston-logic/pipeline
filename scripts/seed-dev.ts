@@ -34,6 +34,8 @@ export interface DevSeed {
   /** The board import's drafts (decision 0036): one at each step, never expiring. */
   importDrafts: Row[];
   importDraftParts: Row[];
+  /** Saved views (decision 0042): one of people, one of deals. */
+  views: Row[];
 }
 
 /** The seed's drafts never expire, so the import pages in boardRoutes always have one to show. */
@@ -801,7 +803,31 @@ export function devSeed(now: Date, tz: string): DevSeed {
     },
   ];
 
-  return { fieldDefs, contacts, deals, activities, tasks, rules, briefs, audit, importDrafts, importDraftParts };
+  // Saved views (decision 0042): everyone who came by referral, latest activity first; open commercial jobs by value.
+  const view = (n: number, name: string, module: string, filters: unknown, sort: string, created: string): Row => ({
+    id: `vw_seed${n2(n)}`,
+    name,
+    module,
+    filters: JSON.stringify(filters),
+    sort,
+    layout: "cards",
+    columns: JSON.stringify(
+      module === "people"
+        ? ["name", "business", "person_status", "sub_status", "next_task", "last_activity"]
+        : ["deal", "person", "stage", "value", "next_step", "days_in_stage"],
+    ),
+    position: 1,
+    archived: 0,
+    version: 1,
+    created_at: created,
+    updated_at: created,
+  });
+  const views: Row[] = [
+    view(1, "Referrals", "people", { source: "referral" }, "last_activity-desc", day(-4, "09:00")),
+    view(2, "Commercial jobs", "deals", { fields: { project_type: "Commercial" } }, "value-desc", day(-4, "09:05")),
+  ];
+
+  return { fieldDefs, contacts, deals, activities, tasks, rules, briefs, audit, importDrafts, importDraftParts, views };
 }
 
 export function buildDevSeed(now: Date, tz: string): string {
@@ -820,6 +846,7 @@ export function buildDevSeed(now: Date, tz: string): string {
     ...seed.audit.map((row) => insert("audit_log", row)),
     ...seed.importDrafts.map((row) => insert("import_drafts", row)),
     ...seed.importDraftParts.map((row) => insert("import_draft_parts", row)),
+    ...seed.views.map((row) => insert("views", row)),
     "",
   ].join("\n");
 }
