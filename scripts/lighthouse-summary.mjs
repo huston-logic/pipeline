@@ -5,7 +5,8 @@ import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
-const assertions = require("../lighthouserc.cjs").ci.assert.assertions;
+const { assert: lhciAssert, collect } = require("../lighthouserc.cjs").ci;
+const assertions = lhciAssert.assertions;
 
 const manifestPath = ".lighthouseci/manifest.json";
 if (!existsSync(manifestPath)) {
@@ -38,7 +39,7 @@ const thresholds = categories
   .filter(Boolean)
   .join(", ");
 
-console.log("## Lighthouse (mobile, median of 5 runs)\n");
+console.log(`## Lighthouse (mobile, median of ${collect.numberOfRuns} runs)\n`);
 console.log(`Thresholds: ${thresholds}. ❌ fails the job, ⚠️ only warns.${chrome ? ` Browser: ${chrome}.` : ""}\n`);
 console.log(`| Page | ${categories.map(([, label]) => label).join(" | ")} |`);
 console.log(`|---|${categories.map(() => "---:").join("|")}|`);

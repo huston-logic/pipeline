@@ -112,9 +112,44 @@ on the website's server, never in a web page.
 
 ## 8. Import the client's existing contacts
 
-Ask the client for a CSV with a header row. The columns used are `name`, `email`, `phone`, `business`, `source` and
-`notes` (any order, any capital letters); other columns are ignored and listed. An export from the board or from
-`copies:export` works as it is.
+There are two ways. The board is the first choice: the client (or you) does it in the browser, with no terminal. The
+command line is the second way, for a very big file or when you are working from your Mac.
+
+### The board (first choice)
+
+1. **Get a CSV file.** The import reads CSV only (a plain text file of rows, the first row being the column names).
+   - Google Sheets: **File** > **Download** > **Comma-separated values (.csv)**.
+   - Excel: **File** > **Save as** > **CSV UTF-8 (Comma delimited) (\*.csv)**.
+   - A spreadsheet file (`.xlsx`, `.xls`, `.ods`, `.numbers`) is refused with these same instructions. You can also
+     paste rows straight into the page instead of choosing a file.
+2. **Open the Import page.** Tap **Import** on Contacts, Leads, Pipeline (deals) or Today (tasks), or open **More** >
+   **Import**. On Leads the new people come in as leads; elsewhere as contacts.
+3. **Step 1, choose or paste.** Pick the file, or paste the rows, then continue. A file and pasted text together are
+   refused; use one.
+4. **Step 2, match columns.** Each column of the file gets a box. It is already set to the field it looks like
+   (Name, Email, Phone, Business, Source, Notes). Change it to another field, to **Add to notes**, to **New field**
+   (type the field's name in the label box) or to **Don't import**. One column must go to Name.
+5. **Step 3, check.** The page says how many people would be added, how many already on file would get empty details
+   filled in (nothing is ever overwritten), which lines are skipped and why, and which look like duplicates (tick
+   **Import possible duplicates too** only if you want them). Nothing is saved yet.
+6. **Import.** Tap **Import** to save it. It is one change in the change log.
+7. **Undo.** The page after it shows **Undo**. One tap takes back the whole import: the people and any new fields.
+
+Limits: 2,000 rows and 1 MB in one import (split a bigger file and import the parts one after another), and a file is
+kept for 2 hours, then thrown away. Everything imported is outside text (like a website form), so the AI app never
+follows instructions written in it. If it is the owner's own customer list, tick **This is my own list** on step 3 so
+names, businesses, emails, phones and sources show as the owner's own; leave it unticked for a file someone else made
+(decision 0038). Deals and tasks import the same way and accept the board's own CSV export. On a copy with a very big
+list, a full 2,000-row import can pass the free plan's CPU limit: if it fails with "exceeded CPU", import it from the
+Mac (below), split it, or see docs/PAID-PLAN.md ("Run 5: import").
+
+The AI app can do the same: say "Import these people from my sheet". It shows you the preview first and saves only after
+you say yes.
+
+### The command line (second way)
+
+The columns used are `name`, `email`, `phone`, `business`, `source` and `notes` (any order, any capital letters); other
+columns are ignored and listed. An export from the board or from `copies:export` works as it is.
 
 First a dry run, which changes nothing:
 
@@ -139,9 +174,9 @@ your contact custom fields (its name or label) fills that field for the new peop
 email whose business matches someone already on file (or an earlier line) is listed as a possible duplicate and
 skipped; add `--allow-duplicates` to import those anyway.
 
-The import is one change in the change log: the AI app can undo it with the change id it prints. Imported text is
-treated as outside text (like a website form), so the AI never follows instructions written in it. A very large file
-is refused with a message to split it; import the parts one by one.
+The command line uses the same import engine as the board. One file takes up to 2,000 rows and 1 MB and is applied in
+one go as one change in the change log: the AI app can undo it with the change id it prints. A bigger file is refused
+with a message to split it; import the parts one by one.
 
 ## 9. Export
 

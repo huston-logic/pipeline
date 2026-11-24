@@ -1,4 +1,4 @@
-// Acceptance: the spec's twenty owner sentences (1 to 12, then the lead sentences 13 to 20), in spec order, driven the way an AI app would drive them: MCP tools
+// Acceptance: the spec's twenty owner sentences (1 to 12, then the lead sentences 13 to 20) and run 5's five (21 to 25: import, undo it, add a contact, add a Person status, add a view), in spec order, driven the way an AI app would drive them: MCP tools
 // over Streamable HTTP against `wrangler dev --local` with real local D1 and the fake seed. Later sentences build on
 // earlier ones (8 undoes 7's change, 9 sees 4-8, 11 renames a stage after 10 has used the rule, 17 qualifies the lead
 // 13 added, 18 sends that deal back). The only other doors are /intake (12, 19) and the cron trigger (10, 20). docs/ACCEPTANCE.md lists the sentences against these tests.
@@ -548,5 +548,93 @@ describe("the eight lead sentences", () => {
     assert.ok(made.every((t) => t.deal_id === null && t.done_at === null), "the tasks are open and belong to the person");
     await server.runCron();
     assert.equal((await ruleTasks()).length, hits.length, "a second run adds none");
+  });
+});
+
+type ContactHit = { id: string; name: string; personStatus: string; leadStatus: string | null };
+const peopleNamed = async (query: string): Promise<ContactHit[]> =>
+  ((await tool("search_contacts", { query })).data as { contacts: ContactHit[] }).contacts;
+
+describe("the run 5 sentences (21 to 25): import, undo it, add a contact, add a Person status, add a view", () => {
+  let importChangeId = "";
+  const SHEET_COLUMNS = ["Name", "Email", "Business"];
+  const SHEET_ROWS = [
+    ["Ivy Sheetfake", "ivy.sheetfake@example.com", "Sheetfake Roofing (demo)"],
+    ["Ned Sheetfake", "ned.sheetfake@example.com", "Sheetfake Paving (demo)"],
+    ["Uma Sheetfake", "uma.sheetfake@example.com", "Sheetfake Glass (demo)"],
+  ];
+
+  test('21. "Import these 3 people from my sheet." (import_rows previews, apply_import saves after the owner\'s yes)', async () => {
+    const before = await snapshot();
+    const calls0 = calls.length;
+    const preview = await tool("import_rows", { module: "people", columns: SHEET_COLUMNS, rows: SHEET_ROWS });
+    assert.match(preview.headline, /^Import im_[a-z0-9]+ \(3 rows, not saved\): 3 new contacts,/);
+    assert.equal((await snapshot()).contacts?.length, before.contacts?.length, "the preview wrote no person");
+
+    const { draft, version } = preview.data as { draft: string; version: number };
+    const applied = await tool("apply_import", { draft, version });
+    assert.deepEqual(calls.slice(calls0), ["import_rows", "apply_import"], "the preview comes before the apply");
+    assert.match(applied.headline, /^Imported 3 contacts and filled details on 0 \(change chg_[a-z0-9]{12}\)$/);
+    importChangeId = changeIdOf(applied);
+
+    assert.equal((await peopleNamed("Sheetfake")).length, 3);
+    const after = await snapshot();
+    assert.equal(after.contacts?.length, (before.contacts?.length ?? 0) + 3);
+    assert.deepEqual(after.deals, before.deals, "no deal was added");
+    const row = after.contacts?.find((c) => c.email === "ivy.sheetfake@example.com");
+    assert.match(String(row?.untrusted_fields), /name/, "imported values stay outside text");
+  });
+
+  test('22. "Undo that import." (one undo_change removes all of it)', async () => {
+    const before = await snapshot();
+    const undone = await tool("undo_change", { changeId: importChangeId });
+    assert.match(undone.headline, new RegExp(`^Undid ${importChangeId}`));
+    assert.equal((await peopleNamed("Sheetfake")).length, 0, "all three people are gone");
+    const after = await snapshot();
+    assert.equal(after.contacts?.length, (before.contacts?.length ?? 0) - 3);
+    assert.equal((await changesNewestFirst())[0]?.undoOf, importChangeId);
+  });
+
+  test('23. "Add Pat Example from the Fernbrook trade show as a contact." (add_contact: no deal, no lead)', async () => {
+    const before = await snapshot();
+    const answer = await tool("add_contact", { name: "Pat Example", email: "pat.example@example.com", source: "Fernbrook trade show" });
+    assert.match(answer.headline, CHANGE_LINE);
+    const id = (answer.data as { contactId: string }).contactId;
+    const hit = (await peopleNamed("Pat Example")).find((c) => c.id === id);
+    assert.equal(hit?.personStatus, "contact");
+    assert.equal(hit?.leadStatus, null, "a contact is not a lead");
+    const after = await snapshot();
+    assert.deepEqual(after.deals, before.deals, "no deal");
+    assert.equal(after.tasks?.length, before.tasks?.length, "no task");
+    assert.equal(after.contacts?.find((c) => c.id === id)?.source, "Fernbrook trade show");
+    assert.equal((await leadsWhere({ query: "Pat Example" })).length, 0, "not on the lead list");
+  });
+
+  test('24. "Add a new kind of person: Supplier." (add_person_status, and its page on the board)', async () => {
+    const answer = await tool("add_person_status", { label: "Supplier" });
+    assert.match(answer.headline, CHANGE_LINE);
+    assert.equal((answer.data as { key: string }).key, "supplier");
+    const listed = (await tool("list_person_statuses")).data as { statuses: { key: string }[] };
+    assert.ok(listed.statuses.some((s) => s.key === "supplier"));
+
+    const res = await fetch(`${server.url}/people?status=supplier`);
+    assert.equal(res.status, 200);
+    assert.match(await res.text(), /Supplier/);
+    const moved = await tool("add_contact", { name: "Sam Example", personStatus: "supplier" });
+    assert.equal((await peopleNamed("Sam Example")).find((c) => c.id === (moved.data as { contactId: string }).contactId)?.personStatus, "supplier");
+  });
+
+  test('25. "Give me a view of all my partners." (add_view, and its page lists the partners)', async () => {
+    const answer = await tool("add_view", { name: "All my partners", module: "people", filters: { personStatus: "partner" } });
+    assert.match(answer.headline, CHANGE_LINE);
+    const { viewId } = answer.data as { viewId: string };
+    const views = ((await tool("list_views", { module: "people" })).data as { views: { id?: string; path: string }[] }).views;
+    assert.ok(views.some((v) => v.id === viewId && v.path === `/people?view=${viewId}`));
+
+    const res = await fetch(`${server.url}/people?view=${viewId}`);
+    assert.equal(res.status, 200);
+    const page = await res.text();
+    assert.match(page, /Hannah Cole/, "the seed's partner is listed");
+    assert.doesNotMatch(page, /Jake Moreno/, "a person who is not a partner is left out");
   });
 });
