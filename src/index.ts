@@ -13,6 +13,7 @@ import { logAddressOf } from "./email/address.ts";
 import type { Env } from "./env.ts";
 import { apiMethodNotAllowed, handleApi, isApiPath, json } from "./http/api.ts";
 import { handleIntake } from "./http/intake.ts";
+import { TIME_CSV_PATH, timeCsvResponse } from "./http/time-csv.ts";
 import { htmlResponse, textResponse } from "./http/respond.ts";
 import { MCP_ROUTE } from "./mcp/route.ts";
 import { vapidKeys } from "./push/vapid.ts";
@@ -127,6 +128,19 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
       return manifestResponse(await manifestFor(env.DB));
     } catch {
       console.error(JSON.stringify({ event: "manifest_failed" }));
+      return textResponse(SERVER_ERROR, 500);
+    }
+  }
+
+  // The month's time CSV: a download, so not a board page (decision 0051). It ends in .csv, so it is answered before the
+  // static-file branch below; time tracking off is the plain 404.
+  if (pathname === TIME_CSV_PATH) {
+    try {
+      const auth = await signIn();
+      if (!auth.ok) return textResponse(auth.message, auth.status);
+      return (await timeCsvResponse(env.DB, url.searchParams, new Date())) ?? htmlResponse(notFoundPage(), 404);
+    } catch {
+      console.error(JSON.stringify({ event: "time_csv_failed" }));
       return textResponse(SERVER_ERROR, 500);
     }
   }
