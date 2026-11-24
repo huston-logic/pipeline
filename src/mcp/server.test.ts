@@ -47,6 +47,7 @@ const WRITE_TOOLS = [
   "add_sub_status",
   "add_task",
   "add_view",
+  "apply_changes",
   "apply_import",
   "archive_stage",
   "archive_view",
@@ -54,6 +55,7 @@ const WRITE_TOOLS = [
   "import_rows",
   "log_activity",
   "pause_rule",
+  "propose_changes",
   "qualify_lead",
   "resume_rule",
   "return_to_lead",
@@ -104,6 +106,7 @@ test("every read tool is annotated read-only and every write tool is not", async
 // Tools that overwrite or close things (undo exists, but clients use the hint to ask for confirmation), and tools whose
 // repeat call is refused or changes something again.
 const DESTRUCTIVE = [
+  "apply_changes",
   "archive_stage",
   "archive_view",
   "undo_change",
@@ -119,8 +122,9 @@ const DESTRUCTIVE = [
   "update_view",
 ];
 // update_contact is not: a repeated followUpDate adds a second "Check back" task.
-// apply_import is: a second call of the same import writes nothing (decision 0039).
+// apply_import is: a second call of the same import writes nothing (decision 0039); so is apply_changes (0044).
 const IDEMPOTENT = [
+  "apply_changes",
   "apply_import",
   "pause_rule",
   "resume_rule",

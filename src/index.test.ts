@@ -184,6 +184,7 @@ test("scheduled() runs the hourly rules, then the brief, then clears expired imp
     JSON.stringify({ event: "cron_rules_done", rules: 0, fired: 0, alreadyFired: 0, failed: 0, deferred: 0 }),
     JSON.stringify({ event: "cron_brief_done", composed: 1, sent: 0, failed: 0 }),
     JSON.stringify({ event: "cron_import_drafts_done", deleted: 0 }),
+    JSON.stringify({ event: "cron_proposals_done", deleted: 0 }),
   ]);
 });
 
