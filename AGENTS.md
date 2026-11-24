@@ -147,7 +147,7 @@ this file before changing the repo, and update it when a rule changes.
   the list showed (no bound statement may name a swapped id), and writes one change (tool `apply_changes`; bulk over 50
   rows or a snapshot over `CHUNK_BYTES`) with a leading guard that the proposal is still open and an extra statement
   marking it applied. Names that came from outside never win a match (`name-match.ts`). `@n` names a record an earlier
-  action adds, only as a note's or task's subject. At most 10 open, 2 hours each (an 11th drops the oldest open one in its own batch, `replaced_by` the new
+  action adds, only as a note's, task's, timer's or time entry's subject (a time subject may be a task too). At most 10 open, 2 hours each (an 11th drops the oldest open one in its own batch, `replaced_by` the new
   id, decision 0045); the hourly run deletes expired ones.
   The record tools themselves propose a one-action list the same way (decision 0045, the MCP bullet), and a refusal
   of that one action reads as the service's own message (no "Action 1: "). `src/mcp` imports services, never the
@@ -197,6 +197,20 @@ this file before changing the repo, and update it when a rule changes.
   non-default view has its own title and description). Quick add is `POST /tasks/quick` (`quickAddForm` in
   `src/board/task-forms.ts`, route in `edit-actions.ts`): `add_task` as the owner with no deal or contact. The deals
   due keep their Overdue and Due today sections beneath.
+- **Time tracking** (decision 0049): off until `settings.time_tracking` (migration 0018; `update_settings timeTracking`);
+  while off every time service and tool refuses with `TIME_TRACKING_OFF` (`src/services/settings.ts`). Tables
+  `work_types` (`wt_`), `client_rates` (`cr_`, one live per work type and person) and `time_entries` (`te_`). A running
+  timer is an entry with no end and no minutes; the one-running index allows one. `src/services/time-entries.ts`
+  (`addTimeEntry`, `updateTimeEntry`, `rateFor`, `runningTimer`, links checked like a task's), `timer.ts` (`startTimer`,
+  `stopTimer`: entry, note and "Next step" task in one change; over 16 hours needs `startedAt`/`endedAt`),
+  `work-types.ts`, `time-read.ts` (`periodOf`, weeks from Monday; `listTime`; `timeByClientMonth`) and
+  `time-format.ts` (`$95.00`, `1 h 30 min`). An entry keeps the rate of the moment it is saved (a client rate beats the
+  work type's); editing its work type, person or billable works it out again; the amount (rate x minutes / 60, in
+  cents) is never stored. 1 to 960 minutes. The four record actions (`start_timer`, `stop_timer`, `add_time_entry`,
+  `update_time_entry`) are in `RECORD_ACTIONS`; the first two may be small (`isSmallAction`), and a proposal keeps a
+  stop's end as the time it was asked (`withStopTimes`). Work types and client rates write at once (rule 5). Reads by
+  id go through `lookup.ts` (`timeEntryById`, `workTypeById`, and `withPlanned` for the running timer and a live client rate). The board has no time
+  UI yet (run 6 tasks D7, D8); the export holds the three tables.
 - **Sign-in:** `src/auth/dev.ts` until task 10. `AUTH_MODE=dev` works only with `ENVIRONMENT=development` on a
   loopback host; anywhere else every route answers 500. Without `AUTH_MODE`, `/mcp` answers 401.
 - **Types:** `src/env.ts` is the `Env` type the code uses. `src/worker-configuration.d.ts` holds the Workers runtime
