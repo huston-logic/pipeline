@@ -6,6 +6,7 @@ import { newId } from "../ids.ts";
 import { type RowChange, updatedRow } from "./change.ts";
 import { isTrusted } from "./labels.ts";
 import { isUnqualified, type LeadStatus } from "./lead-status.ts";
+import { openDealsOf, type Source, sourceOf } from "./lookup.ts";
 import { moveForLeadStatus, type PersonMove, personStatusPatch } from "./person-move.ts";
 
 /** The company a contact's `business` names: trimmed, inner spaces collapsed, ignoring case; "" for none. */
@@ -82,7 +83,10 @@ export function noOpenDeal(db: Db, contactId: string): D1PreparedStatement {
     .bind(contactId);
 }
 
-export async function openDealCount(db: Db, contactId: string): Promise<number> {
+/** How many open, unarchived deals the person has, as the plan leaves them when the source carries one. */
+export async function openDealCount(src: Source, contactId: string): Promise<number> {
+  const { db, plan } = sourceOf(src);
+  if (plan !== undefined) return (await openDealsOf(src, contactId)).length;
   const row = await db
     .prepare("SELECT COUNT(*) AS n FROM deals WHERE contact_id = ? AND status = 'open' AND archived = 0")
     .bind(contactId)

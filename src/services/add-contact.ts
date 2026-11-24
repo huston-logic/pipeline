@@ -3,7 +3,6 @@
 // A Lead goes through add_lead's own service, so it is added exactly as add_lead adds one (the duplicate business
 // check, notes as a note on the person).
 import type { ContactRow } from "../db/db.ts";
-import { findContactByEmail } from "../db/queries.ts";
 import { newId } from "../ids.ts";
 import type { ChangeResult, Ctx } from "./change.ts";
 import type { LeadStatus } from "./lead-status.ts";
@@ -14,7 +13,7 @@ import { UserError } from "./errors.ts";
 import { checkFieldValues } from "./fields.ts";
 import { checkEmail, clean, withoutNulls } from "./input.ts";
 import { contactRef } from "./labels.ts";
-import type { FieldValues } from "./lookup.ts";
+import { contactByEmail, type FieldValues } from "./lookup.ts";
 import { CONTACT, LEAD, newPersonColumns } from "./person-move.ts";
 import { resolveMove } from "./person-status.ts";
 
@@ -48,7 +47,7 @@ export async function addContact(ctx: Ctx, input: NewContactInput): Promise<Chan
   const email = clean(input.email);
   if (email !== null) {
     checkEmail(email);
-    const other = await findContactByEmail(db, email);
+    const other = await contactByEmail(ctx, email);
     if (other) {
       throw new UserError(`${capitalize(contactRef(other))} already uses that email. Change them with update_contact instead.`);
     }

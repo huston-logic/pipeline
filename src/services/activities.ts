@@ -1,6 +1,6 @@
 // log_activity. Owner and AI entries never carry untrusted_text: that column is only for text from outside. Reaching a
 // New lead makes them Contacted in the same change (decision 0022).
-import type { ActivityRow, ActivityType, ContactRow, Db, DealRow } from "../db/db.ts";
+import type { ActivityRow, ActivityType, ContactRow, DealRow } from "../db/db.ts";
 import { newId } from "../ids.ts";
 import { parseWhen } from "../time.ts";
 import { type ChangeResult, commitChange, type Ctx, type RowChange, updatedRow } from "./change.ts";
@@ -9,7 +9,7 @@ import { UserError } from "./errors.ts";
 import { clean } from "./input.ts";
 import { contactName, dealLabel } from "./labels.ts";
 import { contactedIfNew, TEXT_DATA } from "./lead-change.ts";
-import { findSubject, ownerTimezone } from "./lookup.ts";
+import { findSubject, openDealsOf, ownerTimezone, type Source } from "./lookup.ts";
 import { statusLabels } from "./status-labels.ts";
 
 /** The activity types that count as contact: they move the deal's last_activity_at. */
@@ -28,14 +28,6 @@ export interface ActivityInput {
   via?: "text";
 }
 
-async function openDealsOf(db: Db, contactId: string): Promise<DealRow[]> {
-  const found = await db
-    .prepare("SELECT * FROM deals WHERE contact_id = ? AND status = 'open' AND archived = 0 ORDER BY created_at, id")
-    .bind(contactId)
-    .all<DealRow>();
-  return found.results;
-}
-
 const isContactType = (type: string): type is (typeof CONTACT_TYPES)[number] =>
   (CONTACT_TYPES as readonly string[]).includes(type);
 
@@ -45,14 +37,14 @@ const isContactType = (type: string): type is (typeof CONTACT_TYPES)[number] =>
  * uses this too, so a logged email resets the quiet clock exactly as log_activity does.
  */
 export async function activityEffects(
-  db: Db,
+  src: Source,
   activity: ActivityRow,
   deal: DealRow | null,
   contact: ContactRow,
   now: Date,
 ): Promise<{ changes: RowChange[]; contacted: ContactRow | null }> {
   const changes: RowChange[] = [];
-  const touched = deal ? [deal] : await openDealsOf(db, contact.id);
+  const touched = deal ? [deal] : await openDealsOf(src, contact.id);
   for (const row of touched) {
     if (row.last_activity_at !== null && row.last_activity_at >= activity.occurred_at) continue;
     changes.push({
@@ -87,7 +79,7 @@ export async function logActivity(ctx: Ctx, input: ActivityInput): Promise<Chang
   if (occurred.getTime() > ctx.now.getTime()) {
     throw new UserError("An activity can't be in the future. Log it once it happens, or use add_task to plan it.");
   }
-  const { deal, contact } = await findSubject(db, input);
+  const { deal, contact } = await findSubject(ctx, input);
   const occurredAt = occurred.toISOString();
 
   const activity: ActivityRow = {
@@ -103,7 +95,7 @@ export async function logActivity(ctx: Ctx, input: ActivityInput): Promise<Chang
     version: 1,
     created_at: ctx.now.toISOString(),
   };
-  const effects = await activityEffects(db, activity, deal, contact, ctx.now);
+  const effects = await activityEffects(ctx, activity, deal, contact, ctx.now);
   const changes: RowChange[] = [{ table: "activities", id: activity.id, before: null, after: activity }, ...effects.changes];
   const { contacted } = effects;
 

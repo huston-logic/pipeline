@@ -6,6 +6,7 @@ import type { Actor, AuditPartRow, AuditRow, Db, TableName } from "../db/db.ts";
 import { newId } from "../ids.ts";
 import { CHUNK_BYTES, chunkBy, sqlBytes } from "./bulk.ts";
 import { UserError } from "./errors.ts";
+import type { PlanCollector } from "./plan.ts";
 
 export type { Actor };
 
@@ -15,6 +16,8 @@ export interface Ctx {
   actor: Actor;
   /** The tool or job making the change, for example "add_lead", "undo_change" or "rules_cron". */
   tool: string;
+  /** Collect mode (decision 0044): commitChange records the change here instead of writing it. */
+  plan?: PlanCollector;
 }
 
 export type SqlValue = string | number | null;
@@ -506,6 +509,7 @@ function staleRow(input: ChangeInput): string {
 }
 
 export async function commitChange(ctx: Ctx, input: ChangeInput): Promise<ChangeResult> {
+  if (ctx.plan !== undefined) return ctx.plan.record(ctx, input);
   const { db } = ctx;
   const { changeId, summary, writes, audit } = buildChange(ctx, input);
   const prepare = ({ sql, params }: SqlStatement) =>
