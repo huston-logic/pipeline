@@ -10,14 +10,14 @@ so no `main` commit is named here.
 
 ## Current state
 
-**Merged.** Everything in the spec and in the run 2, 4, 5 and 6 briefs is built. #1 to #68 are merged. Open on
-2026-11-24: #69 (the last run 6 task; auto-merge is queued, `check`, `a11y` and both CodeQL checks passed, `lighthouse`
-was still running), the final-review fix PR and this PR (both open, ready for auto-merge). Run 6, "Daily work", added:
-approve before change (the AI app shows a list and waits for "Yes"; `propose_changes` and `apply_changes`, with a
-setting to let small changes go straight in), to-dos that belong to no one, a Today page that works like a list, capture
-of a ramble as one list (with `list_tasks`), and optional time tracking (timer, entries, work types, client rates, Time
-pages and a month CSV). The repo has migrations 0001 to 0018 and decisions 0001 to 0051. No code-scanning alert was
-open at the last check of run 5; run 6's PRs passed CodeQL.
+**Merged.** Everything in the spec and in the run 2, 4, 5 and 6 briefs is built. #1 to #69 are merged. Open on
+2026-11-24: #70 (the final-review fixes) and #71 (this PR). Both have auto-merge queued (GitHub merges the PR by itself
+once the required checks pass). Run 6, "Daily work", added: approve before change (the AI app shows a list and waits for
+"Yes"; `propose_changes` and `apply_changes`, with a setting to let small changes go straight in), to-dos that belong to
+no one, a Today page that works like a list, capture of a ramble as one list (with `list_tasks`), and optional time
+tracking (timer, entries, work types, client rates, Time pages and a month CSV). The repo has migrations 0001 to 0018 and
+decisions 0001 to 0051. 0 open code-scanning alerts on 2026-11-24 (checked with `gh`; CodeQL is GitHub's code security
+scan).
 
 **Protection.** The "Protect main" ruleset is active (details in CLAUDE.md).
 
@@ -60,10 +60,10 @@ not run on this Mac (Needs Grant 9) and local Lighthouse is no longer run (CLAUD
   layout (#57); CLAUDE.md drops local Lighthouse (#56); closing docs and status (#58).
 - 2026-11-23, CI: the `lighthouse` job scores at most 20 pages, 3 runs each, and retries pages whose runs crashed with
   Chrome's `NO_NAVSTART` (#59); a CodeQL alert in a table test helper fixed in #57; status brought up to date (#60).
-- 2026-11-24, run 6, "Daily work": the plan (#61); approve before change (#62); the "AI edits" setting (#63);
+- 2026-11-23 to 2026-11-24, run 6, "Daily work": the plan (#61); approve before change (#62); the "AI edits" setting (#63);
   standalone to-dos (#64); Today as a list (#65); capture and `list_tasks` (#66); time and rates, data and MCP (#67);
-  the timer on the board (#68); the time pages and CSV (#69); the final-review fix PR (D1 calls, Today's database
-  sort, the list showing every column it writes); closing docs and status (this PR).
+  the timer on the board (#68); the time pages and CSV (#69); the final-review fixes (#70: D1 calls, Today's database
+  sort, the list showing every column it writes); closing docs and status (#71, this PR).
 
 ## Needs Grant
 
@@ -79,9 +79,11 @@ Steps only you can do, in order. Items marked "per copy" repeat for each new cli
    suite now takes about 6). CLAUDE.md asks before changing CI behaviour; this was ruled a test-runner setting, not the
    workflow, a required check or a threshold, and it weakens no test. Confirm it, or say to revert it.
 3. **Does a D1 batch count as one query on the free plan?** Unknown (nothing here runs against real D1). A 25-action
-   proposal makes about 31 D1 calls, inside the free plan's 50 if a batch is one call, but its trial and apply batches
-   hold about 44 statements each, near 50 if every statement counts. After a 25-action proposal on the first copy,
-   check the Worker's dashboard. If it counts statements, either move the copy to Workers Paid or ask for a lower
+   proposal makes about 31 D1 calls (D1 is Cloudflare's database; a batch sends several database steps at once),
+   inside the free plan's 50 if a batch is one call, but its trial and apply batches hold about 44 steps each, near 50
+   if every step counts. After a 25-action proposal on the first copy, look in the Cloudflare dashboard: Workers & Pages,
+   the copy's Worker, Metrics, or D1, the copy's database, Metrics ("queries"). If you can't find it, send a 20-action
+   list; if it fails with a limit error, that answers it. If it counts every step, either move the copy to Workers Paid or ask for a lower
    `PROPOSAL_MAX_ACTIONS` (docs/PAID-PLAN.md, "Run 6").
 4. **Copy wording to review from run 6** (it changes what the copy says; nothing was changed without you): the "Needs
    your eyes" lines of #64 (the tasks import lede, now "... or on no one when its line names no one", and SPEC.md's
@@ -180,7 +182,7 @@ Changes to scope, product or a decision since run 3, one line each:
 
 # History (kept from earlier runs; facts re-checked on 2026-11-23)
 
-## Run 6 (2026-11-24)
+## Run 6 (2026-11-23 to 2026-11-24)
 
 Daily work (docs/PLAN.md, "Run 6"; plan `docs/superpowers/plans/2026-11-24-run6-daily-work.md`): approve before
 change, to-dos like a list, capture through the AI app, timer and time entries with billing rates. Every task had an
@@ -197,9 +199,9 @@ and re-reviewed, and a final review of the whole run found one Critical item (D1
 | C5 | Capture and `list_tasks` (0048, migration 0017) | [#66](https://github.com/huston-logic/pipeline/pull/66) | merged |
 | D6 | Time and rates: data and MCP (0049, migration 0018) | [#67](https://github.com/huston-logic/pipeline/pull/67) | merged |
 | D7 | The timer on the board (0050) | [#68](https://github.com/huston-logic/pipeline/pull/68) | merged |
-| D8 | Time pages and CSV (0051) | [#69](https://github.com/huston-logic/pipeline/pull/69) | open on 2026-11-24, auto-merge queued, `a11y` passed |
-| - | Final-review fixes (D1 calls, Today in SQL, list shows every column) | the final-review fix PR | open, ready for auto-merge |
-| E9 | Closing docs and status | this PR | open, ready for auto-merge |
+| D8 | Time pages and CSV (0051) | [#69](https://github.com/huston-logic/pipeline/pull/69) | merged |
+| - | Final-review fixes (D1 calls, Today in SQL, list shows every column) | [#70](https://github.com/huston-logic/pipeline/pull/70) | open, auto-merge queued |
+| E9 | Closing docs and status | #71 (this PR) | open, ready for auto-merge |
 
 CI on the way: #69's `a11y` job hit Playwright's 5-minute limit (the suite grew to about 284 tests), then failed two
 pages at 375 px because the screen-reader-only "Edit" text in the new tables escaped the table's scroll box and widened
@@ -468,7 +470,7 @@ covers only mail you send with the Bcc; forwarded mail is not parsed for the ori
 - The end-to-end email test covers only the drop path: locally nothing prepends Cloudflare's header, so the logged path
   stays unit-tested.
 - board.js's focus move and Copy prompt are only text-checked (a browser test needs the Chromium install in Needs
-  Grant 5); a double tap on a Log button logs twice (decision 0021 accepts this).
+  Grant 9); a double tap on a Log button logs twice (decision 0021 accepts this).
 - The company sort on /contacts (SQLite NOCASE) and the grouping on /companies (a collator) treat tabs and accents
   slightly differently; the Contacts search echoes the query in the page (escaped, as intended); the CSV export of a
   very large copy still needs `copies:export`.

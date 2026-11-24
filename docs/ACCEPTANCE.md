@@ -216,28 +216,31 @@ Run 6 also added approve before change (decisions 0044, 0045) and time tracking 
 no end-to-end test of their own: the end-to-end suite proves the proposal path on a real local D1 in
 `tests/e2e/proposals.test.ts` (three tasks, one apply, one undo) and `tests/e2e/capture.test.ts` (sentence 26), and the time
 tools are covered by unit tests running against the same services over the D1 shim. Each sentence below says which
-tests cover its parts; no test runs any of them end to end as one sentence.
+tests cover its parts and what is not tested; no test runs any of them end to end as one sentence.
 
 ## 27. Log that I called Pat and move the deal to Call booked.
 - Tools: `propose_changes` (a `log_activity` call and an `update_deal` to Call booked), `apply_changes`, `undo_change`.
-- Pass: one proposal lists both edits; one yes (`apply_changes`) writes them as one change; one `undo_change` takes
+- Asserts: one proposal lists both edits; one yes (`apply_changes`) writes them as one change; one `undo_change` takes
   both back.
-- Covered by unit tests in `src/services/proposals.test.ts` ("apply writes once with one undo", "apply equals running the
-  actions one by one") and, on a real local D1, `tests/e2e/proposals.test.ts` ("three tasks proposed, applied as one change,
-  and one undo takes all three back", same path with other actions). Not automated as this exact sentence.
+- Covered by the unit test "apply writes once with one undo" in `src/services/proposals.test.ts`, which proposes a logged
+  call, a stage move and a task together, checks one change, and undoes it all with one `undo_change`. The end-to-end test
+  `tests/e2e/proposals.test.ts` ("three tasks proposed, applied as one change, and one undo takes all three back") runs the
+  same path on a real local D1 but with `add_task` actions only. A `log_activity` plus `update_deal` list is not run
+  on real D1.
 
 ## 28. Start a timer on Pat's deal. Then: Stop it: drew the site plan, an hour, bill it.
 - Tools: `update_settings` (timeTracking on), `start_timer`, `stop_timer` (each proposed unless the owner chose Apply
   small changes), `list_time`.
-- Pass: one running timer; the stop saves one entry, billable at the work type's rate (the client's own rate if one is
-  set), and logs the note on the deal in the same change; a second timer is refused while one runs.
+- Asserts: one running timer; the stop saves one entry and logs the note on the deal in the same change; a second timer
+  is refused while one runs. The entry is billable at the work type's rate, and a client's own rate beats it.
 - Covered by unit tests in `src/services/timer.test.ts` ("one running at a time", "stop stores the entry, the note and
-  the next-step task in one change", "undo of a stop restores the running timer") and `src/mcp/tools-time.test.ts`
-  ("start_timer under apply small applies", "a proposed stop keeps the time it was asked for"). Not automated end to end.
+  the next-step task in one change", "undo of a stop restores the running timer"), `src/services/time-entries.test.ts`
+  ("client rate beats default") and `src/mcp/tools-time.test.ts` ("start_timer under apply small applies", "a proposed
+  stop keeps the time it was asked for"). Not automated end to end.
 
 ## 29. What did I bill this week?
 - Tools: `list_time` (default: this week, Monday to Sunday in the owner's timezone).
-- Pass: the answer gives totals of billable and not-billable time and money by person and deal, and lists the entries.
+- Asserts: the answer gives totals of billable and not-billable time and money by person and deal, and lists the entries.
 - Covered by unit tests in `src/services/time-read.test.ts` ("this week starts Monday in the owner's timezone", "totals
   by person and deal, billable vs not") and `src/mcp/tools-time.test.ts` ("update_time_entry and list_time over MCP").
   Not automated end to end.
@@ -245,7 +248,8 @@ tests cover its parts; no test runs any of them end to end as one sentence.
 ## 30. Add a work type Drawings at 95 an hour.
 - Tools: `add_work_type`, `list_work_types`, `undo_change`. A work type is configuration, so it writes at once, with no
   proposal (server rule 5: only when the owner asks).
-- Pass: the work type is listed at 95 an hour; the answer ends with a change id; one undo removes it.
+- Asserts: the work type is listed at 95 an hour and the answer ends with a change id. Undoing a work type that nothing
+  uses is not tested (the tests undo a work type in use, which is refused, and a client rate, which is allowed).
 - Covered by unit tests in `src/services/work-types.test.ts` ("work type names are unique among live ones, ignoring case",
   "undo of a work type in use is refused; undo of a client rate is not") and `src/mcp/tools-time.test.ts` ("work types
   and client rates write at once, and list_work_types lists them"). Not automated end to end.

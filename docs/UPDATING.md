@@ -211,7 +211,8 @@ open its connector settings, remove the copy's connector and add it again (or st
   waits. Answer "Yes", "Yes with changes: ..." (it sends a new list) or "No" (nothing changes). A yes writes the whole
   list as one change, and "Undo that" takes back all of it. A list is good for 2 hours.
 - **Apply small changes.** If you want logged calls, notes and ticked-off tasks to go straight in, say "Use Apply small
-  changes." (and "Go back to Review first." to undo that). Everything else still waits for your yes.
+  changes." (and "Go back to Review first." to undo that). That covers a logged call or note, a ticked task, starting a
+  timer and stopping one without a next-step date; everything else still waits for your yes.
 - **To-dos.** A to-do no longer needs a person or a deal ("Buy printer ink"). Today now shows your to-dos as a list you
   can sort and filter, with a box to add one (up to 50 show per list, with a "Showing 50 of N" line).
 - **Time tracking is off until you turn it on.** No timer or time pages show before that.
@@ -237,8 +238,9 @@ by talking to the AI app.
 
 ### 5. A big list on the free plan
 
-A list of 25 changes (the most one list holds) makes about 30 D1 calls, inside the free plan's 50 if each batch counts
-as one. Whether Cloudflare counts each statement inside a batch is still unknown (docs/PAID-PLAN.md, "Run 6"). If a
+D1 is the copy's database; a batch is several database steps sent at once; Workers Paid is Cloudflare's $5 a month plan
+with far higher limits. A list of 25 changes (the most one list holds) makes about 30 D1 calls, inside the free plan's
+50 if each batch counts as one. Whether Cloudflare counts each statement inside a batch is still unknown (docs/PAID-PLAN.md, "Run 6"). If a
 long list fails, send it as two shorter ones, or move the copy to Workers Paid.
 
 ## Before a release that has a new migration
