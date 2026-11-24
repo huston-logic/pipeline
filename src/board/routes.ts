@@ -9,6 +9,8 @@
 // at the check step, im_seed03 applied; the deals and tasks imports' first steps are their own pages (decision 0037).
 // The views (decision 0042) are Partner's default view and the seed's saved views: vw_seed01 (people), vw_seed02 (deals).
 // The table layout (decision 0043) is the Pipeline's List (a table by default), Contacts and a saved people view.
+// The timer pages (decision 0050): /timer/stop with no timer running (the seed starts none) and the seed's finished entry
+// te_seed01 on /timer/done.
 
 export type IconName =
   | "today"
@@ -69,6 +71,8 @@ export const boardRoutes: string[] = [
   "/import/im_seed01",
   "/import/im_seed02/preview",
   "/import/im_seed03",
+  "/timer/stop",
+  "/timer/done?entry=te_seed01",
 ];
 
 /** At most this many pages go through Lighthouse, so the CI job's time stops growing with the board. */
@@ -97,7 +101,7 @@ export const lighthouseRoutes: string[] = [
   "/deals/dl_seed02",
   "/contacts/ct_seed07",
   "/contacts/ct_seed02/edit",
-  "/leads/new",
+  "/timer/done?entry=te_seed01",
   "/import",
   "/import/im_seed01",
   "/import/im_seed02/preview",

@@ -36,6 +36,9 @@ export interface DevSeed {
   importDraftParts: Row[];
   /** Saved views (decision 0042): one of people, one of deals. */
   views: Row[];
+  /** Time tracking (decisions 0049, 0050): two work types and one finished entry; no timer runs. */
+  workTypes: Row[];
+  timeEntries: Row[];
 }
 
 /** The seed's drafts never expire, so the import pages in boardRoutes always have one to show. */
@@ -386,6 +389,8 @@ export function devSeed(now: Date, tz: string): DevSeed {
     { deal: null, contact: "ct_lead10", type: "email", summary: "Omar likes the idea but wants to wait until after the busy season.", at: day(-16, "10:00") },
     { deal: null, contact: "ct_lead11", type: "note", summary: "Found in the chamber of commerce directory. Does a lot of retaining walls.", at: day(-9, "10:00") },
     { deal: null, contact: "ct_lead12", type: "email", summary: "Gwen asked about a mezzanine for the surgery suite.", at: day(-5, "09:00") },
+    // The note the seed's finished time entry logged (decision 0050); on the won taproom deal, older than its last call, so no deal's last contact moves.
+    said(20, "note", "Walked Elena through the taproom mezzanine drawings.", day(-46, "15:00")),
   ];
 
   const dealContact = new Map(dealSpecs.map((d) => [d.n, d.contact]));
@@ -830,7 +835,36 @@ export function devSeed(now: Date, tz: string): DevSeed {
     view(2, "Commercial jobs", "deals", { fields: { project_type: "Commercial" } }, "value-desc", day(-4, "09:05")),
   ];
 
-  return { fieldDefs, contacts, deals, activities, tasks, rules, briefs, audit, importDrafts, importDraftParts, views };
+  // Time tracking is on in the demo (decision 0049): two work types and one finished entry with its note, no timer running.
+  const workTypes: Row[] = [
+    { id: "wt_seed01", name: "Design", hourly_rate: 95, billable_default: 1, position: 1, archived: 0, version: 1, created_at: day(-8, "09:00"), updated_at: day(-8, "09:00") },
+    { id: "wt_seed02", name: "Admin", hourly_rate: null, billable_default: 0, position: 2, archived: 0, version: 1, created_at: day(-8, "09:00"), updated_at: day(-8, "09:00") },
+  ];
+  const noteId = `ac_seed${n2(activities.length)}`;
+  const spent = day(-46, "14:00");
+  const timeEntries: Row[] = [
+    {
+      id: "te_seed01",
+      contact_id: "ct_seed04",
+      deal_id: "dl_seed20",
+      task_id: null,
+      started_at: spent,
+      ended_at: day(-46, "15:00"),
+      minutes: 60,
+      work_type_id: "wt_seed01",
+      billable: 1,
+      rate: 95,
+      notes: "Walked Elena through the taproom mezzanine drawings.",
+      activity_id: noteId,
+      archived: 0,
+      untrusted_fields: "[]",
+      version: 1,
+      created_at: day(-46, "15:00"),
+      updated_at: day(-46, "15:00"),
+    },
+  ];
+
+  return { fieldDefs, contacts, deals, activities, tasks, rules, briefs, audit, importDrafts, importDraftParts, views, workTypes, timeEntries };
 }
 
 export function buildDevSeed(now: Date, tz: string): string {
@@ -850,6 +884,9 @@ export function buildDevSeed(now: Date, tz: string): string {
     ...seed.importDrafts.map((row) => insert("import_drafts", row)),
     ...seed.importDraftParts.map((row) => insert("import_draft_parts", row)),
     ...seed.views.map((row) => insert("views", row)),
+    "UPDATE settings SET time_tracking = 1 WHERE id = 1;",
+    ...seed.workTypes.map((row) => insert("work_types", row)),
+    ...seed.timeEntries.map((row) => insert("time_entries", row)),
     "",
   ].join("\n");
 }

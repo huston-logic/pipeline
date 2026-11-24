@@ -15,6 +15,7 @@ import { backToLeadsForm, offersBackToLeads } from "../lead-forms.ts";
 import { reachActions } from "../reach.ts";
 import { customRows, outsideNote, STATUS, taskCard, timelineItem } from "../records.ts";
 import { addTaskForm, type Subject } from "../task-forms.ts";
+import { startTimerForm } from "../timer-start.ts";
 import { dealEditPath } from "./deal-edit.ts";
 
 function contactSection(brief: DealBrief, labels: Map<string, string>, form: FormContext, subject: Subject): Html {
@@ -63,6 +64,7 @@ ${pairs([
 ])}
 ${deal.archived ? html`<p class="note">This deal is archived.</p>` : ""}
 <p class="card-actions"><a href="${dealEditPath(deal.id)}">Edit deal</a></p>
+${deal.archived ? "" : startTimerForm({ kind: "deal", id: deal.id }, form, name)}
 ${deal.archived ? "" : html`<div class="card-move">${moveForm({ id: deal.id, name, stageKey: stage.key }, stages, form)}</div>`}
 ${backToLeads ? html`<div class="card-return">${backToLeadsForm(deal.id, form)}</div>` : ""}
 </div>`,

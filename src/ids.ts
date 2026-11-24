@@ -40,6 +40,9 @@ export const isProposalId = (id: string): boolean => /^pr_[a-z0-9]{1,32}$/.test(
 /** The same check for a time entry id ("te_" ...), used by update_time_entry (decision 0049). */
 export const isTimeEntryId = (id: string): boolean => /^te_[a-z0-9]{1,32}$/.test(id);
 
+/** The same check for an activity id ("ac_" ...), used by the done page's Ask Claude prompt (decision 0050). */
+export const isActivityId = (id: string): boolean => /^ac_[a-z0-9]{1,32}$/.test(id);
+
 export function newId(prefix: IdPrefix): string {
   const bytes = crypto.getRandomValues(new Uint8Array(12));
   // 256 is a multiple of 32, so the low 5 bits of a random byte are uniform.

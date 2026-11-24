@@ -49,7 +49,7 @@ export interface StopInput {
 }
 
 /** "10:00 AM", or "Wed Nov 18, 9:10 AM" when it wasn't today. */
-function sinceText(at: string, now: Date, tz: string): string {
+export function sinceText(at: string, now: Date, tz: string): string {
   const full = formatLocal(at, tz);
   return localDate(new Date(at), tz) === localDate(now, tz) ? (full.split(", ").at(-1) ?? full) : full;
 }

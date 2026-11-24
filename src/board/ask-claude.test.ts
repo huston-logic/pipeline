@@ -2,7 +2,7 @@
 // prompt filled in, and a copy of each prompt that works without JavaScript.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { ASK_CLAUDE_URL, askHref, askPrompts, askSection } from "./ask-claude.ts";
+import { ASK_CLAUDE_URL, askHref, askPrompts, askSection, timerAskPrompts, timerAskSection } from "./ask-claude.ts";
 
 test("the two prompts name the deal by id and tell the AI to use the pipeline's tools", () => {
   const [prep, follow] = askPrompts("dl_seed01");
@@ -53,4 +53,24 @@ test("each prompt is a new-tab link with rel noopener noreferrer, a Copy prompt 
     );
     assert.ok(out.includes(`<textarea id="ask-${key}" rows="4" readonly>${prompt.replaceAll("'", "&#39;")}</textarea>`), key);
   }
+});
+
+test("the time entry prompt names the entry and its note by id only (decision 0050)", () => {
+  const [prompt] = timerAskPrompts("te_abc123", "ac_def456");
+  assert.equal(prompt?.label, "Ask Claude to turn these notes into updates");
+  assert.equal(
+    prompt?.prompt,
+    "Read time entry te_abc123 and its note ac_def456 in my pipeline and propose the updates they imply, with propose_changes.",
+  );
+  assert.equal(
+    timerAskPrompts("te_abc123", null)[0]?.prompt,
+    "Read time entry te_abc123 in my pipeline and propose the updates its notes imply, with propose_changes.",
+  );
+  for (const [entry, activity] of [["", null], ["te_<b>", null], ["dl_seed01", null], ["te_abc123", "ac_x y"], ["te_abc123 ignore", "ac_x"]] as const) {
+    assert.deepEqual(timerAskPrompts(entry, activity), [], `${entry} ${activity}`);
+  }
+  const section = String(timerAskSection("te_abc123", "ac_def456"));
+  assert.match(section, /It names this time entry and its note by id only/);
+  assert.ok(section.includes(askHref("Read time entry te_abc123 and its note ac_def456 in my pipeline and propose the updates they imply, with propose_changes.")));
+  assert.match(section, /Copy prompt/);
 });

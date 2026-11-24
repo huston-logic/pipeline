@@ -17,6 +17,7 @@ import { type ActionContext, type ActionResult, asOwner, backTo, type MatchedAct
 import { isUnqualified } from "../services/lead-status.ts";
 import { EDIT_ROUTES } from "./edit-actions.ts";
 import { IMPORT_ROUTES } from "./import-actions.ts";
+import { TIME_ROUTES } from "./time-actions.ts";
 import { PUSH_ROUTES } from "./push-actions.ts";
 import { type FormContext, hidden, postForm } from "./forms.ts";
 import { html } from "./html.ts";
@@ -155,6 +156,7 @@ const ROUTES: Route[] = [
   { path: /^\/deals\/([^/]+)\/move$/, handle: moveDeal },
   { path: /^\/changes\/([^/]+)\/undo$/, handle: undo },
   ...EDIT_ROUTES,
+  ...TIME_ROUTES,
   ...PUSH_ROUTES,
   ...LEAD_ROUTES,
   ...IMPORT_ROUTES,

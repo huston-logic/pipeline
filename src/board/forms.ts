@@ -4,7 +4,7 @@ import { CSRF_FIELD } from "./csrf.ts";
 import { type Html, html } from "./html.ts";
 
 /** Where the form came from and the token: a page's forms need both. */
-export type FormContext = { csrf: string; here: string };
+export type FormContext = { csrf: string; here: string; /** Offer Start timer (decision 0050). */ startTimer?: boolean };
 
 export const RETURN_FIELD = "return_to";
 
