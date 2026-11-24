@@ -308,7 +308,9 @@ this file before changing the repo, and update it when a rule changes.
   `setReject`, `reply` or `forward`. Each matched To/Cc person (at most five) gets an `email` activity (actor `system`,
   tool `email_log`, subject and body in `untrusted_text`) through `activityEffects`, all in one change; `email_log`
   dedupes by Message-ID and feeds the brief's unmatched count. The address is shown only on `/email-log`.
-- **Migrations:** every new migration must keep the data of the previous version; `src/db/migrations.test.ts` checks
+- **Migrations:** `DROP TABLE` runs the `ON DELETE` actions (SET NULL, CASCADE) of tables that point at the dropped one
+  even with `PRAGMA defer_foreign_keys = true`, so a table rebuild must save and restore those links (migration 0016
+  shows how). Every new migration must keep the data of the previous version; `src/db/migrations.test.ts` checks
   each one against fake rows for every table (add rows to `FAKE_ROWS` for a new table).
 - Files: unit tests sit beside the code (`src/**/*.test.ts`, `scripts/*.test.mjs`). `tests/e2e/*.test.ts` run the
   real Worker under `wrangler dev --local` on a temp database (`tests/e2e/harness.ts`; one server per test file, always

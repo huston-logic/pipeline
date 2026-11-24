@@ -1,6 +1,7 @@
 # Acceptance
 
-The twenty sentences from the spec's "Acceptance" section, plus five added in run 5 (21 to 25) and one in run 6 (26), each proven end to end by `tests/e2e/acceptance.test.ts`.
+The twenty sentences from the spec's "Acceptance" section, plus five added in run 5 (21 to 25) and five in run 6 (26 to 30). Sentences 1 to 25 are each proven end to end by `tests/e2e/acceptance.test.ts`; 26 by
+`tests/e2e/capture.test.ts`; 27 to 30 are covered by the tests named under them.
 The test starts the real Worker with `wrangler dev --local` and a real local D1 database holding the fake seed
 (`scripts/seed-dev.ts`), connects an MCP client over Streamable HTTP the way an AI app would, and runs the sentences in
 order. Later sentences build on earlier ones: 8 undoes the change from 7, 9 sees the changes from 4 to 8.
@@ -208,3 +209,43 @@ own server, with a made-up person (Matt Example) and the seed's Dana Whitfield.
   task is on Dana and has the date, Matt's is on Matt, the ink task has no deal and no person; one `undo_change`
   removes all three.
 - Test: `capture: three tasks, one yes, one undo`
+
+## The run 6 sentences (27 to 30)
+
+Run 6 also added approve before change (decisions 0044, 0045) and time tracking (decision 0049). Sentences 27 to 30 have
+no end-to-end test of their own: the end-to-end suite proves the proposal path on a real local D1 in
+`tests/e2e/proposals.test.ts` (three tasks, one apply, one undo) and `tests/e2e/capture.test.ts` (sentence 26), and the time
+tools are covered by unit tests running against the same services over the D1 shim. Each sentence below says which
+tests cover its parts; no test runs any of them end to end as one sentence.
+
+## 27. Log that I called Pat and move the deal to Call booked.
+- Tools: `propose_changes` (a `log_activity` call and an `update_deal` to Call booked), `apply_changes`, `undo_change`.
+- Pass: one proposal lists both edits; one yes (`apply_changes`) writes them as one change; one `undo_change` takes
+  both back.
+- Covered by unit tests in `src/services/proposals.test.ts` ("apply writes once with one undo", "apply equals running the
+  actions one by one") and, on a real local D1, `tests/e2e/proposals.test.ts` ("three tasks proposed, applied as one change,
+  and one undo takes all three back", same path with other actions). Not automated as this exact sentence.
+
+## 28. Start a timer on Pat's deal. Then: Stop it: drew the site plan, an hour, bill it.
+- Tools: `update_settings` (timeTracking on), `start_timer`, `stop_timer` (each proposed unless the owner chose Apply
+  small changes), `list_time`.
+- Pass: one running timer; the stop saves one entry, billable at the work type's rate (the client's own rate if one is
+  set), and logs the note on the deal in the same change; a second timer is refused while one runs.
+- Covered by unit tests in `src/services/timer.test.ts` ("one running at a time", "stop stores the entry, the note and
+  the next-step task in one change", "undo of a stop restores the running timer") and `src/mcp/tools-time.test.ts`
+  ("start_timer under apply small applies", "a proposed stop keeps the time it was asked for"). Not automated end to end.
+
+## 29. What did I bill this week?
+- Tools: `list_time` (default: this week, Monday to Sunday in the owner's timezone).
+- Pass: the answer gives totals of billable and not-billable time and money by person and deal, and lists the entries.
+- Covered by unit tests in `src/services/time-read.test.ts` ("this week starts Monday in the owner's timezone", "totals
+  by person and deal, billable vs not") and `src/mcp/tools-time.test.ts` ("update_time_entry and list_time over MCP").
+  Not automated end to end.
+
+## 30. Add a work type Drawings at 95 an hour.
+- Tools: `add_work_type`, `list_work_types`, `undo_change`. A work type is configuration, so it writes at once, with no
+  proposal (server rule 5: only when the owner asks).
+- Pass: the work type is listed at 95 an hour; the answer ends with a change id; one undo removes it.
+- Covered by unit tests in `src/services/work-types.test.ts` ("work type names are unique among live ones, ignoring case",
+  "undo of a work type in use is refused; undo of a client rate is not") and `src/mcp/tools-time.test.ts` ("work types
+  and client rates write at once, and list_work_types lists them"). Not automated end to end.
