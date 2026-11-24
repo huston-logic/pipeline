@@ -9,6 +9,7 @@ import { contactHref, dealHref } from "./parts.ts";
 import { line, type Shown, type Spec } from "./record-form.ts";
 import { fieldId, formErrorSummary, specFields } from "./record-fields.ts";
 import type { FormState } from "./pages/record-page.ts";
+import { startTimerForm } from "./timer-start.ts";
 
 export type TaskRef = { id: string; title: string; untrusted_fields: readonly string[] | string };
 
@@ -58,6 +59,7 @@ ${postForm(
   form,
   html`<button class="button button-quiet button-small" type="submit">Done${hiddenName(name)}</button>`,
 )}
+${startTimerForm({ kind: "task", id: task.id }, form, name)}
 <details class="task-snooze">
 <summary>Snooze${hiddenName(name)}</summary>
 ${snoozeForms(task, form)}

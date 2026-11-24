@@ -161,3 +161,20 @@ test('script: "push" loads only /push.js with defer (the Notifications page, dec
   assert.match(out, /<script src="\/push.js" defer><\/script>\n<\/head>/);
   assert.doesNotMatch(out, /board\.js/);
 });
+
+test("the Stop bar sits right after the header and before main, says Timer in words, and is absent with no timer", () => {
+  const look = { name: "Pipeline" };
+  const draw = (timer: { label: string; since: string } | null) =>
+    renderPage({ title: "T", description: "d", body: html`<h1>H</h1>`, current: "/", frame: { look, timer } });
+  const on = draw({ label: "Pat Example", since: "9:10 AM" });
+  const header = on.indexOf("</header>");
+  const bar = on.indexOf('<div class="timer-bar">');
+  assert.ok(header > 0 && bar > header && bar < on.indexOf("<main"), "after the header, before main");
+  assert.equal(on.slice(header + "</header>".length).trimStart().startsWith("<div class=\"app-body\">\n<div class=\"timer-bar\">"), true);
+  assert.match(on, /<strong>Timer<\/strong>: Pat Example · since 9:10 AM/);
+  assert.match(on, /<a class="button button-small" href="\/timer\/stop">Stop<span class="visually-hidden">: timer for Pat Example<\/span><\/a>/);
+  assert.doesNotMatch(draw({ label: "", since: "9:10 AM" }), /Timer<\/strong>: /);
+  assert.match(draw({ label: "", since: "9:10 AM" }), /<strong>Timer<\/strong> · since 9:10 AM/);
+  assert.doesNotMatch(draw(null), /timer-bar/);
+  assert.doesNotMatch(page("/"), /timer-bar/);
+});

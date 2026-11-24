@@ -15,6 +15,8 @@ export interface PageContext extends PageFrame {
   look: Look;
   /** The change banner for `?change=<id>`, or "" when there is none. */
   banner: Html | "";
+  /** Start timer buttons are offered: time tracking is on and no timer runs (decision 0050). The running timer itself is `timer`. */
+  startTimer?: boolean;
 }
 
 /** The page's path and query without `change`, as a return_to value. */

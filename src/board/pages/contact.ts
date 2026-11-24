@@ -16,6 +16,7 @@ import { logForm } from "../log-form.ts";
 import { reachActions } from "../reach.ts";
 import { customRows, outsideNote, STATUS, taskCard, timelineItem } from "../records.ts";
 import { addTaskForm, type Subject } from "../task-forms.ts";
+import { startTimerForm } from "../timer-start.ts";
 import { leadAskSection } from "../ask-claude.ts";
 import { qualifyPath, statusLine, statusMenu } from "../lead-forms.ts";
 import { contactEditPath } from "./contact-edit.ts";
@@ -47,6 +48,7 @@ ${pairs([
 ${contact.archived ? html`<p class="note">This contact is archived.</p>` : ""}
 ${reachActions(contact, subject, form)}
 <p class="card-actions"><a href="${contactEditPath(contact.id)}">Edit details</a></p>
+${contact.archived ? "" : startTimerForm({ kind: "contact", id: contact.id }, form, outside.has("name") ? `contact ${contact.id}` : contact.name)}
 </div>`,
   );
 }

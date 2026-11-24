@@ -1759,8 +1759,39 @@ button.button {
   border-top: 1px solid var(--divider);
 }
 
-.task-done {
+.task-done,
+.timer-start {
   margin: 0;
+}
+
+/* The Stop bar (decision 0050): one line under the app bar while a timer runs. "Timer" is written out, so the tint
+   is never the only sign. Text on the tint is ink (§2). */
+.timer-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  padding: 0.5rem max(1rem, env(safe-area-inset-right)) 0.5rem max(1rem, env(safe-area-inset-left));
+  background: var(--accent-tint);
+  color: var(--ink);
+  box-shadow: 0 1px 0 var(--divider);
+}
+
+.timer-bar-text {
+  flex: 1 1 14rem;
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+/* The stop form (decision 0050): the same stacked fields as the other forms, at a readable width. */
+.stop-form {
+  max-width: 40rem;
+}
+
+.stop-form .button {
+  margin-top: 1rem;
 }
 
 .task-snooze {
@@ -2329,6 +2360,10 @@ button.button {
     padding-bottom: 0;
     background-position: right -8rem top -12rem;
     background-size: 44rem 30rem;
+  }
+
+  .timer-bar {
+    padding-inline: 2.5rem;
   }
 
   main {

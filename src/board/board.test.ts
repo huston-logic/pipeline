@@ -13,6 +13,7 @@ import { addDays, DEFAULT_TZ, formatLocal, localDate, zonedToUtc } from "../time
 import { sourceToken } from "./pages/leads.ts";
 import { boardRoutes, moreItems, navItems } from "./routes.ts";
 import { addStandInDrafts } from "../../tests/helpers/import-drafts.ts";
+import { addStandInTime } from "../../tests/helpers/time-seed.ts";
 import { addStandInViews } from "../../tests/helpers/views.ts";
 import { personSql, setLeadStatus } from "../../tests/helpers/people.ts";
 import type { LeadStatus } from "../services/lead-status.ts";
@@ -66,7 +67,7 @@ function assertPage(body: string, path: string) {
   assert.match(body, /<link rel="stylesheet" href="\/theme.css">/, path);
   // /board.js: dragging on the pipeline board, the phone actions and Copy prompt on deal and contact pages (decision 0021).
   // /deals/new and /contacts/new are the Add a deal and Add contact forms, not record pages.
-  const scripted = path === "/pipeline" || /^\/deals\/(?!new$)[^/]+$/.test(path) || /^\/contacts\/(?!new$)[^/]+$/.test(path);
+  const scripted = path === "/pipeline" || /^\/deals\/(?!new$)[^/]+$/.test(path) || /^\/contacts\/(?!new$)[^/]+$/.test(path) || path.startsWith("/timer/done");
   assert.deepEqual(scriptsOf(body), scripted ? [BOARD_JS] : [], `${path}: scripts`);
   assert.doesNotMatch(body, /\sstyle=/i, `${path}: no inline styles (the CSP refuses them)`);
 }
@@ -78,6 +79,7 @@ test("every board route answers 200 with the seed: one <h1>, landmarks, a unique
     VALUES ('ct_lead03', 'Imani Okoye', 'imani.okoye@example.org', '[]', 'contacted', '2026-01-01T00:00:00.000Z', ${personSql("contacted")})`);
   await addStandInDrafts(db);
   addStandInViews(db);
+  addStandInTime(db);
   const titles = new Set<string>();
   const descriptions = new Set<string>();
   for (const path of boardRoutes) {
@@ -647,7 +649,7 @@ test("board pages answer GET and HEAD only: any other method is 405 (writes have
   // A record form page (Add a lead or a deal, Edit, New deal, Qualify) is posted back to its own path (decisions 0018,
   // 0028), and the import's first step to /import (decision 0036), behind the same checks as every board write: a bare
   // POST (no origin, no cookie, no token) is refused.
-  const formPage = (path: string) => /\/(?:edit|new|qualify)$/.test(path) || path.split("?")[0] === "/import";
+  const formPage = (path: string) => /\/(?:edit|new|qualify)$/.test(path) || ["/import", "/timer/stop"].includes(path.split("?")[0] ?? "");
   for (const path of boardRoutes) {
     for (const method of ["POST", "PUT", "DELETE", "PATCH"]) {
       if (method === "POST" && formPage(path)) {

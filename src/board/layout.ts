@@ -5,6 +5,7 @@ import { isUsableAccent } from "../services/accent.ts";
 import { type Html, html, raw } from "./html.ts";
 import { icon } from "./icons.ts";
 import { moreItems, type NavItem, navItems } from "./routes.ts";
+import { type TimerInfo, timerBar } from "./timer-bar.ts";
 
 /**
  * What a copy's owner set for the board's look. The accent reaches the stylesheet separately, as /theme.css; here it
@@ -43,7 +44,7 @@ function appTags(look: Look): Html {
 }
 
 /** What the router hands every signed-in page's frame: the owner's look and the change banner (decision 0017). */
-export type PageFrame = { look: Look; banner?: Html | "" };
+export type PageFrame = { look: Look; banner?: Html | ""; /** The running timer, for the Stop bar (decision 0050). */ timer?: TimerInfo | null };
 
 export type PageOptions = {
   /** The page's own title; the layout adds " · <business name>". */
@@ -139,7 +140,7 @@ ${frame ? html`<link rel="stylesheet" href="/theme.css">\n${appTags(frame.look)}
 ${nav(current)}
 </header>
 <div class="app-body">
-<main id="main">
+${frame?.timer ? timerBar(frame.timer) : ""}<main id="main">
 ${withBanner(body, frame?.banner)}
 </main>
 <footer class="app-footer">

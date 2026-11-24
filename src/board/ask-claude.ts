@@ -3,13 +3,13 @@
 // sentences around the deal or contact id: no
 // name, email, title or other record text goes into the URL or the prompt (privacy, and no outside text as
 // instructions). The AI reads the deal itself through the MCP tools. No AI call happens in the product.
-import { isContactId, isDealId } from "../ids.ts";
+import { isActivityId, isContactId, isDealId, isTimeEntryId } from "../ids.ts";
 import { type Html, html } from "./html.ts";
 import { section } from "./parts.ts";
 
 export const ASK_CLAUDE_URL = "https://claude.ai/new?q=";
 
-export type AskPrompt = { key: "prep" | "follow-up" | "intro"; label: string; prompt: string };
+export type AskPrompt = { key: "prep" | "follow-up" | "intro" | "timer"; label: string; prompt: string };
 
 /** The two prompts for a deal, or none when `dealId` can't be a deal id. */
 export function askPrompts(dealId: string): AskPrompt[] {
@@ -70,6 +70,23 @@ function askList(prompts: AskPrompt[], what: string): Html | "" {
 <ul class="panel rows ask">${prompts.map(askRow)}</ul>`,
   );
 }
+
+/**
+ * The done page's one prompt (decision 0050): the time entry and the note its notes became, by id only. Without a note
+ * (a timer for no one) it names the entry alone. Nothing is returned for text that can't be those ids.
+ */
+export function timerAskPrompts(entryId: string, activityId: string | null): AskPrompt[] {
+  if (!isTimeEntryId(entryId) || (activityId !== null && !isActivityId(activityId))) return [];
+  const prompt =
+    activityId === null
+      ? `Read time entry ${entryId} in my pipeline and propose the updates its notes imply, with propose_changes.`
+      : `Read time entry ${entryId} and its note ${activityId} in my pipeline and propose the updates they imply, with propose_changes.`;
+  return [{ key: "timer", label: "Ask Claude to turn these notes into updates", prompt }];
+}
+
+/** The done page's Ask Claude section, or nothing. */
+export const timerAskSection = (entryId: string, activityId: string | null): Html | "" =>
+  askList(timerAskPrompts(entryId, activityId), activityId === null ? "this time entry by its id" : "this time entry and its note by id");
 
 /** The deal page's Ask Claude section, or nothing when there are no prompts. */
 export const askSection = (dealId: string): Html | "" => askList(askPrompts(dealId), "this deal by its id");
