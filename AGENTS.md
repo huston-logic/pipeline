@@ -114,7 +114,7 @@ this file before changing the repo, and update it when a rule changes.
   (decision 0045): each one's `run` is `recordWrite` (`src/mcp/record-write.ts`), which answers exactly as
   `propose_changes` does (`proposeResult`), unless the "AI edits" setting (`settings.ai_edits`, migration 0015;
   `update_settings` `aiEdits`: `review_first`, the default, or `apply_small`) is Apply small changes and the action is
-  small (`isSmallAction`: a call or note logged on an existing person or deal, or `complete_task`), which writes at once
+  small (`isSmallAction`: a call or note logged on an existing person or deal, `complete_task`, `start_timer` on existing records, or `stop_timer` without a next-step date), which writes at once
   and answers the service's line. Settings, rules, stages, fields, statuses, views, the rulebook, imports and
   `undo_change` always write at once. A new record tool goes in `RECORD_ACTIONS` and through `recordWrite`. `instructions.ts`
   holds the server instructions (rule 7: record edits need the owner's yes). Adding a tool means adding its name to the tool-list tests (`src/mcp/server.test.ts`,

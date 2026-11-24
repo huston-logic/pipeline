@@ -36,7 +36,7 @@ const aiCtx = ({ db, now }: ToolDeps, tool: string): Ctx => ({ db, now: now(), a
 
 /** The sentence every record tool's description ends with (decision 0045). */
 export const PROPOSES =
-  "Unless the owner chose Apply small changes, this returns a proposal for the owner to approve; nothing changes until apply_changes.";
+  "Unless the owner chose Apply small changes and this is a small change, this returns a proposal for the owner to approve; nothing changes until apply_changes.";
 
 export function registerWriteTools(server: McpServer, deps: ToolDeps): void {
   registerTool(
