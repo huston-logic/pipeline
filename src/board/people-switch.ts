@@ -1,21 +1,31 @@
-// The People tab's three views: Contacts, Leads and Companies (decisions 0016 and 0027).
+// The People tab's views (decisions 0016, 0027 and 0042): the built-in Contacts, Leads and Companies, then the default
+// view of each person status other than Lead and Contact, in status order, then the saved people views in position
+// order. Addresses carry only a status key or a view id, both owner-made, never outside text. The Pipeline tab's
+// switch (Board, List, then saved deals views) is drawn the same way.
+import type { Db, ViewModule } from "../db/db.ts";
+import { BUILT_IN_VIEWS } from "../services/view-spec.ts";
+import { switchItems } from "../services/views.ts";
 import { type Html, html } from "./html.ts";
+
+/** Which entry is shown: a built-in view's key, a status key or a view id. Null marks none. */
+export type SwitchCurrent = { kind: "built_in" | "status" | "saved"; id: string } | null;
 
 export type PeopleView = "contacts" | "leads" | "companies";
 
-const VIEWS: { view: PeopleView; href: string; label: string }[] = [
-  { view: "contacts", href: "/contacts", label: "Contacts" },
-  { view: "leads", href: "/leads", label: "Leads" },
-  { view: "companies", href: "/companies", label: "Companies" },
-];
+const LABELS: Record<ViewModule, string> = { people: "Show people as", deals: "Show the pipeline as" };
 
-export function peopleSwitch(current: PeopleView): Html {
-  const items = VIEWS.map(
-    ({ view, href, label }) => html`<li><a href="${href}"${view === current ? html` aria-current="page"` : ""}>${label}</a></li>`,
-  );
-  return html`<ul class="view-switch" aria-label="Show people as">
-${items[0]}
-${items[1]}
-${items[2]}
-</ul>`;
+/** The view switch of one module: a labelled list of links, the shown one marked aria-current="page". */
+export async function viewSwitch(db: Db, module: ViewModule, current: SwitchCurrent): Promise<Html> {
+  const entries = [
+    ...BUILT_IN_VIEWS[module].map((view) => ({ kind: "built_in" as const, id: view.key, name: view.name, path: view.path })),
+    ...(await switchItems(db, module)),
+  ];
+  const items = entries.map((entry) => {
+    const shown = current !== null && current.kind === entry.kind && current.id === entry.id;
+    return html`<li><a href="${entry.path}"${shown ? html` aria-current="page"` : ""}>${entry.name}</a></li>\n`;
+  });
+  return html`<ul class="view-switch" aria-label="${LABELS[module]}">
+${items}</ul>`;
 }
+
+export const peopleSwitch = (db: Db, current: PeopleView): Promise<Html> => viewSwitch(db, "people", { kind: "built_in", id: current });

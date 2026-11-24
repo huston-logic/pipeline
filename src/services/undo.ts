@@ -69,11 +69,12 @@ const DEPENDENTS: Partial<Record<ChangeTable, Dependent[]>> = {
 
 /**
  * Rows that name a row inside a JSON column rather than through a foreign key: a custom field's key in the `fields` of
- * contacts or deals, a stage's key in `rules.params`. Removing the row would leave them pointing at nothing (or, for a
- * field, let a later field reuse the key and inherit the old values). `equals` absent means "any value at that path".
+ * contacts or deals, a stage's key in `rules.params` or a saved view's filters, a person status's key in a saved view's
+ * filters (decision 0042). Removing the row would leave them pointing at nothing (or, for a field, let a later field
+ * reuse the key and inherit the old values). `equals` absent means "any value at that path".
  */
 type JsonRef = {
-  table: "contacts" | "deals" | "rules";
+  table: "contacts" | "deals" | "rules" | "views";
   column: string;
   path: string;
   /** The top-level key `path` reads, to check a snapshot row the same way in code. */
@@ -101,8 +102,22 @@ const JSON_DEPENDENTS: Partial<Record<ChangeTable, (row: Row) => JsonRef[]>> = {
       equals: String(row.key),
       what: (labels, n) => `${labels} ${n === 1 ? "watches" : "watch"} ${short(String(row.label), 60)}`,
     },
+    viewFilterRef("stage", row),
   ],
+  person_statuses: (row) => [viewFilterRef("person_status", row)],
 };
+
+/** Saved views whose filters name the stage or person status by its key (decision 0042). */
+function viewFilterRef(key: "stage" | "person_status", row: Row): JsonRef {
+  return {
+    table: "views",
+    column: "filters",
+    path: `$.${key}`,
+    key,
+    equals: String(row.key),
+    what: (labels, n) => `${labels} ${n === 1 ? "shows" : "show"} ${short(String(row.label), 60)}`,
+  };
+}
 
 const SHOWN_LABELS = 5;
 
@@ -401,6 +416,7 @@ async function dependents(ctx: Ctx, changeId: string, entries: Entry[]): Promise
     (referrers[i] ?? []).filter((row) => {
       const key = rowKey(ref.table, String(row.id));
       if (removed.has(key)) return false;
+      if (ref.table === "views" && row.archived === 1) return false;
       const before = restored.get(key);
       return before === undefined || holdsRef(ref, before);
     });
@@ -527,6 +543,7 @@ const NOUNS: Record<ChangeTable, [string, string]> = {
   push_subscriptions: ["notification device", "notification devices"],
   person_statuses: ["person status", "person statuses"],
   person_substatuses: ["sub-status", "sub-statuses"],
+  views: ["view", "views"],
 };
 
 /** "2,000 contacts and 3 fields": the entries counted by table, in the order the tables first appear. */

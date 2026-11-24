@@ -13,6 +13,7 @@ import { addDays, DEFAULT_TZ, formatLocal, localDate, zonedToUtc } from "../time
 import { sourceToken } from "./pages/leads.ts";
 import { boardRoutes, moreItems, navItems } from "./routes.ts";
 import { addStandInDrafts } from "../../tests/helpers/import-drafts.ts";
+import { addStandInViews } from "../../tests/helpers/views.ts";
 import { personSql, setLeadStatus } from "../../tests/helpers/people.ts";
 import type { LeadStatus } from "../services/lead-status.ts";
 
@@ -76,6 +77,7 @@ test("every board route answers 200 with the seed: one <h1>, landmarks, a unique
   db.exec(`INSERT INTO contacts (id, name, email, untrusted_fields, lead_status, lead_status_at, person_status, sub_status)
     VALUES ('ct_lead03', 'Imani Okoye', 'imani.okoye@example.org', '[]', 'contacted', '2026-01-01T00:00:00.000Z', ${personSql("contacted")})`);
   await addStandInDrafts(db);
+  addStandInViews(db);
   const titles = new Set<string>();
   const descriptions = new Set<string>();
   for (const path of boardRoutes) {
@@ -334,7 +336,7 @@ test("the contacts page has a search form that works without JavaScript: a label
   ]);
   assert.match(body, /<button class="button" type="submit">Show contacts<\/button>/);
   assert.doesNotMatch(body, /Clear search/, "nothing to clear yet");
-  assert.match(body, /<ul class="view-switch" aria-label="Show people as">\n<li><a href="\/contacts" aria-current="page">Contacts<\/a><\/li>\n<li><a href="\/leads">Leads<\/a><\/li>\n<li><a href="\/companies">Companies<\/a><\/li>\n<\/ul>/);
+  assert.match(body, /<ul class="view-switch" aria-label="Show people as">\n<li><a href="\/contacts" aria-current="page">Contacts<\/a><\/li>\n<li><a href="\/leads">Leads<\/a><\/li>\n<li><a href="\/companies">Companies<\/a><\/li>\n<li><a href="\/people\?status=partner">Partner<\/a><\/li>\n<\/ul>/);
 });
 
 test("searching contacts: the count names the search, the box keeps it, and Clear search keeps the sort", async () => {
@@ -627,7 +629,7 @@ test("the export page links to the JSON file and one CSV per table, as downloads
   const db = await createTestDb();
   const { body } = await get(db, "/export");
   assert.match(body, /<a class="button" href="\/api\/export.json" download><svg [^>]*aria-hidden="true"[\s\S]*?<\/svg>Download everything \(JSON\)<\/a>/);
-  assert.equal(body.match(/<a class="download-row" href="\/api\/export\/[a-z_]+\.csv" download>/g)?.length, 16);
+  assert.equal(body.match(/<a class="download-row" href="\/api\/export\/[a-z_]+\.csv" download>/g)?.length, 17);
 });
 
 test("the More page links to Rules, Changes and Export, each with a one-line description", async () => {
@@ -683,7 +685,7 @@ const leadIds = (body: string) =>
     .map((t) => /href="\/contacts\/([^"]+)"/.exec(t)?.[1])
     .sort();
 
-test("the nav says People, with Contacts, Leads and Companies as the three views", async () => {
+test("the nav says People, with Contacts, Leads and Companies as the built-in views, then Partner's default view", async () => {
   const db = await seededDb();
   assert.match(navOf((await get(db, "/")).body), /<span class="nav-label">People<\/span>/);
   assert.equal(navItems.find((item) => item.href === "/contacts")?.label, "People");
@@ -691,7 +693,8 @@ test("the nav says People, with Contacts, Leads and Companies as the three views
     const main = mainOf((await get(db, path)).body);
     const switcher = /<ul class="view-switch" aria-label="Show people as">[\s\S]*?<\/ul>/.exec(main)?.[0] ?? "";
     assert.ok(switcher, path);
-    assert.equal(switcher.match(/<li>/g)?.length, 3, path);
+    assert.equal(switcher.match(/<li>/g)?.length, 4, path);
+    assert.match(switcher, /<li><a href="\/people\?status=partner">Partner<\/a><\/li>\n<\/ul>$/, path);
     assert.equal(switcher.match(/aria-current="page"/g)?.length, 1, path);
   }
   assert.match(mainOf((await get(db, "/leads")).body), /<li><a href="\/leads" aria-current="page">Leads<\/a><\/li>/);

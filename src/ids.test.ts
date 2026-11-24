@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { ID_PREFIXES, isChangeId, isContactId, isDealId, isImportId, isPushId, isTaskId, newId } from "./ids.ts";
+import { ID_PREFIXES, isChangeId, isContactId, isDealId, isImportId, isPushId, isTaskId, isViewId, newId } from "./ids.ts";
 
 test("ids are <prefix>_ plus 12 lowercase base32 characters", () => {
   for (const prefix of ID_PREFIXES) {
@@ -9,7 +9,7 @@ test("ids are <prefix>_ plus 12 lowercase base32 characters", () => {
 });
 
 test("the prefixes are the ones the plan lists", () => {
-  assert.deepEqual([...ID_PREFIXES], ["ct", "dl", "ac", "tk", "ru", "rf", "fd", "br", "chg", "ps", "im"]);
+  assert.deepEqual([...ID_PREFIXES], ["ct", "dl", "ac", "tk", "ru", "rf", "fd", "br", "chg", "ps", "im", "vw"]);
 });
 
 test("ids do not repeat", () => {
@@ -61,4 +61,11 @@ test("isImportId accepts newId's import draft ids and the seed's im_seed01 style
   assert.ok(isImportId("im_seed01"));
   const bad = ["ct_seed01", "im_", "im", "IM_SEED01", "im_a-b", "im_a%2Fb", "im_a/b", "<script>"];
   for (const id of [...bad, ` ${newId("im")}`, `im_${"a".repeat(33)}`]) assert.equal(isImportId(id), false, id);
+});
+
+test("isViewId accepts newId's view ids and the seed's vw_seed01 style, nothing else", () => {
+  for (let i = 0; i < 50; i++) assert.ok(isViewId(newId("vw")));
+  assert.ok(isViewId("vw_seed01"));
+  const bad = ["ct_seed01", "vw_", "vw", "VW_SEED01", "vw_a-b", "vw_a%2Fb", "vw_a/b", "partner", "<script>"];
+  for (const id of [...bad, ` ${newId("vw")}`, `vw_${"a".repeat(33)}`]) assert.equal(isViewId(id), false, id);
 });

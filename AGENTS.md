@@ -34,8 +34,11 @@ this file before changing the repo, and update it when a rule changes.
   are modules in `src/board/pages/` that take a `PageContext` (`src/board/context.ts`: db, now, query, `here`, the CSRF
   token, the look and the change banner) and return `renderPage({ title, description, body, current, frame: ctx })`
   from `src/board/layout.ts` (the layout appends " · <business name>" to the title and draws the banner). Every board
-  path is listed in `src/board/routes.ts` (import-free; the accessibility test, `npm run screenshots` and `lighthouserc.cjs` read it),
-  with the nav (`navItems`: Today, Pipeline, People, Brief, More; `moreItems`: Rules, Changes, Export, Import). Pages are
+  path is listed in `boardRoutes` in `src/board/routes.ts` (import-free; the accessibility test and `npm run screenshots`
+  read it); `lighthouserc.cjs` scores `lighthouseRoutes`, one of each kind of page, at most 20 (a test checks), 3 runs
+  each; `npm run test:lighthouse` (`scripts/lighthouse.mjs`) collects again, at most twice, only the pages whose runs
+  crashed (Chrome's `NO_NAVSTART`), then checks scores once. Every new page goes in `boardRoutes`; a new kind of page
+  also takes a `lighthouseRoutes` slot. The file also has the nav (`navItems`: Today, Pipeline, People, Brief, More; `moreItems`: Rules, Changes, Export, Import). Pages are
   GET and HEAD with `Cache-Control: no-store`; a page that finds no CSRF cookie sets one.
 - **Board edits** (decisions 0014, 0017): every board write path is in the route table in `src/board/actions.ts`; a
   POST to any other path is 405. `src/board/post.ts` checks, in order, the sign-in, the same origin, a form body
@@ -141,6 +144,16 @@ this file before changing the repo, and update it when a rule changes.
   (`contactedIfNew`); `update_deal` marking a deal Won makes a Contact a Client (`clientIfWon`). Lead is refused
   while the person has an open deal. Nothing moves because outside text says so. `via: "text"` on a note comes only
   from the board's Text button, never from an MCP input.
+- **Views** (decision 0042): a saved view is a `views` row (migration 0013: name, module `people`|`deals`, filters,
+  sort, layout, columns, position); `src/services/view-spec.ts` says what each module takes (filters, sorts, columns),
+  `src/services/views.ts` checks and writes them (`add_view`, `update_view`, `archive_view`, `list_views`; filters
+  stored by key, camelCase over MCP) and `src/services/view-read.ts` reads the records (one query, at most 200, with
+  the total). Every live person status but Lead and Contact has a default view with no row, so a new status shows
+  with no code. Board: `/people?status=<key>` and `/people?view=<vw id>` (`src/board/pages/people-view.ts`),
+  `/pipeline?view=<vw id>` (`deals-view.ts`); unknown or archived is the 404. The People switch lists Contacts, Leads,
+  Companies, the status views, then saved views; the Pipeline's Board, List, then saved views (`viewSwitch` in
+  `src/board/people-switch.ts`). Addresses carry only status keys and view ids, never outside text; People stays one
+  tab, so the phone tab bar keeps five items.
 - **Sign-in:** `src/auth/dev.ts` until task 10. `AUTH_MODE=dev` works only with `ENVIRONMENT=development` on a
   loopback host; anywhere else every route answers 500. Without `AUTH_MODE`, `/mcp` answers 401.
 - **Types:** `src/env.ts` is the `Env` type the code uses. `src/worker-configuration.d.ts` holds the Workers runtime

@@ -176,7 +176,7 @@ ${clear}`;
     current: "/leads",
     frame: ctx,
     body: html`<h1>Leads</h1>
-${peopleSwitch("leads")}
+${await peopleSwitch(ctx.db, "leads")}
 ${addButtons("leads", ["lead", "import"])}
 ${searchForm(asked, list.sources, token, await statusLabels(db))}
 ${results}`,

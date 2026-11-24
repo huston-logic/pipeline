@@ -221,6 +221,10 @@ function cases(briefAt: Date): Case[] {
     fetchCase("mcp list_leads (follow-up due within 7 days)", tool("list_leads", { dueWithinDays: 7 })),
     fetchCase("/leads", () => new Request(`${ORIGIN}/leads`)),
     fetchCase("/leads?status=closed", () => new Request(`${ORIGIN}/leads?status=closed`)),
+    // Run 5, task P9: a status's default view (2,000 leads, the first 200 drawn) and a saved view of each module.
+    fetchCase("/people?status=lead", () => new Request(`${ORIGIN}/people?status=lead`)),
+    fetchCase("/people?view=vw_scale01 (referrals, latest activity first)", () => new Request(`${ORIGIN}/people?view=vw_scale01`)),
+    fetchCase("/pipeline?view=vw_scale02 (open deals by value)", () => new Request(`${ORIGIN}/pipeline?view=vw_scale02`)),
     fetchCase("mcp search_contacts (leadStatus new)", tool("search_contacts", { query: "ab", leadStatus: ["new"] })),
     fetchCase("mcp preview_rule (the saved lead_followup)", tool("preview_rule", { rule: "ru_scale06" })),
     {
@@ -313,6 +317,10 @@ async function main(): Promise<void> {
   await applyMigrations(db);
   applySqlFile(db, "seed/defaults.sql");
   db.exec(buildScaleSeed(seedNow));
+  // Run 5, task P9 (decision 0042): one saved view of each module.
+  db.exec(`INSERT INTO views (id, name, module, filters, sort, position) VALUES
+    ('vw_scale01', 'Referrals', 'people', '{"source":"referral"}', 'last_activity-desc', 1),
+    ('vw_scale02', 'Biggest first', 'deals', '{}', 'value-desc', 1)`);
   const env = envFor(db);
   const quiet = console.log;
 

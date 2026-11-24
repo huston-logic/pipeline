@@ -1,5 +1,5 @@
-// Every board page path, and the board's navigation. The accessibility test, `npm run screenshots` and
-// lighthouserc.cjs read `boardRoutes`, and lighthouserc.cjs loads it with require(), so keep this file free of imports
+// Every board page path, and the board's navigation. The accessibility test and `npm run screenshots` read
+// `boardRoutes`; lighthouserc.cjs reads `lighthouseRoutes` with require(), so keep this file free of imports
 // and of TypeScript-only syntax beyond type annotations.
 // The two deal pages and the contact page are fixed ids from the fake seed (scripts/seed-dev.ts): dl_seed02 came in
 // through the website form, so its page shows outside text; ct_seed07 has an open and a won deal. The form pages
@@ -7,6 +7,7 @@
 // outside values labelled), a new deal for ct_seed07, editing dl_seed01 and Qualify for ct_lead03. ct_lead03 is a Contacted lead
 // (decision 0029). The import pages (decision 0036) are the seed's drafts: im_seed01 at the matching step, im_seed02
 // at the check step, im_seed03 applied; the deals and tasks imports' first steps are their own pages (decision 0037).
+// The views (decision 0042) are Partner's default view and the seed's saved views: vw_seed01 (people), vw_seed02 (deals).
 
 export type IconName =
   | "today"
@@ -35,6 +36,9 @@ export const boardRoutes: string[] = [
   "/companies",
   "/leads",
   "/leads?status=closed",
+  "/people?status=partner",
+  "/people?view=vw_seed01",
+  "/pipeline?view=vw_seed02",
   "/brief",
   "/more",
   "/rules",
@@ -60,6 +64,38 @@ export const boardRoutes: string[] = [
   "/import/im_seed01",
   "/import/im_seed02/preview",
   "/import/im_seed03",
+];
+
+/** At most this many pages go through Lighthouse, so the CI job's time stops growing with the board. */
+export const LIGHTHOUSE_MAX_ROUTES = 20;
+
+/**
+ * The pages Lighthouse scores: one of each kind of board page (a list, a record page, a form, an import step, ...),
+ * all from `boardRoutes`. Near-copies (another stage filter, the deals and tasks import's first step, a second saved
+ * view) are left out; the accessibility test still covers every page in `boardRoutes`. A new kind of page takes a slot
+ * here, swapping out a weaker one if the list is full.
+ */
+export const lighthouseRoutes: string[] = [
+  "/",
+  "/pipeline",
+  "/pipeline?view=list",
+  "/contacts",
+  "/companies",
+  "/leads",
+  "/people?view=vw_seed01",
+  "/brief",
+  "/more",
+  "/rules",
+  "/changes",
+  "/report",
+  "/notifications",
+  "/deals/dl_seed02",
+  "/contacts/ct_seed07",
+  "/contacts/ct_seed02/edit",
+  "/leads/new",
+  "/import",
+  "/import/im_seed01",
+  "/import/im_seed02/preview",
 ];
 
 /** The phone tab bar and the top of the side bar, in this order. */

@@ -254,3 +254,21 @@ line (6.5 to 8.3) shows it.
   Whether D1 counts a batch as one query or one per statement toward the free plan's 50 is **still unknown** (see "What
   the owner confirms" above). Counted per statement, both fit under 50.
 
+
+## Run 5: saved views (task P9, 2026-11-23)
+
+`scripts/cpu-check.ts` on the scaled copy (2,000 deals, 3,500 people of whom 2,000 leads, 20,000 activities), with one
+saved view of each module added; medians of 10 runs (decision 0042):
+
+| request | est. Worker CPU ms | D1 CPU ms | D1 statements | body KB |
+| --- | --- | --- | --- | --- |
+| `/people?status=lead` (default view, 2,000 people, first 200 drawn) | 1.9 | 92.8 | 6 | 92 |
+| `/people?view=…` (people by source, latest activity first) | 2.1 | 44.2 | 9 | 92 |
+| `/pipeline?view=…` (open deals by value) | 1.2 | 4.1 | 8 | 93 |
+| `/contacts` (for comparison) | 2.4 | 24.4 | 4 | 103 |
+
+- **Worker CPU is about 2 ms** on every view page: drawing at most 200 cards keeps it flat whatever the copy's size.
+- **The D1 side is the heavier part** of a people view: the last activity and next task for every person are worked
+  out before the filter and the 200-row limit (the same CTEs as the Leads list). About 90 ms of D1 time for a view of
+  2,000 people is D1's work, not the Worker's, and well under D1's own limits; if a copy gets much bigger, filtering the
+  people before those two CTEs is the first thing to change.

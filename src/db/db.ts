@@ -27,6 +27,7 @@ export const TABLE_NAMES = [
   "import_draft_parts",
   "person_statuses",
   "person_substatuses",
+  "views",
 ] as const;
 
 export type TableName = (typeof TABLE_NAMES)[number];
@@ -91,6 +92,30 @@ export type PersonSubstatusRow = {
   key: string;
   label: string;
   /** 1-based place within its status. */
+  position: number;
+  archived: Flag;
+  version: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ViewModule = "people" | "deals";
+export type ViewLayout = "cards" | "table";
+
+/** A saved view (migration 0013, decision 0042). */
+export type ViewRow = {
+  /** "vw_..." */
+  id: string;
+  name: string;
+  module: ViewModule;
+  /** JSON object: person_status, sub_status, source, q, fields { <key>: value } and, for deals, stage. */
+  filters: string;
+  /** "<key>-<asc|desc>". */
+  sort: string;
+  layout: ViewLayout;
+  /** JSON array of column keys; "fields.<key>" for a custom field. */
+  columns: string;
+  /** 1-based place among the live views of its module. */
   position: number;
   archived: Flag;
   version: number;
