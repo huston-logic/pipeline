@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import type { Client } from "@modelcontextprotocol/client";
-import { CHANGE_LINE, connectHttp, fails, ok } from "../helpers/mcp-client.ts";
+import { approved, CHANGE_LINE, connectHttp, fails, ok, okText } from "../helpers/mcp-client.ts";
 import { type DevServer, startDevServer } from "./harness.ts";
 
 let server: DevServer;
@@ -83,7 +83,7 @@ test("reads the seeded pipeline from local D1", async () => {
 });
 
 test("a write and its undo go through real D1, and a second undo refuses", async () => {
-  const added = await ok(client, "add_deal", { name: "Lee Example", email: "lee@example.com", nextAt: "2026-11-20T09:00" });
+  const added = await approved(client, "add_deal", { name: "Lee Example", email: "lee@example.com", nextAt: "2026-11-20T09:00" });
   assert.match(added.headline, CHANGE_LINE);
   const { changeId } = added.data as { changeId: string };
   const undone = await ok(client, "undo_change", { changeId });
@@ -92,12 +92,31 @@ test("a write and its undo go through real D1, and a second undo refuses", async
 });
 
 test("undo after a later edit refuses in plain English against real D1", async () => {
-  const added = (await ok(client, "add_deal", { name: "Kim Example" })).data as { changeId: string; dealId: string };
-  await ok(client, "log_activity", { deal: added.dealId, type: "call", summary: "Called Kim." });
+  const added = (await approved(client, "add_deal", { name: "Kim Example" })).data as { changeId: string; dealId: string };
+  await approved(client, "log_activity", { deal: added.dealId, type: "call", summary: "Called Kim." });
   assert.match(
     await fails(client, "undo_change", { changeId: added.changeId }),
     /^Can't undo chg_[a-z0-9]{12}: other records now depend on it \(1 activity\)\. Change those first, or leave it\.$/,
   );
+});
+
+test("a record tool proposes over HTTP and writes nothing until apply_changes; Apply small changes logs a call at once", async () => {
+  const proposed = await okText(client, "add_task", { deal: "dl_seed01", title: "Proposed over HTTP" });
+  const { proposal } = proposed.data as { proposal: string };
+  assert.ok(proposed.headline.startsWith(`Proposal ${proposal} (expires `), proposed.headline);
+  const open = async () => ((await ok(client, "get_deal", { deal: "dl_seed01" })).data as { openTasks: { title: string }[] }).openTasks;
+  assert.ok(!(await open()).some((task) => task.title === "Proposed over HTTP"), "nothing written yet");
+  assert.match((await ok(client, "apply_changes", { proposal })).headline, CHANGE_LINE);
+  assert.ok((await open()).some((task) => task.title === "Proposed over HTTP"));
+
+  await ok(client, "update_settings", { aiEdits: "apply_small" });
+  try {
+    const call = await ok(client, "log_activity", { deal: "dl_seed01", type: "call", summary: "Called over HTTP." });
+    assert.match(call.headline, CHANGE_LINE);
+    assert.match((call.data as { activityId: string }).activityId, /^ac_/);
+  } finally {
+    await ok(client, "update_settings", { aiEdits: "review_first" });
+  }
 });
 
 test("bad input gets a plain-English answer naming the field", async () => {
@@ -140,7 +159,7 @@ test("/mcp answers with the Worker's security headers, and GET is refused (state
 });
 
 test("outside names stay out of write lines over HTTP too", async () => {
-  const answer = await ok(client, "update_deal", { deal: "dl_seed02", nextStep: "Send the site visit checklist" });
+  const answer = await approved(client, "update_deal", { deal: "dl_seed02", nextStep: "Send the site visit checklist" });
   assert.match(answer.headline, /^Updated deal dl_seed02 \(contact ct_seed02\): next: Send the site visit checklist/);
   assert.doesNotMatch(answer.text, /Jamie|Lindqvist|Oak Hollow/);
 });

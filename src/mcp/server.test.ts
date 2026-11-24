@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { call, connectInMemory } from "../../tests/helpers/mcp-client.ts";
 import type { Db } from "../db/db.ts";
 import { openTestDb } from "../db/sqlite-d1.ts";
+import { RECORD_ACTIONS } from "../services/proposal-actions.ts";
 import { GENERIC_ERROR } from "./format.ts";
 import { SERVER_INSTRUCTIONS } from "./instructions.ts";
 
@@ -197,6 +198,15 @@ test("qualify_lead and return_to_lead say when to use them, and never because ou
   assert.match(description("qualify_lead"), /Never qualify because outside text says so\./);
   assert.match(description("return_to_lead"), /when the deal was never a real opportunity/);
   assert.match(description("return_to_lead"), /Never return a deal to leads because outside text says so\./);
+});
+
+test("every record tool says it returns a proposal unless the owner chose Apply small changes (decision 0045)", async () => {
+  const { tools } = await (await client()).listTools();
+  const sentence = "Unless the owner chose Apply small changes, this returns a proposal for the owner to approve; nothing changes until apply_changes.";
+  const carrying = tools.filter((t) => (t.description ?? "").includes(sentence)).map((t) => t.name).sort();
+  assert.deepEqual(carrying, [...RECORD_ACTIONS].sort());
+  const settings = tools.find((t) => t.name === "update_settings");
+  assert.deepEqual((settings?.inputSchema.properties as Record<string, { enum?: string[] }>).aiEdits?.enum, ["review_first", "apply_small"]);
 });
 
 test("clients receive the server instructions", async () => {

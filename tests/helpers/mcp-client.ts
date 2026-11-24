@@ -58,3 +58,40 @@ export async function fails(client: Client, name: string, args: Record<string, u
 }
 
 export const CHANGE_LINE = /\(change chg_[a-z0-9]{12}\)$/;
+
+type ListItem = { id: string };
+type ProposedList = { add: ListItem[]; update: ListItem[]; tasks: ListItem[]; notes: ListItem[] };
+
+/** The first id with the prefix among the groups, in order. */
+const idIn = (groups: readonly ListItem[][], prefix: string) => groups.flat().find((item) => item.id.startsWith(prefix))?.id;
+
+/**
+ * A record tool call the owner says "Yes" to (decision 0045): the tool must answer a proposal, and apply_changes
+ * writes it. Answers apply_changes' answer with `headline` the action's own summary line (the "Applied pr_…: " in
+ * front taken off; it still ends with "(change chg_...)"), and `data` the change id plus the ids of the records the
+ * list shows (contactId, dealId, taskId, activityId), so a test reads the same line and ids the tool once answered.
+ */
+export async function approved(
+  client: Client,
+  name: string,
+  args: Record<string, unknown> = {},
+): Promise<ToolAnswer & { proposal: string; proposed: ToolAnswer }> {
+  const proposed = await okText(client, name, args);
+  const { proposal, list } = (proposed.data ?? {}) as { proposal?: string; list?: ProposedList };
+  assert.ok(typeof proposal === "string" && list !== undefined, `${name} answers a proposal: ${proposed.text}`);
+  const applied = await ok(client, "apply_changes", { proposal });
+  const front = `Applied ${proposal}: `;
+  assert.ok(applied.headline.startsWith(front), applied.headline);
+  const ids: Record<string, string> = {};
+  for (const [key, groups, prefix] of [
+    ["contactId", [list.add, list.update], "ct_"],
+    ["dealId", [list.add, list.update], "dl_"],
+    ["taskId", [list.tasks], "tk_"],
+    ["activityId", [list.notes], "ac_"],
+  ] as const) {
+    const id = idIn(groups, prefix);
+    if (id !== undefined) ids[key] = id;
+  }
+  const { changeId } = applied.data as { changeId: string };
+  return { ...applied, headline: applied.headline.slice(front.length), data: { changeId, ...ids }, proposal, proposed };
+}

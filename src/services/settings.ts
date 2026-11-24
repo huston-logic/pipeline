@@ -10,6 +10,22 @@ import { UserError } from "./errors.ts";
 import { checkEmail, clean } from "./input.ts";
 import { parseStringArray } from "./lookup.ts";
 
+/** settings.ai_edits (decision 0045): "review" is Review first, "small" is Apply small changes. */
+export type AiEdits = SettingsRow["ai_edits"];
+
+/** The words the AI app and the owner use for each AI edits value. */
+export const AI_EDITS_CHOICES = ["review_first", "apply_small"] as const;
+export type AiEditsChoice = (typeof AI_EDITS_CHOICES)[number];
+
+const AI_EDITS_STORED: Record<AiEditsChoice, AiEdits> = { review_first: "review", apply_small: "small" };
+const AI_EDITS_CHOICE: Record<AiEdits, AiEditsChoice> = { review: "review_first", small: "apply_small" };
+const AI_EDITS_LABELS: Record<AiEdits, string> = { review: "Review first", small: "Apply small changes" };
+
+/** How the AI app's record tools write: propose everything, or apply small changes at once. */
+export async function getAiEdits(db: Db): Promise<AiEdits> {
+  return (await getSettingsRow(db)).ai_edits;
+}
+
 export interface SettingsView {
   timezone: string;
   briefHour: number;
@@ -20,6 +36,8 @@ export interface SettingsView {
   businessName: string | null;
   /** The board's accent colour, "#rrggbb"; null uses the default green. */
   accentColor: string | null;
+  /** How the AI app's record tools write: review_first (the default) or apply_small (decision 0045). */
+  aiEdits: AiEditsChoice;
   /** When the latest brief was composed (the briefs log), or null before the first one. */
   lastBriefAt: string | null;
   /** When a brief last went out by email, or null when none has. */
@@ -38,6 +56,8 @@ export interface SettingsPatch {
   businessName?: string | null;
   /** "#rrggbb", dark enough for white text and for text on the page (src/services/accent.ts); null clears it. */
   accentColor?: string | null;
+  /** review_first or apply_small (decision 0045). */
+  aiEdits?: AiEditsChoice;
 }
 
 export interface SettingsOptions {
@@ -57,6 +77,7 @@ export async function getSettings(db: Db): Promise<SettingsView> {
     ownerEmails: parseStringArray(row.owner_emails),
     businessName: row.business_name,
     accentColor: row.accent_color,
+    aiEdits: AI_EDITS_CHOICE[row.ai_edits],
     lastBriefAt: latest?.composed_at ?? null,
     lastBriefSentAt: sent?.at ?? null,
   };
@@ -154,6 +175,13 @@ export async function updateSettings(ctx: Ctx, patch: SettingsPatch, options: Se
     if (accent !== before.accent_color) {
       set.accent_color = accent;
       parts.push(accent === null ? "accent colour cleared" : `accent colour to ${accent}`);
+    }
+  }
+  if (patch.aiEdits !== undefined) {
+    const stored = AI_EDITS_STORED[patch.aiEdits];
+    if (stored !== before.ai_edits) {
+      set.ai_edits = stored;
+      parts.push(`AI edits: ${AI_EDITS_LABELS[stored]}`);
     }
   }
 

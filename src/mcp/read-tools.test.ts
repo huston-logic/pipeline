@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { buildFixtureSeed } from "../../tests/helpers/fixture-seed.ts";
-import { connectInMemory, fails, ok } from "../../tests/helpers/mcp-client.ts";
+import { approved, connectInMemory, fails, ok } from "../../tests/helpers/mcp-client.ts";
 import { createTestDb, openTestDb } from "../db/sqlite-d1.ts";
 import { DEFAULT_TZ } from "../time.ts";
 import { addLead } from "../services/leads.ts";
@@ -105,7 +105,7 @@ test("whats_due counts overdue and today's tasks and deals in the owner's timezo
 
 test("recent_changes takes an optional since date and explains a bad one", async () => {
   const c = await seededClient();
-  await ok(c, "add_lead", { name: "Lee Example" });
+  await approved(c, "add_lead", { name: "Lee Example" });
   const week = await ok(c, "recent_changes");
   assert.equal(week.headline, "1 change since Thu Nov 12, 10:00 AM, newest first.");
   const later = await ok(c, "recent_changes", { since: "2026-11-20" });

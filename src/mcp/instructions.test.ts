@@ -59,7 +59,7 @@ test("rule 6 is the three-way sort between add_lead, add_deal and add_contact, a
   const lines = SERVER_INSTRUCTIONS.split("\n");
   const rule = lines.find((line) => line.startsWith("6. ")) ?? "";
   for (const sentence of SORTING_RULE) assert.ok(rule.includes(sentence), sentence);
-  assert.deepEqual(lines.filter((line) => /^\d\. /.test(line)).map((line) => line.slice(0, 2)), ["1.", "2.", "3.", "4.", "5.", "6."]);
+  assert.deepEqual(lines.filter((line) => /^\d\. /.test(line)).map((line) => line.slice(0, 2)), ["1.", "2.", "3.", "4.", "5.", "6.", "7."]);
   const also = lines.find((line) => line.startsWith("- ") && line.includes("add_lead")) ?? "";
   assert.match(also, /add_deal/);
   const people = lines.find((line) => line.startsWith("- Every person has a person status")) ?? "";
@@ -92,6 +92,24 @@ test("the instructions name propose_changes and apply_changes and the owner's th
   for (const tool of ["propose_changes", "apply_changes"]) assert.ok(line.includes(tool), tool);
   assert.match(line, /only after the owner says "Yes"/);
   assert.match(line, /"Yes with changes: \.\.\." means a revised list with replaces; "No" means apply nothing/);
+});
+
+test("rule 4 says each write answers with its change line (decision 0045)", () => {
+  const rule = SERVER_INSTRUCTIONS.split("\n").find((line) => line.startsWith("4. ")) ?? "";
+  assert.equal(rule, '4. Report every change in one line, with its change id. Each write answers with that line; it ends with "(change chg_...)".');
+});
+
+test("rule 7: record edits need the owner's yes, with the three replies quoted exactly (decision 0045)", () => {
+  const rule = SERVER_INSTRUCTIONS.split("\n").find((line) => line.startsWith("7. ")) ?? "";
+  assert.equal(
+    rule,
+    "7. Record edits need the owner's yes. For contacts, leads, deals, activities, tasks and time, call propose_changes " +
+      "with every action the owner asked for, in one call, and show the owner the list exactly as returned. Call " +
+      'apply_changes only after the owner says yes. The owner answers "Yes", "Yes with changes: ..." (send a revised ' +
+      'list with replaces) or "No" (apply nothing). The record tools themselves also return a proposal unless the owner ' +
+      'chose Apply small changes. When propose_changes asks a question ("Which Dana?"), ask the owner; never guess.',
+  );
+  for (const reply of ['"Yes"', '"Yes with changes: ..."', '"No"']) assert.ok(rule.includes(reply), reply);
 });
 
 test("the instructions say a view is how the board shows a kind of person, with the partners example (decision 0042)", () => {

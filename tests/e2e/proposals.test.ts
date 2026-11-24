@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import type { Client } from "@modelcontextprotocol/client";
-import { CHANGE_LINE, connectHttp, fails, ok, okText } from "../helpers/mcp-client.ts";
+import { approved, CHANGE_LINE, connectHttp, fails, ok, okText } from "../helpers/mcp-client.ts";
 import { type DevServer, startDevServer } from "./harness.ts";
 
 let server: DevServer;
@@ -30,7 +30,7 @@ test("tools/list includes propose_changes and apply_changes", async () => {
 });
 
 test("a list whose apply would fail is refused at propose on real D1, and its trial writes nothing", async () => {
-  const added = (await ok(client, "add_contact", { name: "Trial Example", email: "trial@example.com" })).data as { contactId: string };
+  const added = (await approved(client, "add_contact", { name: "Trial Example", email: "trial@example.com" })).data as { contactId: string };
   const message = await fails(client, "propose_changes", {
     actions: [
       { action: "update_contact", contact: added.contactId, leadStatus: "not_now" },

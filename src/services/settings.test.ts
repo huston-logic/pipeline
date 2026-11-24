@@ -4,7 +4,7 @@ import type { Db } from "../db/db.ts";
 import { openTestDb } from "../db/sqlite-d1.ts";
 import type { Ctx } from "./change.ts";
 import { UserError } from "./errors.ts";
-import { getSettings, updateSettings } from "./settings.ts";
+import { getAiEdits, getSettings, updateSettings } from "./settings.ts";
 import { undoChange } from "./undo.ts";
 
 const NOW = new Date("2026-11-19T18:00:00.000Z");
@@ -31,6 +31,7 @@ test("getSettings shows the settings with the owner emails as a list", async () 
     ownerEmails: ["owner@example.com"],
     businessName: null,
     accentColor: null,
+    aiEdits: "review_first",
     lastBriefAt: null,
     lastBriefSentAt: null,
   });
@@ -58,6 +59,7 @@ test("updateSettings changes only what is given, in one audited change", async (
     ownerEmails: ["me@example.com"],
     businessName: null,
     accentColor: null,
+    aiEdits: "review_first",
     lastBriefAt: null,
     lastBriefSentAt: null,
   });
@@ -192,6 +194,21 @@ test("a business name and accent colour change is one change, and undo puts both
   const after = await getSettings(db);
   assert.equal(after.businessName, "Fernwood");
   assert.equal(after.accentColor, null);
+});
+
+test("AI edits: review_first by default, apply_small stored as small, the summary names it, undo puts it back (decision 0045)", async () => {
+  const db = await openTestDb();
+  assert.equal(await getAiEdits(db), "review");
+  const changed = await updateSettings(ctxFor(db), { aiEdits: "apply_small" });
+  assert.match(changed.summary, /^Updated settings: AI edits: Apply small changes \(change /);
+  assert.equal(await getAiEdits(db), "small");
+  assert.equal((await getSettings(db)).aiEdits, "apply_small");
+  assert.match(await refusal(updateSettings(ctxFor(db), { aiEdits: "apply_small" })), /Nothing to change/);
+  const back = await updateSettings(ctxFor(db), { aiEdits: "review_first", briefHour: 9 });
+  assert.match(back.summary, /^Updated settings: brief hour to 9:00 and AI edits: Review first \(change /);
+  const undone = await undoChange(ctxFor(db, "undo_change", LATER), back.changeId);
+  assert.match(undone.summary, /^Undid chg_[a-z2-7]{12}: Put back the earlier brief hour and AI edits on the settings/);
+  assert.equal(await getAiEdits(db), "small");
 });
 
 test("getSettings takes the last brief times from the briefs log", async () => {

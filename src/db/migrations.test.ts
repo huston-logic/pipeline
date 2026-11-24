@@ -643,6 +643,19 @@ test("0014 adds the proposals table: a JSON array of actions, a JSON object of r
   assert.equal(await count(db, "proposals"), 2);
 });
 
+test("0015 from the previous version: settings keep their values and AI edits starts at review; only review or small", async () => {
+  const db = new SqliteD1();
+  await applyMigrations(db, 14);
+  applySqlFile(db, "seed/defaults.sql");
+  db.exec("UPDATE settings SET timezone = 'Europe/London', business_name = 'Fernwood', version = 3");
+  assert.deepEqual(await applyMigrations(db, 15), ["0015_ai_edits.sql"]);
+  const row = await db.prepare("SELECT timezone, business_name, version, ai_edits FROM settings").first();
+  assert.deepEqual({ ...row }, { timezone: "Europe/London", business_name: "Fernwood", version: 3, ai_edits: "review" });
+  db.exec("UPDATE settings SET ai_edits = 'small'");
+  assert.throws(() => db.exec("UPDATE settings SET ai_edits = 'always'"), /CHECK/);
+  assert.throws(() => db.exec("UPDATE settings SET ai_edits = NULL"), /NOT NULL/);
+});
+
 /**
  * Fake rows for every table, with only the columns the table had when it was created, so they load at any later
  * version. A migration that adds a table must add its rows here (the test below fails until it does).

@@ -2,11 +2,13 @@
 // over Streamable HTTP against `wrangler dev --local` with real local D1 and the fake seed. Later sentences build on
 // earlier ones (8 undoes 7's change, 9 sees 4-8, 11 renames a stage after 10 has used the rule, 17 qualifies the lead
 // 13 added, 18 sends that deal back). The only other doors are /intake (12, 19) and the cron trigger (10, 20). docs/ACCEPTANCE.md lists the sentences against these tests.
+// Record edits go the way server rule 7 has the AI app make them (decision 0045): every action the owner asked for in
+// one propose_changes, the list shown, then apply_changes after the owner's "Yes".
 import assert from "node:assert/strict";
 import { after, before, describe, test } from "node:test";
 import type { Client } from "@modelcontextprotocol/client";
 import { addDays, dayBoundsUtc, formatLocal, localDate, zonedToUtc } from "../../src/time.ts";
-import { CHANGE_LINE, connectHttp, fails, ok, type ToolAnswer } from "../helpers/mcp-client.ts";
+import { CHANGE_LINE, connectHttp, fails, ok, okText, type ToolAnswer } from "../helpers/mcp-client.ts";
 import { type DevServer, startDevServer } from "./harness.ts";
 
 let server: DevServer;
@@ -21,6 +23,30 @@ const tool = (name: string, args: Record<string, unknown> = {}): Promise<ToolAns
 const toolFails = (name: string, args: Record<string, unknown> = {}): Promise<string> => {
   calls.push(name);
   return fails(client, name, args);
+};
+
+type ListItem = { id: string };
+type Proposed = { proposal: string; list: { add: ListItem[]; update: ListItem[]; tasks: ListItem[]; notes: ListItem[] } };
+
+/**
+ * A record edit the owner says "Yes" to: propose_changes with every action, then apply_changes. Answers apply_changes'
+ * answer and the list the owner was shown (its ids are the ids written).
+ */
+const approve = async (actions: Record<string, unknown>[]): Promise<ToolAnswer & Proposed> => {
+  calls.push("propose_changes");
+  const proposed = await okText(client, "propose_changes", { actions });
+  const { proposal, list } = proposed.data as Proposed;
+  assert.match(proposed.headline, new RegExp(`^Proposal ${proposal} \\(expires [0-9:]+ [AP]M\\)\\. Nothing has changed yet\\.`));
+  const applied = await tool("apply_changes", { proposal });
+  assert.match(applied.headline, new RegExp(`^Applied ${proposal}: `));
+  return { ...applied, proposal, list };
+};
+
+/** The id the list shows for the first record of a kind (ct_, dl_, tk_, ac_). */
+const shownId = (list: Proposed["list"], prefix: string): string => {
+  const id = [...list.add, ...list.update, ...list.tasks, ...list.notes].find((item) => item.id.startsWith(prefix))?.id;
+  assert.ok(id, `the list shows a ${prefix} record`);
+  return id;
 };
 
 before(async () => {
@@ -52,8 +78,7 @@ let tz = "";
 let leadDealId = "";
 let leadChangeId = "";
 let moveChangeId = "";
-let callChangeId = "";
-let taskChangeId = "";
+let callAndTaskChangeId = "";
 let emailChangeId = "";
 let emailActivityId = "";
 let undoChangeId = "";
@@ -121,16 +146,18 @@ describe("the twelve owner sentences", () => {
 
   test('4. "Add a lead: [name], met at [place], wants [thing]."', async () => {
     // They want something, so by the sorting rule (decision 0022) this is a deal, not an add_lead.
-    const answer = await tool("add_deal", {
-      name: "Jordan Testcase",
-      source: "Example Expo",
-      notes: "Met at Example Expo. Wants a new website.",
-    });
+    const answer = await approve([
+      {
+        action: "add_deal",
+        name: "Jordan Testcase",
+        source: "Example Expo",
+        notes: "Met at Example Expo. Wants a new website.",
+      },
+    ]);
     assert.match(answer.headline, CHANGE_LINE);
-    assert.match(answer.headline, /^Added contact Jordan Testcase with deal /);
-    const data = answer.data as { changeId: string; contactId: string; dealId: string };
-    leadChangeId = data.changeId;
-    leadDealId = data.dealId;
+    assert.match(answer.headline, /^Applied pr_[a-z2-7]{12}: Added contact Jordan Testcase with deal /);
+    leadChangeId = changeIdOf(answer);
+    leadDealId = shownId(answer.list, "dl_");
     const brief = (await tool("get_deal", { deal: leadDealId })).data as {
       contact: { name: string; source: string };
       timeline: { type: string; summary: string }[];
@@ -144,7 +171,7 @@ describe("the twelve owner sentences", () => {
     const thursday = nextWeekday(tz, 4);
     const expected = formatLocal(zonedToUtc(`${thursday}T14:00`, tz), tz);
     assert.match(expected, /^Thu .*, 2:00 PM$/);
-    const answer = await tool("update_deal", { deal: "Priya Raman", stage: "Call booked", nextAt: `${thursday}T14:00` });
+    const answer = await approve([{ action: "update_deal", deal: "Priya Raman", stage: "Call booked", nextAt: `${thursday}T14:00` }]);
     assert.match(answer.headline, CHANGE_LINE);
     assert.ok(answer.headline.includes("Call booked"), answer.headline);
     assert.ok(answer.headline.includes(expected), `${answer.headline} should show ${expected}`);
@@ -156,13 +183,16 @@ describe("the twelve owner sentences", () => {
 
   test('6. "Log that I called [name]. She wants a quote by Friday."', async () => {
     const friday = nextWeekday(tz, 5);
-    const call = await tool("log_activity", { deal: "Priya Raman", type: "call", summary: "Called Priya. She wants a quote by Friday." });
-    assert.match(call.headline, CHANGE_LINE);
-    callChangeId = changeIdOf(call);
-    const task = await tool("add_task", { deal: "Priya Raman", title: "Send quote", dueAt: `${friday}T17:00` });
-    assert.match(task.headline, CHANGE_LINE);
-    taskChangeId = changeIdOf(task);
-    assert.notEqual(callChangeId, taskChangeId);
+    // The call and the quote task the owner asked for in one sentence: one list, one change, one undo.
+    const both = await approve([
+      { action: "log_activity", deal: "Priya Raman", type: "call", summary: "Called Priya. She wants a quote by Friday." },
+      { action: "add_task", deal: "Priya Raman", title: "Send quote", dueAt: `${friday}T17:00` },
+    ]);
+    assert.match(both.headline, CHANGE_LINE);
+    assert.match(both.headline, /: Logged a call on .*; Added task "Send quote" for /);
+    assert.equal((both.data as { applied: number }).applied, 2);
+    assert.deepEqual([both.list.notes.length, both.list.tasks.length], [1, 1]);
+    callAndTaskChangeId = changeIdOf(both);
     const brief = (await tool("get_deal", { deal: "dl_seed03" })).data as {
       timeline: { type: string }[];
       openTasks: { title: string; dueAt: string }[];
@@ -181,16 +211,18 @@ describe("the twelve owner sentences", () => {
     assert.equal(docs[0]?.name, "voice");
     assert.ok((docs[0]?.markdown ?? "").length > 0, "the voice document has text to follow");
 
-    const logged = await tool("log_activity", {
-      deal: "Priya Raman",
-      type: "email",
-      summary: "Emailed Priya a follow-up about the quote.",
-    });
+    const logged = await approve([
+      {
+        action: "log_activity",
+        deal: "Priya Raman",
+        type: "email",
+        summary: "Emailed Priya a follow-up about the quote.",
+      },
+    ]);
     assert.match(logged.headline, CHANGE_LINE);
-    const data = logged.data as { changeId: string; activityId: string };
-    emailChangeId = data.changeId;
-    emailActivityId = data.activityId;
-    assert.deepEqual(calls.slice(before), ["get_rulebook", "log_activity"], "the rulebook is read before the write");
+    emailChangeId = changeIdOf(logged);
+    emailActivityId = shownId(logged.list, "ac_");
+    assert.deepEqual(calls.slice(before), ["get_rulebook", "propose_changes", "apply_changes"], "the rulebook is read before the write");
     const brief = (await tool("get_deal", { deal: "dl_seed03" })).data as { timeline: { id: string; type: string }[] };
     assert.equal(brief.timeline[0]?.id, emailActivityId);
     assert.equal(brief.timeline[0]?.type, "email");
@@ -220,12 +252,12 @@ describe("the twelve owner sentences", () => {
     assert.match(answer.headline, /^\d+ changes since .*, newest first\.$/);
     const changes = (answer.data as { changes: Change[] }).changes;
     const ids = changes.map((c) => c.changeId);
-    // Newest first: the undo, then the email, task, call, move and lead from sentences 8 down to 4.
-    const expected = [undoChangeId, emailChangeId, taskChangeId, callChangeId, moveChangeId, leadChangeId];
+    // Newest first: the undo, then the email, the call with its task, the move and the lead from sentences 8 down to 4.
+    const expected = [undoChangeId, emailChangeId, callAndTaskChangeId, moveChangeId, leadChangeId];
     assert.deepEqual(ids.slice(0, expected.length), expected);
     assert.deepEqual(
       changes.slice(0, expected.length).map((c) => c.tool),
-      ["undo_change", "log_activity", "add_task", "log_activity", "update_deal", "add_deal"],
+      ["undo_change", "apply_changes", "apply_changes", "apply_changes", "apply_changes"],
     );
     for (const change of changes) assert.match(change.changeId, /^chg_[a-z0-9]{12}$/);
   });
@@ -358,9 +390,9 @@ describe("the eight lead sentences", () => {
 
   test('13. "Add a lead: [business], found on [source], haven\'t talked to them yet." (New, no deal)', async () => {
     const before = await snapshot();
-    const answer = await tool("add_lead", { business: FRESH, source: "drove past" });
+    const answer = await approve([{ action: "add_lead", business: FRESH, source: "drove past" }]);
     assert.match(answer.headline, CHANGE_LINE);
-    freshLeadId = (answer.data as { contactId: string }).contactId;
+    freshLeadId = shownId(answer.list, "ct_");
 
     const lead = (await leadsWhere({ query: "Larkspur" }))[0];
     assert.equal(lead?.id, freshLeadId);
@@ -378,11 +410,11 @@ describe("the eight lead sentences", () => {
   test('14. "I walked into [business]. The owner said to come back in January." (Not now, with a follow-up task)', async () => {
     const year = Number(localDate(new Date(), tz).slice(0, 4)) + 1;
     nextJanuary = `${year}-01-12`;
-    const added = await tool("add_lead", { business: "Fernhill Bakery (demo)", source: "walked in" });
-    checkBackLeadId = (added.data as { contactId: string }).contactId;
+    const added = await approve([{ action: "add_lead", business: "Fernhill Bakery (demo)", source: "walked in" }]);
+    checkBackLeadId = shownId(added.list, "ct_");
     const before = await snapshot();
 
-    const answer = await tool("update_contact", { contact: checkBackLeadId, leadStatus: "not_now", followUpDate: nextJanuary });
+    const answer = await approve([{ action: "update_contact", contact: checkBackLeadId, leadStatus: "not_now", followUpDate: nextJanuary }]);
     assert.match(answer.headline, CHANGE_LINE);
 
     const lead = (await leadsWhere({ statuses: ["not_now"], query: "Fernhill" }))[0];
@@ -401,11 +433,11 @@ describe("the eight lead sentences", () => {
   });
 
   test('15. "[Business] isn\'t a fit." (No deal is touched)', async () => {
-    const added = await tool("add_lead", { business: "Alder Auto Glass (demo)", source: "directory" });
-    const id = (added.data as { contactId: string }).contactId;
+    const added = await approve([{ action: "add_lead", business: "Alder Auto Glass (demo)", source: "directory" }]);
+    const id = shownId(added.list, "ct_");
     const before = await snapshot();
 
-    const answer = await tool("update_contact", { contact: id, leadStatus: "not_a_fit" });
+    const answer = await approve([{ action: "update_contact", contact: id, leadStatus: "not_a_fit" }]);
     assert.match(answer.headline, CHANGE_LINE);
 
     const lead = (await leadsWhere({ statuses: ["not_a_fit"], query: "Alder" }))[0];
@@ -443,16 +475,19 @@ describe("the eight lead sentences", () => {
     const thursday = nextWeekday(tz, 4);
     const expected = formatLocal(zonedToUtc(`${thursday}T14:00`, tz), tz);
     const openBefore = openDeals(await snapshot());
-    const answer = await tool("qualify_lead", {
-      contact: freshLeadId,
-      stage: "Call booked",
-      nextStep: "Quote call",
-      nextAt: `${thursday}T14:00`,
-    });
+    const answer = await approve([
+      {
+        action: "qualify_lead",
+        contact: freshLeadId,
+        stage: "Call booked",
+        nextStep: "Quote call",
+        nextAt: `${thursday}T14:00`,
+      },
+    ]);
     assert.match(answer.headline, CHANGE_LINE);
     assert.ok(answer.headline.includes("Call booked"), answer.headline);
     assert.ok(answer.headline.includes(expected), `${answer.headline} should show ${expected}`);
-    dealId = (answer.data as { dealId: string }).dealId;
+    dealId = shownId(answer.list, "dl_");
 
     const deal = (await tool("get_deal", { deal: dealId })).data as {
       stage: { key: string };
@@ -470,14 +505,14 @@ describe("the eight lead sentences", () => {
   });
 
   test('18. "That deal was never a real opportunity. Put it back in leads." (return_to_lead)', async () => {
-    const task = await tool("add_task", { deal: dealId, title: "Send the quote" });
+    const task = await approve([{ action: "add_task", deal: dealId, title: "Send the quote" }]);
     const taskId = (await snapshot()).tasks?.find((t) => t.title === "Send the quote" && t.deal_id === dealId)?.id;
     assert.ok(taskId, "an open task sits on the deal");
     assert.match(task.headline, CHANGE_LINE);
     const openBefore = openDeals(await snapshot());
-    const answer = await tool("return_to_lead", { deal: dealId });
+    const answer = await approve([{ action: "return_to_lead", deal: dealId }]);
     assert.match(answer.headline, CHANGE_LINE);
-    assert.match(answer.headline, /^Moved .* back to leads \(Contacted\); archived /);
+    assert.match(answer.headline, /^Applied pr_[a-z2-7]{12}: Moved .* back to leads \(Contacted\); archived /);
 
     const after = await snapshot();
     assert.equal(after.deals?.find((d) => d.id === dealId)?.archived, 1, "the deal is archived");
@@ -494,8 +529,10 @@ describe("the eight lead sentences", () => {
   });
 
   test('19. "A website form from a lead\'s email." (one new deal, Qualified, no second person)', async () => {
-    const added = await tool("add_lead", { name: "Nell Wrenfield", business: "Quillmoor Florist (demo)", email: "nell.wrenfield@example.com", source: "drove past" });
-    const leadId = (added.data as { contactId: string }).contactId;
+    const added = await approve([
+      { action: "add_lead", name: "Nell Wrenfield", business: "Quillmoor Florist (demo)", email: "nell.wrenfield@example.com", source: "drove past" },
+    ]);
+    const leadId = shownId(added.list, "ct_");
     const before = await snapshot();
 
     const res = await fetch(`${server.url}/intake`, {
@@ -597,9 +634,9 @@ describe("the run 5 sentences (21 to 25): import, undo it, add a contact, add a 
 
   test('23. "Add Pat Example from the Fernbrook trade show as a contact." (add_contact: no deal, no lead)', async () => {
     const before = await snapshot();
-    const answer = await tool("add_contact", { name: "Pat Example", email: "pat.example@example.com", source: "Fernbrook trade show" });
+    const answer = await approve([{ action: "add_contact", name: "Pat Example", email: "pat.example@example.com", source: "Fernbrook trade show" }]);
     assert.match(answer.headline, CHANGE_LINE);
-    const id = (answer.data as { contactId: string }).contactId;
+    const id = shownId(answer.list, "ct_");
     const hit = (await peopleNamed("Pat Example")).find((c) => c.id === id);
     assert.equal(hit?.personStatus, "contact");
     assert.equal(hit?.leadStatus, null, "a contact is not a lead");
@@ -620,8 +657,8 @@ describe("the run 5 sentences (21 to 25): import, undo it, add a contact, add a 
     const res = await fetch(`${server.url}/people?status=supplier`);
     assert.equal(res.status, 200);
     assert.match(await res.text(), /Supplier/);
-    const moved = await tool("add_contact", { name: "Sam Example", personStatus: "supplier" });
-    assert.equal((await peopleNamed("Sam Example")).find((c) => c.id === (moved.data as { contactId: string }).contactId)?.personStatus, "supplier");
+    const moved = await approve([{ action: "add_contact", name: "Sam Example", personStatus: "supplier" }]);
+    assert.equal((await peopleNamed("Sam Example")).find((c) => c.id === shownId(moved.list, "ct_"))?.personStatus, "supplier");
   });
 
   test('25. "Give me a view of all my partners." (add_view, and its page lists the partners)', async () => {
