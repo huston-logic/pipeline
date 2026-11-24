@@ -209,8 +209,17 @@ this file before changing the repo, and update it when a rule changes.
   cents) is never stored. 1 to 960 minutes. The four record actions (`start_timer`, `stop_timer`, `add_time_entry`,
   `update_time_entry`) are in `RECORD_ACTIONS`; the first two may be small (`isSmallAction`), and a proposal keeps a
   stop's end as the time it was asked (`withStopTimes`). Work types and client rates write at once (rule 5). Reads by
-  id go through `lookup.ts` (`timeEntryById`, `workTypeById`, and `withPlanned` for the running timer and a live client rate). The board has no time
-  UI yet (run 6 tasks D7, D8); the export holds the three tables.
+  id go through `lookup.ts` (`timeEntryById`, `workTypeById`, and `withPlanned` for the running timer and a live client rate). The export holds the three tables.
+- **The timer on the board** (decision 0050): with time tracking on, `PageContext.timer` (the running entry's safe label
+  and start, `src/board/timer-bar.ts`, read in `contextFor`) draws the Stop bar, the first thing in `.app-body` on every
+  page that gets the frame: "Timer", who, "since 9:10 AM" and a Stop link to `GET /timer/stop` (no JavaScript, no live
+  clock). `PageContext.startTimer` (on and nothing running) shows a Start timer form (`timer-start.ts`: hidden
+  `contact`, `deal` or `task`) on a person, a deal and each task row. `time-actions.ts` (`TIME_ROUTES`): `POST
+  /timer/start` is `start_timer`, `POST /timer/stop` is `stop_timer`, both as the owner and not held back by the AI
+  edits setting; a refusal is a 422 (the stop form again with its values). `/timer/stop` and `/timer/done?entry=te_…`
+  are pages (`pages/timer-stop.ts`, `timer-done.ts`); the stop form sends a start or end only when the owner changed
+  it (`was.started`, `was.ended`). With time tracking off every `/timer/*` path is a 404. The done page's one Ask
+  Claude prompt (`timerAskPrompts`) names the entry and its note by id only.
 - **Sign-in:** `src/auth/dev.ts` until task 10. `AUTH_MODE=dev` works only with `ENVIRONMENT=development` on a
   loopback host; anywhere else every route answers 500. Without `AUTH_MODE`, `/mcp` answers 401.
 - **Types:** `src/env.ts` is the `Env` type the code uses. `src/worker-configuration.d.ts` holds the Workers runtime
