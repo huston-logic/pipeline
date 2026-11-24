@@ -297,6 +297,9 @@ must fit. Counted on the fixture seed by `src/services/proposals-d1.test.ts` (ea
   Workers Paid's 1,000 (or a smaller list) fits; the first real copy confirms it (see "What the owner confirms").
 - On Workers Paid the 1,000 would allow a far larger list; the cap is also there for the owner, who reads and answers
   the whole list.
+- Worker CPU is unchanged: on the scaled copy (the run 6 CPU method) a 10-action `propose_changes` by ids is 5.1 ms
+  and its `apply_changes` 4.3 to 6.6 ms (a busy Mac), now 14 and 13 D1 calls (57 and 49 before, one per statement);
+  D1's own time is back to about 11 ms each once refs shaped like ids skip the name scans.
 
 ### Today with 3,140 open tasks
 
