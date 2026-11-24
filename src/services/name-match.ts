@@ -5,8 +5,11 @@
 // alone: when any candidate matched only on outside text, every candidate is a question. More than MATCH_MAX
 // candidates is one "too many" answer. A deal can also be named by its person, when that person has exactly one open
 // deal; a task by its title, among open tasks. Only the database is read: refs are resolved before anything is planned.
-// Every ref of a list is read at once (matchAll): one statement per kind of record, all in one D1 batch, so a list of
-// any length costs one D1 call to resolve (decision 0044, "D1 calls").
+// Every ref of a list is read at once (matchAll): a statement per way of reading each kind of record, all in one D1
+// batch, so a list of any length costs one D1 call to resolve (decision 0044, "D1 calls"). A ref shaped like an id is
+// read by id only, so it scans no names; read by name too only if no record has that id (a second batch). The one case
+// that differs from a lone match: a deal ref that is a person's id finds that person's deal even if some deal's title
+// is exactly that id.
 import type { ContactRow, Db, DealRow, TaskRow } from "../db/db.ts";
 import { isTrusted } from "./labels.ts";
 import { businessKey } from "./lead-change.ts";
@@ -87,43 +90,41 @@ function taskMatch(key: string, byId: readonly TaskRow[], found: readonly TaskRo
   return decide(exact, loose, (row) => !isTrusted(row, "title"), "tasks");
 }
 
-/** Refs per statement: each binds two parameters (the id and the LIKE pattern), and D1 takes 100 a statement. */
-const REFS_PER_READ = 50;
+/** Refs per statement: each binds one parameter (its id or its LIKE pattern), and D1 takes 100 a statement. */
+const REFS_PER_READ = 90;
 
-type Tagged = Record<string, unknown> & { ref_n: number; by_id?: number };
+/** A ref shaped like an id (ct_..., dl_..., tk_...): read by id first, by name only if no record has that id. */
+const ID_SHAPED = /^[a-z]{2}_[a-z0-9]+$/i;
 
-/** A read's rows of one ref, without the tag columns: those it found by id, and the others. */
-function rowsOf<T>(rows: readonly Tagged[], n: number): { byId: T[]; found: T[] } {
-  const byId: T[] = [];
-  const found: T[] = [];
-  for (const { ref_n: tag, by_id: id, ...row } of rows) {
-    if (tag !== n) continue;
-    (id === 1 ? byId : found).push(row as T);
-  }
-  return { byId, found };
+type Tagged = Record<string, unknown> & { ref_n: number };
+
+/** The rows a read found for ref n, without the tag column. */
+function rowsOf<T>(rows: readonly Tagged[] | undefined, n: number): T[] {
+  return (rows ?? []).flatMap(({ ref_n: tag, ...row }) => (tag === n ? [row as T] : []));
 }
 
-type Asked = { n: number; id: string; pattern: string };
+type Asked = { n: number; value: string };
 
 /**
- * One statement per chunk of refs: `refs(n, id, pattern)`, the ref's number as a literal (it is a count, never text)
- * and its id and pattern bound, joined to the table by `on`; each row comes back tagged with its ref's number.
+ * One statement per chunk of refs: `refs(n, v)`, the ref's number as a literal (it is a count, never text) and its id
+ * or pattern bound, joined to the table by `on`; each row comes back tagged with its ref's number.
  */
 function readsFor(db: Db, refs: readonly Asked[], select: string, on: string, order: string): D1PreparedStatement[] {
   const out: D1PreparedStatement[] = [];
   for (let i = 0; i < refs.length; i += REFS_PER_READ) {
     const chunk = refs.slice(i, i + REFS_PER_READ);
-    const values = chunk.map((ref) => `(${ref.n}, ?, ?)`).join(", ");
+    const values = chunk.map((ref) => `(${ref.n}, ?)`).join(", ");
     out.push(
       db
-        .prepare(`WITH refs(n, id, pattern) AS (VALUES ${values}) SELECT refs.n AS ref_n, ${select} FROM refs JOIN ${on} ORDER BY ref_n, ${order}`)
-        .bind(...chunk.flatMap((ref) => [ref.id, ref.pattern])),
+        .prepare(`WITH refs(n, v) AS (VALUES ${values}) SELECT refs.n AS ref_n, ${select} FROM refs JOIN ${on} ORDER BY ref_n, ${order}`)
+        .bind(...chunk.map((ref) => ref.value)),
     );
   }
   return out;
 }
 
-const CONTACT_ON = "contacts c ON c.id = refs.id OR (c.archived = 0 AND (c.name LIKE refs.pattern ESCAPE '\\' OR c.business LIKE refs.pattern ESCAPE '\\'))";
+const BY_NAME = "c.archived = 0 AND (c.name LIKE refs.v ESCAPE '\\' OR c.business LIKE refs.v ESCAPE '\\')";
+const OPEN_DEAL = "d.status = 'open' AND d.archived = 0";
 
 export interface Refs {
   contacts?: readonly string[];
@@ -137,54 +138,85 @@ export interface Matches {
   tasks: Match<TaskRow>[];
 }
 
-/**
- * Every ref's match, in the order given, each exactly as it would be matched alone: one D1 batch however many refs
- * (none when every ref is blank), a statement per kind of record (and per 50 refs of a kind).
- */
-export async function matchAll(db: Db, refs: Refs): Promise<Matches> {
-  const contacts = (refs.contacts ?? []).map((ref) => ({ ref, key: nameKey(ref) }));
-  const deals = (refs.deals ?? []).map((ref) => ({ ref, key: nameKey(ref) }));
-  const tasks = (refs.tasks ?? []).map((ref) => ({ ref, key: nameKey(ref) }));
-  // A blank ref matches nothing and isn't read.
-  const asked = (list: readonly { ref: string; key: string }[], from = 0): Asked[] =>
-    list.flatMap(({ ref, key }, i) => (key === "" ? [] : [{ n: from + i, id: ref.trim(), pattern: likePattern(key) }]));
+type Kind = keyof Matches;
+type Ref = { ref: string; key: string; byName: boolean };
+
+/** One batch: every ref by id, and those with `byName` by name too. Answers each ref's match, and the refs to read again by name. */
+async function readOnce(db: Db, lists: Record<Kind, Ref[]>): Promise<{ matches: Matches; again: Record<Kind, number[]> }> {
+  const { contacts, deals, tasks } = lists;
+  const ids = (list: readonly Ref[], from = 0): Asked[] => list.flatMap(({ ref, key }, i) => (key === "" ? [] : [{ n: from + i, value: ref.trim() }]));
+  const names = (list: readonly Ref[], from = 0): Asked[] =>
+    list.flatMap(({ key, byName }, i) => (key === "" || !byName ? [] : [{ n: from + i, value: likePattern(key) }]));
   // A deal ref is also read as a person (its person's open deal): the contact refs, then the deal refs as people.
-  const people = [...asked(contacts), ...asked(deals, contacts.length)];
   const groups = [
-    readsFor(db, people, "c.id = refs.id AS by_id, c.*", CONTACT_ON, "c.created_at, c.id"),
-    readsFor(db, asked(deals), "d.id = refs.id AS by_id, d.*", "deals d ON d.id = refs.id OR (d.archived = 0 AND d.title LIKE refs.pattern ESCAPE '\\')", "d.created_at, d.id"),
-    readsFor(db, asked(deals), "d.*", `${CONTACT_ON} JOIN deals d ON d.contact_id = c.id AND d.status = 'open' AND d.archived = 0`, "d.created_at, d.id"),
-    readsFor(db, asked(tasks), "t.id = refs.id AS by_id, t.*", "tasks t ON t.id = refs.id OR (t.done_at IS NULL AND t.title LIKE refs.pattern ESCAPE '\\')", "t.created_at, t.id"),
+    readsFor(db, [...ids(contacts), ...ids(deals, contacts.length)], "c.*", "contacts c ON c.id = refs.v", "c.created_at, c.id"),
+    readsFor(db, [...names(contacts), ...names(deals, contacts.length)], "c.*", `contacts c ON ${BY_NAME}`, "c.created_at, c.id"),
+    readsFor(db, ids(deals), "d.*", "deals d ON d.id = refs.v", "d.created_at, d.id"),
+    readsFor(db, names(deals), "d.*", "deals d ON d.archived = 0 AND d.title LIKE refs.v ESCAPE '\\'", "d.created_at, d.id"),
+    readsFor(db, ids(deals), "d.*", `deals d ON d.contact_id = refs.v AND ${OPEN_DEAL}`, "d.created_at, d.id"),
+    readsFor(db, names(deals), "d.*", `contacts c ON ${BY_NAME} JOIN deals d ON d.contact_id = c.id AND ${OPEN_DEAL}`, "d.created_at, d.id"),
+    readsFor(db, ids(tasks), "t.*", "tasks t ON t.id = refs.v", "t.created_at, t.id"),
+    readsFor(db, names(tasks), "t.*", "tasks t ON t.done_at IS NULL AND t.title LIKE refs.v ESCAPE '\\'", "t.created_at, t.id"),
   ];
   const statements = groups.flat();
   const results = statements.length === 0 ? [] : await db.batch<Tagged>(statements);
   let at = 0;
-  const rowsOfGroup = (group: readonly D1PreparedStatement[]): Tagged[] => {
+  const [peopleById, peopleByName, dealsById, dealsByTitle, personDealsById, personDealsByName, tasksById, tasksByTitle] = groups.map((group) => {
     const rows = results.slice(at, at + group.length).flatMap((result) => result.results);
     at += group.length;
     return rows;
-  };
-  const [personRows, titledRows, personDealRows, taskRows] = groups.map(rowsOfGroup);
+  });
   const none = { kind: "none" } as const;
-  const personMatch = (n: number, key: string): Match<ContactRow> => {
-    if (key === "") return none;
-    const { byId, found } = rowsOf<ContactRow>(personRows ?? [], n);
-    return contactMatch(key, byId, found);
-  };
-  return {
-    contacts: contacts.map(({ key }, n) => personMatch(n, key)),
-    deals: deals.map(({ key }, n) => {
+  const again: Record<Kind, number[]> = { contacts: [], deals: [], tasks: [] };
+  const personMatch = (n: number, key: string): Match<ContactRow> =>
+    contactMatch(key, rowsOf<ContactRow>(peopleById, n), rowsOf<ContactRow>(peopleByName, n));
+  const matches: Matches = {
+    contacts: contacts.map(({ key, byName }, i) => {
       if (key === "") return none;
-      const { byId, found: titled } = rowsOf<DealRow>(titledRows ?? [], n);
-      const personDeals = rowsOf<DealRow>(personDealRows ?? [], n).found;
-      return dealMatch(key, { byId, titled, person: personMatch(contacts.length + n, key), personDeals });
+      const byId = rowsOf<ContactRow>(peopleById, i);
+      if (byId.length === 0 && !byName) again.contacts.push(i);
+      return personMatch(i, key);
     }),
-    tasks: tasks.map(({ key }, n) => {
+    deals: deals.map(({ key, byName }, i) => {
       if (key === "") return none;
-      const { byId, found } = rowsOf<TaskRow>(taskRows ?? [], n);
-      return taskMatch(key, byId, found);
+      const n = contacts.length + i;
+      const byId = rowsOf<DealRow>(dealsById, i);
+      if (byId.length === 0 && rowsOf(peopleById, n).length === 0 && !byName) again.deals.push(i);
+      const personDeals = [...rowsOf<DealRow>(personDealsById, i), ...rowsOf<DealRow>(personDealsByName, i)];
+      const unique = personDeals.filter((deal, j) => personDeals.findIndex((other) => other.id === deal.id) === j);
+      unique.sort((x, y) => (x.created_at < y.created_at ? -1 : x.created_at > y.created_at ? 1 : x.id < y.id ? -1 : x.id > y.id ? 1 : 0));
+      return dealMatch(key, { byId, titled: rowsOf<DealRow>(dealsByTitle, i), person: personMatch(n, key), personDeals: unique });
+    }),
+    tasks: tasks.map(({ key, byName }, i) => {
+      if (key === "") return none;
+      const byId = rowsOf<TaskRow>(tasksById, i);
+      if (byId.length === 0 && !byName) again.tasks.push(i);
+      return taskMatch(key, byId, rowsOf<TaskRow>(tasksByTitle, i));
     }),
   };
+  return { matches, again };
+}
+
+/**
+ * Every ref's match, in the order given, each exactly as it would be matched alone, in one D1 batch however many refs
+ * (none when every ref is blank): a statement per way of reading each kind of record. A ref shaped like an id is read
+ * only by id; in the rare case that no record has that id, it is read again by name in a second batch.
+ */
+export async function matchAll(db: Db, refs: Refs): Promise<Matches> {
+  const list = (values: readonly string[] | undefined): Ref[] =>
+    (values ?? []).map((ref) => ({ ref, key: nameKey(ref), byName: !ID_SHAPED.test(ref.trim()) }));
+  const lists: Record<Kind, Ref[]> = { contacts: list(refs.contacts), deals: list(refs.deals), tasks: list(refs.tasks) };
+  const { matches, again } = await readOnce(db, lists);
+  if (again.contacts.length + again.deals.length + again.tasks.length === 0) return matches;
+  const pick = (kind: Kind): Ref[] => again[kind].map((i) => ({ ...(lists[kind][i] as Ref), byName: true }));
+  const second = (await readOnce(db, { contacts: pick("contacts"), deals: pick("deals"), tasks: pick("tasks") })).matches;
+  for (const kind of ["contacts", "deals", "tasks"] as const) {
+    again[kind].forEach((i, j) => {
+      const found = second[kind][j];
+      if (found !== undefined) (matches[kind] as unknown[])[i] = found;
+    });
+  }
+  return matches;
 }
 
 export async function matchContact(db: Db, ref: string): Promise<Match<ContactRow>> {

@@ -118,3 +118,22 @@ test("a list's refs past 50 of a kind are read in more statements of the same ba
   assert.equal(counted.calls, 1);
   for (const [i, ref] of refs.entries()) assert.deepEqual(ids(all.contacts[i] ?? { kind: "none" }), ids(await matchContact(db, ref)), `${i}: ${ref}`);
 });
+
+test("refs shaped like ids are read by id only; one that is a name after all is read by name in a second batch", async () => {
+  const db = await setup();
+  db.exec("INSERT INTO contacts (id, name) VALUES ('ct_under', 'ab_cd')");
+  const executed: string[] = [];
+  const execute = db.execute.bind(db);
+  db.execute = (statement) => {
+    executed.push(statement.sql);
+    return execute(statement);
+  };
+  const counted = countingDb(db);
+  const found = await matchAll(counted, { contacts: ["ct_seed01"], deals: ["dl_seed01", "ct_seed03"], tasks: ["tk_seed01"] });
+  assert.deepEqual([...found.contacts.map(ids), ...found.deals.map(ids), ...found.tasks.map(ids)], [["ct_seed01"], ["dl_seed01"], ["dl_seed03"], ["tk_seed01"]]);
+  assert.equal(counted.calls, 1);
+  assert.deepEqual(executed.filter((sql) => sql.includes("LIKE")), [], "no name is scanned for");
+  counted.reset();
+  assert.deepEqual(ids((await matchAll(counted, { contacts: ["ab_cd"] })).contacts[0] ?? { kind: "none" }), ["ct_under"]);
+  assert.equal(counted.calls, 2, "by id, then by name");
+});

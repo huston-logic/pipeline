@@ -188,9 +188,10 @@ record action kind, an `@n` task on a new lead, time tracking on) 31 and 30; 25 
   plan's own planned reads still decide what each action sees, and a plan refuses a change to a memo table (no record
   action writes one). In collect mode a deal is read with its person, and a task with its deal and person, in one
   batch (`dealWithOwner`, `taskWithLinks`): the same rows, fewer calls.
-- **Name matching in one batch** (`matchAll`): one statement per kind of record for every ref of that kind (two bound
-  parameters a ref, 50 refs a statement), each ref's rows tagged with its number and picked exactly as a lone match
-  would pick them.
+- **Name matching in one batch** (`matchAll`): a statement per way of reading each kind of record (by id, by name or
+  title, a person's open deals), each for every ref of that kind (one bound parameter a ref, 90 refs a statement), each
+  ref's rows tagged with its number and picked as a lone match would pick them. A ref shaped like an id (`ct_...`) is
+  read by id only, so it never scans the names; only if no record has that id is it read by name, in a second batch.
 - **The list's named rows in one batch**: the people, deals and tasks the list names that the plan doesn't write.
 - **A refusal with at most two more trials**: the rows alone first (failing, a record changed meanwhile); then the one
   guard, or with two the first alone; the guard's action and the first later action that wrote a row the guard is
