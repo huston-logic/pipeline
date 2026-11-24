@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { openTestDb } from "../db/sqlite-d1.ts";
-import { commitChange, type Ctx, type Row } from "./change.ts";
+import { commitChange, type Ctx, type Row, withGuardReason } from "./change.ts";
 import { PlanCollector } from "./plan.ts";
 
 const NOW = new Date("2026-11-19T18:00:00.000Z");
@@ -48,6 +48,33 @@ test("a row planned twice keeps its first before and its latest after, one versi
   assert.deepEqual([built.target, built.summary], [target, "All of it"]);
   assert.deepEqual(ctx.plan.summaries(), ["One", "Two", "Three", "Four"]);
   assert.deepEqual(ctx.plan.target(), target);
+});
+
+test("a statement bound to an id the apply swaps is refused (decision 0044)", async () => {
+  const ctx = await planCtx();
+  const target = { table: "contacts", id: "ct_new" } as const;
+  const added = { id: "ct_new", name: "Lee Example", version: 1 };
+  const loose = ctx.db.prepare("INSERT INTO write_guard (ok) VALUES (1)");
+  ctx.plan.startAction(1);
+  await commitChange(ctx, { target, summary: "Added", changes: [{ table: "contacts", id: "ct_new", before: null, after: added }], extra: [loose] });
+  const swapped = new Map([["ct_new", "ct_old"]]);
+  assert.doesNotThrow(() => ctx.plan.checkShownIds(new Map()));
+  // An undeclared statement from an action whose added row is swapped might be bound to its old id.
+  assert.throws(() => ctx.plan.checkShownIds(swapped), /action 1 adds a row whose id the apply swaps/);
+
+  const other = await planCtx();
+  other.plan.startAction(1);
+  await commitChange(other, { target, summary: "Added", changes: [{ table: "contacts", id: "ct_new", before: null, after: added }] });
+  other.plan.startAction(2);
+  await commitChange(other, {
+    target,
+    summary: "Guarded",
+    changes: [],
+    extra: [withGuardReason(other.db.prepare("INSERT INTO write_guard (ok) VALUES (1)"), "a test", ["ct_new"])],
+    leading: [withGuardReason(other.db.prepare("INSERT INTO write_guard (ok) VALUES (1)"), "a test", ["ct_seed01"])],
+  });
+  assert.throws(() => other.plan.checkShownIds(swapped), /bound to ct_new/);
+  assert.doesNotThrow(() => other.plan.checkShownIds(new Map([["ct_seed01", "ct_seed01"]])));
 });
 
 test("extra statements keep the action they came from", async () => {

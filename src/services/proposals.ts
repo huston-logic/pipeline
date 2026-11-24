@@ -7,6 +7,7 @@
 import type { Db, ProposalRow } from "../db/db.ts";
 import { isProposalId, newId } from "../ids.ts";
 import { formatLocal } from "../time.ts";
+import { CHUNK_BYTES, sqlBytes } from "./bulk.ts";
 import {
   changeBatch,
   type ChangeInput,
@@ -21,6 +22,8 @@ import {
   isGuardFailure,
   primaryKey,
   type Row,
+  type RowChange,
+  rowKey,
   StaleWriteError,
 } from "./change.ts";
 import { capitalize, rowLabel, short } from "./describe.ts";
@@ -53,6 +56,8 @@ const BULK_ROWS = 50;
 const AGAIN = "Propose the changes again and show the owner the new list.";
 
 const TOO_MANY = "Ten proposals are waiting. Apply or drop one first: say No to one, or send a revised list with replaces.";
+
+const TOO_LONG = "This list is too long to keep. Send it as two lists.";
 
 export type ProposeAnswer =
   | { kind: "proposal"; id: string; expiresAt: string; text: string; list: ProposalList }
@@ -110,20 +115,26 @@ export async function proposeChanges(ctx: Ctx, input: { actions: RecordAction[];
   const old = input.replaces === undefined ? null : await replaceable(db, input.replaces.trim(), now);
   const { actions, questions } = await resolveActions(db, checked);
   if (questions.length > 0) return { kind: "questions", questions };
+  const actionsJson = JSON.stringify(actions);
+  if (sqlBytes(actionsJson) > CHUNK_BYTES) throw new UserError(TOO_LONG);
 
   const plan = await planActions(ctx, actions, deps);
   const target = plan.target();
   if (target === null) throw new Error("A proposal planned no change.");
   const tz = await ownerTimezone(db);
-  const list = await proposalList(db, plan.build(target, ""), tz);
+  const list = await proposalList(db, plan.build(target, ""), tz, now);
 
   const id = newId("pr");
   const stamp = now.toISOString();
   const expiresAt = new Date(now.getTime() + PROPOSAL_TTL_MS).toISOString();
+  const text = renderProposal(list, { id, expiresLocal: timeOf(expiresAt, tz) });
+  const readsJson = JSON.stringify(plan.reads());
+  // Each is one bound parameter, and a statement may hold at most 100 KB (decision 0035).
+  if ([readsJson, text].some((value) => sqlBytes(value) > CHUNK_BYTES)) throw new UserError(TOO_LONG);
   const stored = () =>
     db
-      .prepare("INSERT INTO proposals (id, actions, reads, status, created_at, expires_at) VALUES (?, ?, ?, 'open', ?, ?)")
-      .bind(id, JSON.stringify(actions), JSON.stringify(plan.reads()), stamp, expiresAt);
+      .prepare("INSERT INTO proposals (id, actions, reads, text, status, created_at, expires_at) VALUES (?, ?, ?, ?, 'open', ?, ?)")
+      .bind(id, actionsJson, readsJson, text, stamp, expiresAt);
   // The trial: apply's own batch, after the proposal's row, rolled back. A list whose apply would fail isn't stored.
   const failed = await trialError(ctx, appliedChange(db, plan, id, new Map(), now), [stored()]);
   if (failed !== null) throw await refusalFor(ctx, actions, deps, failed);
@@ -149,7 +160,7 @@ export async function proposeChanges(ctx: Ctx, input: { actions: RecordAction[];
     if (old !== null) await replaceable(db, old.id, now);
     throw new UserError(TOO_MANY, { cause: error });
   }
-  return { kind: "proposal", id, expiresAt, text: renderProposal(list, { id, expiresLocal: timeOf(expiresAt, tz) }), list };
+  return { kind: "proposal", id, expiresAt, text, list };
 }
 
 function parseReads(json: string): Record<string, number | null> {
@@ -217,12 +228,13 @@ const applyCtx = (ctx: Ctx): Ctx => ({ ...ctx, plan: undefined, tool: "apply_cha
 function appliedChange(db: Db, plan: PlanCollector, id: string, ids: ReadonlyMap<string, string>, now: Date): ChangeInput {
   const target = plan.target();
   if (target === null) throw new Error(`Proposal ${id} planned no change.`);
+  plan.checkShownIds(ids);
   const summary = short(withShownText(`Applied ${id}: ${plan.summaries().join("; ")}`, ids), 500);
   const built = withShownIds(plan.build(target, summary), ids);
   return {
     ...built,
     changeId: plan.changeId,
-    bulk: built.changes.length > BULK_ROWS,
+    bulk: needsBulk(built.changes),
     leading: [
       db
         .prepare("INSERT INTO write_guard (ok) SELECT COUNT(*) = 1 FROM proposals WHERE id = ? AND status = 'open' AND expires_at > ?")
@@ -234,21 +246,31 @@ function appliedChange(db: Db, plan: PlanCollector, id: string, ids: ReadonlyMap
 }
 
 /**
- * The last statement of every trial: it always fails, with a message nothing else in the batch can give (commitChange
- * never writes proposals), so the batch always rolls back and its error tells a trial that would apply from one that
- * wouldn't.
+ * Bulk when the change has more than BULK_ROWS rows, or when its snapshot (before_json or after_json, each one bound
+ * parameter of the audit row) would be over CHUNK_BYTES, measured as bulk.ts measures (decision 0035).
  */
-const SENTINEL = "INSERT INTO proposals (id, actions, reads, created_at, expires_at) VALUES ('pr_trial', '[]', '{}', NULL, '')";
-const isSentinel = (error: unknown) => /NOT NULL constraint failed: proposals\.created_at/.test(errorText(error));
+function needsBulk(changes: readonly RowChange[]): boolean {
+  if (changes.length > BULK_ROWS) return true;
+  const snapshot = (side: "before" | "after") => JSON.stringify(Object.fromEntries(changes.map((change) => [rowKey(change.table, change.id), change[side]])));
+  return sqlBytes(snapshot("before")) > CHUNK_BYTES || sqlBytes(snapshot("after")) > CHUNK_BYTES;
+}
+
+/**
+ * The last statement of every trial: it always fails, with a message nothing else in the batch can give (commitChange
+ * never writes proposals; migration 0014 keeps created_at NOT NULL for it), so the batch always rolls back and its
+ * error tells a trial that would apply from one that wouldn't.
+ */
+export const TRIAL_SENTINEL = "INSERT INTO proposals (id, actions, reads, text, created_at, expires_at) VALUES ('pr_trial', '[]', '{}', '', NULL, '')";
+export const isTrialSentinel = (error: unknown) => /NOT NULL constraint failed: proposals\.created_at/.test(errorText(error));
 
 /** Runs the change's own batch (after `prelude`) and rolls it back: null when it would apply, else its error. */
 async function trialError(ctx: Ctx, input: ChangeInput, prelude: D1PreparedStatement[] = []): Promise<unknown> {
   const { db } = ctx;
   const { statements } = changeBatch(applyCtx(ctx), input);
   try {
-    await db.batch([...prelude, ...statements, db.prepare(SENTINEL)]);
+    await db.batch([...prelude, ...statements, db.prepare(TRIAL_SENTINEL)]);
   } catch (error) {
-    return isSentinel(error) ? null : error;
+    return isTrialSentinel(error) ? null : error;
   }
   throw new Error("A proposal's trial batch was not rolled back.");
 }
@@ -271,7 +293,7 @@ async function refusalFor(ctx: Ctx, actions: readonly ResolvedAction[], deps: De
     const target = plan.target();
     if (target === null) continue;
     const built = plan.build(target, "trial");
-    const input = { ...built, bulk: built.changes.length > BULK_ROWS };
+    const input = { ...built, bulk: needsBulk(built.changes) };
     if ((await trialError(ctx, { ...input, extra: [] })) !== null) return new UserError(RACE, { cause: error });
     if ((await trialError(ctx, input)) === null) continue;
     const sources = plan.extraSources();
@@ -323,12 +345,23 @@ export async function applyChanges(ctx: Ctx, id: string, deps: Deps): Promise<Ch
   }
   const compared = compareReads(parseReads(row.reads), plan.reads());
   if ("changed" in compared) throw new UserError(`${await recordNamed(db, compared.changed)} changed since this list was made. ${AGAIN}`);
+  const input = appliedChange(db, plan, row.id, compared.ids, now);
+  // Labels, field definitions and the timezone aren't rows the plan writes: the list rendered now must be the one shown.
+  const tz = await ownerTimezone(db);
+  const text = renderProposal(await proposalList(db, input, tz, now), { id: row.id, expiresLocal: timeOf(row.expires_at, tz) });
+  if (text !== row.text) {
+    throw new UserError(`${row.id}'s list would come out different now (a stage, status, field or setting changed). ${AGAIN}`);
+  }
   try {
-    const result = await commitChange(applyCtx(ctx), appliedChange(db, plan, row.id, compared.ids, now));
+    const result = await commitChange(applyCtx(ctx), input);
     return { ...result, applied: actions.length };
   } catch (error) {
     const latest = await getProposal(db, row.id);
     if (latest?.status === "applied") return appliedAnswer(db, latest);
+    if (latest?.status === "dropped") {
+      const next = latest.replaced_by ?? "a later list";
+      throw new UserError(`${row.id} was replaced by ${next}. Apply ${next} if the owner said yes to it.`, { cause: error });
+    }
     if (error instanceof StaleWriteError) throw new UserError(`A record in this list changed since this list was made. ${AGAIN}`, { cause: error });
     if (isDuplicateEmailFailure(error)) throw new UserError(`Someone with an email in this list was added since this list was made. ${AGAIN}`, { cause: error });
     throw error;

@@ -524,15 +524,21 @@ export function changeBatch(
   return { changeId, summary, statements };
 }
 
-/** Why a guard statement a service puts in `extra` exists, in a few plain words, for a refusal that names it. */
-const GUARD_REASONS = new WeakMap<D1PreparedStatement, string>();
+/**
+ * What a guard statement a service puts in `extra` is for: why it exists, in a few plain words (for a refusal that
+ * names it), and the record ids it is bound to (so a proposal's apply can tell it isn't bound to an id it swaps).
+ */
+const GUARDS = new WeakMap<D1PreparedStatement, { reason: string; ids: readonly string[] }>();
 
-export function withGuardReason(statement: D1PreparedStatement, reason: string): D1PreparedStatement {
-  GUARD_REASONS.set(statement, reason);
+export function withGuardReason(statement: D1PreparedStatement, reason: string, ids: readonly string[]): D1PreparedStatement {
+  GUARDS.set(statement, { reason, ids: [...ids] });
   return statement;
 }
 
-export const guardReason = (statement: D1PreparedStatement): string | undefined => GUARD_REASONS.get(statement);
+export const guardReason = (statement: D1PreparedStatement): string | undefined => GUARDS.get(statement)?.reason;
+
+/** The record ids a statement is bound to, when its service said so; undefined when unknown. */
+export const guardIds = (statement: D1PreparedStatement): readonly string[] | undefined => GUARDS.get(statement)?.ids;
 
 export async function commitChange(ctx: Ctx, input: ChangeInput): Promise<ChangeResult> {
   if (ctx.plan !== undefined) return ctx.plan.record(ctx, input);

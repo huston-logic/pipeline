@@ -630,15 +630,16 @@ test("0014 adds the proposals table: a JSON array of actions, a JSON object of r
   applySqlFile(db, "seed/defaults.sql");
   assert.deepEqual(await applyMigrations(db, 14), ["0014_proposals.sql"]);
   const at = "'2026-11-19T18:00:00.000Z', '2026-11-19T20:00:00.000Z'";
-  db.exec(`INSERT INTO proposals (id, actions, reads, created_at, expires_at) VALUES ('pr_a', '[]', '{}', ${at})`);
+  db.exec(`INSERT INTO proposals (id, actions, reads, text, created_at, expires_at) VALUES ('pr_a', '[]', '{}', 'List', ${at})`);
   const row = await db.prepare("SELECT status, replaced_by, change_id FROM proposals WHERE id = 'pr_a'").first();
   assert.deepEqual({ ...row }, { status: "open", replaced_by: null, change_id: null });
-  const insert = (values: string) => () => db.exec(`INSERT INTO proposals (id, actions, reads, status, created_at, expires_at) VALUES ${values}`);
-  assert.throws(insert(`('pr_b', '{}', '{}', 'open', ${at})`), /CHECK/);
-  assert.throws(insert(`('pr_b', '[]', '[]', 'open', ${at})`), /CHECK/);
-  assert.throws(insert(`('pr_b', 'nope', '{}', 'open', ${at})`), /CHECK|JSON/);
-  assert.throws(insert(`('pr_b', '[]', '{}', 'done', ${at})`), /CHECK/);
-  insert(`('pr_b', '[]', '{}', 'applied', ${at})`)();
+  const insert = (values: string) => () => db.exec(`INSERT INTO proposals (id, actions, reads, text, status, created_at, expires_at) VALUES ${values}`);
+  assert.throws(insert(`('pr_b', '{}', '{}', 'List', 'open', ${at})`), /CHECK/);
+  assert.throws(insert(`('pr_b', '[]', '[]', 'List', 'open', ${at})`), /CHECK/);
+  assert.throws(insert(`('pr_b', 'nope', '{}', 'List', 'open', ${at})`), /CHECK|JSON/);
+  assert.throws(insert(`('pr_b', '[]', '{}', 'List', 'done', ${at})`), /CHECK/);
+  assert.throws(insert(`('pr_b', '[]', '{}', NULL, 'open', ${at})`), /NOT NULL/);
+  insert(`('pr_b', '[]', '{}', 'List', 'applied', ${at})`)();
   assert.equal(await count(db, "proposals"), 2);
 });
 
@@ -681,7 +682,7 @@ const FAKE_ROWS: Record<string, string> = {
   views:
     "INSERT INTO views (id, name, module, filters, sort, position) VALUES ('vw_fake', 'Suppliers', 'people', '{\"person_status\":\"supplier\"}', 'name-asc', 1)",
   proposals:
-    "INSERT INTO proposals (id, actions, reads, created_at, expires_at) VALUES ('pr_fake', '[{\"action\":\"complete_task\",\"task\":\"tk_fake\"}]', '{\"tasks:tk_fake\":1}', '2026-11-18T17:00:00.000Z', '2026-11-18T19:00:00.000Z')",
+    "INSERT INTO proposals (id, actions, reads, text, created_at, expires_at) VALUES ('pr_fake', '[{\"action\":\"complete_task\",\"task\":\"tk_fake\"}]', '{\"tasks:tk_fake\":1}', 'Proposal pr_fake.', '2026-11-18T17:00:00.000Z', '2026-11-18T19:00:00.000Z')",
 };
 
 /**

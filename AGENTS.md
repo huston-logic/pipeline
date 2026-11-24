@@ -122,7 +122,7 @@ this file before changing the repo, and update it when a rule changes.
   doors). A draft MCP touched is `options.source = "mcp"`: the board never offers "my own list" for it. Lines are the
   sheet's rows (columns line 1).
 - **Proposals** (decision 0044): `propose_changes` (`src/mcp/tools-proposals.ts`, `src/services/proposals.ts`) takes
-  up to 25 record actions (a record tool's input, `src/mcp/record-inputs.ts`, plus `action`; `src/services/proposal-
+  up to 25 record actions (a record tool's input, `src/services/record-inputs.ts`, plus `action`; `src/services/proposal-
   actions.ts`), matches names to ids (`name-match.ts`; several or no matches are questions, nothing stored), and plans
   them through the ordinary services in collect mode: with `ctx.plan` set, `commitChange` hands each `ChangeInput` to
   the `PlanCollector` (`plan.ts`) instead of writing, and the record services' reads by id and of related rows go
@@ -130,14 +130,17 @@ this file before changing the repo, and update it when a rule changes.
   `withPlanned`), so each action sees the rows the earlier ones planned. A new read in a record service must go through
   them (the collector refuses a write whose `before` isn't the planned row; the "apply equals running the actions one
   by one" test proves it). The list is rendered from the merged rows (`proposal-text.ts`), never from the action text,
-  and the proposal (`proposals`, migration 0014, scratch space like import drafts) stores the resolved actions and
-  `reads` (every row written, with the version read), but only after a trial: apply's exact batch (`changeBatch`,
-  shared with `commitChange`) plus a sentinel that always fails, so it rolls back; any error but the sentinel's is a
-  plain refusal and nothing is stored (a guard in `extra` should carry a reason, `withGuardReason`). `apply_changes` plans again at apply time, refuses unless the
-  fresh `reads` match in order ("<Record> changed since this list was made"), keeps the ids the list showed, and writes
-  one change (tool `apply_changes`) with a leading guard that the proposal is still open and an extra statement marking
-  it applied. `@n` names a record an earlier action adds, only as a note's or task's subject. At most 10 open, 2 hours
-  each; the hourly run deletes expired ones.
+  and the proposal (`proposals`, migration 0014, scratch space like import drafts) stores the resolved actions,
+  `reads` (every row written, with the version read) and the shown `text`, but only after a trial: apply's exact batch
+  (`changeBatch`, shared with `commitChange`) plus a sentinel that always fails, so it rolls back; any error but the
+  sentinel's is a plain refusal and nothing is stored. A guard a service puts in `extra` carries its reason and the ids
+  it is bound to (`withGuardReason`). `apply_changes` plans again at apply time, refuses unless the fresh `reads` match
+  in order ("<Record> changed since this list was made") and the fresh list renders to the stored `text`, keeps the ids
+  the list showed (no bound statement may name a swapped id), and writes one change (tool `apply_changes`; bulk over 50
+  rows or a snapshot over `CHUNK_BYTES`) with a leading guard that the proposal is still open and an extra statement
+  marking it applied. Names that came from outside never win a match (`name-match.ts`). `@n` names a record an earlier
+  action adds, only as a note's or task's subject. At most 10 open, 2 hours each; the hourly run deletes expired ones.
+  `src/mcp` imports services, never the reverse (`src/services/layering.test.ts`).
 - **People and person status** (decisions 0022, 0023, 0040): every `contacts` row has a `person_status` (a
   `person_statuses` key: Lead, Contact, Partner and any the owner adds) and a `sub_status` (a `person_substatuses` key
   of that status, or null); there is no leads table. A lead is a person whose status is Lead, with no open deal.

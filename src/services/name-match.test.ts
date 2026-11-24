@@ -58,6 +58,29 @@ test("a deal by id, exact title, or a person with exactly one open deal", async 
   assert.deepEqual(ids(await matchDeal(db, "Pat Example")), ["dl_seed01", "dl_pat2"]);
 });
 
+test("a match on outside text never wins or stands in alone: every candidate is listed", async () => {
+  const db = await setup();
+  db.exec("INSERT INTO contacts (id, name, untrusted_fields) VALUES ('ct_intake', 'Pat', '[\"name\"]')");
+  const pat = await matchContact(db, "Pat");
+  assert.equal(pat.kind, "many");
+  assert.deepEqual(ids(pat).sort(), ["ct_intake", "ct_seed01"], "the outside exact name doesn't beat the owner's Pat Example");
+  const robin = await matchContact(db, "Robin");
+  assert.deepEqual([robin.kind, ids(robin)], ["many", ["ct_seed02"]], "an outside name alone is still a question");
+  const bakery = await matchDeal(db, "New website for Sample Bakery");
+  assert.deepEqual([bakery.kind, ids(bakery)], ["many", ["dl_seed02"]], "an outside title alone is a question");
+  db.exec("INSERT INTO tasks (id, contact_id, title, untrusted_fields) VALUES ('tk_out', 'ct_seed01', 'Water the plants', '[\"title\"]')");
+  assert.deepEqual((await matchTask(db, "Water")).kind, "many");
+});
+
+test("more than 10 matches is too many, without loading their deals", async () => {
+  const db = await setup();
+  for (let i = 1; i <= 11; i++) db.exec(`INSERT INTO contacts (id, name) VALUES ('ct_dee${i}', 'Dee Example ${i}')`);
+  assert.equal((await matchContact(db, "Dee")).kind, "tooMany");
+  assert.equal((await matchDeal(db, "Dee")).kind, "tooMany");
+  db.exec("DELETE FROM contacts WHERE id = 'ct_dee11'");
+  assert.equal((await matchContact(db, "Dee")).kind, "many");
+});
+
 test("an open task by id or by its title", async () => {
   const db = await setup();
   assert.deepEqual(ids(await matchTask(db, "tk_seed06")), ["tk_seed06"]);

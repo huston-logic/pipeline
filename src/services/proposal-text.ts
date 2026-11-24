@@ -8,7 +8,7 @@ import { listFieldDefs } from "../db/queries.ts";
 import { formatLocal, localWhen } from "../time.ts";
 import type { ChangeInput, ChangeTable, Row } from "./change.ts";
 import { changedColumns, oneLine, rowKey } from "./change.ts";
-import { capitalize, columnLabel, joinAnd, rowLabel } from "./describe.ts";
+import { capitalize, columnLabel, joinAnd, rowLabel, short } from "./describe.ts";
 import { activityText, contactName, dealLabel, dealTitle, isTrusted, taskTitle, untrustedFields } from "./labels.ts";
 import { parseObject, stageLabels } from "./lookup.ts";
 import { LEAD } from "./person-move.ts";
@@ -90,6 +90,8 @@ const TYPE_WORDS: Record<string, string> = { email: "Email with", call: "Call wi
 /** What the list needs to name keys and records: labels, and the rows the plan writes. */
 interface Names {
   tz: string;
+  /** The plan's "now" (ISO): a time the change stamps now reads "now", so the list doesn't depend on when it is made. */
+  now: string;
   stages: Map<string, string>;
   statuses: StatusLabels;
   fields: Map<string, string>;
@@ -104,9 +106,13 @@ async function planned<T>(names: Names, table: "contacts" | "deals", id: string 
   return names.db.prepare(`SELECT * FROM ${table} WHERE id = ?`).bind(id).first<T>();
 }
 
+/** The most characters one value shows; the list is for reading, the record keeps the whole text. */
+const SHOWN_MAX = 300;
+
 /** One value as the owner reads it. */
 function shown(names: Names, table: ChangeTable, column: string, value: unknown): string {
   if (value === null || value === undefined || value === "") return NONE;
+  if (DATE_COLUMNS.has(column) && value === names.now) return "now";
   if (DATE_COLUMNS.has(column) && typeof value === "string") {
     // A date given without a time (midnight) reads as the date alone: "Fri Nov 20".
     const text = formatLocal(value, names.tz);
@@ -116,7 +122,7 @@ function shown(names: Names, table: ChangeTable, column: string, value: unknown)
   if (column === "archived") return value === 1 ? "yes" : "no";
   if (table === "deals" && column === "status") return STATUS_WORDS[String(value)] ?? String(value);
   if (typeof value === "boolean") return value ? "yes" : "no";
-  return oneLine(String(value));
+  return short(String(value), SHOWN_MAX);
 }
 
 /** A value, or OUTSIDE when the row marks the column (or the custom field) as outside text. */
@@ -216,7 +222,7 @@ async function noteItem(names: Names, id: string, row: Row): Promise<Item> {
   const deal = await planned<DealRow>(names, "deals", (row.deal_id as string | null) ?? null);
   const words = TYPE_WORDS[String(row.type)] ?? `${capitalize(String(row.type))} with`;
   const who = contact ? contactName(contact) : NONE;
-  const fields: Item["fields"] = [{ field: "", to: oneLine(activityText({ id, summary: String(row.summary), actor: String(row.actor) })) }];
+  const fields: Item["fields"] = [{ field: "", to: short(activityText({ id, summary: String(row.summary), actor: String(row.actor) }), SHOWN_MAX) }];
   if (row.occurred_at !== row.created_at) fields.push({ field: "on", to: shown(names, "activities", "occurred_at", row.occurred_at) });
   return { record: `${words} ${who}${deal ? ` about ${dealTitle(deal)}` : ""}`, id, fields };
 }
@@ -232,13 +238,14 @@ async function taskItem(names: Names, id: string, before: Row | null, after: Row
 }
 
 /**
- * The list from the built change's rows. `tz` is the owner's timezone. Rows whose change shows nothing the owner would
- * see (a deal's last-contact time) are left out.
+ * The list from the built change's rows. `tz` is the owner's timezone and `now` the plan's time. Rows whose change
+ * shows nothing the owner would see (a deal's last-contact time) are left out.
  */
-export async function proposalList(db: Db, input: ChangeInput, tz: string): Promise<ProposalList> {
+export async function proposalList(db: Db, input: ChangeInput, tz: string, now: Date): Promise<ProposalList> {
   const fieldDefs = await listFieldDefs(db, { includeArchived: true });
   const names: Names = {
     tz,
+    now: now.toISOString(),
     stages: await stageLabels(db),
     statuses: await statusLabels(db),
     fields: new Map(fieldDefs.map((def) => [`${def.entity}.${def.key}`, def.label])),

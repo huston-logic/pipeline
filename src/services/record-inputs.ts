@@ -1,9 +1,8 @@
 // The record write tools' inputs (add_lead, add_deal, add_contact, update_contact, update_deal, qualify_lead,
-// return_to_lead, log_activity, add_task, complete_task, snooze_task). tools-write.ts registers each tool with its
-// schema, and a proposal's action is the same object plus `action` (src/services/proposal-actions.ts, decision 0044).
+// return_to_lead, log_activity, add_task, complete_task, snooze_task). src/mcp/tools-write.ts registers each tool
+// with its schema, and a proposal's action is the same object plus `action` (proposal-actions.ts, decision 0044).
 import { z } from "zod";
-import { CONTACT_TYPES } from "../services/activities.ts";
-import { LEAD_STATUSES } from "../services/lead-status.ts";
+import { CONTACT_TYPES } from "./activities.ts";
 import {
   contactRef,
   DEAL_STATUSES,
@@ -15,7 +14,8 @@ import {
   statusRef,
   subStatusRef,
   when,
-} from "./schemas.ts";
+} from "./input-schemas.ts";
+import { LEAD_STATUSES } from "./lead-status.ts";
 
 /** Owner-loggable activity types: the contact types without "form", which only comes in through /intake. */
 export const LOGGABLE = CONTACT_TYPES.filter((type) => type !== "form") as ["email", "call", "meeting", "note"];

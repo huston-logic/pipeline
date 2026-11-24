@@ -347,6 +347,8 @@ export type ProposalRow = {
   actions: string;
   /** JSON object {"<table>:<id>": version | null}: every row the plan writes, with the version read (null: added). */
   reads: string;
+  /** The list exactly as the owner was shown it. */
+  text: string;
   status: ProposalStatus;
   replaced_by: string | null;
   change_id: string | null;

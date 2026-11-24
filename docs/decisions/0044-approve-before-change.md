@@ -47,25 +47,34 @@ later action names a record an earlier one adds, how names are matched, and how 
   list was being made, so nothing was proposed. Send the list again."). A duplicate email and a foreign-key failure
   have their own sentences. The collector keeps which action each extra came from (`startAction`, `extraSources`).
   After a trial that passed, a guard failure at apply really is a change since.
-- **Actions** (`src/services/proposal-actions.ts`). Each is a record tool's input (`src/mcp/record-inputs.ts`, which
-  the tools also use) plus `action`, the tool's name: `add_lead`, `add_deal`, `add_contact`, `update_contact`,
+- **Actions** (`src/services/proposal-actions.ts`). Each is a record tool's input (`src/services/record-inputs.ts`,
+  which the tools in `src/mcp/tools-write.ts` also use; its schema pieces are in `src/services/input-schemas.ts` and
+  the plain-English schema errors in `src/services/input-errors.ts`, both re-exported by `src/mcp`) plus `action`, the
+  tool's name: `add_lead`, `add_deal`, `add_contact`, `update_contact`,
   `update_deal`, `qualify_lead`, `return_to_lead`, `log_activity`, `add_task`, `complete_task`, `snooze_task`.
   `runAction` runs one through its service. Task D6 adds the time actions.
 - **`@n`** names the person or deal action n adds (`add_lead`, `add_contact`, `add_deal`, `qualify_lead`), only as the
   `deal` or `contact` of a later `log_activity` or `add_task`. Anything else is refused: "Action 3 changes the person
-  action 1 adds. Put those details in action 1 instead." A later action number, an action that adds no person or deal,
-  and a person given as a deal are refused in plain English too. The stored actions keep `@n`; it is bound to the id
-  the earlier action added each time the list is planned.
+  action 1 adds. Put those details in action 1 instead." A later action number, an action that adds no record of the
+  kind named ("Action 2 names @1, but action 1 adds no task."), and a person given as a deal are refused in plain
+  English too. The stored actions keep `@n`; it is bound to the id the earlier action added each time the list is
+  planned ("Action 2: Action 1 adds no deal, so @1 can't be used as the deal here." when it added none).
 - **Name matching** (`src/services/name-match.ts`). A ref is an id; else an exact name or title, ignoring case and
   extra spaces; else the non-archived records whose name has the ref as a whole word or the start of a word ("Dana"
   finds "Dana Example") or whose business is the ref. A deal is also its person's one open deal; a task is matched
   among open tasks. One match is used. Several, or none, are a question naming each candidate by `contactRef`,
   `dealLabel` or `taskTitle` with its id ("Which Dana? Dana Example (ct_…, …) or Dana Sample (ct_…). Send the list
-  again with the id."). With any question nothing is stored and every question is answered at once. Refs are matched
-  against the database only, before anything is planned.
+  again with the id."). A match on a name, business or title that came from outside (`untrusted_fields`) never wins
+  and never stands in alone: when any candidate matched only on outside text, every candidate is listed as a question
+  (an intake contact named "Pat" doesn't beat, or replace, the owner's Pat Example). More than 10 candidates is one
+  answer, without reading their deals (so no read binds more than 100 parameters): "\"D\" matches more than 10
+  people. Use more of the name, or the id." With any question nothing is stored and every question is answered at
+  once. Refs are matched against the database only, before anything is planned.
 - **Propose.** Check the actions (schema, 1 to 25, `@n`), resolve every ref to an id, plan them with a fresh
   collector (a service's refusal comes back as "Action N: <message>", nothing stored), render the list, and insert the
-  proposal (resolved actions, `reads`, `expires_at` = 2 hours on) in one batch whose guard refuses an 11th open list
+  proposal (resolved actions, `reads`, the rendered `text`, `expires_at` = 2 hours on) in one batch whose guard refuses
+  an 11th open list. Each of the three is one bound parameter, so a list whose actions, reads or text would be over
+  `CHUNK_BYTES` (as `bulk.ts` measures) is refused first: "This list is too long to keep. Send it as two lists."
   ("Ten proposals are waiting. Apply or drop one first: say No to one, or send a revised list with replaces."). With
   `replaces`, the old list must still be open; it is marked `dropped` with `replaced_by` in the same batch and does not
   count towards the ten. A "No" writes nothing: the list just expires.
@@ -74,12 +83,23 @@ later action names a record an earlier one adds, how names are matched, and how 
   3:40 PM. Propose …". Otherwise the actions are planned again with `ctx.now` the apply time. The fresh `reads()` must
   match the stored ones in order: every row it updates the same row at the same version, every row it adds in the same
   place and table. Any difference is "<Record> changed since this list was made. Propose the changes again and show the
-  owner the new list." (the record by its label now, `labels.ts`). Then one `commitChange` (tool `apply_changes`,
-  `changeId = plan.changeId`, the caller's actor: the tool's is `ai`) with a leading guard that the proposal is still
-  open and unexpired and an extra statement marking it applied with the change id. More than 50 rows is a bulk
-  change. Summary: "Applied pr_x: <each action's summary, joined with "; ">", cut to 500 characters with "…".
+  owner the new list." (the record by its label now, `labels.ts`). Labels, field definitions and the timezone aren't
+  rows the plan writes, so the fresh plan's list is rendered too (with the shown ids and the stored expiry) and must be
+  the stored `text` exactly; otherwise "pr_x's list would come out different now (a stage, status, field or setting
+  changed). Propose the changes again and show the owner the new list." Then one `commitChange` (tool
+  `apply_changes`, `changeId = plan.changeId`, the caller's actor: the tool's is `ai`) with a leading guard that the
+  proposal is still open and unexpired and an extra statement marking it applied with the change id. It is a bulk
+  change when it has more than 50 rows or its before or after snapshot would be over `CHUNK_BYTES` (both are one
+  bound parameter of the audit row otherwise). A lost race answers as the winner left it: applied gives the first
+  change's line, replaced gives "pr_x was replaced by pr_y…". Summary: "Applied pr_x: <each action's summary, joined
+  with "; ">", cut to 500 characters with "…".
 - **The ids the owner saw are the ids written.** Planning again makes new ids for added rows; apply swaps each one for
   the id stored at the same place in `reads`, in every row and in the summary, so the list's ids are the records'.
+  Statements in `leading` and `extra` are already bound and can't be swapped, so none may be bound to a swapped id:
+  a service that adds such a statement declares the ids it binds (`withGuardReason(statement, reason, ids)`), and a
+  statement that declares none may not come from an action that adds rows. `PlanCollector.checkShownIds` enforces
+  this at apply with a plain internal error (a programming error, not the owner's). An action that takes `@n` must
+  likewise never put a statement bound to the `@n` record in `extra` or `leading`.
 - **The list** (`src/services/proposal-text.ts`) comes from the merged change's rows, never from the action text.
   Added contacts and deals are "Add" (each field set), changed ones "Update" (each changed column `old -> new`), tasks
   "Tasks", added activities "Notes" (a stage move's own activity is left out: the deal's Update line shows the stage),
@@ -87,8 +107,10 @@ later action names a record an earlier one adds, how names are matched, and how 
   `untrusted_fields`, `last_activity_at`, `stage_entered_at`, `lead_status_at`, and `lead_status`, which moves with the
   person status the list shows) are not shown, and a row with nothing else changed is left out. Keys become the
   owner's labels (stage, person status and sub-status, custom field label, the record a task or note is for), dates
-  are in the owner's timezone (a midnight date as the date alone). A record named from outside is named by id; an old
-  value that was outside text reads "(text from outside)". The text ends with the three answers.
+  are in the owner's timezone (a midnight date as the date alone), and a time the change stamps at the moment it is
+  written (a task's done time) reads "now", so the list doesn't depend on when it is rendered. A value shows at most
+  300 characters (with "…"); the record keeps the whole text. A record named from outside is named by id; an old value
+  that was outside text reads "(text from outside)". The text ends with the three answers.
 - **Tools** (`src/mcp/tools-proposals.ts`). `propose_changes { actions: 1..25, replaces? }` (write, not destructive:
   it writes only scratch space) answers the list, a blank line and the JSON `{ proposal, expiresAt, list }`, or the
   questions and `{ questions }`. Its text is several lines, so it answers through `toolText` (`src/mcp/format.ts`),
@@ -124,7 +146,12 @@ later action names a record an earlier one adds, how names are matched, and how 
   earlier action gives it; it uses `@n` (as a subject) or the id.
 - Name matching uses SQLite's `LIKE` to find candidates, which ignores case for ASCII only: a name that differs only in
   the case of an accented letter may not be found, and becomes a "no one matches" question.
-- `src/services/proposal-actions.ts` imports the tools' schemas from `src/mcp/record-inputs.ts`, so a tool's input and
-  an action never drift; services otherwise don't import from `src/mcp/`.
+- A tool's input and an action share one schema (`src/services/record-inputs.ts`), so they never drift. `src/mcp`
+  imports services, never the reverse (`src/services/layering.test.ts`).
+- The stored text catches a renamed stage, status or field and a changed timezone (the expiry time moves with it). Two
+  timezones with the same offset at that moment, and a change that shows nowhere in the list, are not caught; the
+  versions of every row written still are.
+- The trial relies on `proposals.created_at` being NOT NULL (migration 0014 says so beside the column; a test pins the
+  sentinel's message).
 - Task A2 makes the record tools propose (the "AI edits" setting); D6 adds time actions, time-entry planned reads and
   the "Time" group.

@@ -6,7 +6,7 @@
 // ones planned; a planned row's version is the database version + 1, the one bump the merged change makes.
 import { newId } from "../ids.ts";
 import type { ChangeInput, ChangeResult, ChangeTable, Ctx, Row, RowChange } from "./change.ts";
-import { oneLine, rowKey } from "./change.ts";
+import { guardIds, oneLine, rowKey } from "./change.ts";
 
 type Entry = { table: ChangeTable; id: string; before: Row | null; after: Row | null };
 
@@ -16,8 +16,11 @@ export class PlanCollector {
   readonly #rows = new Map<string, Entry>();
   readonly #leading: D1PreparedStatement[] = [];
   readonly #extra: D1PreparedStatement[] = [];
-  /** The action number each extra statement came from, in step with #extra. */
+  /** The action number each extra (and leading) statement came from, in step with #extra (#leading). */
   readonly #extraSources: number[] = [];
+  readonly #leadingSources: number[] = [];
+  /** The action that added each row the plan adds, by id. */
+  readonly #addedBy = new Map<string, number>();
   readonly #summaries: string[] = [];
   #target: { table: ChangeTable; id: string } | null = null;
   #action = 0;
@@ -32,11 +35,37 @@ export class PlanCollector {
     return [...this.#extraSources];
   }
 
+  /**
+   * Apply swaps the fresh plan's new ids for the ones the list showed (`ids`: fresh id -> shown id), in the rows only.
+   * A leading or extra statement is already bound, so it must not be bound to a swapped id: one whose service declared
+   * its ids (withGuardReason) is checked against them; one that didn't may not come from an action that added a
+   * swapped row. Breaking this is a programming error (decision 0044), so it throws a plain Error.
+   */
+  checkShownIds(ids: ReadonlyMap<string, string>): void {
+    const swapped = new Set([...ids].filter(([fresh, shown]) => fresh !== shown).map(([fresh]) => fresh));
+    if (swapped.size === 0) return;
+    const statements = [
+      ...this.#leading.map((statement, i) => ({ statement, source: this.#leadingSources[i] ?? 0 })),
+      ...this.#extra.map((statement, i) => ({ statement, source: this.#extraSources[i] ?? 0 })),
+    ];
+    for (const { statement, source } of statements) {
+      const bound = guardIds(statement);
+      const hit = bound?.find((id) => swapped.has(id));
+      if (hit !== undefined) throw new Error(`A statement of action ${source} is bound to ${hit}, an id the apply swaps.`);
+      if (bound === undefined && [...swapped].some((id) => this.#addedBy.get(id) === source)) {
+        throw new Error(`A statement of action ${source} doesn't say what it is bound to, and action ${source} adds a row whose id the apply swaps.`);
+      }
+    }
+  }
+
   /** Called by commitChange when ctx.plan is set. */
   record(_ctx: Ctx, input: ChangeInput): ChangeResult {
     if (input.bulk || input.undoOf !== undefined) throw new Error("A bulk change or an undo can't be planned.");
     for (const change of input.changes) this.#merge(change);
-    this.#leading.push(...(input.leading ?? []));
+    for (const statement of input.leading ?? []) {
+      this.#leading.push(statement);
+      this.#leadingSources.push(this.#action);
+    }
     for (const statement of input.extra ?? []) {
       this.#extra.push(statement);
       this.#extraSources.push(this.#action);
@@ -52,6 +81,7 @@ export class PlanCollector {
     const seen = this.#rows.get(key);
     if (seen === undefined) {
       this.#rows.set(key, { table: change.table, id: change.id, before: change.before, after: change.after });
+      if (change.before === null) this.#addedBy.set(change.id, this.#action);
       return;
     }
     // The write must have read the planned row, not the database's: otherwise an earlier action's edit would be lost.

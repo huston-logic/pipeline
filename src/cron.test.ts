@@ -60,7 +60,7 @@ test("the brief runs after the rules, so tasks the rules just made are in it; ex
 test("the hourly run deletes expired proposals and logs only the count (decision 0044)", async (t) => {
   const logged = t.mock.method(console, "log", () => {});
   const db = await openTestDb();
-  const insert = "INSERT INTO proposals (id, actions, reads, status, created_at, expires_at) VALUES (?, '[]', '{}', ?, ?, ?)";
+  const insert = "INSERT INTO proposals (id, actions, reads, text, status, created_at, expires_at) VALUES (?, '[]', '{}', 'List', ?, ?, ?)";
   const at = (days: number) => later(days).toISOString();
   await db.batch([
     db.prepare(insert).bind("pr_old", "open", at(-1), at(-0.9)),

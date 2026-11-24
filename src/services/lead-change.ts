@@ -83,6 +83,7 @@ export function noOpenDeal(db: Db, contactId: string): D1PreparedStatement {
       .prepare("INSERT INTO write_guard (ok) SELECT COUNT(*) = 0 FROM deals WHERE contact_id = ? AND status = 'open' AND archived = 0")
       .bind(contactId),
     "a lead can't have an open deal",
+    [contactId],
   );
 }
 

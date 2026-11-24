@@ -32,7 +32,7 @@ import {
   snoozeTaskInput,
   updateContactInput,
   updateDealInput,
-} from "./record-inputs.ts";
+} from "../services/record-inputs.ts";
 import { FIELD_ENTITIES, FIELD_TYPES, orNull, RULE_TYPES, ruleRef, ruleSettings, shortText, statusRef, subStatusRef } from "./schemas.ts";
 import { registerTool, type ToolDeps } from "./tool.ts";
 

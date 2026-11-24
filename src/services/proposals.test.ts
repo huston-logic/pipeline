@@ -11,11 +11,15 @@ import { runAction } from "./proposal-actions.ts";
 import {
   applyChanges,
   deleteExpiredProposals,
+  isTrialSentinel,
   PROPOSAL_MAX_OPEN,
   PROPOSAL_TTL_MS,
   type ProposeAnswer,
   proposeChanges,
+  TRIAL_SENTINEL,
 } from "./proposals.ts";
+import { updateSettings } from "./settings.ts";
+import { updateStage } from "./stages.ts";
 import { undoChange } from "./undo.ts";
 
 const NOW = new Date("2026-11-19T18:00:00.000Z");
@@ -389,25 +393,154 @@ test("the trial writes nothing", async () => {
   assert.deepEqual({ ...alex }, { version: 1, lead_status: null });
 });
 
-test("a record that moves between the plan and the trial is a fresh-list answer, not a conflict", async () => {
-  const db = await setup();
-  let bumped = false;
-  // The first batch of the propose is the trial: Pat's row moves just before it, as another write would.
-  const racing: Db = {
+/** The database, with `first` run just before its first batch: another write landing at that moment. */
+function racing(db: SqliteD1, first: () => Promise<void>): Db {
+  let done = false;
+  return {
     prepare: (sql: string) => db.prepare(sql),
     batch: async (statements) => {
-      if (!bumped) {
-        bumped = true;
-        await db.prepare("UPDATE contacts SET version = version + 1 WHERE id = 'ct_seed01'").run();
+      if (!done) {
+        done = true;
+        await first();
       }
       return db.batch(statements);
     },
   } as Db;
+}
+
+test("a record that moves between the plan and the trial is a fresh-list answer, not a conflict", async () => {
+  const db = await setup();
+  // The first batch of the propose is the trial: Pat's row moves just before it, as another write would.
+  const bump = async () => void (await db.prepare("UPDATE contacts SET version = version + 1 WHERE id = 'ct_seed01'").run());
   await assert.rejects(
-    proposeChanges(ctxFor(racing), { actions: [{ action: "update_contact", contact: "ct_seed01", phone: "555-0199" }] }, DEPS),
+    proposeChanges(ctxFor(racing(db, bump)), { actions: [{ action: "update_contact", contact: "ct_seed01", phone: "555-0199" }] }, DEPS),
     /^UserError: A record in this list changed while the list was being made, so nothing was proposed\. Send the list again\.$/,
   );
   assert.equal((await counts(db)).proposals, 0);
+});
+
+test("a list over the size limit is refused", async () => {
+  const db = await setup();
+  const before = await counts(db);
+  const long = "Notes from the call. ".repeat(450).slice(0, 9_000);
+  const actions: RecordAction[] = Array.from({ length: 25 }, () => ({ action: "log_activity", contact: "ct_seed01", type: "note", summary: long }));
+  await assert.rejects(propose(db, actions), /^UserError: This list is too long to keep\. Send it as two lists\.$/);
+  assert.deepEqual(await counts(db), before);
+});
+
+test("a big snapshot is written as a bulk change and undoes", async () => {
+  const db = await setup();
+  const old = "Long history. ".repeat(900);
+  db.exec(`UPDATE contacts SET notes = '${old}'`);
+  const actions: RecordAction[] = Array.from({ length: 8 }, (_, i) => ({ action: "update_contact", contact: `ct_seed0${i + 1}`, notes: "Short." }));
+  const { id, text } = await propose(db, actions);
+  assert.ok(text.length < 10_000, "long old values are cut in the list");
+  const result = await apply(db, id);
+  const audit = (await audits(db))[0];
+  assert.ok((audit?.parts ?? 0) > 0, "8 rows, but a snapshot over CHUNK_BYTES goes to audit_parts");
+  assert.equal(audit?.before_json, "{}");
+  await undoChange(ctxFor(db, NOW, "undo_change"), result.changeId);
+  const notes = await db.prepare("SELECT DISTINCT notes FROM contacts").all<{ notes: string }>();
+  assert.deepEqual(notes.results.map((row) => row.notes), [old]);
+});
+
+test("a stage renamed after proposing is refused at apply", async () => {
+  const db = await setup();
+  const { id } = await propose(db, [{ action: "update_deal", deal: "dl_seed01", stage: "proposal_sent" }]);
+  await updateStage({ db, now: NOW, actor: "owner", tool: "update_stage" }, "proposal_sent", { label: "Proposal out" });
+  await assert.rejects(
+    apply(db, id),
+    new RegExp(`^UserError: ${id}'s list would come out different now \\(a stage, status, field or setting changed\\)\\. Propose the changes again and show the owner the new list\\.$`),
+  );
+  assert.equal((await audits(db)).length, 1, "only the rename");
+  assert.equal((await proposal(db, id))?.status, "open");
+});
+
+test("a timezone change after proposing is refused at apply", async () => {
+  const db = await setup();
+  const { id } = await propose(db, [{ action: "add_task", contact: "ct_seed01", title: "Call Pat", dueAt: "2026-11-21T14:00" }]);
+  await updateSettings({ db, now: NOW, actor: "owner", tool: "update_settings" }, { timezone: "America/New_York" });
+  await assert.rejects(apply(db, id), /list would come out different now/);
+  assert.equal((await counts(db)).tasks, (await counts(await setup())).tasks);
+});
+
+test("an intake contact named exactly like the owner's short name becomes a question", async () => {
+  const db = await setup();
+  db.exec("INSERT INTO contacts (id, name, untrusted_fields) VALUES ('ct_intake', 'Pat', '[\"name\"]')");
+  const answer = await proposeChanges(ctxFor(db), { actions: [{ action: "add_task", contact: "Pat", title: "Call back" }] }, DEPS);
+  assert.equal(answer.kind, "questions");
+  const [question] = answer.kind === "questions" ? answer.questions : [];
+  assert.match(question ?? "", /^Which Pat\? /);
+  assert.match(question ?? "", /Pat Example \(ct_seed01, pat@example\.com\)/);
+  assert.match(question ?? "", /contact ct_intake/);
+  assert.equal((await counts(db)).proposals, 0);
+});
+
+test("a ref with more than 10 matches is one question", async () => {
+  const db = await setup();
+  for (let i = 1; i <= 11; i++) db.exec(`INSERT INTO contacts (id, name) VALUES ('ct_dee${i}', 'Dee Example ${i}')`);
+  const answer = await proposeChanges(
+    ctxFor(db),
+    { actions: [{ action: "add_task", contact: "Dee", title: "Call" }, { action: "update_deal", deal: "Dee", stage: "won" }] },
+    DEPS,
+  );
+  assert.deepEqual(answer, { kind: "questions", questions: ['"Dee" matches more than 10 people. Use more of the name, or the id.'] });
+});
+
+test("the trial's sentinel fails with exactly the message the trial looks for", async () => {
+  const db = await setup();
+  await assert.rejects(db.prepare(TRIAL_SENTINEL).run(), (error: unknown) => {
+    assert.ok(isTrialSentinel(error));
+    assert.match(String((error as Error).message), /NOT NULL constraint failed: proposals\.created_at/);
+    return true;
+  });
+  assert.equal((await counts(db)).proposals, 0);
+});
+
+test("@n wording: a task that isn't added, and a deal an action didn't add", async () => {
+  const db = await setup();
+  await assert.rejects(
+    propose(db, [{ action: "add_lead", name: "Lee Example" }, { action: "complete_task", task: "@1" }]),
+    /^UserError: Action 2 names @1, but action 1 adds no task\.$/,
+  );
+  await assert.rejects(
+    propose(db, [{ action: "add_task", contact: "ct_seed01", title: "Call" }, { action: "complete_task", task: "@1" }]),
+    /^UserError: Action 2 changes the task action 1 adds\. Put those details in action 1 instead\.$/,
+  );
+  await samIsALead(db);
+  await assert.rejects(
+    propose(db, [{ action: "qualify_lead", contact: "ct_seed08", createDeal: false }, { action: "add_task", deal: "@1", title: "Call" }]),
+    /^UserError: Action 2: Action 1 adds no deal, so @1 can't be used as the deal here\.$/,
+  );
+});
+
+test("an apply racing a revised list answers that it was replaced", async () => {
+  const db = await setup();
+  const first = await propose(db, PATS_DAY);
+  let second = "";
+  const revise = async () => void (second = (await propose(db, PATS_DAY.slice(0, 1), first.id)).id);
+  await assert.rejects(
+    applyChanges(ctxFor(racing(db, revise), NOW, "apply_changes"), first.id, DEPS),
+    (error: Error) => error.message === `${first.id} was replaced by ${second}. Apply ${second} if the owner said yes to it.`,
+  );
+  assert.equal((await audits(db)).length, 0);
+});
+
+test("two applies racing write once and both answer the one change", async () => {
+  const db = await setup();
+  const { id } = await propose(db, PATS_DAY);
+  let winner = "";
+  const other = async () => void (winner = (await apply(db, id)).changeId);
+  const loser = await applyChanges(ctxFor(racing(db, other), NOW, "apply_changes"), id, DEPS);
+  assert.equal(loser.changeId, winner);
+  assert.equal(loser.applied, 0);
+  assert.equal((await audits(db)).length, 1);
+});
+
+test("a not now with a check-back task and its open-deal guard applies (its guard is bound to no added row)", async () => {
+  const db = await setup();
+  const { id } = await propose(db, [{ action: "update_contact", contact: "ct_seed07", leadStatus: "not_now", followUpDate: "2026-12-01" }]);
+  assert.equal((await apply(db, id)).applied, 1);
 });
 
 test("the hourly run keeps applied and dropped proposals for a day", async () => {

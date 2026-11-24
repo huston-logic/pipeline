@@ -4,7 +4,7 @@
 import { z } from "zod";
 import type { ContactRow, Db } from "../db/db.ts";
 import { getContact } from "../db/queries.ts";
-import { inputErrorMessage } from "../mcp/format.ts";
+import { inputErrorMessage } from "./input-errors.ts";
 import {
   addContactInput,
   addDealInput,
@@ -17,7 +17,7 @@ import {
   snoozeTaskInput,
   updateContactInput,
   updateDealInput,
-} from "../mcp/record-inputs.ts";
+} from "./record-inputs.ts";
 import { logActivity } from "./activities.ts";
 import { addContact } from "./add-contact.ts";
 import { addDeal } from "./add-deal.ts";
@@ -28,7 +28,7 @@ import { short } from "./describe.ts";
 import { UserError } from "./errors.ts";
 import { contactRef, dealTitle, isTrusted, taskTitle } from "./labels.ts";
 import { addLead, qualifyLead, returnToLead } from "./leads.ts";
-import { matchContact, matchDeal, matchTask } from "./name-match.ts";
+import { MATCH_MAX, matchContact, matchDeal, matchTask } from "./name-match.ts";
 import { addTask, completeTask, snoozeTask } from "./tasks.ts";
 
 /** The record tools a proposal can hold, in the order the schema lists them. D6 adds the time actions. */
@@ -109,12 +109,13 @@ const REF_FIELDS: Record<RecordActionName, { field: "contact" | "deal" | "task";
   snooze_task: [{ field: "task", kind: "task", subject: false }],
 };
 
-/** What an action adds that a later "@n" can name: a person, a deal, or both. */
-const ADDS: Partial<Record<RecordActionName, readonly ("contact" | "deal")[]>> = {
+/** What an action adds (or, for qualify_lead's person, names) that a later "@n" could point at. */
+const ADDS: Partial<Record<RecordActionName, readonly RefKind[]>> = {
   add_lead: ["contact"],
   add_contact: ["contact"],
   add_deal: ["contact", "deal"],
   qualify_lead: ["contact", "deal"],
+  add_task: ["task"],
 };
 
 const NOUNS: Record<RefKind, string> = { contact: "person", deal: "deal", task: "task" };
@@ -162,14 +163,17 @@ export function checkActions(actions: readonly unknown[]): RecordAction[] {
         const which = n > 1 ? ` (@1 to @${n - 1})` : "";
         throw new UserError(`Action ${n} names @${target}, but only an earlier action can be named${which}.`);
       }
+      const earlier = (actions[target - 1] as { action?: RecordActionName }).action;
+      const adds = (earlier === undefined ? undefined : ADDS[earlier]) ?? [];
+      if (!adds.includes(ref.kind)) {
+        if (ref.kind === "deal" && adds.includes("contact")) {
+          throw new UserError(`Action ${n} names @${target} as its deal, but action ${target} adds a person, not a deal. Give @${target} as the contact instead.`);
+        }
+        const what = ref.subject && !adds.includes("contact") && !adds.includes("deal") ? "person or deal" : NOUNS[ref.kind];
+        throw new UserError(`Action ${n} names @${target}, but action ${target} adds no ${what}.`);
+      }
       if (!ref.subject) {
         throw new UserError(`Action ${n} changes the ${NOUNS[ref.kind]} action ${target} adds. Put those details in action ${target} instead.`);
-      }
-      const earlier = (actions[target - 1] as { action?: RecordActionName }).action;
-      const adds = earlier === undefined ? undefined : ADDS[earlier];
-      if (adds === undefined) throw new UserError(`Action ${n} names @${target}, but action ${target} adds no person or deal.`);
-      if (ref.kind === "deal" && !adds.includes("deal")) {
-        throw new UserError(`Action ${n} names @${target} as its deal, but action ${target} adds a person, not a deal. Give @${target} as the contact instead.`);
       }
     }
     return action;
@@ -184,10 +188,13 @@ function joinOr(items: readonly string[]): string {
 
 const AGAIN = "Send the list again with the id.";
 
+const tooMany = (shown: string, noun: string) => ({ question: `"${shown}" matches more than ${MATCH_MAX} ${noun}. Use more of the name, or the id.` });
+
 async function contactQuestion(db: Db, ref: string): Promise<{ id: string } | { question: string }> {
   const match = await matchContact(db, ref);
   const shown = short(ref, 60);
   if (match.kind === "one") return { id: match.row.id };
+  if (match.kind === "tooMany") return tooMany(shown, match.noun);
   if (match.kind === "none") return { question: `Who is "${shown}"? No one on file matches. Send the list again with their id, or add them first.` };
   return { question: `Which ${shown}? ${joinOr(match.rows.map(contactRef))}. ${AGAIN}` };
 }
@@ -196,6 +203,7 @@ async function dealQuestion(db: Db, ref: string): Promise<{ id: string } | { que
   const match = await matchDeal(db, ref);
   const shown = short(ref, 60);
   if (match.kind === "one") return { id: match.row.id };
+  if (match.kind === "tooMany") return tooMany(shown, match.noun);
   if (match.kind === "none") return { question: `Which deal is "${shown}"? No open deal matches. Send the list again with the deal's id.` };
   const people = new Map<string, ContactRow | null>();
   for (const deal of match.rows) if (!people.has(deal.contact_id)) people.set(deal.contact_id, await getContact(db, deal.contact_id));
@@ -211,6 +219,7 @@ async function taskQuestion(db: Db, ref: string): Promise<{ id: string } | { que
   const match = await matchTask(db, ref);
   const shown = short(ref, 60);
   if (match.kind === "one") return { id: match.row.id };
+  if (match.kind === "tooMany") return tooMany(shown, match.noun);
   if (match.kind === "none") return { question: `Which task is "${shown}"? No open task matches. Send the list again with the task's id.` };
   const labels = match.rows.map((task) => (isTrusted(task, "title") ? `${taskTitle(task)} (${task.id})` : taskTitle(task)));
   return { question: `Which task is "${shown}"? ${joinOr(labels)}. ${AGAIN}` };
@@ -258,7 +267,7 @@ export function bindAction(action: ResolvedAction, added: readonly ActionResult[
     if (target === null) continue;
     const result = added[target - 1];
     const id = ref.kind === "deal" ? result?.dealId : result?.contactId;
-    if (typeof id !== "string") throw new UserError(`action ${target} adds no ${NOUNS[ref.kind]}, so @${target} can't be its ${ref.field}.`);
+    if (typeof id !== "string") throw new UserError(`Action ${target} adds no ${NOUNS[ref.kind]}, so @${target} can't be used as the ${ref.field} here.`);
     copy[ref.field] = id;
   }
   return copy as RecordAction;
