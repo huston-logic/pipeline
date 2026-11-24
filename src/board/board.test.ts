@@ -128,7 +128,7 @@ test("the business name from the settings is in the header and every title; Pipe
 test("an empty pipeline: every page answers 200 and says there is nothing yet, and how things get added", async () => {
   const db = await createTestDb();
   const expected: Record<string, RegExp[]> = {
-    "/": [/No deals yet/, /Nothing due today\./, /talking to your AI app/, /No brief yet/],
+    "/": [/No deals yet/, /Nothing to do\./, /talking to your AI app/, /No brief yet/],
     "/pipeline": [/No deals yet/, /No open deals in this stage/],
     "/contacts": [/No contacts yet\./, /talking to your AI app/],
     "/companies": [/No companies yet\./, /talking to your AI app/],
@@ -158,13 +158,18 @@ test("an unknown deal, or a path that can't be a deal id, gets the 404 page", as
   assert.equal((await get(empty, "/deals/dl_seed01")).res.status, 404);
 });
 
-test("Today shows the date, a summary, what is overdue and due today as cards, the stages and the brief excerpt", async () => {
+test("Today shows the date, a summary, the open to-dos as cards (overdue ones tagged), the stages and the brief excerpt", async () => {
   const db = await seededDb();
+  db.exec(`UPDATE deals SET next_at = '2026-01-01T10:00:00.000Z' WHERE id = 'dl_seed01'`);
+  db.exec(`UPDATE deals SET next_at = '${new Date().toISOString()}' WHERE id = 'dl_seed02'`);
   const body = mainOf((await get(db, "/")).body);
   assert.match(body, /<h1>Today<\/h1>/);
   assert.ok(body.includes(`<time datetime="${localDate(new Date(), DEFAULT_TZ)}">${headerDate(localDate(new Date(), DEFAULT_TZ))}</time>`));
   assert.match(body, /6 open deals, total value 4,650\. Closed: 1 won, 1 lost, 0 not now\./);
-  assert.match(body, /<h2 id="overdue-heading">Overdue<\/h2>[\s\S]*<li class="card">[\s\S]*Send Casey the price sheet[\s\S]*<h2 id="due-heading">Due today<\/h2>[\s\S]*Prepare questions for Pat&#39;s call/);
+  assert.match(body, /<h2 id="todo-heading">To do<\/h2>[\s\S]*<li class="card">[\s\S]*Send Casey the price sheet[\s\S]*<span class="tag tag-warn">Overdue<\/span>[\s\S]*Prepare questions for Pat&#39;s call/);
+  assert.match(body, /<section aria-labelledby="overdue-heading">\n<h2 id="overdue-heading">Overdue<\/h2>[\s\S]*<h2 id="due-heading">Due today<\/h2>/, "the deal sections stay");
+  assert.match(body, /<dt>Next step<\/dt>/);
+  assert.match(body, /<h2 id="undated-heading">Needs a due date<\/h2>[\s\S]*Find Morgan&#39;s business card/);
   assert.doesNotMatch(body, /Check in with Taylor/, "a snoozed task is not due");
   assert.match(body, /<a class="stage-row" href="\/pipeline#stage-1"><span class="stage-row-label">New inquiry<\/span> <span class="stage-row-count">2 deals<\/span><\/a>/);
   assert.match(body, /<a class="stage-row" href="\/pipeline#stage-3"><span class="stage-row-label">Call booked<\/span> <span class="stage-row-count">1 deal, value 1,500<\/span><\/a>/);

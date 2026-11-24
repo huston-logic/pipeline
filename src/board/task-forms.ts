@@ -6,7 +6,7 @@ import { type FormContext, postForm } from "./forms.ts";
 import { type Html, html } from "./html.ts";
 import { field } from "./inputs.ts";
 import { contactHref, dealHref } from "./parts.ts";
-import { line, type Spec } from "./record-form.ts";
+import { line, type Shown, type Spec } from "./record-form.ts";
 import { fieldId, formErrorSummary, specFields } from "./record-fields.ts";
 import type { FormState } from "./pages/record-page.ts";
 
@@ -92,6 +92,27 @@ export function addTaskForm(subject: Subject, form: FormContext, state?: FormSta
 <summary>Add a task</summary>
 ${inner}
 </details>`;
+}
+
+export const QUICK_ADD_ACTION = "/tasks/quick";
+const QUICK_PREFIX = "quick";
+
+/** Quick add on Today (decision 0047): a to-do with no person or deal, and an optional due date. */
+export const quickSpecs = (): Spec[] => [
+  line("title", "Add a to-do", "text", "deal", { required: true, requiredMessage: "Say in a few words what to do." }),
+  line("due", "Due (optional)", "date", "deal", { prop: "dueAt" }),
+];
+
+/** The form at the top of Today, or drawn again with what was posted and the errors when a post was refused. */
+export function quickAddForm(form: FormContext, state?: FormState): Html {
+  const shown = state?.shown ?? new Map<string, Shown>();
+  const inner = html`${specFields(quickSpecs(), shown, QUICK_PREFIX)}<button class="button" type="submit">Add to-do</button>`;
+  return postForm("quick-add", QUICK_ADD_ACTION, form, inner, { novalidate: true });
+}
+
+/** A refused quick add: the error summary, then the form again inside a card. */
+export function refusedQuickAdd(form: FormContext, state: FormState): Html {
+  return html`${formErrorSummary(state.errors, quickSpecs(), QUICK_PREFIX)}<div class="card refused-form">${quickAddForm(form, state)}</div>`;
 }
 
 export const addTaskFieldId = (subject: Subject): string => fieldId(`task-${subject.id}`, "title");

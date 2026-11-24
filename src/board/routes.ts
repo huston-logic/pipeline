@@ -30,6 +30,8 @@ export type NavItem = { href: string; label: string; icon: IconName; description
 
 export const boardRoutes: string[] = [
   "/",
+  "/?sort=newest",
+  "/?show=standalone",
   "/pipeline",
   "/pipeline?view=list",
   "/pipeline?view=list&stage=new_inquiry",
