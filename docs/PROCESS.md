@@ -85,3 +85,20 @@ Other CI jobs on the same run: `a11y` 6 min 16 s (scan 5 min 35 s), `lighthouse`
 Lighthouse). The brief measured about 5 minutes for `npm run check` on a clean machine (unit 72 s, e2e 214 s).
 
 The pre-commit hook runs the whole `npm run check` on every commit; run 6 made about 45 commits.
+
+### After run 7 (2026-11-24)
+
+Same Mac; CI from PR A's run (the first with the shared e2e Worker).
+
+| What | Before | After |
+| --- | --- | --- |
+| `npm run check`, this Mac | 82.3 s | 29.9 s (1,563 unit, 56 e2e) |
+| `test:e2e`, this Mac | 66.6 s | 15.7 s |
+| `test:unit`, this Mac | 8.8 s | 8.5 s (one process per file kept: one process was 18.0 s) |
+| `npm run check:fast`, one change to `src/board/html.ts` | (did not exist) | 5.0 s (39 test files) |
+| `npm run check:fast`, docs only | (did not exist) | 3.0 s |
+| CI `check` job | 3 min 18 s | 1 min 56 s |
+| CI `a11y` and `lighthouse`, PR with no board change | 6 and 12 min | seconds, once the owner applies run 7's `ci.yml` |
+
+Per commit, the hook goes from the full check (82.3 s) to `check:fast` (3 to 7 s) once the owner applies run 7's
+hook batch; until then it runs the full check (now 29.9 s).
