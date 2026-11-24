@@ -85,7 +85,7 @@ These can go stale if the ruleset is changed in Settings, so re-check before rel
 ## Decision authority (fast lane)
 - Default for every task: plan, decide and build without asking me. Make implementation, layout, naming, refactor and test-placement decisions yourself, following AGENTS.md, docs/SPEC.md and docs/PLAN.md.
 - Board copy is plain and short and adds no claims the spec does not make. If the spec leaves behavior open, decide, write a decision record in docs/decisions/ and list it in the PR description; do not ask.
-- Local checks: npm run check only. CI runs a11y, Lighthouse, dependency review and CodeQL. Run local a11y and Lighthouse too when the task changes board markup or `public/board.css`.
+- Local checks: npm run check only. CI runs a11y, Lighthouse, dependency review and CodeQL. Run local a11y too when the task changes board markup or `public/board.css`. Don't run Lighthouse locally: it takes 20+ minutes here, and CI's required `lighthouse` job is the check.
 - Ask me only before: adding or upgrading a dependency; changing required checks, lighthouserc thresholds or CI behavior; anything involving credentials, secrets, accounts, DNS, email sending or payments; deleting user data; a change to the meaning of copy.
 - Every PR description starts with a "Needs your eyes" line listing any change to AGENTS.md, CLAUDE.md, package.json or README, or "none".
 - Open the PR and stop. The owner enables auto-merge; never try to merge.
