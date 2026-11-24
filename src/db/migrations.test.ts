@@ -747,6 +747,56 @@ test("0017 keeps a capture document a copy already has, and the defaults say the
   assert.equal(await text(migrated), await text(fresh));
 });
 
+test("0018 from the previous version: settings keep their values and time tracking starts off", async () => {
+  const db = new SqliteD1();
+  await applyMigrations(db, 17);
+  applySqlFile(db, "seed/defaults.sql");
+  db.exec("UPDATE settings SET timezone = 'Europe/London', ai_edits = 'small', version = 5");
+  assert.deepEqual(await applyMigrations(db, 18), ["0018_time_tracking.sql"]);
+  const row = await db.prepare("SELECT timezone, ai_edits, version, time_tracking FROM settings").first();
+  assert.deepEqual({ ...row }, { timezone: "Europe/London", ai_edits: "small", version: 5, time_tracking: 0 });
+  assert.throws(() => db.exec("UPDATE settings SET time_tracking = 2"), /CHECK/);
+  for (const table of ["work_types", "client_rates", "time_entries"]) assert.equal(await count(db, table), 0, table);
+});
+
+test("0018: one running timer, an end and minutes together, at most 16 hours, live names and pairs unique", async () => {
+  const db = await createTestDb();
+  await addContact(db, "ct_a");
+  db.exec("INSERT INTO work_types (id, name, position) VALUES ('wt_a', 'Design', 1)");
+  const work = await db.prepare("SELECT hourly_rate, billable_default, archived, version FROM work_types").first();
+  assert.deepEqual({ ...work }, { hourly_rate: null, billable_default: 1, archived: 0, version: 1 });
+  assert.throws(() => db.exec("INSERT INTO work_types (id, name, position) VALUES ('wt_b', 'DESIGN', 2)"), /UNIQUE/);
+  db.exec("UPDATE work_types SET archived = 1 WHERE id = 'wt_a'");
+  db.exec("INSERT INTO work_types (id, name, position) VALUES ('wt_b', 'design', 2)");
+  assert.throws(() => db.exec("INSERT INTO work_types (id, name, hourly_rate, position) VALUES ('wt_c', 'Admin', -1, 3)"), /CHECK/);
+
+  const rate = (id: string, value = "120") => () => db.exec(`INSERT INTO client_rates (id, work_type_id, contact_id, hourly_rate) VALUES ('${id}', 'wt_b', 'ct_a', ${value})`);
+  rate("cr_a")();
+  assert.throws(rate("cr_b"), /UNIQUE/);
+  assert.throws(() => db.exec("INSERT INTO client_rates (id, work_type_id, contact_id, hourly_rate) VALUES ('cr_c', 'wt_none', 'ct_a', 1)"), /FOREIGN KEY/);
+  db.exec("UPDATE client_rates SET archived = 1");
+  rate("cr_b", "130")();
+  assert.throws(rate("cr_d", "NULL"), /NOT NULL/);
+
+  const entry = (id: string, ended: string | null, minutes: number | null, archived = 0) => () =>
+    db
+      .prepare("INSERT INTO time_entries (id, started_at, ended_at, minutes, archived) VALUES (?, '2026-11-18T17:00:00.000Z', ?, ?, ?)")
+      .bind(id, ended, minutes, archived)
+      .run();
+  await entry("te_a", null, null)();
+  await assert.rejects(entry("te_b", null, null)(), /UNIQUE constraint failed/);
+  await entry("te_c", null, null, 1)();
+  await assert.rejects(entry("te_d", "2026-11-18T18:00:00.000Z", null)(), /CHECK/);
+  await assert.rejects(entry("te_e", null, 60)(), /CHECK/);
+  await assert.rejects(entry("te_f", "2026-11-19T10:00:00.000Z", 961)(), /CHECK/);
+  await assert.rejects(entry("te_g", "2026-11-18T17:00:00.000Z", 0)(), /CHECK/);
+  await entry("te_h", "2026-11-18T18:00:00.000Z", 60)();
+  const row = await db.prepare("SELECT billable, rate, untrusted_fields, version FROM time_entries WHERE id = 'te_h'").first();
+  assert.deepEqual({ ...row }, { billable: 0, rate: null, untrusted_fields: "[]", version: 1 });
+  await assert.rejects(db.prepare("UPDATE time_entries SET untrusted_fields = '{}' WHERE id = 'te_h'").run(), /CHECK/);
+  await assert.rejects(db.prepare("UPDATE time_entries SET deal_id = 'dl_none' WHERE id = 'te_h'").run(), /FOREIGN KEY/);
+});
+
 /**
  * Fake rows for every table, with only the columns the table had when it was created, so they load at any later
  * version. A migration that adds a table must add its rows here (the test below fails until it does).
@@ -787,6 +837,12 @@ const FAKE_ROWS: Record<string, string> = {
     "INSERT INTO views (id, name, module, filters, sort, position) VALUES ('vw_fake', 'Suppliers', 'people', '{\"person_status\":\"supplier\"}', 'name-asc', 1)",
   proposals:
     "INSERT INTO proposals (id, actions, reads, text, created_at, expires_at) VALUES ('pr_fake', '[{\"action\":\"complete_task\",\"task\":\"tk_fake\"}]', '{\"tasks:tk_fake\":1}', 'Proposal pr_fake.', '2026-11-18T17:00:00.000Z', '2026-11-18T19:00:00.000Z')",
+  work_types: "INSERT INTO work_types (id, name, hourly_rate, position) VALUES ('wt_fake', 'Design', 95.5, 1)",
+  client_rates: "INSERT INTO client_rates (id, work_type_id, contact_id, hourly_rate) VALUES ('cr_fake', 'wt_fake', 'ct_fake', 120)",
+  time_entries:
+    "INSERT INTO time_entries (id, contact_id, deal_id, task_id, started_at, ended_at, minutes, work_type_id, billable, rate, notes, activity_id) " +
+    "VALUES ('te_fake', 'ct_fake', 'dl_fake', 'tk_fake', '2026-11-18T17:00:00.000Z', '2026-11-18T18:30:00.000Z', 90, 'wt_fake', 1, 95.5, 'Homepage', 'ac_fake'), " +
+    "('te_fakerun', NULL, NULL, NULL, '2026-11-18T19:00:00.000Z', NULL, NULL, NULL, 0, NULL, NULL, NULL)",
 };
 
 /**

@@ -13,6 +13,34 @@ import {
 
 const UNSAFE_PARTS = ['2026"-11-19', "2026-11-19\r\nSet-Cookie: x=1", "../2026-11-19", "2026/11/19", "2026\\11\\19", "2026 11 19", "2026;11"];
 
+test("the export holds every table of the copy's data, time tracking's three included (decision 0049)", () => {
+  assert.deepEqual(
+    [...EXPORT_TABLES],
+    [
+      "contacts",
+      "deals",
+      "activities",
+      "tasks",
+      "time_entries",
+      "work_types",
+      "client_rates",
+      "stages",
+      "person_statuses",
+      "person_substatuses",
+      "field_defs",
+      "views",
+      "rules",
+      "rule_firings",
+      "rulebook",
+      "settings",
+      "audit_log",
+      "audit_parts",
+      "briefs",
+      "email_log",
+    ],
+  );
+});
+
 test("export file names are letters, digits, dots, dashes and underscores only", () => {
   assert.equal(jsonFilename("2026-11-19"), "pipeline-export-2026-11-19.json");
   for (const table of EXPORT_TABLES) assert.match(csvFilename(table, "2026-11-19"), /^pipeline-[a-z_]+-2026-11-19\.csv$/);

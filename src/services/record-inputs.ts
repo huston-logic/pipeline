@@ -1,5 +1,6 @@
 // The record write tools' inputs (add_lead, add_deal, add_contact, update_contact, update_deal, qualify_lead,
-// return_to_lead, log_activity, add_task, complete_task, snooze_task). src/mcp/tools-write.ts registers each tool
+// return_to_lead, log_activity, add_task, complete_task, snooze_task, and the time ones of decision 0049: start_timer,
+// stop_timer, add_time_entry, update_time_entry). src/mcp/tools-write.ts registers each tool
 // with its schema, and a proposal's action is the same object plus `action` (proposal-actions.ts, decision 0044).
 import { z } from "zod";
 import { CONTACT_TYPES } from "./activities.ts";
@@ -147,4 +148,57 @@ export const completeTaskInput = z.strictObject({ task: taskRef() });
 export const snoozeTaskInput = z.strictObject({
   task: taskRef(),
   until: when("When the task should come back; it must be in the future"),
+});
+
+const timeContact = (what = "") =>
+  contactRef(`The person the time is for: their id (ct_...) or exact name.${what}`);
+const timeDeal = (what = "") =>
+  dealRef(`The deal the time is for: its id (dl_...), its exact title, or its contact's exact name. Its person is the entry's person.${what}`);
+const timeTask = (what = "") =>
+  z.string().min(1).max(100).describe(`The task the time is for: its id, tk_... (see list_tasks). Its deal and person are used when you give neither.${what}`);
+const workTypeRef = (what = "") => shortText(`The work type: its name or id (see list_work_types).${what}`);
+const billableFlag = () =>
+  z.boolean().describe("Whether the time is billed. The default is the work type's (not billable with no work type).");
+const minutesInput = () => z.number().int().min(1).max(960).describe("How long it took, 1 to 960 minutes (16 hours). Give this or endedAt.");
+
+export const startTimerInput = z.strictObject({
+  contact: timeContact().optional(),
+  deal: timeDeal().optional(),
+  task: timeTask().optional(),
+  workType: workTypeRef().optional(),
+});
+
+export const stopTimerInput = z.strictObject({
+  notes: longText("What was done, in the owner's words; kept on the entry and logged as a note on its person or deal.").optional(),
+  workType: workTypeRef(" Changes the timer's.").optional(),
+  billable: billableFlag().optional(),
+  nextStepDate: when("Adds the task \"Next step\" due then, on the timer's person or deal").optional(),
+  startedAt: when("The real start, when the timer was started late or left running").optional(),
+  endedAt: when("The real end, when the timer was left running; the default is now").optional(),
+});
+
+export const addTimeEntryInput = z.strictObject({
+  contact: timeContact().optional(),
+  deal: timeDeal().optional(),
+  task: timeTask().optional(),
+  startedAt: when("When the work started"),
+  endedAt: when("When it ended; give this or minutes").optional(),
+  minutes: minutesInput().optional(),
+  workType: workTypeRef().optional(),
+  billable: billableFlag().optional(),
+  notes: longText("What was done, in a few words.").optional(),
+});
+
+export const updateTimeEntryInput = z.strictObject({
+  entry: z.string().min(1).max(100).describe("The entry's id, te_... (see list_time)."),
+  contact: orNull(timeContact(" null clears it.")).optional(),
+  deal: orNull(timeDeal(" null clears it.")).optional(),
+  task: orNull(timeTask(" null clears it.")).optional(),
+  startedAt: when("The new start; the end stays").optional(),
+  endedAt: when("The new end; give this or minutes").optional(),
+  minutes: minutesInput().optional(),
+  workType: orNull(workTypeRef(" null clears it.")).optional(),
+  billable: billableFlag().optional(),
+  notes: orNull(longText("The entry's notes, or null to clear them.")).optional(),
+  archived: z.boolean().optional().describe("true to archive the entry (it stops counting), false to bring it back."),
 });

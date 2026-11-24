@@ -7,6 +7,7 @@ import type { ToolDeps } from "./tool.ts";
 import { registerImportTools } from "./tools-import.ts";
 import { registerProposalTools } from "./tools-proposals.ts";
 import { registerReadTools } from "./tools-read.ts";
+import { registerTimeTools } from "./tools-time.ts";
 import { registerViewTools } from "./tools-views.ts";
 import { registerWriteTools } from "./tools-write.ts";
 
@@ -19,5 +20,6 @@ export function createMcpServer(deps: ToolDeps): McpServer {
   registerImportTools(server, deps);
   registerViewTools(server, deps);
   registerProposalTools(server, deps);
+  registerTimeTools(server, deps);
   return server;
 }

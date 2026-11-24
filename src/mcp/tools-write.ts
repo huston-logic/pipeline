@@ -35,7 +35,7 @@ import { registerTool, type ToolDeps } from "./tool.ts";
 const aiCtx = ({ db, now }: ToolDeps, tool: string): Ctx => ({ db, now: now(), actor: "ai", tool });
 
 /** The sentence every record tool's description ends with (decision 0045). */
-const PROPOSES =
+export const PROPOSES =
   "Unless the owner chose Apply small changes, this returns a proposal for the owner to approve; nothing changes until apply_changes.";
 
 export function registerWriteTools(server: McpServer, deps: ToolDeps): void {
@@ -571,9 +571,10 @@ export function registerWriteTools(server: McpServer, deps: ToolDeps): void {
       idempotent: true,
       description:
         "Changes the owner's timezone, the daily brief's hour, address or on/off switch, the board's business name " +
-        "and accent colour, and AI edits (review_first: every record change is proposed for the owner's yes; " +
-        "apply_small: a call or note logged on a person or deal, and completing a task, apply at once). Give only what " +
-        "changes. The brief address must be one of the owner emails (see get_settings); owner emails can't be changed " +
+        "and accent colour, AI edits (review_first: every record change is proposed for the owner's yes; " +
+        "apply_small: a call or note logged on a person or deal, completing a task, starting a timer and stopping one " +
+        "without a next step apply at once), and time tracking (the timer, time entries and work types; off by " +
+        "default). Give only what changes. The brief address must be one of the owner emails (see get_settings); owner emails can't be changed " +
         "here. Set these only when the owner asks.",
       input: z.strictObject({
         timezone: shortText("An IANA timezone name, for example America/Los_Angeles or Europe/London.").optional(),
@@ -593,6 +594,7 @@ export function registerWriteTools(server: McpServer, deps: ToolDeps): void {
           .enum(AI_EDITS_CHOICES)
           .optional()
           .describe("review_first (the default: record changes wait for the owner's yes) or apply_small (small changes apply at once)."),
+        timeTracking: z.boolean().optional().describe("true to turn on time tracking (the timer, time entries, work types and rates), false to turn it off."),
       }),
       async run(args, deps) {
         const result = await updateSettings(aiCtx(deps, "update_settings"), args, {

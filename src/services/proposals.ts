@@ -20,6 +20,7 @@ import {
   isDuplicateEmailFailure,
   isForeignKeyFailure,
   isGuardFailure,
+  isRunningTimerFailure,
   primaryKey,
   type Row,
   type RowChange,
@@ -39,8 +40,10 @@ import {
   resolveActions,
   type ResolvedAction,
   runAction,
+  withStopTimes,
 } from "./proposal-actions.ts";
 import { type ProposalList, proposalList, renderProposal } from "./proposal-text.ts";
+import { runningTimerRefusal } from "./timer.ts";
 
 export const PROPOSAL_MAX_ACTIONS = 25;
 export const PROPOSAL_MAX_OPEN = 10;
@@ -87,6 +90,16 @@ async function planActions(ctx: Ctx, actions: readonly ResolvedAction[], deps: D
   return plan;
 }
 
+/**
+ * A list that would write rows but shows none would let the owner say yes to an empty list that changes records: a
+ * gap in proposal-text.ts. That is a programming error, so it is a plain Error and nothing is proposed.
+ */
+export function checkListShows(input: ChangeInput, list: ProposalList): void {
+  if (input.changes.length > 0 && Object.values(list).every((items: unknown[]) => items.length === 0)) {
+    throw new Error("This list would change records it doesn't show. Nothing was proposed.");
+  }
+}
+
 /** The proposal a revised list replaces: it must still be open. */
 async function replaceable(db: Db, id: string, now: Date): Promise<ProposalRow> {
   const row = isProposalId(id) ? await getProposal(db, id) : null;
@@ -113,14 +126,17 @@ export async function proposeChanges(ctx: Ctx, input: { actions: RecordAction[];
   const old = input.replaces === undefined ? null : await replaceable(db, input.replaces.trim(), now);
   const { actions, questions } = await resolveActions(db, checked);
   if (questions.length > 0) return { kind: "questions", questions };
-  const actionsJson = JSON.stringify(actions);
+  // Planned as asked (a stop ends now), kept with that end, so the apply plans the same span.
+  const actionsJson = JSON.stringify(withStopTimes(actions, now));
   if (sqlBytes(actionsJson) > CHUNK_BYTES) throw new UserError(TOO_LONG);
 
   const plan = await planActions(ctx, actions, deps);
   const target = plan.target();
   if (target === null) throw new Error("A proposal planned no change.");
   const tz = await ownerTimezone(db);
-  const list = await proposalList(db, plan.build(target, ""), tz, now);
+  const built = plan.build(target, "");
+  const list = await proposalList(db, built, tz, now);
+  checkListShows(built, list);
 
   const id = newId("pr");
   const stamp = now.toISOString();
@@ -294,6 +310,10 @@ async function refusalFor(ctx: Ctx, actions: readonly ResolvedAction[], deps: De
     return new UserError("Two people in this list, or one in it and a contact on file, would have the same email. Check the emails and send the list again.", { cause: error });
   }
   if (isForeignKeyFailure(error)) return new UserError("A record this list names was removed while the list was being made. Send the list again.", { cause: error });
+  if (isRunningTimerFailure(error)) {
+    // Another timer started while the list was being made.
+    return new UserError((await runningTimerRefusal(ctx.db, ctx.now)) ?? RACE, { cause: error });
+  }
   if (!isGuardFailure(error)) return error;
   for (let m = 1; m <= actions.length; m++) {
     const plan = await planActions(ctx, actions.slice(0, m), deps);
@@ -369,7 +389,9 @@ export async function applyChanges(ctx: Ctx, id: string, deps: Deps): Promise<Ch
       const next = latest.replaced_by ?? "a later list";
       throw new UserError(`${row.id} was replaced by ${next}. Apply ${next} if the owner said yes to it.`, { cause: error });
     }
-    if (error instanceof StaleWriteError) throw new UserError(`A record in this list changed since this list was made. ${AGAIN}`, { cause: error });
+    if (error instanceof StaleWriteError || isRunningTimerFailure(error)) {
+      throw new UserError(`A record in this list changed since this list was made. ${AGAIN}`, { cause: error });
+    }
     if (isDuplicateEmailFailure(error)) throw new UserError(`Someone with an email in this list was added since this list was made. ${AGAIN}`, { cause: error });
     throw error;
   }

@@ -185,4 +185,11 @@ test("isSmallAction: a call or note on an existing person or deal, and completin
   assert.equal(isSmallAction({ action: "snooze_task", task: "tk_seed01", until: "2026-11-25" }), false);
   assert.equal(isSmallAction({ action: "add_task", contact: "ct_seed01", title: "Call Pat" }), false);
   assert.equal(isSmallAction({ action: "update_deal", deal: "dl_seed01", nextStep: "Call" }), false);
+  // Time (decision 0049): starting a timer, and stopping one without a next step.
+  assert.equal(isSmallAction({ action: "start_timer", contact: "ct_seed01" }), true);
+  assert.equal(isSmallAction({ action: "start_timer", deal: "@1" }), false, "not on a record a list adds");
+  assert.equal(isSmallAction({ action: "stop_timer", notes: "Done." }), true);
+  assert.equal(isSmallAction({ action: "stop_timer", nextStepDate: "2026-11-20" }), false);
+  assert.equal(isSmallAction({ action: "add_time_entry", startedAt: "2026-11-19T08:00", minutes: 30 }), false);
+  assert.equal(isSmallAction({ action: "update_time_entry", entry: "te_x", minutes: 30 }), false);
 });

@@ -340,6 +340,7 @@ test("settings tools: get shows the owner emails, update changes the rest and re
     businessName: null,
     accentColor: null,
     aiEdits: "review_first",
+    timeTracking: false,
     lastBriefAt: "2026-11-18T17:30:00.000Z",
     lastBriefSentAt: null,
   });

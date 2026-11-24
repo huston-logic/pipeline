@@ -62,6 +62,12 @@ export function rowLabel(table: ChangeTable, row: Row): string {
       return `sub-status ${text(row.label)}`;
     case "views":
       return `view ${text(row.name)}`;
+    case "work_types":
+      return `work type ${text(row.name)}`;
+    case "client_rates":
+      return `client rate ${id}`;
+    case "time_entries":
+      return `time entry ${id}`;
   }
 }
 
@@ -75,6 +81,9 @@ const COLUMN_LABELS: Record<string, string> = {
   snoozed_until: "snooze",
   accent_color: "accent colour",
   ai_edits: "AI edits",
+  time_tracking: "time tracking",
+  activity_id: "note",
+  work_type_id: "work type",
   gone_at: "off date",
   sub_status: "sub-status",
   sub_label: "sub-status label",

@@ -13,6 +13,7 @@ import { activityText, contactName, dealLabel, dealTitle, isTrusted, taskTitle, 
 import { parseObject, stageLabels } from "./lookup.ts";
 import { LEAD } from "./person-move.ts";
 import { type StatusLabels, statusLabels } from "./status-labels.ts";
+import { timeLine, timerLine } from "./time-format.ts";
 
 export interface Item {
   record: string;
@@ -81,7 +82,7 @@ const ORDER: Partial<Record<ChangeTable, string[]>> = {
 
 const LABELS: Record<string, string> = { person_status: "person status", contact_id: "person", due_at: "due", done_at: "done", snoozed_until: "snoozed until" };
 
-const DATE_COLUMNS = new Set(["next_at", "due_at", "done_at", "snoozed_until", "occurred_at"]);
+const DATE_COLUMNS = new Set(["next_at", "due_at", "done_at", "snoozed_until", "occurred_at", "started_at", "ended_at"]);
 
 const STATUS_WORDS: Record<string, string> = { open: "open", won: "won", lost: "lost", not_now: "not now" };
 
@@ -99,7 +100,7 @@ interface Names {
   db: Db;
 }
 
-async function planned<T>(names: Names, table: "contacts" | "deals", id: string | null): Promise<T | null> {
+async function planned<T>(names: Names, table: "contacts" | "deals" | "tasks", id: string | null): Promise<T | null> {
   if (id === null) return null;
   const row = names.planned.get(rowKey(table, id));
   if (row !== undefined) return row as unknown as T;
@@ -237,6 +238,55 @@ async function taskItem(names: Names, id: string, before: Row | null, after: Row
   };
 }
 
+/** A work type's name, archived ones too (work types are configuration: a plan never writes them). */
+async function workTypeName(names: Names, id: unknown): Promise<string | null> {
+  if (typeof id !== "string") return null;
+  return names.db.prepare("SELECT name FROM work_types WHERE id = ?").bind(id).first<string>("name");
+}
+
+/** "Time 1 h 30 min, Design, billable at $95.00/h ($142.50), for Pat Example", or "Timer started now, ..." for a running one. */
+async function entryLine(names: Names, row: Row): Promise<string> {
+  const workType = await workTypeName(names, row.work_type_id);
+  const who = await forWhom(names, row);
+  if (row.ended_at === null || typeof row.minutes !== "number") {
+    const rest = timerLine(workType, who);
+    return `Timer started ${shown(names, "time_entries", "started_at", row.started_at)}${rest === "" ? "" : `, ${rest}`}`;
+  }
+  const rate = typeof row.rate === "number" ? row.rate : null;
+  return `Time ${timeLine({ minutes: row.minutes, workType, billable: row.billable === 1, rate, who })}`;
+}
+
+/** The task an entry is for, by taskTitle (its id when the title came from outside); null for none. */
+async function entryTask(names: Names, row: Row): Promise<string | null> {
+  const task = await planned<{ id: string; title: string; untrusted_fields: string }>(names, "tasks", (row.task_id as string | null) ?? null);
+  return task === null ? (typeof row.task_id === "string" ? `task ${row.task_id}` : null) : taskTitle(task);
+}
+
+/**
+ * A time entry: added or stopped, it reads as its line (and its task, when it has one); archived or restored, it says
+ * so; edited, what it was and the task it moved to.
+ */
+async function timeItem(names: Names, id: string, before: Row | null, after: Row): Promise<Item | null> {
+  if (before === null || (before.ended_at === null && after.ended_at !== null && after.archived === 0)) {
+    const task = await entryTask(names, after);
+    return { record: await entryLine(names, after), id, fields: task === null ? [] : [{ field: "task", to: task }] };
+  }
+  if (before.archived !== after.archived) {
+    const archived = after.archived === 1;
+    return { record: await entryLine(names, archived ? before : after), id, fields: [{ field: "", to: archived ? "archived" : "restored" }] };
+  }
+  const was = await entryLine(names, before);
+  const now = await entryLine(names, after);
+  const fields: Item["fields"] = [];
+  if (was !== now) fields.push({ field: "was", to: was.replace(/^Time /, "") });
+  if (before.task_id !== after.task_id) fields.push({ field: "task", from: (await entryTask(names, before)) ?? NONE, to: (await entryTask(names, after)) ?? NONE });
+  for (const [column, field] of [["started_at", "started"], ["notes", "notes"]] as const) {
+    if (before[column] === after[column]) continue;
+    fields.push({ field, from: cell(names, "time_entries", before, column, before[column]), to: cell(names, "time_entries", after, column, after[column]) });
+  }
+  return fields.length === 0 ? null : { record: now, id, fields };
+}
+
 /**
  * The list from the built change's rows. `tz` is the owner's timezone and `now` the plan's time. Rows whose change
  * shows nothing the owner would see (a deal's last-contact time) are left out.
@@ -264,6 +314,11 @@ export async function proposalList(db: Db, input: ChangeInput, tz: string, now: 
     }
     if (table === "tasks") {
       list.tasks.push(await taskItem(names, id, before, after));
+      continue;
+    }
+    if (table === "time_entries") {
+      const item = await timeItem(names, id, before, after);
+      if (item !== null) list.time.push(item);
       continue;
     }
     if (table === "contacts" || table === "deals") {

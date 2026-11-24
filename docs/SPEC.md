@@ -15,7 +15,7 @@ Non-negotiables
 
 Data (Cloudflare D1, forward-only migrations)
 
-* `settings`: timezone, brief hour, brief email address, brief on or off, allowed owner email(s), business name, accent colour
+* `settings`: timezone, brief hour, brief email address, brief on or off, allowed owner email(s), business name, accent colour, time tracking on or off (decision 0049)
 * `stages`: key, label, position, kind (open, won, lost, not_now), archived
 * `field_defs`: entity (contact or deal), key, label, type (text, number, date, choice), choices, archived
 * `contacts`: name, email (unique when present), phone, business, source, notes, custom field values (JSON, validated against `field_defs`), lead status (null: never a lead; `new`, `contacted`, `not_now`, `not_a_fit`, `bad`, `qualified`) and when it last changed, created and updated times. A lead is a person with a lead status and no open deal (decision 0022).
@@ -26,6 +26,9 @@ Data (Cloudflare D1, forward-only migrations)
 * `rule_firings`: rule, deal or contact, fire key (unique), task created
 * `rulebook`: name, markdown, updated at
 * `audit_log`: at, actor, tool, target table and id, before JSON, after JSON, summary, undone at, undone by
+* `work_types`: name (unique among live ones), hourly rate, billable by default, position, archived (decision 0049)
+* `client_rates`: work type, person, hourly rate (beats the work type's for that person), archived
+* `time_entries`: person, deal, task (each optional), started at, ended at and minutes (both empty for the one running timer; 1 to 960 minutes), work type, billable, the hourly rate used (fixed when saved), notes, the note activity a stopped timer logged, archived
 
 Default stages: New inquiry, Replied, Call booked, Call done, Proposal sent, Won, Lost, Not now.
 Building blocks the owner changes by talking
@@ -44,8 +47,8 @@ Building blocks the owner changes by talking
 
 MCP tools
 
-* Read: `get_rulebook`, `pipeline_summary`, `list_deals` (filters for stage, status, due, quiet), `get_deal` (a pre-call brief: contact, timeline, open tasks, next step), `search_contacts` (leads included, with their status and person status; filters for lead status, person status, sub-status and a custom field), `list_leads` (filters for status, source, quiet, follow-up due), `whats_due`, `list_tasks` (open or done to-dos, including undated and standalone ones; filters for person, deal, standalone), `recent_changes`, `list_stages`, `list_person_statuses`, `list_fields`, `list_rules`, `list_views`, `preview_rule`, `get_settings`
-* Write: `add_lead` (a person with status `new` and no deal), `add_deal` (a new or existing person plus a deal), `add_contact` (a person with any person status, Contact by default, and no deal), `qualify_lead`, `return_to_lead`, `update_contact` (including lead status, a Not now follow-up date, person status and sub-status), `update_deal` (stage, next step, next date, value, fields, status), `log_activity`, `add_task`, `complete_task`, `snooze_task`, `add_stage`, `update_stage`, `archive_stage`, `add_person_status`, `update_person_status`, `add_sub_status`, `update_sub_status`, `add_view`, `update_view`, `archive_view` (saved views of people or deals: filters, sort, layout, columns), `add_field`, `update_field`, `add_rule`, `update_rule`, `pause_rule`, `resume_rule`, `update_rulebook`, `update_settings`, `undo_change`
+* Read: `get_rulebook`, `pipeline_summary`, `list_deals` (filters for stage, status, due, quiet), `get_deal` (a pre-call brief: contact, timeline, open tasks, next step), `search_contacts` (leads included, with their status and person status; filters for lead status, person status, sub-status and a custom field), `list_leads` (filters for status, source, quiet, follow-up due), `whats_due`, `list_tasks` (open or done to-dos, including undated and standalone ones; filters for person, deal, standalone), `recent_changes`, `list_stages`, `list_person_statuses`, `list_fields`, `list_rules`, `list_views`, `preview_rule`, `get_settings`, `list_time` (a period, this week by default, or from and to; filters for person and deal; totals billable and not, by person and deal), `list_work_types`
+* Write: `add_lead` (a person with status `new` and no deal), `add_deal` (a new or existing person plus a deal), `add_contact` (a person with any person status, Contact by default, and no deal), `qualify_lead`, `return_to_lead`, `update_contact` (including lead status, a Not now follow-up date, person status and sub-status), `update_deal` (stage, next step, next date, value, fields, status), `log_activity`, `add_task`, `complete_task`, `snooze_task`, `add_stage`, `update_stage`, `archive_stage`, `add_person_status`, `update_person_status`, `add_sub_status`, `update_sub_status`, `add_view`, `update_view`, `archive_view` (saved views of people or deals: filters, sort, layout, columns), `add_field`, `update_field`, `add_rule`, `update_rule`, `pause_rule`, `resume_rule`, `update_rulebook`, `update_settings`, `undo_change`, and time (decision 0049; refused while time tracking is off): `start_timer`, `stop_timer` (notes logged as a note, an optional next-step task), `add_time_entry`, `update_time_entry` (record edits, proposed like the other record tools), `add_work_type`, `update_work_type`, `set_client_rate` (configuration, only when the owner asks)
 * Server instructions:
    * Read the rulebook before the first write in a conversation.
    * Ask the owner before marking a deal Won, Lost or Not now.
