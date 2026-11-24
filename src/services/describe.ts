@@ -74,6 +74,7 @@ const COLUMN_LABELS: Record<string, string> = {
   done_at: "done date",
   snoozed_until: "snooze",
   accent_color: "accent colour",
+  ai_edits: "AI edits",
   gone_at: "off date",
   sub_status: "sub-status",
   sub_label: "sub-status label",

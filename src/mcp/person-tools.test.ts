@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { buildFixtureSeed } from "../../tests/helpers/fixture-seed.ts";
-import { connectInMemory, fails, ok } from "../../tests/helpers/mcp-client.ts";
+import { approved, connectInMemory, fails, ok } from "../../tests/helpers/mcp-client.ts";
 import type { ContactRow, Db } from "../db/db.ts";
 import { createTestDb } from "../db/sqlite-d1.ts";
 import { DEFAULT_TZ } from "../time.ts";
@@ -30,7 +30,7 @@ type Match = { id: string; personStatus: string; personStatusLabel: string; subS
 
 test("add_contact adds a Contact by default, with no deal, and undo removes them", async () => {
   const { db, c } = await setup();
-  const answer = await ok(c, "add_contact", { name: "Lee Example", email: "lee@example.com", source: "trade fair", notes: "Sends us work." });
+  const answer = await approved(c, "add_contact", { name: "Lee Example", email: "lee@example.com", source: "trade fair", notes: "Sends us work." });
   assert.match(answer.headline, /^Added Lee Example as a Contact, from trade fair \(change chg_[a-z0-9]{12}\)$/);
   const id = contactIdOf(answer.data);
   const added = await row(db, id);
@@ -45,12 +45,12 @@ test("add_contact adds a Contact by default, with no deal, and undo removes them
 
 test("add_contact takes any live status and sub-status by key or label; a Lead starts New", async () => {
   const { db, c } = await setup();
-  const partner = await ok(c, "add_contact", { name: "Hana Example", personStatus: "Partner" });
+  const partner = await approved(c, "add_contact", { name: "Hana Example", personStatus: "Partner" });
   assert.match(partner.headline, /^Added Hana Example as a Partner \(change/);
-  const client = await ok(c, "add_contact", { name: "Cal Example", personStatus: "contact", subStatus: "Client" });
+  const client = await approved(c, "add_contact", { name: "Cal Example", personStatus: "contact", subStatus: "Client" });
   assert.match(client.headline, /^Added Cal Example as a Contact \(Client\) \(change/);
   assert.equal((await row(db, contactIdOf(client.data))).sub_status, "client");
-  const lead = await ok(c, "add_contact", { name: "Lou Example", personStatus: "lead" });
+  const lead = await approved(c, "add_contact", { name: "Lou Example", personStatus: "lead" });
   assert.match(lead.headline, /^Added lead Lou Example \(New\) \(change/);
   const leadRow = await row(db, contactIdOf(lead.data));
   assert.deepEqual([leadRow.person_status, leadRow.sub_status, leadRow.lead_status], ["lead", "new", "new"]);
@@ -67,7 +67,7 @@ test("add_contact takes any live status and sub-status by key or label; a Lead s
 
 test("add_contact with a Lead adds them exactly as add_lead does: the business check, notes as a note, undo", async () => {
   const { db, c } = await setup();
-  const first = await ok(c, "add_contact", { name: "Ann Example", business: "Acme Plumbing", personStatus: "lead", notes: "Met at the fair." });
+  const first = await approved(c, "add_contact", { name: "Ann Example", business: "Acme Plumbing", personStatus: "lead", notes: "Met at the fair." });
   const ann = contactIdOf(first.data);
   assert.match(first.headline, /^Added lead Ann Example \(New\) \(change/);
   const annRow = await row(db, ann);
@@ -78,8 +78,8 @@ test("add_contact with a Lead adds them exactly as add_lead does: the business c
     await fails(c, "add_contact", { name: "Jo Example", business: " acme  plumbing", personStatus: "Lead" }),
     /already has that business\. Say allowDuplicate: true to add another lead anyway\.$/,
   );
-  await ok(c, "add_contact", { name: "Jo Example", business: "Acme Plumbing", personStatus: "lead", allowDuplicate: true });
-  const reached = await ok(c, "add_contact", { name: "Kim Example", personStatus: "lead", subStatus: "Contacted" });
+  await approved(c, "add_contact", { name: "Jo Example", business: "Acme Plumbing", personStatus: "lead", allowDuplicate: true });
+  const reached = await approved(c, "add_contact", { name: "Kim Example", personStatus: "lead", subStatus: "Contacted" });
   assert.match(reached.headline, /^Added lead Kim Example \(Contacted\) \(change/);
   assert.equal((await row(db, contactIdOf(reached.data))).lead_status, "contacted");
   await ok(c, "undo_change", { changeId: changeIdOf(first.data) });
@@ -98,17 +98,17 @@ test("a blank sub-status is refused, not read as none; null clears one, except a
     assert.match(await fails(c, tool, args), /subStatus"? can't be empty/, tool);
   }
   assert.match(await fails(c, "add_contact", { name: "Lee Example", personStatus: " " }), /personStatus"? can't be empty/);
-  const id = contactIdOf((await ok(c, "add_contact", { name: "Lee Example", subStatus: "client" })).data);
-  await ok(c, "update_contact", { contact: id, subStatus: null });
+  const id = contactIdOf((await approved(c, "add_contact", { name: "Lee Example", subStatus: "client" })).data);
+  await approved(c, "update_contact", { contact: id, subStatus: null });
   assert.equal((await row(db, id)).sub_status, null);
-  const lead = contactIdOf((await ok(c, "add_lead", { name: "Lou Example" })).data);
+  const lead = contactIdOf((await approved(c, "add_lead", { name: "Lou Example" })).data);
   assert.match(await fails(c, "update_contact", { contact: lead, subStatus: null }), /^A lead always has a lead status\./);
 });
 
 test("update_contact sets a person status and sub-status in one change with other fields, and undo reverses it all", async () => {
   const { db, c } = await setup();
-  const id = contactIdOf((await ok(c, "add_contact", { name: "Lee Example" })).data);
-  const moved = await ok(c, "update_contact", { contact: id, personStatus: "partner", phone: "555-0199" });
+  const id = contactIdOf((await approved(c, "add_contact", { name: "Lee Example" })).data);
+  const moved = await approved(c, "update_contact", { contact: id, personStatus: "partner", phone: "555-0199" });
   assert.match(moved.headline, /^Updated Lee Example: person status to Partner and phone \(change chg_[a-z0-9]{12}\)$/);
   const after = await row(db, id);
   assert.deepEqual([after.person_status, after.sub_status, after.phone], ["partner", null, "555-0199"]);
@@ -116,11 +116,11 @@ test("update_contact sets a person status and sub-status in one change with othe
   const back = await row(db, id);
   assert.deepEqual([back.person_status, back.sub_status, back.phone], ["contact", null, null]);
 
-  const client = await ok(c, "update_contact", { contact: id, personStatus: "contact", subStatus: "client" });
+  const client = await approved(c, "update_contact", { contact: id, personStatus: "contact", subStatus: "client" });
   assert.match(client.headline, /^Updated Lee Example: person status to Contact \(Client\) \(change/);
   // The sub-status alone, of the status they have.
   assert.equal((await row(db, id)).sub_status, "client");
-  const none = await ok(c, "update_contact", { contact: id, subStatus: null });
+  const none = await approved(c, "update_contact", { contact: id, subStatus: null });
   assert.match(none.headline, /^Updated Lee Example: person status to Contact \(change/);
   await ok(c, "undo_change", { changeId: changeIdOf(none.data) });
   assert.equal((await row(db, id)).sub_status, "client");
@@ -128,12 +128,12 @@ test("update_contact sets a person status and sub-status in one change with othe
 
 test("update_contact moves a lead out of Lead (Qualified kept) and refuses Lead while there is an open deal", async () => {
   const { db, c } = await setup();
-  const lead = contactIdOf((await ok(c, "add_lead", { name: "Lou Example" })).data);
-  const out = await ok(c, "update_contact", { contact: lead, personStatus: "partner" });
+  const lead = contactIdOf((await approved(c, "add_lead", { name: "Lou Example" })).data);
+  const out = await approved(c, "update_contact", { contact: lead, personStatus: "partner" });
   assert.match(out.headline, /^Updated Lou Example: person status to Partner \(change/);
   const partner = await row(db, lead);
   assert.deepEqual([partner.person_status, partner.lead_status], ["partner", "qualified"]);
-  const back = await ok(c, "update_contact", { contact: lead, personStatus: "lead", subStatus: "contacted" });
+  const back = await approved(c, "update_contact", { contact: lead, personStatus: "lead", subStatus: "contacted" });
   assert.match(back.headline, /^Updated Lou Example: person status to Lead \(Contacted\) \(change/);
   assert.equal((await row(db, lead)).lead_status, "contacted");
 
@@ -162,7 +162,7 @@ test("the four status tools change the list as owner text, each in one change th
   assert.deepEqual(statuses[0]?.subStatuses.map((s) => [s.key, s.label]), [["wholesale", "Trade"]]);
   assert.equal(statuses[0]?.subLabel, "Supplier type");
 
-  const someone = await ok(c, "add_contact", { name: "Val Example", personStatus: "Vendor", subStatus: "Trade" });
+  const someone = await approved(c, "add_contact", { name: "Val Example", personStatus: "Vendor", subStatus: "Trade" });
   assert.match(someone.headline, /^Added Val Example as a Vendor \(Trade\)/);
   assert.match(await fails(c, "update_sub_status", { status: "supplier", subStatus: "trade", archived: true }), /^1 person has the sub-status Trade: Val Example\. Give them another one first\.$/);
   assert.match(await fails(c, "update_person_status", { status: "contact", archived: true }), /^Contact can be renamed but not archived/);
@@ -204,15 +204,15 @@ test("undo reverses each status tool's change", async () => {
   assert.deepEqual(await subs(), ["Wholesale"]);
 
   // Undo never takes away a sub-status someone has.
-  await ok(c, "add_contact", { name: "Val Example", personStatus: "supplier", subStatus: "wholesale" });
+  await approved(c, "add_contact", { name: "Val Example", personStatus: "supplier", subStatus: "wholesale" });
   assert.match(await fails(c, "undo_change", { changeId: changeIdOf(wholesale.data) }), /^Can't undo chg_[a-z0-9]{12}: /);
   assert.deepEqual(await subs(), ["Wholesale"]);
 });
 
 test("list_person_statuses counts the people who have each status and sub-status", async () => {
   const { c } = await setup();
-  await ok(c, "add_contact", { name: "Cal Example", subStatus: "client" });
-  await ok(c, "add_contact", { name: "Hana Example", personStatus: "partner" });
+  await approved(c, "add_contact", { name: "Cal Example", subStatus: "client" });
+  await approved(c, "add_contact", { name: "Hana Example", personStatus: "partner" });
   const listed = await ok(c, "list_person_statuses");
   assert.equal(listed.headline, "3 person statuses: Lead, Contact, Partner.");
   const statuses = (listed.data as { statuses: { key: string; locked: boolean; people: number; subStatuses: { key: string; people: number }[] }[] }).statuses;
@@ -226,8 +226,8 @@ test("search_contacts filters by person status, sub-status and a custom field, a
   const { c } = await setup();
   await ok(c, "add_field", { entity: "contact", label: "Region", type: "text" });
   await ok(c, "add_field", { entity: "contact", label: "Referrals", type: "number" });
-  const hana = contactIdOf((await ok(c, "add_contact", { name: "Hana Example", personStatus: "partner", fields: { region: "North", referrals: 3 } })).data);
-  const cal = contactIdOf((await ok(c, "add_contact", { name: "Cal Example", subStatus: "client", fields: { region: "south" } })).data);
+  const hana = contactIdOf((await approved(c, "add_contact", { name: "Hana Example", personStatus: "partner", fields: { region: "North", referrals: 3 } })).data);
+  const cal = contactIdOf((await approved(c, "add_contact", { name: "Cal Example", subStatus: "client", fields: { region: "south" } })).data);
 
   const partners = await ok(c, "search_contacts", { query: "", personStatus: "Partner" });
   assert.equal(partners.headline, "1 contact found.");
@@ -256,10 +256,10 @@ test("a renamed Lead sub-status shows under its new label in answers, summaries 
   const { c } = await setup();
   await ok(c, "update_sub_status", { status: "lead", subStatus: "contacted", label: "Reached" });
   await ok(c, "update_sub_status", { status: "lead", subStatus: "new", label: "Fresh" });
-  const lead = await ok(c, "add_lead", { name: "Lou Example" });
+  const lead = await approved(c, "add_lead", { name: "Lou Example" });
   assert.match(lead.headline, /^Added lead Lou Example \(Fresh\) \(change/);
   const id = contactIdOf(lead.data);
-  const logged = await ok(c, "log_activity", { contact: id, type: "call", summary: "Left a message." });
+  const logged = await approved(c, "log_activity", { contact: id, type: "call", summary: "Left a message." });
   assert.match(logged.headline, /; Lou Example is now Reached \(change/);
   const leads = await ok(c, "list_leads", { statuses: ["contacted"] });
   assert.match(leads.headline, /\(\d+ reached\)\.$/);
@@ -267,7 +267,7 @@ test("a renamed Lead sub-status shows under its new label in answers, summaries 
   assert.deepEqual([item?.leadStatus, item?.leadStatusLabel, item?.personStatusLabel, item?.subStatusLabel], ["contacted", "Reached", "Lead", "Reached"]);
   const found = (await ok(c, "search_contacts", { query: "Lou" })).data as { contacts: (Match & { leadStatusLabel: string })[] };
   assert.equal(found.contacts[0]?.leadStatusLabel, "Reached");
-  const status = await ok(c, "update_contact", { contact: id, leadStatus: "not_now" });
+  const status = await approved(c, "update_contact", { contact: id, leadStatus: "not_now" });
   assert.match(status.headline, /^Updated Lou Example: lead status to Not now \(change/);
   const brief = (await ok(c, "get_deal", { deal: "dl_seed01" })).data as { contact: Match };
   assert.deepEqual([brief.contact.personStatus, brief.contact.personStatusLabel], ["contact", "Contact"]);

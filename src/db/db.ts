@@ -57,6 +57,8 @@ export type SettingsRow = {
   business_name: string | null;
   /** The board's accent, "#rrggbb" in lower case; null uses the default green (migration 0004). */
   accent_color: string | null;
+  /** "review" (Review first) or "small" (Apply small changes): how the AI app's record tools write (migration 0015). */
+  ai_edits: "review" | "small";
 };
 
 export type StageRow = {
