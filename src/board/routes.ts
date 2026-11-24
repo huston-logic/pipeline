@@ -11,6 +11,7 @@
 // The table layout (decision 0043) is the Pipeline's List (a table by default), Contacts and a saved people view.
 // The timer pages (decision 0050): /timer/stop with no timer running (the seed starts none) and the seed's finished entry
 // te_seed01 on /timer/done.
+// The time pages (decision 0051): this week, another week by address, Add time and editing the seed's te_seed01.
 
 export type IconName =
   | "today"
@@ -24,7 +25,8 @@ export type IconName =
   | "export"
   | "import"
   | "notifications"
-  | "email";
+  | "email"
+  | "time";
 
 /** `hint` is read out after the label but not shown, where the label alone says too little ("More" alone fails
  * Lighthouse's descriptive-link-text audit). */
@@ -73,6 +75,10 @@ export const boardRoutes: string[] = [
   "/import/im_seed03",
   "/timer/stop",
   "/timer/done?entry=te_seed01",
+  "/time",
+  "/time?week=2026-11-16",
+  "/time/new",
+  "/time/te_seed01/edit",
 ];
 
 /** At most this many pages go through Lighthouse, so the CI job's time stops growing with the board. */
@@ -89,7 +95,6 @@ export const lighthouseRoutes: string[] = [
   "/pipeline",
   "/pipeline?view=list",
   "/contacts",
-  "/companies",
   "/leads",
   "/people?view=vw_seed01",
   "/brief",
@@ -102,6 +107,7 @@ export const lighthouseRoutes: string[] = [
   "/contacts/ct_seed07",
   "/contacts/ct_seed02/edit",
   "/timer/done?entry=te_seed01",
+  "/time",
   "/import",
   "/import/im_seed01",
   "/import/im_seed02/preview",
@@ -132,3 +138,18 @@ export const moreItems: NavItem[] = [
   { href: "/notifications", label: "Notifications", icon: "notifications", description: "A phone notification when the daily brief is ready." },
   { href: "/email-log", label: "Email logging", icon: "email", description: "The address to add in Bcc, so an email you send is logged." },
 ];
+
+/** Time, under More only while time tracking is on (decision 0051). */
+export const timeItem: NavItem = {
+  href: "/time",
+  label: "Time",
+  icon: "time",
+  description: "The week's time entries and totals, adding time by hand, and the month's CSV.",
+};
+
+/** The More items for this copy: Time sits after "What it caught" when time tracking is on. */
+export function moreItemsFor(timeTracking: boolean): NavItem[] {
+  if (!timeTracking) return moreItems;
+  const at = moreItems.findIndex((item) => item.href === "/report") + 1;
+  return [...moreItems.slice(0, at), timeItem, ...moreItems.slice(at)];
+}

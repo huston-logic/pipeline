@@ -4,7 +4,7 @@ import type { SettingsRow } from "../db/db.ts";
 import { isUsableAccent } from "../services/accent.ts";
 import { type Html, html, raw } from "./html.ts";
 import { icon } from "./icons.ts";
-import { moreItems, type NavItem, navItems } from "./routes.ts";
+import { moreItemsFor, type NavItem, navItems } from "./routes.ts";
 import { type TimerInfo, timerBar } from "./timer-bar.ts";
 
 /**
@@ -44,7 +44,7 @@ function appTags(look: Look): Html {
 }
 
 /** What the router hands every signed-in page's frame: the owner's look and the change banner (decision 0017). */
-export type PageFrame = { look: Look; banner?: Html | ""; /** The running timer, for the Stop bar (decision 0050). */ timer?: TimerInfo | null };
+export type PageFrame = { look: Look; banner?: Html | ""; /** The running timer, for the Stop bar (decision 0050). */ timer?: TimerInfo | null; /** Time tracking is on, so More lists Time (decision 0051). */ timeTracking?: boolean };
 
 export type PageOptions = {
   /** The page's own title; the layout adds " · <business name>". */
@@ -73,7 +73,7 @@ function sectionOf(path: string): string | null {
   if (path.startsWith("/deals/")) return "/pipeline";
   const people = ["/companies", "/leads", "/people"];
   if (path.startsWith("/contacts/") || people.includes(path) || path.startsWith("/leads/")) return "/contacts";
-  if (moreItems.some((item) => item.href === path)) return "/more";
+  if (moreItemsFor(true).some((item) => item.href === path) || path.startsWith("/time/")) return "/more";
   return null;
 }
 
@@ -90,11 +90,11 @@ function link(item: NavItem, current: string | undefined): Html {
   return html`<a href="${item.href}"${state}>${icon(item.icon)}<span class="nav-label">${item.label}</span>${hint}</a>`;
 }
 
-function nav(current: string | undefined): Html {
+function nav(current: string | undefined, timeTracking: boolean): Html {
   const items = navItems.map((item) =>
     item.href === "/more"
       ? html`<li class="nav-more">${link(item, current)}
-<ul class="nav-sub">${moreItems.map((sub) => html`<li>${link(sub, current)}</li>`)}</ul>
+<ul class="nav-sub">${moreItemsFor(timeTracking).map((sub) => html`<li>${link(sub, current)}</li>`)}</ul>
 </li>`
       : html`<li>${link(item, current)}</li>`,
   );
@@ -137,7 +137,7 @@ ${frame ? html`<link rel="stylesheet" href="/theme.css">\n${appTags(frame.look)}
 <div class="app">
 <header class="app-header">
 <a class="brand" href="/"><span class="brand-mark" aria-hidden="true">${initial(name)}</span><span class="brand-name">${name}</span></a>
-${nav(current)}
+${nav(current, frame?.timeTracking === true)}
 </header>
 <div class="app-body">
 ${frame?.timer ? timerBar(frame.timer) : ""}<main id="main">

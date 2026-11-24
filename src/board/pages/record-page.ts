@@ -30,6 +30,8 @@ export type RecordPageOptions = {
   groups: { heading?: string; id?: string; specs: Spec[]; before?: Html; after?: Html }[];
   shown: Map<string, Shown>;
   errors: FormError[];
+  /** More markup after the form, outside it (Archive on the time form: its own form). */
+  below?: Html;
 };
 
 export function recordFormPage(ctx: PageContext, options: RecordPageOptions): string {
@@ -63,6 +65,6 @@ ${cards}
 </div>
 `,
   { novalidate: true },
-)}`,
+)}${options.below ?? ""}`,
   });
 }

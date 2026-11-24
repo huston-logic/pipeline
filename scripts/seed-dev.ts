@@ -36,8 +36,9 @@ export interface DevSeed {
   importDraftParts: Row[];
   /** Saved views (decision 0042): one of people, one of deals. */
   views: Row[];
-  /** Time tracking (decisions 0049, 0050): two work types and one finished entry; no timer runs. */
+  /** Time tracking (decisions 0049, 0050, 0051): two work types, one client rate and nine finished entries; no timer runs. */
   workTypes: Row[];
+  clientRates: Row[];
   timeEntries: Row[];
 }
 
@@ -864,7 +865,49 @@ export function devSeed(now: Date, tz: string): DevSeed {
     },
   ];
 
-  return { fieldDefs, contacts, deals, activities, tasks, rules, briefs, audit, importDrafts, importDraftParts, views, workTypes, timeEntries };
+  // The time pages' week (decision 0051): Elena has her own Design rate ($110 an hour, the others pay $95), and eight finished
+  // entries over the last ten days for three people and two deals; one is Admin, so not billable. They are all in the past, so
+  // /time shows them whichever weekday it is (the ones before this Monday are on last week's page). dl_seed01 stays untouched.
+  const clientRates: Row[] = [
+    { id: "cr_seed01", work_type_id: "wt_seed01", contact_id: "ct_seed04", hourly_rate: 110, archived: 0, version: 1, created_at: day(-8, "09:00"), updated_at: day(-8, "09:00") },
+  ];
+  const spans: [n: number, ago: number, from: string, minutes: number, contact: string, deal: string | null, type: "wt_seed01" | "wt_seed02", rate: number | null, notes: string][] = [
+    [2, 1, "09:00", 90, "ct_seed04", "dl_seed04", "wt_seed01", 110, "Reworked the tank footing drawings."],
+    [3, 2, "13:00", 120, "ct_seed07", "dl_seed19", "wt_seed01", 95, "Marked up the building C retrofit plan."],
+    [4, 3, "10:00", 30, "ct_seed03", null, "wt_seed02", null, "Filed the balcony survey paperwork."],
+    [5, 4, "14:00", 60, "ct_seed07", "dl_seed19", "wt_seed01", 95, "Site visit prep for building C."],
+    [6, 5, "09:30", 45, "ct_seed04", "dl_seed04", "wt_seed01", 110, "Checked the tank loads with Elena."],
+    [7, 8, "10:00", 150, "ct_seed07", "dl_seed19", "wt_seed01", 95, "Surveyed the storage building C slab."],
+    [8, 9, "11:00", 60, "ct_seed03", null, "wt_seed01", 95, "Balcony condition notes."],
+    [9, 10, "15:00", 75, "ct_seed04", "dl_seed04", "wt_seed01", 110, "First pass at the tank foundations."],
+  ];
+  timeEntries.push(
+    ...spans.map(([n, ago, from, minutes, contact, deal, type, rate, notes]): Row => {
+      const started = day(-ago, from);
+      const ended = new Date(new Date(started).getTime() + minutes * 60_000).toISOString();
+      return {
+        id: `te_seed${n2(n)}`,
+        contact_id: contact,
+        deal_id: deal,
+        task_id: null,
+        started_at: started,
+        ended_at: ended,
+        minutes,
+        work_type_id: type,
+        billable: rate === null ? 0 : 1,
+        rate,
+        notes,
+        activity_id: null,
+        archived: 0,
+        untrusted_fields: "[]",
+        version: 1,
+        created_at: ended,
+        updated_at: ended,
+      };
+    }),
+  );
+
+  return { fieldDefs, contacts, deals, activities, tasks, rules, briefs, audit, importDrafts, importDraftParts, views, workTypes, clientRates, timeEntries };
 }
 
 export function buildDevSeed(now: Date, tz: string): string {
@@ -886,6 +929,7 @@ export function buildDevSeed(now: Date, tz: string): string {
     ...seed.views.map((row) => insert("views", row)),
     "UPDATE settings SET time_tracking = 1 WHERE id = 1;",
     ...seed.workTypes.map((row) => insert("work_types", row)),
+    ...seed.clientRates.map((row) => insert("client_rates", row)),
     ...seed.timeEntries.map((row) => insert("time_entries", row)),
     "",
   ].join("\n");

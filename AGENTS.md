@@ -38,7 +38,7 @@ this file before changing the repo, and update it when a rule changes.
   read it); `lighthouserc.cjs` scores `lighthouseRoutes`, one of each kind of page, at most 20 (a test checks), 3 runs
   each; `npm run test:lighthouse` (`scripts/lighthouse.mjs`) collects again, at most twice, only the pages whose runs
   crashed (Chrome's `NO_NAVSTART`), then checks scores once. Every new page goes in `boardRoutes`; a new kind of page
-  also takes a `lighthouseRoutes` slot. The file also has the nav (`navItems`: Today, Pipeline, People, Brief, More; `moreItems`: Rules, Changes, Export, Import). Pages are
+  also takes a `lighthouseRoutes` slot. The file also has the nav (`navItems`: Today, Pipeline, People, Brief, More; `moreItems`: Rules, Changes, Export, Import; `moreItemsFor(true)` adds Time while time tracking is on, decision 0051). Pages are
   GET and HEAD with `Cache-Control: no-store`; a page that finds no CSRF cookie sets one.
 - **Board edits** (decisions 0014, 0017): every board write path is in the route table in `src/board/actions.ts`; a
   POST to any other path is 405. `src/board/post.ts` checks, in order, the sign-in, the same origin, a form body
@@ -220,6 +220,16 @@ this file before changing the repo, and update it when a rule changes.
   are pages (`pages/timer-stop.ts`, `timer-done.ts`); the stop form sends a start or end only when the owner changed
   it (`was.started`, `was.ended`). With time tracking off every `/timer/*` path is a 404. The done page's one Ask
   Claude prompt (`timerAskPrompts`) names the entry and its note by id only.
+- **The time pages** (decision 0051): `/time` (`pages/time.ts`) is one week, Monday to Sunday in the owner's timezone
+  (`time-week.ts`: `?week=<date>` shows that date's week, anything unreadable this week), entries by day with their
+  stored amounts, totals, and time by person and deal; `/time/new` and `/time/<te id>/edit` (`pages/time-entry.ts`,
+  specs in `time-form.ts`) are record forms and the edit sends only changed fields, so only a work type, person or
+  billable change reprices (`update_time_entry`). Their posts are in `TIME_ROUTES` as the owner (`add_time_entry`,
+  `update_time_entry`, and `POST /time/<id>/archive`), answer 303 to `/time?week=<Monday>&change=` and, off, are 404s
+  like every time path. `GET /time/export.csv?month=YYYY-MM` (`src/http/time-csv.ts`, answered in `src/index.ts`
+  before the static-file branch) is one row per client and work type through the `csv.ts` formula guard, names as
+  they are; a bad month is a plain 400. Time is in More only while time tracking is on (`PageFrame.timeTracking`), and
+  `/export` lists the three time CSVs only then.
 - **Sign-in:** `src/auth/dev.ts` until task 10. `AUTH_MODE=dev` works only with `ENVIRONMENT=development` on a
   loopback host; anywhere else every route answers 500. Without `AUTH_MODE`, `/mcp` answers 401.
 - **Types:** `src/env.ts` is the `Env` type the code uses. `src/worker-configuration.d.ts` holds the Workers runtime
