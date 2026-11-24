@@ -14,9 +14,13 @@ import {
   logActivityInput,
   qualifyLeadInput,
   returnToLeadInput,
+  addTimeEntryInput,
   snoozeTaskInput,
+  startTimerInput,
+  stopTimerInput,
   updateContactInput,
   updateDealInput,
+  updateTimeEntryInput,
 } from "./record-inputs.ts";
 import { logActivity } from "./activities.ts";
 import { addContact } from "./add-contact.ts";
@@ -30,8 +34,10 @@ import { contactRef, dealTitle, isTrusted, taskTitle } from "./labels.ts";
 import { addLead, qualifyLead, returnToLead } from "./leads.ts";
 import { MATCH_MAX, matchContact, matchDeal, matchTask } from "./name-match.ts";
 import { addTask, completeTask, snoozeTask } from "./tasks.ts";
+import { addTimeEntry, updateTimeEntry } from "./time-entries.ts";
+import { startTimer, stopTimer } from "./timer.ts";
 
-/** The record tools a proposal can hold, in the order the schema lists them. D6 adds the time actions. */
+/** The record tools a proposal can hold, in the order the schema lists them; the last four are time (decision 0049). */
 export const RECORD_ACTIONS = [
   "add_lead",
   "add_deal",
@@ -44,6 +50,10 @@ export const RECORD_ACTIONS = [
   "add_task",
   "complete_task",
   "snooze_task",
+  "start_timer",
+  "stop_timer",
+  "add_time_entry",
+  "update_time_entry",
 ] as const;
 
 export type RecordActionName = (typeof RECORD_ACTIONS)[number];
@@ -64,6 +74,10 @@ const ACTION_SCHEMAS = {
   add_task: addTaskInput.extend({ action: named("add_task") }),
   complete_task: completeTaskInput.extend({ action: named("complete_task") }),
   snooze_task: snoozeTaskInput.extend({ action: named("snooze_task") }),
+  start_timer: startTimerInput.extend({ action: named("start_timer") }),
+  stop_timer: stopTimerInput.extend({ action: named("stop_timer") }),
+  add_time_entry: addTimeEntryInput.extend({ action: named("add_time_entry") }),
+  update_time_entry: updateTimeEntryInput.extend({ action: named("update_time_entry") }),
 } as const satisfies Record<RecordActionName, z.ZodObject>;
 
 /** One action: a record tool's input plus `action`, the tool's name (a discriminated union on it). */
@@ -79,6 +93,10 @@ export const recordActionSchema = z.discriminatedUnion("action", [
   ACTION_SCHEMAS.add_task,
   ACTION_SCHEMAS.complete_task,
   ACTION_SCHEMAS.snooze_task,
+  ACTION_SCHEMAS.start_timer,
+  ACTION_SCHEMAS.stop_timer,
+  ACTION_SCHEMAS.add_time_entry,
+  ACTION_SCHEMAS.update_time_entry,
 ]);
 
 export type RecordAction = z.output<typeof recordActionSchema>;
@@ -87,6 +105,12 @@ export type RecordAction = z.output<typeof recordActionSchema>;
 export type ResolvedAction = RecordAction;
 
 type RefKind = "contact" | "deal" | "task";
+
+const TIME_SUBJECT: { field: "contact" | "deal" | "task"; kind: RefKind; subject: boolean }[] = [
+  { field: "deal", kind: "deal", subject: true },
+  { field: "contact", kind: "contact", subject: true },
+  { field: "task", kind: "task", subject: true },
+];
 
 /** The fields of each action that name a record, and whether "@n" may fill them (the action's subject). */
 const REF_FIELDS: Record<RecordActionName, { field: "contact" | "deal" | "task"; kind: RefKind; subject: boolean }[]> = {
@@ -107,6 +131,15 @@ const REF_FIELDS: Record<RecordActionName, { field: "contact" | "deal" | "task";
   ],
   complete_task: [{ field: "task", kind: "task", subject: false }],
   snooze_task: [{ field: "task", kind: "task", subject: false }],
+  // What the time is for may be a person, deal or task an earlier action adds.
+  start_timer: TIME_SUBJECT,
+  stop_timer: [],
+  add_time_entry: TIME_SUBJECT,
+  update_time_entry: [
+    { field: "deal", kind: "deal", subject: false },
+    { field: "contact", kind: "contact", subject: false },
+    { field: "task", kind: "task", subject: false },
+  ],
 };
 
 /** What an action adds (or, for qualify_lead's person, names) that a later "@n" could point at. */
@@ -138,7 +171,8 @@ const refNumber = (value: string): number | null => {
 
 /**
  * Checks each action against its tool's schema and the "@n" rules: "@n" names a person or deal an earlier action adds,
- * and only as the subject of log_activity or add_task. Answers the actions as parsed.
+ * and only as the subject of log_activity or add_task, or (with a task, too) of start_timer or add_time_entry. Answers
+ * the actions as parsed.
  */
 export function checkActions(actions: readonly unknown[]): RecordAction[] {
   return actions.map((raw, i) => {
@@ -256,17 +290,18 @@ export type ActionResult = ChangeResult & {
   dealId?: string | null;
   activityId?: string;
   taskId?: string;
+  entryId?: string;
   matchedExisting?: boolean;
 };
 
-/** The action with each "@n" replaced by the id of the person or deal action n added (`added[n - 1]`). */
+/** The action with each "@n" replaced by the id of the person, deal or task action n added (`added[n - 1]`). */
 export function bindAction(action: ResolvedAction, added: readonly ActionResult[]): RecordAction {
   const copy: Record<string, unknown> = { ...action };
   for (const ref of refsOf(action)) {
     const target = refNumber(ref.value);
     if (target === null) continue;
     const result = added[target - 1];
-    const id = ref.kind === "deal" ? result?.dealId : result?.contactId;
+    const id = ref.kind === "deal" ? result?.dealId : ref.kind === "task" ? result?.taskId : result?.contactId;
     if (typeof id !== "string") throw new UserError(`Action ${target} adds no ${NOUNS[ref.kind]}, so @${target} can't be used as the ${ref.field} here.`);
     copy[ref.field] = id;
   }
@@ -316,5 +351,25 @@ export async function runAction(ctx: Ctx, action: ResolvedAction, _deps: { extra
       return completeTask(ctx, action.task);
     case "snooze_task":
       return snoozeTask(ctx, action.task, action.until);
+    case "start_timer":
+      return startTimer(ctx, omitAction(action));
+    case "stop_timer": {
+      const { activityId, taskId, ...rest } = await stopTimer(ctx, omitAction(action));
+      return { ...rest, ...(activityId === null ? {} : { activityId }), ...(taskId === null ? {} : { taskId }) };
+    }
+    case "add_time_entry":
+      return addTimeEntry(ctx, omitAction(action));
+    case "update_time_entry": {
+      const { entry, ...patch } = omitAction(action);
+      return updateTimeEntry(ctx, entry, patch);
+    }
   }
+}
+
+/**
+ * The actions as a proposal keeps them: a stop with no end gets the time it was asked for (`now`), so a yes that comes
+ * later stores the same span the owner was shown (decision 0049).
+ */
+export function withStopTimes(actions: readonly ResolvedAction[], now: Date): ResolvedAction[] {
+  return actions.map((action) => (action.action === "stop_timer" && action.endedAt === undefined ? { ...action, endedAt: now.toISOString() } : action));
 }

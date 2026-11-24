@@ -129,3 +129,12 @@ test("the instructions say how to capture a ramble as one propose_changes call (
       "deck, buy printer ink\" is three add_task actions: one for Dana due Friday, one for Matt, one with no person.",
   );
 });
+
+test("the time line: record time tools follow rule 7, work types and rates rule 5 (decision 0049)", () => {
+  const line = SERVER_INSTRUCTIONS.split("\n").find((text) => text.startsWith("- Time, ")) ?? "";
+  for (const tool of ["start_timer", "stop_timer", "add_time_entry", "update_time_entry", "list_time", "add_work_type", "update_work_type", "set_client_rate"]) {
+    assert.ok(line.includes(tool), tool);
+  }
+  assert.match(line, /record edits under rule 7/);
+  assert.match(line, /change them only when the owner asks, as in rule 5/);
+});

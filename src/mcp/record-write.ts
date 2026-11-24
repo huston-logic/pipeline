@@ -20,16 +20,19 @@ const existing = (ref: string | undefined) => ref === undefined || !ref.trim().s
 
 /**
  * true when the action may apply at once under "Apply small changes": a call or a note logged on an existing person or
- * deal, or completing a task. Everything else is proposed under both settings.
+ * deal, completing a task, starting a timer, or stopping one without a next step (decision 0049). Everything else is
+ * proposed under both settings.
  */
 export function isSmallAction(action: RecordAction): boolean {
   if (action.action === "complete_task") return true;
+  if (action.action === "start_timer") return existing(action.deal) && existing(action.contact) && existing(action.task);
+  if (action.action === "stop_timer") return action.nextStepDate === undefined;
   if (action.action !== "log_activity") return false;
   return (action.type === "call" || action.type === "note") && existing(action.deal) && existing(action.contact);
 }
 
 /** The ids each record tool has always answered beside its change id, when the action made them. */
-const ANSWER_IDS = ["contactId", "dealId", "activityId", "taskId", "matchedExisting"] as const;
+const ANSWER_IDS = ["contactId", "dealId", "activityId", "taskId", "entryId", "matchedExisting"] as const;
 
 function answerData(result: ActionResult): Record<string, unknown> {
   const data: Record<string, unknown> = { changeId: result.changeId };

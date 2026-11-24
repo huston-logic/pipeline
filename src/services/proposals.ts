@@ -39,6 +39,7 @@ import {
   resolveActions,
   type ResolvedAction,
   runAction,
+  withStopTimes,
 } from "./proposal-actions.ts";
 import { type ProposalList, proposalList, renderProposal } from "./proposal-text.ts";
 
@@ -113,7 +114,8 @@ export async function proposeChanges(ctx: Ctx, input: { actions: RecordAction[];
   const old = input.replaces === undefined ? null : await replaceable(db, input.replaces.trim(), now);
   const { actions, questions } = await resolveActions(db, checked);
   if (questions.length > 0) return { kind: "questions", questions };
-  const actionsJson = JSON.stringify(actions);
+  // Planned as asked (a stop ends now), kept with that end, so the apply plans the same span.
+  const actionsJson = JSON.stringify(withStopTimes(actions, now));
   if (sqlBytes(actionsJson) > CHUNK_BYTES) throw new UserError(TOO_LONG);
 
   const plan = await planActions(ctx, actions, deps);

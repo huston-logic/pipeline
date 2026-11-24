@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { buildFixtureSeed } from "../../tests/helpers/fixture-seed.ts";
+import { WORK_TYPES_SQL } from "../../tests/helpers/time-seed.ts";
 import { type AuditRow, type Db, type ProposalRow, TABLE_NAMES } from "../db/db.ts";
 import { createTestDb, type SqliteD1 } from "../db/sqlite-d1.ts";
 import { DEFAULT_TZ } from "../time.ts";
@@ -40,6 +41,11 @@ async function counts(db: Db): Promise<Counts> {
   for (const table of TABLE_NAMES) out[table] = (await db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).first<number>("n")) ?? -1;
   return out as Counts;
 }
+
+/** A timer on Pat's deal, running since 8:30 AM (Design, billable). */
+const RUNNING_ON_PAT =
+  "INSERT INTO time_entries (id, contact_id, deal_id, started_at, work_type_id, billable, version, created_at, updated_at) " +
+  "VALUES ('te_running', 'ct_seed01', 'dl_seed01', '2026-11-19T16:30:00.000Z', 'wt_design', 1, 1, '2026-11-19T16:30:00.000Z', '2026-11-19T16:30:00.000Z')";
 
 const audits = async (db: Db) => (await db.prepare("SELECT * FROM audit_log ORDER BY rowid").all<AuditRow>()).results;
 const proposal = async (db: Db, id: string) => db.prepare("SELECT * FROM proposals WHERE id = ?").bind(id).first<ProposalRow>();
@@ -121,7 +127,7 @@ test("apply writes once with one undo", async () => {
 /** Rows of the record tables, in insertion order. */
 async function recordRows(db: Db): Promise<Record<string, Record<string, unknown>[]>> {
   const out: Record<string, Record<string, unknown>[]> = {};
-  for (const table of ["contacts", "deals", "activities", "tasks"]) {
+  for (const table of ["contacts", "deals", "activities", "tasks", "time_entries"]) {
     out[table] = (await db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all<Record<string, unknown>>()).results.map((row) => ({ ...row }));
   }
   return out;
@@ -155,12 +161,26 @@ test("apply equals running the actions one by one", async () => {
       { action: "add_task", title: "Buy printer ink", dueAt: "2026-11-21" },
       { action: "add_task", contact: "ct_seed01", title: "Send Pat the invoice" },
     ],
+    // Time (decision 0049): a stop and a call on the same deal, an entry for a person the list adds, a timer started.
+    [
+      { action: "stop_timer", notes: "Homepage draft done.", nextStepDate: "2026-11-21" },
+      { action: "log_activity", deal: "dl_seed01", type: "call", summary: "Walked Pat through the draft." },
+    ],
+    [
+      { action: "add_lead", name: "Lee Example", business: "Lee Example Signs" },
+      { action: "add_time_entry", contact: "@1", startedAt: "2026-11-19T08:00", minutes: 45, workType: "Design", notes: "Sign mock-ups." },
+    ],
+    [{ action: "start_timer", deal: "dl_seed01", workType: "Design" }],
   ];
   for (const actions of scenarios) {
     const one = await setup();
     const both = await setup();
     await samIsALead(one);
     await samIsALead(both);
+    for (const db of [one, both]) {
+      db.exec(`UPDATE settings SET time_tracking = 1; ${WORK_TYPES_SQL}`);
+      if (actions.some((action) => action.action === "stop_timer")) db.exec(RUNNING_ON_PAT);
+    }
     const seed = await recordRows(one);
 
     // A: each action through its service, one change each, "@n" bound to the id action n added.
@@ -200,6 +220,46 @@ test("apply equals running the actions one by one", async () => {
     }
     assert.equal((await audits(both)).length, 1);
   }
+});
+
+test("time shows in the Time group, from the rows the plan would write", async () => {
+  const db = await setup();
+  db.exec(`UPDATE settings SET time_tracking = 1; ${WORK_TYPES_SQL}`);
+  const entry = await propose(db, [{ action: "add_time_entry", contact: "Pat", startedAt: "2026-11-19T07:30", endedAt: "2026-11-19T09:00", workType: "Design" }]);
+  assert.equal(entry.text.split("\n").slice(2, 4).join("\n"), "Time\n- Time 1 h 30 min, Design, billable at $95.00/h ($142.50), for Pat Example");
+  assert.equal(entry.list.time[0]?.id.startsWith("te_"), true);
+
+  const timer = await propose(db, [{ action: "start_timer", deal: "dl_seed01" }]);
+  assert.equal(timer.text.split("\n").slice(2, 4).join("\n"), 'Time\n- Timer started now, for "Website refresh for Example Plumbing" (Pat Example)');
+
+  db.exec(RUNNING_ON_PAT);
+  const stop = await propose(db, [{ action: "stop_timer", notes: "Homepage draft done.", nextStepDate: "2026-11-21" }]);
+  assert.equal(
+    stop.text.split("\n").slice(2, 7).join("\n"),
+    [
+      "Tasks",
+      '- New task "Next step: Website refresh for Example Plumbing": for "Website refresh for Example Plumbing" (Pat Example); due Sat Nov 21',
+      'Notes',
+      '- Note on Pat Example about "Website refresh for Example Plumbing": Homepage draft done.',
+      "Time",
+    ].join("\n"),
+  );
+  assert.ok(stop.text.includes('\n- Time 1 h 30 min, Design, billable at $95.00/h ($142.50), for "Website refresh for Example Plumbing" (Pat Example)\n'));
+  // Stored with the end it was asked at, so a later yes stores the same span.
+  const stored = JSON.parse((await proposal(db, stop.id))?.actions ?? "[]") as Record<string, unknown>[];
+  assert.equal(stored[0]?.endedAt, NOW.toISOString());
+  const later = await apply(db, stop.id, new Date(NOW.getTime() + 30 * 60_000));
+  assert.equal(later.applied, 1);
+  assert.equal(await db.prepare("SELECT minutes FROM time_entries WHERE id = 'te_running'").first("minutes"), 90);
+});
+
+test("a timer started in a list can't be stopped in the same list", async () => {
+  const db = await setup();
+  db.exec("UPDATE settings SET time_tracking = 1");
+  await assert.rejects(
+    proposeChanges(ctxFor(db), { actions: [{ action: "start_timer", contact: "ct_seed01" }, { action: "stop_timer" }] }, DEPS),
+    /^UserError: Action 2: A timer started in this list can't be stopped in the same list\. Use add_time_entry with the start and end instead\.$/,
+  );
 });
 
 test("a standalone task: the list says no person or deal, and complete or snooze by its title work through a proposal", async () => {

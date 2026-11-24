@@ -31,7 +31,9 @@ const READ_TOOLS = [
   "list_rules",
   "list_stages",
   "list_tasks",
+  "list_time",
   "list_views",
+  "list_work_types",
   "pipeline_summary",
   "preview_rule",
   "recent_changes",
@@ -48,7 +50,9 @@ const WRITE_TOOLS = [
   "add_stage",
   "add_sub_status",
   "add_task",
+  "add_time_entry",
   "add_view",
+  "add_work_type",
   "apply_changes",
   "apply_import",
   "archive_stage",
@@ -61,7 +65,10 @@ const WRITE_TOOLS = [
   "qualify_lead",
   "resume_rule",
   "return_to_lead",
+  "set_client_rate",
   "snooze_task",
+  "start_timer",
+  "stop_timer",
   "undo_change",
   "update_contact",
   "update_deal",
@@ -72,7 +79,9 @@ const WRITE_TOOLS = [
   "update_settings",
   "update_stage",
   "update_sub_status",
+  "update_time_entry",
   "update_view",
+  "update_work_type",
 ];
 
 async function client(db?: Db) {
@@ -111,6 +120,7 @@ const DESTRUCTIVE = [
   "apply_changes",
   "archive_stage",
   "archive_view",
+  "set_client_rate",
   "undo_change",
   "update_contact",
   "update_deal",
@@ -121,7 +131,9 @@ const DESTRUCTIVE = [
   "update_settings",
   "update_stage",
   "update_sub_status",
+  "update_time_entry",
   "update_view",
+  "update_work_type",
 ];
 // update_contact is not: a repeated followUpDate adds a second "Check back" task.
 // apply_import is: a second call of the same import writes nothing (decision 0039); so is apply_changes (0044).
@@ -130,6 +142,7 @@ const IDEMPOTENT = [
   "apply_import",
   "pause_rule",
   "resume_rule",
+  "set_client_rate",
   "update_deal",
   "update_field",
   "update_person_status",
@@ -138,7 +151,9 @@ const IDEMPOTENT = [
   "update_settings",
   "update_stage",
   "update_sub_status",
+  "update_time_entry",
   "update_view",
+  "update_work_type",
 ];
 
 test("destructive and idempotent hints are set exactly on the tools that need them", async () => {
