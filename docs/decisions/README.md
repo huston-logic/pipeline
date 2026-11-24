@@ -23,16 +23,16 @@ Add a line here for every new decision (`npm run check:process` fails on a decis
 - [0010](0010-rules-engine.md) The rules engine: pure functions make every rule testable without a database; one change per firing keeps the audit log honest. (partly replaced by 0020)
 - [0011](0011-daily-brief.md) The daily brief: composing every day keeps the board's latest brief honest, and sending stays opt-in, so nothing leaves by default.
 - [0012](0012-intake.md) `POST /intake` for website forms: cheap checks first keep floods from costing database work; constant-time compare avoids leaking the secret through timing.
-- [0013](0013-board.md) The board pages, its JSON API and the export: server-rendered lists need no JavaScript, and a text label keeps outside text from becoming a link or title. (partly replaced by 0014)
-- [0014](0014-editable-board.md) The board becomes editable, with a little browser JavaScript: progressive enhancement keeps the board working on a slow phone or with a script error.
+- [0013](0013-board.md) The board pages, its JSON API and the export: server-rendered lists need no JavaScript, and a text label keeps outside text from becoming a link or title. (partly replaced by 0014, 0015, 0021)
+- [0014](0014-editable-board.md) The board becomes editable, with a little browser JavaScript: progressive enhancement keeps the board working on a slow phone or with a script error. (partly replaced by 0017, 0018)
 - [0015](0015-board-look-and-navigation.md) The board's look, its navigation, and the owner's name and accent colour: cards and rows follow v3's rule that only objects get boxes, and read well on a phone in sunlight.
-- [0016](0016-contacts-and-companies.md) Contacts search and sort, contact pages, the Companies view and the demo seed: searching the four fields an owner remembers people by, ignoring case, is what a phone search box should do.
+- [0016](0016-contacts-and-companies.md) Contacts search and sort, contact pages, the Companies view and the demo seed: searching the four fields an owner remembers people by, ignoring case, is what a phone search box should do. (partly replaced by 0027)
 - [0017](0017-board-write-path-and-kanban.md) The board's write path, the change banner and the pipeline kanban: a route table and one checking function let new forms add a line and a handler, never skip a check.
 - [0018](0018-board-editing.md) Editing from the board: forms, changed-fields-only edits, tasks, logging and a deal for a known contact: sending only what changed keeps untrusted_fields honest and stops one tab undoing another's edit.
-- [0019](0019-home-screen-app.md) The board installs to a phone home screen: serving the manifest from the Worker keeps per-copy names and colours in D1, and nothing is cached on the phone.
+- [0019](0019-home-screen-app.md) The board installs to a phone home screen: serving the manifest from the Worker keeps per-copy names and colours in D1, and nothing is cached on the phone. (partly replaced by 0030)
 - [0020](0020-cpu-limits-on-a-big-copy.md) Staying inside the free plan's CPU limit on a big copy: 50 cards is already a long column; the deals that have waited longest are the ones to act on.
 - [0021](0021-phone-actions-and-ask-claude.md) Phone actions (call, text, email, one tap to log) and Ask Claude: a dial string or a bare email address cannot carry a script, a second recipient or a prefilled body.
-- [0022](0022-leads-on-contacts.md) Leads are people with a lead status, not a table of their own: a status on the person avoids copying records, duplicate people and a second table.
+- [0022](0022-leads-on-contacts.md) Leads are people with a lead status, not a table of their own: a status on the person avoids copying records, duplicate people and a second table. (partly replaced by 0040, 0041)
 - [0023](0023-adding-leads.md) Adding leads and deals: the calls 0022 leaves open: summaries and errors are the owner's record of what happened, so 'lead' has to mean one thing in them.
 - [0024](0024-qualify-and-return.md) Qualifying a lead and moving a deal back to leads: the calls 0022 leaves open: refusing details that would be thrown away keeps 'do what I said' honest.
 - [0025](0025-lead-reads.md) How the lead reads count: reusing the gone_quiet test and the company grouping keeps every number in step with the ones the owner knows.
@@ -46,7 +46,7 @@ Add a line here for every new decision (`npm run check:process` fails on a decis
 - [0033](0033-contacts-search-leads-hint.md) A Contacts search that finds only leads points to Leads: One line pointing to Leads stops the owner adding a lead twice, without mixing leads into Contacts.
 - [0034](0034-import-engine.md) One import engine: One engine means the deals, tasks and board imports clean and refuse rows exactly like the contact import.
 - [0035](0035-one-change-at-any-size.md) One change at any size: Each statement stays under D1's limits however many rows there are, so a 2,000-row import is one audited change.
-- [0036](0036-board-import.md) Import people on the board: The file waits in D1, not in URLs or cookies; apply plans again against current data.
+- [0036](0036-board-import.md) Import people on the board: The file waits in D1, not in URLs or cookies; apply plans again against current data. (partly replaced by 0037)
 - [0037](0037-deals-and-tasks-import.md) Import deals and tasks: Ids are the only safe key for matching deals and tasks, so re-importing the same file changes nothing.
 - [0038](0038-my-own-list.md) "This is my own list": A list from outside must not become trusted names, so the box is unticked and values are capped and plain.
 - [0039](0039-mcp-import.md) Import over MCP: Reusing the import drafts keeps one guarded store and one apply path, so MCP imports need no new code paths.
@@ -54,7 +54,7 @@ Add a line here for every new decision (`npm run check:process` fails on a decis
 - [0041](0041-person-tools-and-board.md) Person status tools and board: One label lookup makes a rename show everywhere at once; grouped options keep the status fields honest without JavaScript.
 - [0042](0042-saved-views.md) Saved views: Stored keys survive renames, and default views computed on read show a new status with no code.
 - [0043](0043-table-layout.md) Table layout: A real table gives screen-reader and keyboard users the fields they need, and a scrolling region keeps phones usable.
-- [0044](0044-approve-before-change.md) Approve before change (proposals): Planning through the ordinary services means a proposal can never write what the tool itself would refuse.
+- [0044](0044-approve-before-change.md) Approve before change (proposals): Planning through the ordinary services means a proposal can never write what the tool itself would refuse. (partly replaced by 0045)
 - [0045](0045-ai-edits-setting.md) The "AI edits" setting (record tools propose): Review first by default means no yes-less writes; small taps like logging a call apply at once.
 - [0046](0046-standalone-tasks.md) Standalone tasks: Owners keep personal and business to-dos in one list, without inventing a fake contact to attach them to.
 - [0047](0047-today-list.md) Today works like a list: One place shows everything to do, including tasks with no due date, which the old view hid.

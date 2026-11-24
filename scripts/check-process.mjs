@@ -11,6 +11,7 @@ const ROOT = fileURLToPath(new URL("..", import.meta.url));
 
 const HOOK = ".claude/hooks/precommit-check.mjs";
 const HOOK_LINE = 'const COMMIT_SCRIPT = "check:fast";';
+const PUSH_LINE = 'const PUSH_SCRIPT = "check";';
 const STATUS = "docs/STATUS.md";
 const PLANS = "docs/superpowers/plans";
 const DECISIONS = "docs/decisions";
@@ -31,10 +32,19 @@ function lineCount(text) {
 function checkHook(read) {
   const text = read(HOOK);
   if (text === null) return [`${HOOK} is missing. Restore it (owner-only file; see docs/PROCESS.md).`];
-  if (text.split("\n").some((line) => line.replace(/\r$/, "") === HOOK_LINE)) return [];
-  return [
-    `The pre-commit hook would run the full suite on every commit: ${HOOK} must set COMMIT_SCRIPT to "check:fast" (owner-only file; see docs/PROCESS.md).`,
-  ];
+  const hookLines = text.split("\n").map((line) => line.replace(/\r$/, ""));
+  const problems = [];
+  if (!hookLines.includes(HOOK_LINE)) {
+    problems.push(
+      `The pre-commit hook would run the full suite on every commit: ${HOOK} must set COMMIT_SCRIPT to "check:fast" (owner-only file; see docs/PROCESS.md).`,
+    );
+  }
+  if (!hookLines.includes(PUSH_LINE)) {
+    problems.push(
+      `The hook must run the full check before git push and gh pr create: ${HOOK} must set PUSH_SCRIPT to "check" (owner-only file; see docs/PROCESS.md).`,
+    );
+  }
+  return problems;
 }
 
 function masterSection(lines) {
@@ -78,7 +88,7 @@ function checkStatus(read) {
 }
 
 function newestPlan(list) {
-  const names = list(PLANS).filter((name) => name.endsWith(".md")).sort();
+  const names = list(PLANS).filter((name) => /^\d{4}-\d{2}-\d{2}-.+\.md$/.test(name)).sort();
   return names.length === 0 ? null : `${PLANS}/${names[names.length - 1]}`;
 }
 
@@ -95,9 +105,16 @@ const decisionNames = (list) => list(DECISIONS).filter((name) => /^\d{4}-.+\.md$
 function checkDecisions(read, list) {
   const readme = read(`${DECISIONS}/README.md`);
   if (readme === null) return [`${DECISIONS}/README.md is missing. Add the decisions index and link every decision.`];
-  return decisionNames(list)
-    .filter((name) => !readme.includes(`(${name})`))
-    .map((name) => `Decision ${name} is not in ${DECISIONS}/README.md. Add a link "(${name})" to the index.`);
+  const names = decisionNames(list);
+  const readmeLines = readme.split("\n").map((line) => line.replace(/\r$/, ""));
+  const missing = names
+    .filter((name) => !readmeLines.some((line) => line.startsWith(`- [${name.slice(0, 4)}](${name})`)))
+    .map((name) => `Decision ${name} is not in ${DECISIONS}/README.md. Add a line starting "- [${name.slice(0, 4)}](${name})" to the index.`);
+  const dangling = readmeLines
+    .map((line) => /^- \[\d{4}\]\(([^)]+\.md)\)/.exec(line)?.[1])
+    .filter((file) => file !== undefined && !names.includes(file))
+    .map((file) => `${DECISIONS}/README.md links ${file}, which does not exist.`);
+  return [...missing, ...dangling];
 }
 
 function agentProblem(name, text) {
@@ -147,6 +164,13 @@ function checkProcessDoc(read) {
   const rulesAt = lines.indexOf("## Rules");
   if (facts === -1 || (rulesAt !== -1 && facts > rulesAt)) {
     problems.push(`${PROCESS} needs a "## Where facts live" heading before the "## Rules" heading.`);
+  }
+  else {
+    const next = lines.findIndex((line, i) => i > facts && line.startsWith("#"));
+    const body = lines.slice(facts + 1, next === -1 ? undefined : next);
+    if (!body.some((line) => line.trim() !== "")) {
+      problems.push(`${PROCESS} has an empty "## Where facts live" section. Say where each kind of fact lives.`);
+    }
   }
   const rules = rulesIn(lines);
   if (rules.length === 0) problems.push(`${PROCESS} has no rules. Add a "### <name>" subsection under "## Rules" for each rule.`);

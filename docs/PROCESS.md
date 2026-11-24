@@ -15,7 +15,7 @@ was decided and what enforces it; `npm run check:process` fails if a rule has no
 **What:** Every commit runs `npm run check:fast`. It covers the config guard, lint, typecheck and only the unit tests the uncommitted change can reach. Every `git push` and `gh pr create` runs the full `npm run check`, which adds all unit tests, the e2e tests and the build. CI runs the full suite on every PR.
 **Why:** Run 6 ran the full check on about 45 commits. The full check before push and in CI still guards everything that lands.
 **Decided:** 2026-11-24, run 7 brief (decision 0052)
-**Enforced by:** `.claude/hooks/precommit-check.mjs` (`COMMIT_SCRIPT`, `PUSH_SCRIPT`), `npm run check:process`, CI's required `check` job.
+**Enforced by:** `.claude/hooks/precommit-check.mjs` (`COMMIT_SCRIPT`, `PUSH_SCRIPT`; arrives with the owner's run 7 batch, until then the hook runs the full check on every commit), `npm run check:process`, CI's required `check` job.
 
 ### check:fast falls back to everything when unsure
 **What:** check:fast runs all unit tests when it is not sure which ones a change reaches. That happens for package files, tsconfig, the ESLint config, wrangler.jsonc, config/, migrations, the seed, test runtime helpers, a deleted code file, a git failure, or a file no test names. It also runs everything when over 60% of tests would be picked. Tests that scan the whole source tree always run.

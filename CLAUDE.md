@@ -15,7 +15,8 @@ clearly one or the other, ask me.
 - One branch per change, named `type/short-name` (for example `feat/faq-section`,
   `fix/nav-focus`, `chore/claude-md`).
 - Plan first and wait for my approval before editing anything.
-- If a check fails (the hooks run them, see "Protected folders"), stop and show me the exact
+- Run `npm run check:fast` before every commit and the full `npm run check` before every push and
+  PR (the hooks run them, see "Protected folders"). If a check fails, stop and show me the exact
   error; do not commit or push.
 - When the work is done, open a pull request. Once its review passes, queue auto-merge with exactly
   `gh pr merge <number> --auto --squash` (the hook also lets `--auto --merge` through); the ruleset's
@@ -85,8 +86,9 @@ These can go stale if the ruleset is changed in Settings, so re-check before rel
   description rules below still apply (for example, ask before adding a dependency, and list
   changes to these files on the "Needs your eyes" line).
 - The pre-commit hook (`.claude/hooks/precommit-check.mjs`) runs `npm run check:fast` on every
-  commit. A push hook runs the full `npm run check` before every `git push` and `gh pr create`.
-  CI runs the full suite on every PR (docs/PROCESS.md, decision 0052).
+  commit, and the full `npm run check` before every `git push` and `gh pr create`; CI runs the full
+  suite on every PR (docs/PROCESS.md, decision 0052). Until the owner applies run 7's hook batch, the
+  hook still runs the full `npm run check` on every commit and nothing on push.
 
 ## Decision authority (fast lane)
 - Default for every task: plan, decide and build without asking me. Make implementation, layout, naming, refactor and test-placement decisions yourself, following AGENTS.md, docs/SPEC.md and docs/PLAN.md.
@@ -136,7 +138,7 @@ Everything else in this file still holds.
   folder. The accessibility and Lighthouse checks start it themselves.
 - The check scripts are in AGENTS.md "Checks"; `npm run types` is in its "Types" bullet. Run `npm run build`
   before `test:a11y` and `test:lighthouse`.
-- Wrangler only through these npm scripts, only locally. Never `wrangler deploy`, `wrangler login`
+- Wrangler only through the npm scripts (these and AGENTS.md "Checks"), only locally. Never `wrangler deploy`, `wrangler login`
   or anything with `--remote`.
 - `npm run copies:provision`, `copies:update`, `copies:export` and `import:contacts` reach real client
   accounts: only I run them for real. You and CI may run them only with `--dry-run`, with `--local`, or with

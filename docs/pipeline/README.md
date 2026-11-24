@@ -1,4 +1,4 @@
-> This folder is an unchanged copy of huston-logic/site-template's handbook; that copy is the truth. Read this folder only for a task about hooks, CI or deploy.
+> This folder is a copy of huston-logic/site-template's handbook, unchanged apart from this note; that copy is the truth. Read this folder only for a task about hooks, CI or deploy.
 
 # Delivery pipeline handbook
 

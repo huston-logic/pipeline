@@ -20,15 +20,17 @@ const PROCESS_MD = [
   "text",
 ].join("\n");
 
+const HOOK_OK = 'const A = 1;\nconst COMMIT_SCRIPT = "check:fast";\nconst PUSH_SCRIPT = "check";\n';
+
 const lines = (n, line = "x") => Array.from({ length: n }, () => line).join("\n");
 
 function baseFiles() {
   return {
-    ".claude/hooks/precommit-check.mjs": 'const A = 1;\nconst COMMIT_SCRIPT = "check:fast";\n',
+    ".claude/hooks/precommit-check.mjs": HOOK_OK,
     "docs/STATUS.md": "# Status\n\n## Current state\nok\n\n## For the master\nScope grew a little.\n\n## Changelog\nnone\n",
     "docs/superpowers/plans/2026-01-01-old.md": lines(400),
     "docs/superpowers/plans/2026-02-01-new.md": lines(20),
-    "docs/decisions/README.md": "- [one](0001-one.md)\n- [two](0002-two.md)\n",
+    "docs/decisions/README.md": "- [0001](0001-one.md) one\n- [0002](0002-two.md) two\n",
     "docs/decisions/0001-one.md": "x",
     "docs/decisions/0002-two.md": "x",
     ".claude/agents/review-code.md": "---\nname: review-code\nmodel: sonnet\n---\nbody",
@@ -58,10 +60,20 @@ test("a fully passing fixture has no problems", () => {
 });
 
 test("hook must set COMMIT_SCRIPT to check:fast", () => {
-  const problems = problemsFor({ ".claude/hooks/precommit-check.mjs": 'const COMMIT_SCRIPT = "check";\n' });
+  const problems = problemsFor({ ".claude/hooks/precommit-check.mjs": HOOK_OK.replace('"check:fast"', '"check"') });
   assert.equal(problems.length, 1);
   assert.match(problems[0], /full suite/);
   assert.match(problems[0], /check:fast/);
+});
+
+test("hook must set PUSH_SCRIPT to check, as its own problem", () => {
+  const problems = problemsFor({ ".claude/hooks/precommit-check.mjs": HOOK_OK.replace('PUSH_SCRIPT = "check"', 'PUSH_SCRIPT = "check:fast"') });
+  assert.equal(problems.length, 1);
+  assert.equal(
+    problems[0],
+    'The hook must run the full check before git push and gh pr create: .claude/hooks/precommit-check.mjs must set PUSH_SCRIPT to "check" (owner-only file; see docs/PROCESS.md).',
+  );
+  assert.equal(problemsFor({ ".claude/hooks/precommit-check.mjs": 'const COMMIT_SCRIPT = "check:fast";\n' }).length, 1);
 });
 
 test("a missing hook file has its own message", () => {
@@ -113,6 +125,10 @@ test("the newest plan by name is checked; an older long plan is ignored", () => 
   assert.match(problems[0], /151 lines/);
 });
 
+test("only dated plan names count as the newest plan", () => {
+  assert.deepEqual(problemsFor({ "docs/superpowers/plans/README.md": lines(400), "docs/superpowers/plans/zzz.md": lines(400) }), []);
+});
+
 test("no plans is fine", () => {
   assert.deepEqual(
     problemsFor({
@@ -127,6 +143,20 @@ test("a decision missing from the index fails", () => {
   const problems = problemsFor({ "docs/decisions/0003-three.md": "x" });
   assert.equal(problems.length, 1);
   assert.match(problems[0], /0003-three\.md/);
+});
+
+test("a decision counts as indexed only by a line starting with its number link", () => {
+  const readme = "- [0001](0001-one.md) one\nSee also (0002-two.md) in text\n- [two](0002-two.md)\n";
+  const problems = problemsFor({ "docs/decisions/README.md": readme });
+  assert.equal(problems.length, 1);
+  assert.match(problems[0], /0002-two\.md/);
+});
+
+test("an index line whose file does not exist fails", () => {
+  const readme = "- [0001](0001-one.md)\n- [0002](0002-two.md)\n- [0009](0009-gone.md)\n";
+  const problems = problemsFor({ "docs/decisions/README.md": readme });
+  assert.equal(problems.length, 1);
+  assert.equal(problems[0], "docs/decisions/README.md links 0009-gone.md, which does not exist.");
 });
 
 test("non-decision files in docs/decisions are ignored", () => {
@@ -164,6 +194,13 @@ test("PROCESS.md needs Where facts live before Rules", () => {
   assert.equal(problemsFor({ "docs/PROCESS.md": late }).length, 1);
 });
 
+test("an empty Where facts live section fails", () => {
+  const empty = PROCESS_MD.replace("Status in STATUS.md.\n", "  \n");
+  const problems = problemsFor({ "docs/PROCESS.md": empty });
+  assert.equal(problems.length, 1);
+  assert.match(problems[0], /Where facts live/);
+});
+
 test("a rule with an empty Why fails and names the rule", () => {
   const problems = problemsFor({ "docs/PROCESS.md": PROCESS_MD.replace("**Why:** Easy to undo.", "**Why:**   ") });
   assert.equal(problems.length, 1);
@@ -188,9 +225,10 @@ test("runCli prints each problem and returns 1", () => {
   const out = [];
   const code = runCli({ ...run({ ".claude/hooks/precommit-check.mjs": "nope" }), log: (line) => out.push(line) });
   assert.equal(code, 1);
-  assert.equal(out.length, 2);
+  assert.equal(out.length, 3);
   assert.match(out[0], /^check:process: The pre-commit hook/);
-  assert.equal(out[1], "check:process: 1 problem(s). See docs/PROCESS.md.");
+  assert.match(out[1], /^check:process: The hook must run the full check/);
+  assert.equal(out[2], "check:process: 2 problem(s). See docs/PROCESS.md.");
 });
 
 test("runCli prints a summary and returns 0 on a pass", () => {
