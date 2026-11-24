@@ -140,7 +140,7 @@ export async function updateContact(ctx: Ctx, contactRef: string, patch: Contact
     confirmed.push(column);
   }
   if (patch.fields !== undefined) {
-    await checkFieldValues(db, "contact", patch.fields);
+    await checkFieldValues(ctx, "contact", patch.fields);
     set.fields = mergeFields(before.fields, patch.fields);
     confirmed.push(...Object.keys(patch.fields).map((key) => `fields.${key}`));
   }
@@ -162,7 +162,7 @@ export async function updateContact(ctx: Ctx, contactRef: string, patch: Contact
   }
   if (byStatus) {
     if (before.archived === 1) throw new UserError(`${capitalize(contactName(before))} is archived, so their status can't change.`);
-    const { move } = await resolveMove(db, before, { status: patch.personStatus ?? before.person_status, sub: patch.subStatus });
+    const { move } = await resolveMove(ctx, before, { status: patch.personStatus ?? before.person_status, sub: patch.subStatus });
     if (move.status !== before.person_status || move.sub !== before.sub_status) {
       // Lead is refused while they have an open deal (invariant 1), and checked again inside the batch below.
       if (move.status === LEAD && move.sub !== null) await checkLeadStatus(ctx, before, move.sub as LeadStatus);
@@ -170,7 +170,7 @@ export async function updateContact(ctx: Ctx, contactRef: string, patch: Contact
     }
   }
   const followUp = clean(patch.followUpDate);
-  const tz = await ownerTimezone(db);
+  const tz = await ownerTimezone(ctx);
   const leadAfter = "lead_status" in set ? (set.lead_status as LeadStatus | null) : before.lead_status;
   if (followUp !== null && leadAfter !== "not_now") {
     throw new UserError(
@@ -199,7 +199,7 @@ export async function updateContact(ctx: Ctx, contactRef: string, patch: Contact
   const who = contactName(after);
   // A move by person status says where to, by the owner's labels; a lead status alone says that, as before.
   const moved = changed.includes("person_status") || changed.includes("sub_status");
-  const names = moved || changed.includes("lead_status") ? await statusLabels(db) : null;
+  const names = moved || changed.includes("lead_status") ? await statusLabels(ctx) : null;
   const status =
     names === null
       ? []

@@ -21,12 +21,22 @@ proposes, how its refusals read, and what "on an existing person or deal" means 
   Apply small changes (change chg_...)"); like every setting it is one audited change that `undo_change` reverses.
   Server rule 5 already covers it: change it only when the owner asks.
 - **Small** (`isSmallAction`, `src/mcp/record-write.ts`): `log_activity` with type `call` or `note` whose deal and
-  contact are existing records (an id or a name, never `@n`), and `complete_task`. Everything else is proposed under
-  both settings, including an email or meeting log, a snooze, a new task and every edit to a person or a deal.
+  contact are existing records (an id or a name, never `@n`), and `complete_task`; decision 0049 adds `start_timer` on
+  existing records and `stop_timer` without a next-step date. Everything else is proposed under both settings,
+  including an email or meeting log, a snooze, a new task and every edit to a person or a deal.
+- **How a small change names its records.** Applied at once, a small action runs its service directly, so a name is
+  found with the services' exact-name lookup (`findContact`, `findDeal` in `src/services/lookup.ts`: an id or an exact
+  name, and several matches are refused with each one's id), not with `name-match.ts` and its outside-name protection,
+  which only a proposal uses. This holds for `log_activity` and `complete_task`, and alike for `start_timer` and
+  `stop_timer` (decision 0049): `start_timer`'s person, deal or task is found the same way (`resolveLinks`,
+  `findSubject`), and `stop_timer` names no record, only a work type (`findWorkType`: an id or an exact name). An exact
+  name that came from outside can be matched here, as it always could by the record tools before proposals, and the
+  change is one audited, undoable row.
 - **The switch** (`recordWrite(deps, action)`): every record tool's `run` is
   `recordWrite(deps, { action: "<tool>", ...args })`. Names, inputs and annotations stay; each description ends with
-  "Unless the owner chose Apply small changes, this returns a proposal for the owner to approve; nothing changes until
-  apply_changes." A small action under Apply small changes runs its service at once (actor `ai`, the tool's name)
+  "Unless the owner chose Apply small changes and this is a small change, this returns a proposal for the owner to
+  approve; nothing changes until apply_changes." (the words "and this is a small change" added in the run 6 final
+  review, since a non-small action is proposed under both settings) A small action under Apply small changes runs its service at once (actor `ai`, the tool's name)
   and answers the service's summary line and the ids the tool always answered. Anything else calls `proposeChanges`
   with the one action and answers through `proposeResult` (`src/mcp/tools-proposals.ts`), the very function
   `propose_changes` answers with, so the list, the questions ("Which Dana? ..."), the JSON and the expiry are exactly
@@ -39,8 +49,10 @@ proposes, how its refusals read, and what "on an existing person or deal" means 
 - **Instructions:** rule 4 now says "Each write answers with that line" (a record tool's first answer is a list, and
   the change line comes from `apply_changes`); a new rule 7 says record edits need the owner's yes, to send every
   action in one `propose_changes`, to show the list as returned, the three replies (`Yes`, `Yes with changes: ...`,
-  `No`), that the record tools also propose unless Apply small changes is on, and to ask rather than guess when a name
-  matches several records.
+  `No`), and to ask rather than guess when a name matches several records. Since the run 6 final review it says it per
+  setting: under Review first every record edit goes through `propose_changes`; under Apply small changes a small
+  change (a call or note on an existing person or deal, completing a task, starting a timer, stopping one without a
+  next-step date) uses its record tool directly, and everything else goes through `propose_changes`.
 
 ## Why
 

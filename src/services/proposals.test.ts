@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { buildFixtureSeed } from "../../tests/helpers/fixture-seed.ts";
 import { WORK_TYPES_SQL } from "../../tests/helpers/time-seed.ts";
 import { type AuditRow, type Db, type ProposalRow, TABLE_NAMES } from "../db/db.ts";
-import { createTestDb, type SqliteD1 } from "../db/sqlite-d1.ts";
+import { createTestDb, type SqliteD1, type SqliteStatement } from "../db/sqlite-d1.ts";
 import { DEFAULT_TZ } from "../time.ts";
 import type { ChangeInput, Ctx, Row } from "./change.ts";
 import { updateContact } from "./contacts.ts";
@@ -20,7 +20,7 @@ import {
   proposeChanges,
   TRIAL_SENTINEL,
 } from "./proposals.ts";
-import { proposalList } from "./proposal-text.ts";
+import { shownList } from "./proposal-text.ts";
 import { updateSettings } from "./settings.ts";
 import { updateStage } from "./stages.ts";
 import { undoChange } from "./undo.ts";
@@ -228,7 +228,7 @@ test("time shows in the Time group, from the rows the plan would write", async (
   const db = await setup();
   db.exec(`UPDATE settings SET time_tracking = 1; ${WORK_TYPES_SQL}`);
   const entry = await propose(db, [{ action: "add_time_entry", contact: "Pat", startedAt: "2026-11-19T07:30", endedAt: "2026-11-19T09:00", workType: "Design" }]);
-  assert.equal(entry.text.split("\n").slice(2, 4).join("\n"), "Time\n- Time 1 h 30 min, Design, billable at $95.00/h ($142.50), for Pat Example");
+  assert.equal(entry.text.split("\n").slice(2, 4).join("\n"), "Time\n- Time 1 h 30 min, Design, billable at $95.00/h ($142.50), for Pat Example: started Thu Nov 19, 7:30 AM");
   assert.equal(entry.list.time[0]?.id.startsWith("te_"), true);
 
   const timer = await propose(db, [{ action: "start_timer", deal: "dl_seed01" }]);
@@ -246,7 +246,7 @@ test("time shows in the Time group, from the rows the plan would write", async (
       "Time",
     ].join("\n"),
   );
-  assert.ok(stop.text.includes('\n- Time 1 h 30 min, Design, billable at $95.00/h ($142.50), for "Website refresh for Example Plumbing" (Pat Example)\n'));
+  assert.ok(stop.text.includes('\n- Time 1 h 30 min, Design, billable at $95.00/h ($142.50), for "Website refresh for Example Plumbing" (Pat Example): notes Homepage draft done.\n'));
   // Stored with the end it was asked at, so a later yes stores the same span.
   const stored = JSON.parse((await proposal(db, stop.id))?.actions ?? "[]") as Record<string, unknown>[];
   assert.equal(stored[0]?.endedAt, NOW.toISOString());
@@ -261,7 +261,7 @@ test("a time entry's task shows on its line, and a task-only edit lists the task
   const added = await propose(db, [{ action: "add_time_entry", task: "tk_seed01", startedAt: "2026-11-19T08:00", minutes: 15 }]);
   assert.equal(
     added.text.split("\n").slice(2, 4).join("\n"),
-    'Time\n- Time 15 min, not billable, for "Website refresh for Example Plumbing" (Pat Example): task "Prepare questions for Pat\'s call"',
+    'Time\n- Time 15 min, not billable, for "Website refresh for Example Plumbing" (Pat Example): task "Prepare questions for Pat\'s call"; started Thu Nov 19, 8:00 AM',
   );
 
   db.exec(
@@ -278,20 +278,23 @@ test("a time entry's task shows on its line, and a task-only edit lists the task
   assert.match(cleared.text, /\n- Time 1 h, [^\n]*: task "Prepare questions for Pat's call" -> \(none\)\n/);
 });
 
-test("a list that would write a row it doesn't show is refused: nothing is proposed", async () => {
+test("a list that would write a column it doesn't show is refused: nothing is proposed", async () => {
   const db = await setup();
   const deal = await db.prepare("SELECT * FROM deals WHERE id = 'dl_seed01'").first<Row>();
   assert.ok(deal);
-  // A change whose only write is a column the list never shows (a deal's last-contact time).
-  const input: ChangeInput = {
-    target: { table: "deals", id: "dl_seed01" },
-    summary: "",
-    changes: [{ table: "deals", id: "dl_seed01", before: deal, after: { ...deal, last_activity_at: NOW.toISOString(), version: Number(deal.version) + 1 } }],
-  };
-  const list = await proposalList(db, input, DEFAULT_TZ, NOW);
-  assert.deepEqual(Object.values(list).flat(), [], "the renderer skips it");
-  assert.throws(() => checkListShows(input, list), /^Error: This list would change records it doesn't show\. Nothing was proposed\.$/);
-  assert.doesNotThrow(() => checkListShows({ ...input, changes: [] }, list));
+  // A change whose only write is a column the list never shows (a deal's last-contact time): nothing to show, no gap.
+  const touched = { table: "deals" as const, id: "dl_seed01", before: deal, after: { ...deal, last_activity_at: NOW.toISOString(), version: Number(deal.version) + 1 } };
+  const quiet = await shownList(db, { target: { table: "deals", id: "dl_seed01" }, summary: "", changes: [touched] }, DEFAULT_TZ, NOW);
+  assert.deepEqual(Object.values(quiet.list).flat(), [], "the renderer skips it");
+  assert.deepEqual(quiet.unshown, []);
+  // A task added with a rule's source: the list shows the task, but not that a rule made it.
+  const task: Row = { id: "tk_new", deal_id: "dl_seed01", contact_id: "ct_seed01", title: "Call Pat", due_at: null, done_at: null, snoozed_until: null, source: "ru_seed01", untrusted_fields: "[]", version: 1, created_at: NOW.toISOString(), updated_at: NOW.toISOString() };
+  const input: ChangeInput = { target: { table: "tasks", id: "tk_new" }, summary: "", changes: [touched, { table: "tasks", id: "tk_new", before: null, after: task }] };
+  const { list, unshown } = await shownList(db, input, DEFAULT_TZ, NOW);
+  assert.equal(list.tasks.length, 1);
+  assert.deepEqual(unshown, ["tasks:tk_new source"]);
+  assert.throws(() => checkListShows(unshown), /^Error: This list would change records it doesn't show\. Nothing was proposed\.$/);
+  assert.doesNotThrow(() => checkListShows([]));
 });
 
 test("a timer started by another write while the list is made is the timer's own refusal; at apply, a fresh-list answer", async () => {
@@ -575,6 +578,55 @@ test("a list whose apply would fail is refused at propose", async () => {
   assert.equal((await audits(db)).length, 2);
 });
 
+/** The database, counting the trial batches (those ending in TRIAL_SENTINEL) it runs. */
+function countingTrials(db: SqliteD1): Db & { trials: () => number } {
+  let trials = 0;
+  return {
+    trials: () => trials,
+    prepare: (sql: string) => db.prepare(sql),
+    batch: async (statements) => {
+      if ((statements.at(-1) as unknown as SqliteStatement | undefined)?.sql === TRIAL_SENTINEL) trials++;
+      return db.batch(statements);
+    },
+  } as Db & { trials: () => number };
+}
+
+/** Three people with no open deal made Not now leads, and a deal for two of them: three "no open deal" guards. */
+const THREE_LEADS: RecordAction[] = [
+  { action: "update_contact", contact: "ct_seed07", leadStatus: "not_now" },
+  { action: "update_contact", contact: "ct_seed08", leadStatus: "not_now" },
+  { action: "update_contact", contact: "ct_lone", leadStatus: "not_now" },
+  { action: "add_deal", contact: "ct_seed08", dealTitle: "Brake service page" },
+  { action: "add_deal", contact: "ct_lone", dealTitle: "Shop front page" },
+];
+
+test("a refusal names its two actions with at most two more trials, and never plans the list again", async () => {
+  const db = await setup();
+  // Two guards (Alex's and Sam's); Sam's breaks: the second trial (Alex's guard alone) passes, so it's Sam's.
+  const two = countingTrials(db);
+  await assert.rejects(
+    proposeChanges(ctxFor(two), { actions: [THREE_LEADS[0], THREE_LEADS[1], THREE_LEADS[3]] as RecordAction[] }, DEPS),
+    /^UserError: Action 3 and action 2 can't be in one list: a lead can't have an open deal\. Send them as two lists\.$/,
+  );
+  assert.equal(two.trials(), 3, "the list's own trial, the rows alone, then the first guard alone");
+  const one = countingTrials(db);
+  await assert.rejects(propose(db, LEAD_THEN_DEAL), /^UserError: Action 2 and action 1 can't be in one list/);
+  await assert.rejects(proposeChanges(ctxFor(one), { actions: LEAD_THEN_DEAL }, DEPS), /can't be in one list/);
+  assert.equal(one.trials(), 2, "one guard: the rows alone are the only extra trial");
+});
+
+test("past two guards, the refusal is one fixed sentence that names no action", async () => {
+  const db = await setup();
+  db.exec("INSERT INTO contacts (id, name) VALUES ('ct_lone', 'Lone Example')");
+  const trials = countingTrials(db);
+  await assert.rejects(
+    proposeChanges(ctxFor(trials), { actions: THREE_LEADS }, DEPS),
+    /^UserError: This list can't be applied as one change\. Send it as smaller lists\.$/,
+  );
+  assert.equal(trials.trials(), 2, "the list's own trial and the rows alone");
+  assert.equal((await counts(db)).proposals, 0);
+});
+
 test("the trial writes nothing", async () => {
   const db = await setup();
   const before = await counts(db);
@@ -587,13 +639,17 @@ test("the trial writes nothing", async () => {
   assert.deepEqual({ ...alex }, { version: 1, lead_status: null });
 });
 
-/** The database, with `first` run just before its first batch: another write landing at that moment. */
+/** A batch of reads only: the request memo's and the name matching's batches (decision 0044, "D1 calls"). */
+const readsOnly = (statements: readonly D1PreparedStatement[]) =>
+  statements.every((statement) => /^\s*(SELECT|WITH)\b/i.test((statement as unknown as SqliteStatement).sql));
+
+/** The database, with `first` run just before its first batch that writes: another write landing at that moment. */
 function racing(db: SqliteD1, first: () => Promise<void>): Db {
   let done = false;
   return {
     prepare: (sql: string) => db.prepare(sql),
     batch: async (statements) => {
-      if (!done) {
+      if (!done && !readsOnly(statements)) {
         done = true;
         await first();
       }
@@ -604,7 +660,7 @@ function racing(db: SqliteD1, first: () => Promise<void>): Db {
 
 test("a record that moves between the plan and the trial is a fresh-list answer, not a conflict", async () => {
   const db = await setup();
-  // The first batch of the propose is the trial: Pat's row moves just before it, as another write would.
+  // The first batch of the propose that writes is the trial: Pat's row moves just before it, as another write would.
   const bump = async () => void (await db.prepare("UPDATE contacts SET version = version + 1 WHERE id = 'ct_seed01'").run());
   await assert.rejects(
     proposeChanges(ctxFor(racing(db, bump)), { actions: [{ action: "update_contact", contact: "ct_seed01", phone: "555-0199" }] }, DEPS),

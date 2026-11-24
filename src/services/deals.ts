@@ -13,9 +13,8 @@ import { LEAD_STATUS_LABELS } from "./lead-status.ts";
 import { CLIENT, CONTACT } from "./person-move.ts";
 import { clientIfWon, clientLabel } from "./person-status.ts";
 import {
-  contactById,
   type FieldValues,
-  findDeal,
+  findDealWithOwner,
   findStage,
   firstStageOfKind,
   mergeFields,
@@ -39,9 +38,8 @@ export interface DealPatch {
 const STATUS_WORDS: Record<DealStatus, string> = { open: "open", won: "won", lost: "lost", not_now: "not now" };
 
 async function targetStage(ctx: Ctx, deal: DealRow, patch: DealPatch): Promise<StageRow | null> {
-  const { db } = ctx;
   if (patch.stage !== undefined) {
-    const stage = await findStage(db, patch.stage);
+    const stage = await findStage(ctx, patch.stage);
     if (patch.status !== undefined && patch.status !== stage.kind) {
       throw new UserError(
         `${stage.label} is ${withArticle(STATUS_WORDS[stage.kind])} stage, ` +
@@ -52,13 +50,13 @@ async function targetStage(ctx: Ctx, deal: DealRow, patch: DealPatch): Promise<S
   }
   if (patch.status === undefined || patch.status === deal.status) return null;
   if (patch.status === "open") {
-    const first = await firstStageOfKind(db, "open");
+    const first = await firstStageOfKind(ctx, "open");
     const example = first ? ` (for example ${first.key})` : "";
     throw new UserError(
       `Say which open stage to move ${dealTitle(deal)} back to${example}; the status follows the stage.`,
     );
   }
-  const stage = await firstStageOfKind(db, patch.status);
+  const stage = await firstStageOfKind(ctx, patch.status);
   if (!stage) {
     throw new UserError(`There's no ${STATUS_WORDS[patch.status]} stage to move it to. Add one with add_stage first.`);
   }
@@ -66,11 +64,8 @@ async function targetStage(ctx: Ctx, deal: DealRow, patch: DealPatch): Promise<S
 }
 
 export async function updateDeal(ctx: Ctx, dealRef: string, patch: DealPatch): Promise<ChangeResult & { dealId: string }> {
-  const { db } = ctx;
-  const before = await findDeal(ctx, dealRef);
-  const tz = await ownerTimezone(db);
-  const contact = await contactById(ctx, before.contact_id);
-  if (!contact) throw new Error(`Deal ${before.id} points at a missing contact.`);
+  const { deal: before, contact } = await findDealWithOwner(ctx, dealRef);
+  const tz = await ownerTimezone(ctx);
   // An archived deal (often one moved back to leads) stays as it is; reopening it would hide an open deal.
   if (before.archived === 1) {
     throw new UserError(`${capitalize(dealLabel(before, contact))} is archived. Undo the change that archived it to bring it back.`);
@@ -98,7 +93,7 @@ export async function updateDeal(ctx: Ctx, dealRef: string, patch: DealPatch): P
   if (patch.nextStep !== undefined) set.next_step = clean(patch.nextStep);
   if (patch.nextAt !== undefined) set.next_at = whenOrNull(patch.nextAt, tz);
   if (patch.fields !== undefined) {
-    await checkFieldValues(db, "deal", patch.fields);
+    await checkFieldValues(ctx, "deal", patch.fields);
     set.fields = mergeFields(before.fields, patch.fields);
   }
 
@@ -118,7 +113,7 @@ export async function updateDeal(ctx: Ctx, dealRef: string, patch: DealPatch): P
   // Qualified by this same change is a Contact by then, so they become a Client too, in one move of their row.
   const markedWon = before.status !== "won" && after.status === "won";
   const asContact = qualified === null ? contact : (qualified.after as ContactRow);
-  const client = markedWon ? await clientIfWon(db, asContact, ctx.now) : null;
+  const client = markedWon ? await clientIfWon(ctx, asContact, ctx.now) : null;
   if (client !== null && qualified !== null) {
     changes.push({ ...qualified, after: withPersonStatus(contact, { status: CONTACT, sub: CLIENT }, ctx.now) });
   } else if (client !== null) {
@@ -126,7 +121,7 @@ export async function updateDeal(ctx: Ctx, dealRef: string, patch: DealPatch): P
   } else if (qualified !== null) {
     changes.push(qualified);
   }
-  const labels = await stageLabels(db);
+  const labels = await stageLabels(ctx);
   if (moved) {
     const activity: ActivityRow = {
       id: newId("ac"),
@@ -153,7 +148,7 @@ export async function updateDeal(ctx: Ctx, dealRef: string, patch: DealPatch): P
     .filter((c) => ["title", "value", "fields"].includes(c))
     .map((c) => (c === "fields" ? fieldsLabel(parseObject(before.fields), parseObject(after.fields)) : columnLabel(c)));
   if (others.length > 0) parts.push(`changed ${joinAnd(others)}`);
-  const clientWord = client === null ? null : withArticle(await clientLabel(db));
+  const clientWord = client === null ? null : withArticle(await clientLabel(ctx));
   if (qualified !== null) {
     parts.push(`${contactName(contact)} is now ${LEAD_STATUS_LABELS.qualified}${clientWord === null ? "" : ` and ${clientWord}`}`);
   } else if (clientWord !== null) {

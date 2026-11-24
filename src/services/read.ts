@@ -315,14 +315,59 @@ export async function whatsDue(db: Db, now: Date, tz: string): Promise<WhatsDue>
 /** An open task for Today's list: the task item and when it was made, for the newest-first sort (decision 0047). */
 export type OpenTask = TaskItem & { createdAt: string };
 
-/** Every open task that is awake (not snoozed past now), dated or not, in no particular order. */
-export async function openTasks(db: Db, now: Date, tz: string): Promise<OpenTask[]> {
-  const found = await rows<TaskJoin>(
-    db,
-    `${TASK_SELECT} WHERE t.done_at IS NULL AND (t.snoozed_until IS NULL OR t.snoozed_until <= ?) ORDER BY t.id`,
-    [now.toISOString()],
-  );
-  return found.map((row) => ({ ...toTaskItem(row, tz), createdAt: row.created_at }));
+/** Today's sorts and filters (decision 0047): the address's `sort` and `show`. */
+export const TASK_SORTS = ["due", "newest", "subject"] as const;
+export const TASK_SHOWS = ["all", "linked", "standalone"] as const;
+export type TaskSort = (typeof TASK_SORTS)[number];
+export type TaskShow = (typeof TASK_SHOWS)[number];
+export type TaskView = { sort: TaskSort; show: TaskShow };
+
+/**
+ * Each sort's order, ties broken by id. Due: the soonest first, so overdue ones (the earliest) lead. Newest: the latest
+ * made first. Person: by the person's name (the deal's person for a task on a deal), ignoring ASCII case, standalone
+ * tasks last, then as Due.
+ */
+const TASK_ORDER: Record<TaskSort, string> = {
+  due: "t.due_at, t.created_at, t.id",
+  newest: "t.created_at DESC, t.id",
+  subject: "c.name IS NULL, lower(c.name), t.due_at, t.created_at, t.id",
+};
+
+/** A standalone task has no deal and no person (a task on a deal always has the deal's person). */
+const TASK_FILTER: Record<TaskShow, string> = {
+  all: "",
+  linked: " AND (t.deal_id IS NOT NULL OR t.contact_id IS NOT NULL)",
+  standalone: " AND t.deal_id IS NULL AND t.contact_id IS NULL",
+};
+
+export interface OpenTaskLists {
+  /** To do: the dated open tasks, sorted, at most `limit`. */
+  todo: OpenTask[];
+  /** Needs a due date: the undated ones, sorted, at most `limit`. */
+  undated: OpenTask[];
+  /** How many each list holds in all. */
+  totals: { todo: number; undated: number };
+}
+
+/**
+ * Today's two lists of open, awake tasks (not snoozed past now), filtered and sorted in SQL, each cut to `limit`, with
+ * each list's total: one D1 batch, whatever the number of open tasks.
+ */
+export async function openTaskLists(db: Db, now: Date, tz: string, view: TaskView, limit: number): Promise<OpenTaskLists> {
+  const open = `t.done_at IS NULL AND (t.snoozed_until IS NULL OR t.snoozed_until <= ?)${TASK_FILTER[view.show]}`;
+  const list = (dated: boolean) =>
+    db
+      .prepare(`${TASK_SELECT} WHERE ${open} AND t.due_at IS ${dated ? "NOT " : ""}NULL ORDER BY ${TASK_ORDER[view.sort]} LIMIT ?`)
+      .bind(now.toISOString(), limit);
+  const [todo, undated, totals] = await db.batch([
+    list(true),
+    list(false),
+    db.prepare(`SELECT t.due_at IS NULL AS undated, COUNT(*) AS n FROM tasks t WHERE ${open} GROUP BY 1`).bind(now.toISOString()),
+  ]);
+  const items = (found: D1Result | undefined) =>
+    ((found?.results ?? []) as TaskJoin[]).map((row) => ({ ...toTaskItem(row, tz), createdAt: row.created_at }));
+  const total = (undatedOnes: number) => ((totals?.results ?? []) as { undated: number; n: number }[]).find((row) => row.undated === undatedOnes)?.n ?? 0;
+  return { todo: items(todo), undated: items(undated), totals: { todo: total(0), undated: total(1) } };
 }
 
 export interface TaskListFilter {

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { createTestDb } from "../db/sqlite-d1.ts";
 import { SERVER_INSTRUCTIONS } from "./instructions.ts";
 
 test("the server instructions hold the spec's four rules", () => {
@@ -103,11 +104,14 @@ test("rule 7: record edits need the owner's yes, with the three replies quoted e
   const rule = SERVER_INSTRUCTIONS.split("\n").find((line) => line.startsWith("7. ")) ?? "";
   assert.equal(
     rule,
-    "7. Record edits need the owner's yes. For contacts, leads, deals, activities, tasks and time, call propose_changes " +
-      "with every action the owner asked for, in one call, and show the owner the list exactly as returned. Call " +
-      'apply_changes only after the owner says yes. The owner answers "Yes", "Yes with changes: ..." (send a revised ' +
-      'list with replaces) or "No" (apply nothing). The record tools themselves also return a proposal unless the owner ' +
-      'chose Apply small changes. When propose_changes asks a question ("Which Dana?"), ask the owner; never guess.',
+    "7. Record edits need the owner's yes. Under Review first (the default; get_settings shows aiEdits), every edit to " +
+      "contacts, leads, deals, activities, tasks and time goes through propose_changes. Under Apply small changes, a small " +
+      "change uses its record tool directly (a call or note logged on an existing person or deal, completing a task, " +
+      "starting a timer, or stopping one without a next-step date), and everything else goes through propose_changes. " +
+      "Send propose_changes every action the owner asked for, in one call, and show the owner the list exactly as " +
+      'returned. Call apply_changes only after the owner says yes. The owner answers "Yes", "Yes with changes: ..." ' +
+      '(send a revised list with replaces) or "No" (apply nothing). When propose_changes asks a question ("Which ' +
+      'Dana?"), ask the owner; never guess.',
   );
   for (const reply of ['"Yes"', '"Yes with changes: ..."', '"No"']) assert.ok(rule.includes(reply), reply);
 });
@@ -137,4 +141,12 @@ test("the time line: record time tools follow rule 7, work types and rates rule 
   }
   assert.match(line, /record edits under rule 7/);
   assert.match(line, /change them only when the owner asks, as in rule 5/);
+});
+
+test("the first line names every rulebook document a new copy starts with", async () => {
+  const db = await createTestDb();
+  const names = (await db.prepare("SELECT name FROM rulebook ORDER BY name").all<{ name: string }>()).results.map((row) => row.name);
+  assert.deepEqual(names, ["capture", "guardrails", "leads", "pipeline", "voice"]);
+  const first = SERVER_INSTRUCTIONS.split("\n")[0] ?? "";
+  for (const name of names) assert.ok(first.includes(name), name);
 });

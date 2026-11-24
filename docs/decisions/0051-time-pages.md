@@ -44,7 +44,7 @@ a week, add time worked without the timer, correct or archive an entry, and hand
   pages are `boardRoutes` only.
 - The demo seed reuses 0050's Design ($95 an hour) and Admin (no rate, not billable) work types, adds a client rate
   (Elena Novak's Design at $110 an hour, `cr_seed01`) and eight finished entries anchored to this week's Monday
-  (three on that Monday, five in the previous week; `te_seed02`..`te_seed09`) for three people and two deals, one of them Admin so not billable. `dl_seed01` is untouched.
+  (three on that Monday, five in the previous week; `te_seed02`..`te_seed09`) for three people and two deals, one of them Admin so not billable. `dl_seed01` is untouched. One more, `te_seed10`, sits on a fixed date (Tuesday 2026-11-17, 10:00 local), so the fixed route `/time?week=2026-11-16` stays a populated past week for the accessibility and screenshot runs (run 6 final review).
 
 ## Why
 

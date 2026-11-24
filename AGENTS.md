@@ -114,7 +114,7 @@ this file before changing the repo, and update it when a rule changes.
   (decision 0045): each one's `run` is `recordWrite` (`src/mcp/record-write.ts`), which answers exactly as
   `propose_changes` does (`proposeResult`), unless the "AI edits" setting (`settings.ai_edits`, migration 0015;
   `update_settings` `aiEdits`: `review_first`, the default, or `apply_small`) is Apply small changes and the action is
-  small (`isSmallAction`: a call or note logged on an existing person or deal, or `complete_task`), which writes at once
+  small (`isSmallAction`: a call or note logged on an existing person or deal, `complete_task`, `start_timer` on existing records, or `stop_timer` without a next-step date), which writes at once
   and answers the service's line. Settings, rules, stages, fields, statuses, views, the rulebook, imports and
   `undo_change` always write at once. A new record tool goes in `RECORD_ACTIONS` and through `recordWrite`. `instructions.ts`
   holds the server instructions (rule 7: record edits need the owner's yes). Adding a tool means adding its name to the tool-list tests (`src/mcp/server.test.ts`,
@@ -138,7 +138,10 @@ this file before changing the repo, and update it when a rule changes.
   `withPlanned`), so each action sees the rows the earlier ones planned. A new read in a record service must go through
   them (the collector refuses a write whose `before` isn't the planned row; the "apply equals running the actions one
   by one" test proves it). The list is rendered from the merged rows (`proposal-text.ts`), never from the action text,
-  and the proposal (`proposals`, migration 0014, scratch space like import drafts) stores the resolved actions,
+  and every column a written row changes must show in some item (each item builder says which it shows; `NOT_SHOWN`
+  is the one list of bookkeeping columns never shown), or propose refuses with a plain internal error: a new column
+  or record field needs its line in the list, and `src/services/proposal-coverage.test.ts`, which proposes every
+  `RECORD_ACTIONS` action with each optional field set, needs a variant for a new optional field. The proposal (`proposals`, migration 0014, scratch space like import drafts) stores the resolved actions,
   `reads` (every row written, with the version read) and the shown `text`, but only after a trial: apply's exact batch
   (`changeBatch`, shared with `commitChange`) plus a sentinel that always fails, so it rolls back; any error but the
   sentinel's is a plain refusal and nothing is stored. A guard a service puts in `extra` carries its reason and the ids
@@ -152,6 +155,18 @@ this file before changing the repo, and update it when a rule changes.
   The record tools themselves propose a one-action list the same way (decision 0045, the MCP bullet), and a refusal
   of that one action reads as the service's own message (no "Action 1: "). `src/mcp` imports services, never the
   reverse (`src/services/layering.test.ts`).
+  **D1 calls** (decision 0044, "D1 calls"; the free plan allows 50 a request): a maximum-size propose and its apply
+  make at most 40 each (`src/services/proposals-d1.test.ts` counts them with `tests/helpers/counting-db.ts`). So
+  `proposeChanges`/`applyChanges` set a request memo (`ctx.memo`, `src/services/memo.ts`): the settings row, stages,
+  person statuses and sub-statuses, field definitions and work types, read in one batch the first time any is needed.
+  A settings-like read in a service goes through a `memo.ts` reader (`settingsRow`, `stageRows`, `fieldDefRows`,
+  `personStatusRows`, `subStatusRows`, `liveWorkTypeRows`) or a helper built on one (`ownerTimezone`, `findStage`,
+  `statusLabels`, `requireTimeTracking`, ...), passed the ctx, never `ctx.db`; without a memo they read the database as
+  before. Never put a record row (contacts, deals, tasks, time entries, activities) in the memo: those go through the
+  planned-read helpers, and in collect mode a deal with its person (`dealWithOwner`) or a task with its deal and person
+  (`taskWithLinks`) is read in one batch. A plan refuses a write to a memo table. Name matching reads every ref in one
+  batch (`matchAll`); the list reads the people, deals and tasks it names in one batch; a trial that fails is explained
+  with at most two more trials, never a new plan.
 - **People and person status** (decisions 0022, 0023, 0040): every `contacts` row has a `person_status` (a
   `person_statuses` key: Lead, Contact, Partner and any the owner adds) and a `sub_status` (a `person_substatuses` key
   of that status, or null); there is no leads table. A lead is a person whose status is Lead, with no open deal.

@@ -61,7 +61,6 @@ export async function activityEffects(
 }
 
 export async function logActivity(ctx: Ctx, input: ActivityInput): Promise<ChangeResult & { activityId: string }> {
-  const { db } = ctx;
   if (input.type === "stage_change") {
     throw new UserError("Stage changes are recorded by update_deal. Move the deal with update_deal instead.");
   }
@@ -74,7 +73,7 @@ export async function logActivity(ctx: Ctx, input: ActivityInput): Promise<Chang
   const data = input.via === "text" ? TEXT_DATA : null;
   const text = clean(input.summary);
   if (text === null) throw new UserError("An activity needs a summary. Say in a few words what happened.");
-  const tz = await ownerTimezone(db);
+  const tz = await ownerTimezone(ctx);
   const occurred = input.occurredAt === undefined ? ctx.now : parseWhen(input.occurredAt, tz);
   if (occurred.getTime() > ctx.now.getTime()) {
     throw new UserError("An activity can't be in the future. Log it once it happens, or use add_task to plan it.");
@@ -102,7 +101,7 @@ export async function logActivity(ctx: Ctx, input: ActivityInput): Promise<Chang
   const where = deal ? `on ${dealLabel(deal, contact)}` : `with ${contactName(contact)}`;
   const summary =
     `Logged ${withArticle(input.type)} ${where}: ${short(text)}` +
-    (contacted === null ? "" : `; ${contactName(contact)} is now ${(await statusLabels(db)).lead("contacted")}`);
+    (contacted === null ? "" : `; ${contactName(contact)} is now ${(await statusLabels(ctx)).lead("contacted")}`);
   const result = await commitChange(ctx, { target: { table: "activities", id: activity.id }, summary, changes });
   return { ...result, activityId: activity.id };
 }

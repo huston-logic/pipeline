@@ -911,6 +911,30 @@ export function devSeed(now: Date, tz: string): DevSeed {
     }),
   );
 
+  // One entry on a fixed date, so the fixed route /time?week=2026-11-16 (boardRoutes) stays a populated past week for
+  // the accessibility and screenshot runs, whatever day the seed is made.
+  const fixedStart = zonedToUtc("2026-11-17T10:00", tz).toISOString();
+  const fixedEnd = new Date(new Date(fixedStart).getTime() + 60 * 60_000).toISOString();
+  timeEntries.push({
+    id: "te_seed10",
+    contact_id: "ct_seed07",
+    deal_id: "dl_seed19",
+    task_id: null,
+    started_at: fixedStart,
+    ended_at: fixedEnd,
+    minutes: 60,
+    work_type_id: "wt_seed01",
+    billable: 1,
+    rate: 95,
+    notes: "Measured the building C stairwell.",
+    activity_id: null,
+    archived: 0,
+    untrusted_fields: "[]",
+    version: 1,
+    created_at: fixedEnd,
+    updated_at: fixedEnd,
+  });
+
   return { fieldDefs, contacts, deals, activities, tasks, rules, briefs, audit, importDrafts, importDraftParts, views, workTypes, clientRates, timeEntries };
 }
 

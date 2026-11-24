@@ -65,15 +65,18 @@ stays at that rate when the rate goes up.
   The server instructions gain one line saying this.
 - **Proposals.** The Time group lists each entry the plan writes as its line: "Time 1 h 30 min, Design, billable at
   $95.00/h ($142.50), for Pat Example"; a started timer "Timer started now, Design, for ..."; an edit "...: was
-  <old line>"; an archive "...: archived". A stop proposed with no end is stored with `endedAt` = the time it was
+  <old line>"; an archive "...: archived", followed by every other edit. An added or stopped entry also shows "started
+  <when>" (a stop: when it moves the start) and "notes <text>", so notes on a timer for no one (which log no note) still
+  show (run 6 final review). A stop proposed with no end is stored with `endedAt` = the time it was
   proposed (`withStopTimes`), so the owner's later yes stores the span they were shown and the apply's list matches the
   stored text. A start proposed now starts at the yes (the list says "now" either way). A timer started in a list
   can't be stopped in the same list ("Use add_time_entry with the start and end instead"), since the stop's note
   would be written after the entry that points at it. A time item names its task (`taskTitle`, the id when the title
   came from outside): on an added entry, a started or stopped timer as "task ...", on an edit as "task <old> ->
-  <new>". Every list, time or not, is checked before it is stored: a plan that writes rows while the rendered list
-  shows none is refused as a programming error ("This list would change records it doesn't show. Nothing was
-  proposed."), so a gap in the renderer can never let the owner approve an empty list that writes. A second timer
+  <new>". Every list, time or not, is checked before it is stored: a plan that writes any column no item of the list
+  shows (bookkeeping aside, decision 0044) is refused as a programming error ("This list would change records it
+  doesn't show. Nothing was proposed."), so a gap in the renderer can never let the owner approve a change it wasn't
+  shown. A second timer
   started by another write while a list is made gets the timer's own refusal at propose, and the fresh-list answer
   ("changed since this list was made") at apply.
 - **Periods.** `periodOf` gives local dates in the owner's timezone; weeks start on Monday. `listTime` counts finished,

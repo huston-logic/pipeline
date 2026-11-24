@@ -5,13 +5,10 @@ import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import { ALL_SORT_KEYS, MAX_COLUMNS, MAX_FILTER_FIELDS, MAX_FILTER_TEXT, VIEW_COLUMNS, VIEW_LAYOUTS, VIEW_MODULES, VIEW_SORTS } from "../services/view-spec.ts";
 import { addView, archiveView, listViews, updateView } from "../services/views.ts";
-import type { Ctx } from "../services/change.ts";
 import { toolResult } from "./format.ts";
 import { statusRef, subStatusRef } from "./schemas.ts";
-import { registerTool, type ToolDeps } from "./tool.ts";
+import { aiCtx, registerTool, type ToolDeps } from "./tool.ts";
 import { count } from "./tools-read.ts";
-
-const aiCtx = ({ db, now }: ToolDeps, tool: string): Ctx => ({ db, now: now(), actor: "ai", tool });
 
 const viewRef = () => z.string().trim().min(1).max(100).describe("The saved view: its id (vw_...) or its name (see list_views).");
 

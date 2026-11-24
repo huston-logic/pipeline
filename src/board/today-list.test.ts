@@ -108,6 +108,22 @@ test("each list shows at most 50, overdue first, with a Showing line", async () 
   assert.match(body, /<p class="stage-more">Showing 50 of 63 to-dos\.<\/p>/);
 });
 
+test("Today reads at most 50 tasks a list from the database, however many are open", async () => {
+  const db = await seededDb();
+  addStandalone(db, 300, true);
+  let read = 0;
+  const execute = db.execute.bind(db);
+  db.execute = (statement) => {
+    const out = execute(statement);
+    if (/^SELECT t\.\*/.test(statement.sql)) read += out.rows.length;
+    return out;
+  };
+  const body = (await load(devEnv(db), "/")).body;
+  assert.equal(body.match(/<h3 class="card-title">Pad /g)?.length, 47, "50 in To do: the overdue pad, three seeded tasks, 46 more pads");
+  assert.match(body, /<p class="stage-more">Showing 50 of \d+ to-dos\.<\/p>/);
+  assert.ok(read <= 100, `read ${read} task rows`);
+});
+
 test("no Showing line at 50 or fewer", async () => {
   const db = await seededDb();
   addStandalone(db, 50, false);

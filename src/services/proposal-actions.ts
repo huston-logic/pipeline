@@ -2,7 +2,7 @@
 // checks a list of them (the schema, the cap, the "@n" rules), resolves the records they name to ids (a name that
 // matches several records, or none, becomes a question for the owner) and runs one action through its service.
 import { z } from "zod";
-import type { ContactRow, Db } from "../db/db.ts";
+import type { ContactRow, Db, DealRow, TaskRow } from "../db/db.ts";
 import { getContact } from "../db/queries.ts";
 import { inputErrorMessage } from "./input-errors.ts";
 import {
@@ -32,7 +32,7 @@ import { short } from "./describe.ts";
 import { UserError } from "./errors.ts";
 import { contactRef, dealTitle, isTrusted, taskTitle } from "./labels.ts";
 import { addLead, qualifyLead, returnToLead } from "./leads.ts";
-import { MATCH_MAX, matchContact, matchDeal, matchTask } from "./name-match.ts";
+import { type Match, MATCH_MAX, matchAll } from "./name-match.ts";
 import { addTask, completeTask, snoozeTask } from "./tasks.ts";
 import { addTimeEntry, updateTimeEntry } from "./time-entries.ts";
 import { startTimer, stopTimer } from "./timer.ts";
@@ -224,8 +224,9 @@ const AGAIN = "Send the list again with the id.";
 
 const tooMany = (shown: string, noun: string) => ({ question: `"${shown}" matches more than ${MATCH_MAX} ${noun}. Use more of the name, or the id.` });
 
-async function contactQuestion(db: Db, ref: string): Promise<{ id: string } | { question: string }> {
-  const match = await matchContact(db, ref);
+type Found = { id: string } | { question: string };
+
+function contactQuestion(match: Match<ContactRow>, ref: string): Found {
   const shown = short(ref, 60);
   if (match.kind === "one") return { id: match.row.id };
   if (match.kind === "tooMany") return tooMany(shown, match.noun);
@@ -233,8 +234,7 @@ async function contactQuestion(db: Db, ref: string): Promise<{ id: string } | { 
   return { question: `Which ${shown}? ${joinOr(match.rows.map(contactRef))}. ${AGAIN}` };
 }
 
-async function dealQuestion(db: Db, ref: string): Promise<{ id: string } | { question: string }> {
-  const match = await matchDeal(db, ref);
+async function dealQuestion(db: Db, match: Match<DealRow>, ref: string): Promise<Found> {
   const shown = short(ref, 60);
   if (match.kind === "one") return { id: match.row.id };
   if (match.kind === "tooMany") return tooMany(shown, match.noun);
@@ -249,8 +249,7 @@ async function dealQuestion(db: Db, ref: string): Promise<{ id: string } | { que
   return { question: `Which deal for ${shown}? ${joinOr(labels)}. ${AGAIN}` };
 }
 
-async function taskQuestion(db: Db, ref: string): Promise<{ id: string } | { question: string }> {
-  const match = await matchTask(db, ref);
+function taskQuestion(match: Match<TaskRow>, ref: string): Found {
   const shown = short(ref, 60);
   if (match.kind === "one") return { id: match.row.id };
   if (match.kind === "tooMany") return tooMany(shown, match.noun);
@@ -259,24 +258,28 @@ async function taskQuestion(db: Db, ref: string): Promise<{ id: string } | { que
   return { question: `Which task is "${shown}"? ${joinOr(labels)}. ${AGAIN}` };
 }
 
-const QUESTIONS: Record<RefKind, (db: Db, ref: string) => Promise<{ id: string } | { question: string }>> = {
-  contact: contactQuestion,
-  deal: dealQuestion,
-  task: taskQuestion,
-};
-
 /**
  * Every record the actions name, as an id ("@n" stays as it is). A name that matches several records, or none, is a
- * question; with any question, the caller stores nothing and answers every question at once.
+ * question; with any question, the caller stores nothing and answers every question at once. Every ref is read in one
+ * D1 batch (matchAll).
  */
 export async function resolveActions(db: Db, actions: readonly RecordAction[]): Promise<{ actions: ResolvedAction[]; questions: string[] }> {
+  const named = actions.map((action) => refsOf(action).filter((ref) => refNumber(ref.value) === null));
+  const asked: Record<RefKind, string[]> = { contact: [], deal: [], task: [] };
+  for (const ref of named.flat()) if (!asked[ref.kind].includes(ref.value)) asked[ref.kind].push(ref.value);
+  const matches = await matchAll(db, { contacts: asked.contact, deals: asked.deal, tasks: asked.task });
+  const answer = async (kind: RefKind, value: string): Promise<Found> => {
+    const i = asked[kind].indexOf(value);
+    if (kind === "contact") return contactQuestion(matches.contacts[i] ?? { kind: "none" }, value);
+    if (kind === "deal") return dealQuestion(db, matches.deals[i] ?? { kind: "none" }, value);
+    return taskQuestion(matches.tasks[i] ?? { kind: "none" }, value);
+  };
   const questions: string[] = [];
   const resolved: ResolvedAction[] = [];
-  for (const action of actions) {
+  for (const [n, action] of actions.entries()) {
     const copy: Record<string, unknown> = { ...action };
-    for (const ref of refsOf(action)) {
-      if (refNumber(ref.value) !== null) continue;
-      const found = await QUESTIONS[ref.kind](db, ref.value);
+    for (const ref of named[n] ?? []) {
+      const found = await answer(ref.kind, ref.value);
       if ("id" in found) copy[ref.field] = found.id;
       else if (!questions.includes(found.question)) questions.push(found.question);
     }

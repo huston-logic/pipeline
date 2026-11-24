@@ -3,17 +3,21 @@
 // The reads by id a record service makes take a Source: a database, or a ctx that may carry a plan (decision 0044).
 // In collect mode a row the plan already has is read from the plan, so each action sees what the earlier ones planned.
 import type { ContactRow, Db, DealRow, StageKind, StageRow, TaskRow, TimeEntryRow, WorkTypeRow } from "../db/db.ts";
-import { findContactByEmail, getSettings, listStages } from "../db/queries.ts";
+import { findContactByEmail } from "../db/queries.ts";
 import type { ChangeTable, Row } from "./change.ts";
 import { UserError } from "./errors.ts";
 import { contactName, contactRef, dealTitle, isTrusted } from "./labels.ts";
+import { memoWorkType, type Reader, type ReadMemo, settingsRow, stageRows } from "./memo.ts";
 import type { PlanCollector } from "./plan.ts";
 
 export type FieldValue = string | number | boolean | null;
 export type FieldValues = Record<string, FieldValue>;
 
-/** Where a service reads records: the database, or a ctx whose plan (when set) is read first. */
-export type Source = Db | { db: Db; plan?: PlanCollector | undefined };
+/**
+ * Where a service reads records: the database, or a ctx whose plan (when set) is read first. Its memo (memo.ts), when
+ * set, answers the settings-like reads only, never a record row.
+ */
+export type Source = Db | { db: Db; plan?: PlanCollector | undefined; memo?: ReadMemo | undefined };
 
 export function sourceOf(src: Source): { db: Db; plan: PlanCollector | undefined } {
   return "prepare" in src ? { db: src, plan: undefined } : { db: src.db, plan: src.plan };
@@ -25,6 +29,9 @@ async function rowById<T>(src: Source, table: ById, id: string): Promise<T | nul
   const { db, plan } = sourceOf(src);
   const planned = plan?.row(table, id);
   if (planned !== undefined) return planned as unknown as T | null;
+  // Work types are configuration (a plan never writes them): the memo may hold them.
+  const memoized = table === "work_types" ? await memoWorkType(src, id) : undefined;
+  if (memoized !== undefined) return memoized as unknown as T | null;
   return db.prepare(`SELECT * FROM ${table} WHERE id = ?`).bind(id).first<T>();
 }
 
@@ -33,6 +40,60 @@ export const dealById = (src: Source, id: string) => rowById<DealRow>(src, "deal
 export const taskById = (src: Source, id: string) => rowById<TaskRow>(src, "tasks", id);
 export const timeEntryById = (src: Source, id: string) => rowById<TimeEntryRow>(src, "time_entries", id);
 export const workTypeById = (src: Source, id: string) => rowById<WorkTypeRow>(src, "work_types", id);
+
+/** A row the plan has (null: planned deleted), else the one read with it, if it is that row, else a read of its own. */
+async function plannedOr<T extends { id: string }>(src: Source, table: ById, id: string, read: T | undefined): Promise<T | null> {
+  const planned = sourceOf(src).plan?.row(table, id);
+  if (planned !== undefined) return planned as unknown as T | null;
+  return read?.id === id ? read : rowById<T>(src, table, id);
+}
+
+/**
+ * A deal and its person by the deal's id, as the plan leaves them, or null when there's no such deal. In collect mode
+ * (decision 0044, "D1 calls") a deal the plan doesn't have is read with its person in one D1 batch; otherwise one read
+ * each, as dealById and contactById.
+ */
+export async function dealWithOwner(src: Source, id: string): Promise<{ deal: DealRow; contact: ContactRow | null } | null> {
+  const { db, plan } = sourceOf(src);
+  if (plan === undefined || plan.row("deals", id) !== undefined) {
+    const deal = await dealById(src, id);
+    return deal === null ? null : { deal, contact: await contactById(src, deal.contact_id) };
+  }
+  const [deals, contacts] = await db.batch([
+    db.prepare("SELECT * FROM deals WHERE id = ?").bind(id),
+    db.prepare("SELECT * FROM contacts WHERE id = (SELECT contact_id FROM deals WHERE id = ?)").bind(id),
+  ]);
+  const deal = deals?.results[0] as DealRow | undefined;
+  if (deal === undefined) return null;
+  return { deal, contact: await plannedOr(src, "contacts", deal.contact_id, contacts?.results[0] as ContactRow | undefined) };
+}
+
+/**
+ * A task with its deal and its person (the task's own, else its deal's), as the plan leaves them, or null when there's
+ * no such task. In collect mode a task the plan doesn't have is read with both in one D1 batch.
+ */
+export async function taskWithLinks(src: Source, id: string): Promise<{ task: TaskRow; deal: DealRow | null; contact: ContactRow | null } | null> {
+  const { db, plan } = sourceOf(src);
+  let read: { deal?: DealRow; contact?: ContactRow } = {};
+  let task: TaskRow | null;
+  if (plan === undefined || plan.row("tasks", id) !== undefined) {
+    task = await taskById(src, id);
+  } else {
+    const [tasks, deals, contacts] = await db.batch([
+      db.prepare("SELECT * FROM tasks WHERE id = ?").bind(id),
+      db.prepare("SELECT * FROM deals WHERE id = (SELECT deal_id FROM tasks WHERE id = ?)").bind(id),
+      db
+        .prepare("SELECT * FROM contacts WHERE id = (SELECT coalesce(t.contact_id, d.contact_id) FROM tasks t LEFT JOIN deals d ON d.id = t.deal_id WHERE t.id = ?)")
+        .bind(id),
+    ]);
+    task = (tasks?.results[0] as TaskRow | undefined) ?? null;
+    read = { deal: deals?.results[0] as DealRow | undefined, contact: contacts?.results[0] as ContactRow | undefined };
+  }
+  if (task === null) return null;
+  const deal = task.deal_id === null ? null : await plannedOr(src, "deals", task.deal_id, read.deal);
+  const contactId = task.contact_id ?? deal?.contact_id ?? null;
+  return { task, deal, contact: contactId === null ? null : await plannedOr(src, "contacts", contactId, read.contact) };
+}
 
 /**
  * The rows a list read found in the database, as the plan leaves them: a planned row replaces its database row (and
@@ -74,8 +135,8 @@ export async function contactByEmail(src: Source, email: string): Promise<Contac
   return withPlanned(src, "contacts", found === null ? [] : [found], uses)[0] ?? null;
 }
 
-export async function ownerTimezone(db: Db): Promise<string> {
-  return (await getSettings(db)).timezone;
+export async function ownerTimezone(src: Reader): Promise<string> {
+  return (await settingsRow(src)).timezone;
 }
 
 async function rows<T>(db: Db, sql: string, ...params: unknown[]): Promise<T[]> {
@@ -103,6 +164,15 @@ export async function findContact(src: Source, ref: string): Promise<ContactRow>
   if (others.length === 0) return only;
   const list = matches.map(contactRef).join("; ");
   throw new UserError(`"${text}" matches more than one contact: ${list}. Use the contact id instead.`);
+}
+
+/** findDeal and the deal's person: by id in one D1 call in collect mode (dealWithOwner). */
+export async function findDealWithOwner(src: Source, ref: string): Promise<{ deal: DealRow; contact: ContactRow }> {
+  const pair = sourceOf(src).plan === undefined ? null : await dealWithOwner(src, ref.trim());
+  const deal = pair?.deal ?? (await findDeal(src, ref));
+  const contact = pair !== null ? pair.contact : await contactById(src, deal.contact_id);
+  if (!contact) throw new Error(`Deal ${deal.id} points at a missing contact.`);
+  return { deal, contact };
 }
 
 export async function findDeal(src: Source, ref: string): Promise<DealRow> {
@@ -154,9 +224,9 @@ export async function findDeal(src: Source, ref: string): Promise<DealRow> {
 }
 
 /** A stage that is not archived, by key or by label (ignoring case). */
-export async function findStage(db: Db, ref: string): Promise<StageRow> {
+export async function findStage(src: Reader, ref: string): Promise<StageRow> {
   const text = ref.trim();
-  const stages = await listStages(db);
+  const stages = await stageRows(src);
   const match =
     stages.find((s) => s.key === text) ?? stages.find((s) => s.label.toLowerCase() === text.toLowerCase());
   if (match) return match;
@@ -165,13 +235,13 @@ export async function findStage(db: Db, ref: string): Promise<StageRow> {
 }
 
 /** The lowest-positioned stage of this kind that is not archived. */
-export async function firstStageOfKind(db: Db, kind: StageKind): Promise<StageRow | null> {
-  return (await listStages(db)).find((s) => s.kind === kind) ?? null;
+export async function firstStageOfKind(src: Reader, kind: StageKind): Promise<StageRow | null> {
+  return (await stageRows(src)).find((s) => s.kind === kind) ?? null;
 }
 
 /** Every stage's label by key, archived ones included (old changes and activities name them). */
-export async function stageLabels(db: Db): Promise<Map<string, string>> {
-  return new Map((await listStages(db, { includeArchived: true })).map((s) => [s.key, s.label]));
+export async function stageLabels(src: Reader): Promise<Map<string, string>> {
+  return new Map((await stageRows(src, { includeArchived: true })).map((s) => [s.key, s.label]));
 }
 
 export function parseObject(json: string): Record<string, unknown> {
@@ -212,14 +282,15 @@ export async function findSubject(
   refs: SubjectRefs,
   options: { optional?: boolean } = {},
 ): Promise<{ deal: DealRow | null; contact: ContactRow | null }> {
-  const deal = refs.dealId === undefined ? null : await findDeal(src, refs.dealId);
-  const named = refs.contactId === undefined ? null : await findContact(src, refs.contactId);
-  if (!deal) {
+  const pair = refs.dealId === undefined ? null : await findDealWithOwner(src, refs.dealId);
+  // The deal's own person named by id is the one already read.
+  const named =
+    refs.contactId === undefined ? null : pair !== null && refs.contactId.trim() === pair.contact.id ? pair.contact : await findContact(src, refs.contactId);
+  if (!pair) {
     if (!named && options.optional !== true) throw new UserError("This needs a deal or a contact: give a dealId or a contactId.");
     return { deal: null, contact: named };
   }
-  const owner = await contactById(src, deal.contact_id);
-  if (!owner) throw new Error(`Deal ${deal.id} points at a missing contact.`);
+  const { deal, contact: owner } = pair;
   if (named && named.id !== owner.id) {
     throw new UserError(
       `${dealTitle(deal)} belongs to ${contactName(owner)}, not ${contactName(named)}. ` +

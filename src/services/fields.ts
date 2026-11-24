@@ -10,6 +10,7 @@ import { UserError } from "./errors.ts";
 import { clean } from "./input.ts";
 import type { FieldValue, FieldValues } from "./lookup.ts";
 import { parseStringArray } from "./lookup.ts";
+import { fieldDefRows, type Reader } from "./memo.ts";
 import { slugOf, uniqueKey } from "./slug.ts";
 
 const MAX_LABEL = 60;
@@ -266,9 +267,9 @@ export function validateFieldValues(defs: FieldDefRow[], entity: FieldEntity, va
 }
 
 /** validateFieldValues against the database's definitions. */
-export async function checkFieldValues(db: Db, entity: FieldEntity, values: FieldValues): Promise<void> {
+export async function checkFieldValues(src: Reader, entity: FieldEntity, values: FieldValues): Promise<void> {
   if (Object.values(values).every((value) => value === null)) return;
-  validateFieldValues(await listFieldDefs(db, { entity, includeArchived: true }), entity, values);
+  validateFieldValues(await fieldDefRows(src, { entity, includeArchived: true }), entity, values);
 }
 
 export interface FieldOverview {

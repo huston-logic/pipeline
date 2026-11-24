@@ -41,8 +41,7 @@ export interface AddDealResult extends ChangeResult {
 }
 
 export async function addDeal(ctx: Ctx, input: DealInput): Promise<AddDealResult> {
-  const { db } = ctx;
-  const tz = await ownerTimezone(db);
+  const tz = await ownerTimezone(ctx);
   const chosen = input.contact === undefined ? null : await findContact(ctx, input.contact);
   const name = clean(input.name);
   if (chosen !== null && chosen.archived === 1) {
@@ -58,9 +57,9 @@ export async function addDeal(ctx: Ctx, input: DealInput): Promise<AddDealResult
   const nextAt = whenOrNull(input.nextAt ?? null, tz);
   const dealFields = withoutNulls(input.fields ?? {});
   const contactFields = withoutNulls(input.contactFields ?? {});
-  await checkFieldValues(db, "deal", dealFields);
-  await checkFieldValues(db, "contact", contactFields);
-  const stage = await firstStageOfKind(db, "open");
+  await checkFieldValues(ctx, "deal", dealFields);
+  await checkFieldValues(ctx, "contact", contactFields);
+  const stage = await firstStageOfKind(ctx, "open");
   if (!stage) throw new UserError("There's no open stage to put a new deal in. Add one with add_stage first.");
 
   const now = ctx.now.toISOString();

@@ -3,7 +3,8 @@ import { test } from "node:test";
 import { buildFixtureSeed } from "../../tests/helpers/fixture-seed.ts";
 import { createTestDb, type SqliteD1 } from "../db/sqlite-d1.ts";
 import { DEFAULT_TZ } from "../time.ts";
-import { type Match, matchContact, matchDeal, matchTask } from "./name-match.ts";
+import { countingDb } from "../../tests/helpers/counting-db.ts";
+import { type Match, matchAll, matchContact, matchDeal, matchTask } from "./name-match.ts";
 
 const NOW = new Date("2026-11-19T18:00:00.000Z");
 
@@ -72,7 +73,7 @@ test("a match on outside text never wins or stands in alone: every candidate is 
   assert.deepEqual((await matchTask(db, "Water")).kind, "many");
 });
 
-test("more than 10 matches is too many, without loading their deals", async () => {
+test("more than 10 matches is too many", async () => {
   const db = await setup();
   for (let i = 1; i <= 11; i++) db.exec(`INSERT INTO contacts (id, name) VALUES ('ct_dee${i}', 'Dee Example ${i}')`);
   assert.equal((await matchContact(db, "Dee")).kind, "tooMany");
@@ -87,4 +88,52 @@ test("an open task by id or by its title", async () => {
   assert.deepEqual(ids(await matchTask(db, "send casey the price sheet")), ["tk_seed02"]);
   assert.deepEqual(ids(await matchTask(db, "Send")), ["tk_seed02"], "the done Send Alex task is skipped");
   assert.equal((await matchTask(db, "Water the plants")).kind, "none");
+});
+
+test("every ref of a list is matched in one D1 call, each as it would be alone", async () => {
+  const db = await setup();
+  db.exec("INSERT INTO contacts (id, name, untrusted_fields) VALUES ('ct_intake', 'Pat', '[\"name\"]')");
+  const contacts = ["Dana", "ct_gone", "  dana   SAMPLE ", "Pat", "acme example", "ample", "Robin", "", "Nobody"];
+  const deals = ["dl_seed07", "cafe website AND menu", "Pat Example", "Alex", "Casey", "ct_seed03", "New website for Sample Bakery", "  "];
+  const tasks = ["tk_seed06", "Send", "send casey the price sheet", "Water the plants"];
+  const counted = countingDb(db);
+  const all = await matchAll(counted, { contacts, deals, tasks });
+  assert.equal(counted.calls, 1, counted.log.join("\n"));
+  const plain = (match: Match<{ id: string }>) => ({ kind: match.kind, ids: ids(match) });
+  for (const [i, ref] of contacts.entries()) assert.deepEqual(plain(all.contacts[i] ?? { kind: "none" }), plain(await matchContact(db, ref)), ref);
+  for (const [i, ref] of deals.entries()) assert.deepEqual(plain(all.deals[i] ?? { kind: "none" }), plain(await matchDeal(db, ref)), ref);
+  for (const [i, ref] of tasks.entries()) assert.deepEqual(plain(all.tasks[i] ?? { kind: "none" }), plain(await matchTask(db, ref)), ref);
+  assert.deepEqual(ids(all.deals[5] ?? { kind: "none" }), ["dl_seed03"], "a person's id finds their one open deal");
+  assert.deepEqual(plain(all.contacts[3] ?? { kind: "none" }), { kind: "many", ids: ["ct_intake", "ct_seed01"] });
+  const blank = countingDb(db);
+  assert.deepEqual(await matchAll(blank, { contacts: ["  "], deals: [] }), { contacts: [{ kind: "none" }], deals: [], tasks: [] });
+  assert.equal(blank.calls, 0, "nothing to read");
+});
+
+test("a list's refs past 50 of a kind are read in more statements of the same batch", async () => {
+  const db = await setup();
+  const refs = Array.from({ length: 60 }, (_, i) => (i % 2 === 0 ? "Pat" : `ct_seed0${(i % 8) + 1}`));
+  const counted = countingDb(db);
+  const all = await matchAll(counted, { contacts: refs });
+  assert.equal(counted.calls, 1);
+  for (const [i, ref] of refs.entries()) assert.deepEqual(ids(all.contacts[i] ?? { kind: "none" }), ids(await matchContact(db, ref)), `${i}: ${ref}`);
+});
+
+test("refs shaped like ids are read by id only; one that is a name after all is read by name in a second batch", async () => {
+  const db = await setup();
+  db.exec("INSERT INTO contacts (id, name) VALUES ('ct_under', 'ab_cd')");
+  const executed: string[] = [];
+  const execute = db.execute.bind(db);
+  db.execute = (statement) => {
+    executed.push(statement.sql);
+    return execute(statement);
+  };
+  const counted = countingDb(db);
+  const found = await matchAll(counted, { contacts: ["ct_seed01"], deals: ["dl_seed01", "ct_seed03"], tasks: ["tk_seed01"] });
+  assert.deepEqual([...found.contacts.map(ids), ...found.deals.map(ids), ...found.tasks.map(ids)], [["ct_seed01"], ["dl_seed01"], ["dl_seed03"], ["tk_seed01"]]);
+  assert.equal(counted.calls, 1);
+  assert.deepEqual(executed.filter((sql) => sql.includes("LIKE")), [], "no name is scanned for");
+  counted.reset();
+  assert.deepEqual(ids((await matchAll(counted, { contacts: ["ab_cd"] })).contacts[0] ?? { kind: "none" }), ["ct_under"]);
+  assert.equal(counted.calls, 2, "by id, then by name");
 });

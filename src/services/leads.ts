@@ -1,8 +1,7 @@
 // add_lead: someone the owner plans to approach, as a person with status New and no deal (decision 0022). Someone who
 // wants something is a deal instead (add-deal.ts). qualify_lead and return_to_lead move a person across the line
 // between leads and deals, each in one change (decisions 0022 and 0024).
-import type { ActivityRow, ContactRow, Db, DealRow, StageRow, TaskRow } from "../db/db.ts";
-import { listStages } from "../db/queries.ts";
+import type { ActivityRow, ContactRow, DealRow, StageRow, TaskRow } from "../db/db.ts";
 import { newId } from "../ids.ts";
 import { type ChangeResult, commitChange, type Ctx, type Row, type RowChange, StaleWriteError, updatedRow } from "./change.ts";
 import { commitWithEmail } from "./contacts.ts";
@@ -16,10 +15,9 @@ import { businessKey, noOpenDeal, openDealCount, withLeadStatus } from "./lead-c
 import { isUnqualified, type LeadStatus, UNQUALIFIED_STATUSES } from "./lead-status.ts";
 import {
   contactByEmail,
-  contactById,
   type FieldValues,
   findContact,
-  findDeal,
+  findDealWithOwner,
   findStage,
   firstStageOfKind,
   ownerTimezone,
@@ -27,6 +25,7 @@ import {
   sourceOf,
   withPlanned,
 } from "./lookup.ts";
+import { type Reader, stageRows } from "./memo.ts";
 import { LEAD, newPersonColumns } from "./person-move.ts";
 import { statusLabels } from "./status-labels.ts";
 
@@ -75,7 +74,6 @@ async function sameBusiness(src: Source, business: string): Promise<ContactRow |
 }
 
 export async function addLead(ctx: Ctx, input: NewLeadInput): Promise<AddLeadResult> {
-  const { db } = ctx;
   const business = clean(input.business);
   const name = clean(input.name) ?? business;
   if (name === null) throw new UserError("A lead needs a name or a business.");
@@ -99,7 +97,7 @@ export async function addLead(ctx: Ctx, input: NewLeadInput): Promise<AddLeadRes
     }
   }
   const fields = withoutNulls(input.fields ?? {});
-  await checkFieldValues(db, "contact", fields);
+  await checkFieldValues(ctx, "contact", fields);
   const status = input.status ?? "new";
   if (!isUnqualified(status)) throw new UserError(`A new lead can't start ${String(status)}. Use one of: ${UNQUALIFIED_STATUSES.join(", ")}.`);
 
@@ -139,7 +137,7 @@ export async function addLead(ctx: Ctx, input: NewLeadInput): Promise<AddLeadRes
     changes.push({ table: "activities", id: note.id, before: null, after: note });
   }
   const from = contact.source === null ? "" : `, from ${contact.source}`;
-  const summary = `Added lead ${name} (${(await statusLabels(db)).lead(status)})${from}`;
+  const summary = `Added lead ${name} (${(await statusLabels(ctx)).lead(status)})${from}`;
   const result = await commitWithEmail(ctx, { target: { table: "contacts", id: contact.id }, summary, changes }, email);
   return { ...result, contactId: contact.id };
 }
@@ -164,10 +162,10 @@ export interface QualifyResult extends ChangeResult {
 }
 
 /** The stage named, which must be open, or the first open stage. */
-async function openStage(db: Db, ref: string | undefined): Promise<StageRow> {
-  const stage = ref === undefined ? await firstStageOfKind(db, "open") : await findStage(db, ref);
+async function openStage(src: Reader, ref: string | undefined): Promise<StageRow> {
+  const stage = ref === undefined ? await firstStageOfKind(src, "open") : await findStage(src, ref);
   if (stage?.kind === "open") return stage;
-  const open = (await listStages(db)).filter((s) => s.kind === "open").map((s) => s.label);
+  const open = (await stageRows(src)).filter((s) => s.kind === "open").map((s) => s.label);
   if (stage === null || open.length === 0) {
     throw new UserError("There's no open stage to put a new deal in. Add one with add_stage first.");
   }
@@ -176,7 +174,6 @@ async function openStage(db: Db, ref: string | undefined): Promise<StageRow> {
 
 /** A lead becomes Qualified and, unless asked not to, gets a deal in the same change; nothing is copied (0022). */
 export async function qualifyLead(ctx: Ctx, input: QualifyInput): Promise<QualifyResult> {
-  const { db } = ctx;
   const contact = await findContact(ctx, input.contact);
   const who = contactName(contact);
   if (contact.archived === 1) throw new UserError(`${capitalize(who)} is archived, so they can't be qualified.`);
@@ -201,11 +198,11 @@ export async function qualifyLead(ctx: Ctx, input: QualifyInput): Promise<Qualif
     return { ...result, contactId: contact.id, dealId: null };
   }
 
-  const tz = await ownerTimezone(db);
+  const tz = await ownerTimezone(ctx);
   const value = input.value === undefined ? null : checkValue(input.value);
   const nextStep = clean(input.nextStep);
   const nextAt = whenOrNull(input.nextAt ?? null, tz);
-  const stage = await openStage(db, input.stage);
+  const stage = await openStage(ctx, input.stage);
   const deal = newDealRow(
     {
       contactId: contact.id,
@@ -253,7 +250,7 @@ export async function returnToLead(ctx: Ctx, input: ReturnInput): Promise<Return
     const what = status === "qualified" ? "Someone moved back to leads can't be Qualified." : `"${String(status)}" isn't a lead status.`;
     throw new UserError(`${what} Use one of: ${UNQUALIFIED_STATUSES.join(", ")}.`);
   }
-  const deal = await findDeal(ctx, input.deal);
+  const { deal, contact } = await findDealWithOwner(ctx, input.deal);
   const title = capitalize(dealTitle(deal));
   if (deal.archived === 1) throw new UserError(`${title} is archived already. Nothing to do.`);
   if (deal.status === "won") {
@@ -262,8 +259,6 @@ export async function returnToLead(ctx: Ctx, input: ReturnInput): Promise<Return
         "change its status with update_deal first.",
     );
   }
-  const contact = await contactById(ctx, deal.contact_id);
-  if (!contact) throw new Error(`Deal ${deal.id} points at a missing contact.`);
   const who = contactName(contact);
   if (contact.archived === 1) throw new UserError(`${capitalize(who)} is archived, so they can't go back to leads.`);
   await refuseOtherOpenDeal(ctx, contact, deal);
@@ -282,7 +277,7 @@ export async function returnToLead(ctx: Ctx, input: ReturnInput): Promise<Return
   if (contact.lead_status !== status) {
     changes.push({ table: "contacts", id: contact.id, before: contact, after: withLeadStatus(contact, status, ctx.now) });
   }
-  const label = (await statusLabels(db)).lead(status);
+  const label = (await statusLabels(ctx)).lead(status);
   try {
     const result = await commitChange(ctx, {
       target: { table: "deals", id: deal.id },

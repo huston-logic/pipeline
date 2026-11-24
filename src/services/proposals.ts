@@ -15,6 +15,7 @@ import {
   commitChange,
   type Ctx,
   errorText,
+  guardIds,
   guardReason,
   isChangeTable,
   isDuplicateEmailFailure,
@@ -30,6 +31,7 @@ import {
 import { capitalize, rowLabel, short } from "./describe.ts";
 import { UserError } from "./errors.ts";
 import { ownerTimezone } from "./lookup.ts";
+import { ReadMemo } from "./memo.ts";
 import { PlanCollector } from "./plan.ts";
 import {
   type ActionResult,
@@ -42,7 +44,7 @@ import {
   runAction,
   withStopTimes,
 } from "./proposal-actions.ts";
-import { type ProposalList, proposalList, renderProposal } from "./proposal-text.ts";
+import { type ProposalList, proposalList, renderProposal, shownList } from "./proposal-text.ts";
 import { runningTimerRefusal } from "./timer.ts";
 
 export const PROPOSAL_MAX_ACTIONS = 25;
@@ -91,11 +93,12 @@ async function planActions(ctx: Ctx, actions: readonly ResolvedAction[], deps: D
 }
 
 /**
- * A list that would write rows but shows none would let the owner say yes to an empty list that changes records: a
- * gap in proposal-text.ts. That is a programming error, so it is a plain Error and nothing is proposed.
+ * A list that would write a column no item shows (`unshown`, from shownList) would let the owner say yes to a list
+ * that changes more than it says: a gap in proposal-text.ts. That is a programming error, so it is a plain Error and
+ * nothing is proposed.
  */
-export function checkListShows(input: ChangeInput, list: ProposalList): void {
-  if (input.changes.length > 0 && Object.values(list).every((items: unknown[]) => items.length === 0)) {
+export function checkListShows(unshown: readonly string[]): void {
+  if (unshown.length > 0) {
     throw new Error("This list would change records it doesn't show. Nothing was proposed.");
   }
 }
@@ -115,7 +118,9 @@ async function replaceable(db: Db, id: string, now: Date): Promise<ProposalRow> 
  * here, with nothing stored), plans them, and stores the proposal; with `replaces`, the old one is dropped in the same
  * batch. Writes nothing but the proposal.
  */
-export async function proposeChanges(ctx: Ctx, input: { actions: RecordAction[]; replaces?: string }, deps: Deps): Promise<ProposeAnswer> {
+export async function proposeChanges(caller: Ctx, input: { actions: RecordAction[]; replaces?: string }, deps: Deps): Promise<ProposeAnswer> {
+  // One memo for the whole request: every action, the list and any refusal read the settings-like tables once.
+  const ctx: Ctx = { ...caller, memo: new ReadMemo(caller.db) };
   const { db, now } = ctx;
   const count = input.actions.length;
   if (count === 0) throw new UserError("Send at least one action.");
@@ -133,10 +138,10 @@ export async function proposeChanges(ctx: Ctx, input: { actions: RecordAction[];
   const plan = await planActions(ctx, actions, deps);
   const target = plan.target();
   if (target === null) throw new Error("A proposal planned no change.");
-  const tz = await ownerTimezone(db);
+  const tz = await ownerTimezone(ctx);
   const built = plan.build(target, "");
-  const list = await proposalList(db, built, tz, now);
-  checkListShows(built, list);
+  const { list, unshown } = await shownList(ctx, built, tz, now);
+  checkListShows(unshown);
 
   const id = newId("pr");
   const stamp = now.toISOString();
@@ -151,7 +156,7 @@ export async function proposeChanges(ctx: Ctx, input: { actions: RecordAction[];
       .bind(id, actionsJson, readsJson, text, stamp, expiresAt);
   // The trial: apply's own batch, after the proposal's row, rolled back. A list whose apply would fail isn't stored.
   const failed = await trialError(ctx, appliedChange(db, plan, id, new Map(), now), [stored()]);
-  if (failed !== null) throw await refusalFor(ctx, actions, deps, failed);
+  if (failed !== null) throw await refusalFor(ctx, plan, failed);
 
   const statements = [
     // At the cap, the oldest open lists make room (dropped, replaced by this one), so an AI app that never applies can't
@@ -300,12 +305,17 @@ async function trialError(ctx: Ctx, input: ChangeInput, prelude: D1PreparedState
 
 const RACE = "A record in this list changed while the list was being made, so nothing was proposed. Send the list again.";
 
+const UNNAMED = "This list can't be applied as one change. Send it as smaller lists.";
+
 /**
- * Why a list's apply would fail, in plain English, from its trial's error. A guard failure is traced by trying the
- * first m actions for m = 1, 2, ...: the first prefix that fails, and the guard (from an earlier action j) that fails
- * on it, name the two actions that can't be in one list. A guard that fails without that is a record changed meanwhile.
+ * Why a list's apply would fail, in plain English, from its trial's error, with at most two more trial batches and no
+ * new plan (decision 0044, "D1 calls"). A guard failure: the rows alone are tried first, and failing they are a record
+ * changed meanwhile. Else a guard an action added (`extra`) fails: with one guard it is that one, with two the first
+ * is tried alone; with more, the fixed UNNAMED sentence. The guard's action j and the first later action m that wrote
+ * a row the guard is bound to (the plan says which) are the two that can't be in one list; with no such m, the guard
+ * failed because of a write from outside the list, a record changed meanwhile.
  */
-async function refusalFor(ctx: Ctx, actions: readonly ResolvedAction[], deps: Deps, error: unknown): Promise<unknown> {
+async function refusalFor(ctx: Ctx, plan: PlanCollector, error: unknown): Promise<unknown> {
   if (isDuplicateEmailFailure(error)) {
     return new UserError("Two people in this list, or one in it and a contact on file, would have the same email. Check the emails and send the list again.", { cause: error });
   }
@@ -315,26 +325,28 @@ async function refusalFor(ctx: Ctx, actions: readonly ResolvedAction[], deps: De
     return new UserError((await runningTimerRefusal(ctx.db, ctx.now)) ?? RACE, { cause: error });
   }
   if (!isGuardFailure(error)) return error;
-  for (let m = 1; m <= actions.length; m++) {
-    const plan = await planActions(ctx, actions.slice(0, m), deps);
-    const target = plan.target();
-    if (target === null) continue;
-    const built = plan.build(target, "trial");
-    const input = { ...built, bulk: needsBulk(built.changes) };
-    if ((await trialError(ctx, { ...input, extra: [] })) !== null) return new UserError(RACE, { cause: error });
-    if ((await trialError(ctx, input)) === null) continue;
-    const sources = plan.extraSources();
-    for (const [k, statement] of (input.extra ?? []).entries()) {
-      const j = sources[k];
-      if (j === undefined || j >= m) continue;
-      const failed = await trialError(ctx, { ...input, extra: [statement] });
-      if (failed === null || !isGuardFailure(failed)) continue;
-      const reason = guardReason(statement) ?? `action ${m} changes what action ${j} checks`;
-      return new UserError(`Action ${m} and action ${j} can't be in one list: ${reason}. Send them as two lists.`, { cause: error });
-    }
-    return new UserError(RACE, { cause: error });
+  const target = plan.target();
+  if (target === null) return new UserError(RACE, { cause: error });
+  const built = plan.build(target, "trial");
+  const input = { ...built, bulk: needsBulk(built.changes) };
+  if ((await trialError(ctx, { ...input, extra: [] })) !== null) return new UserError(RACE, { cause: error });
+  const extras = input.extra ?? [];
+  const [first, second] = extras;
+  let failing: number | undefined;
+  if (extras.length === 1) failing = 0;
+  else if (extras.length === 2 && first !== undefined && second !== undefined) {
+    const alone = await trialError(ctx, { ...input, extra: [first] });
+    failing = alone !== null && isGuardFailure(alone) ? 0 : 1;
   }
-  return new UserError(RACE, { cause: error });
+  const statement = failing === undefined ? undefined : extras[failing];
+  if (failing === undefined || statement === undefined) return new UserError(UNNAMED, { cause: error });
+  const j = plan.extraSources()[failing];
+  const ids = guardIds(statement);
+  if (j === undefined || ids === undefined) return new UserError(UNNAMED, { cause: error });
+  const m = plan.firstWriterAfter(j, ids);
+  if (m === undefined) return new UserError(RACE, { cause: error });
+  const reason = guardReason(statement) ?? `action ${m} changes what action ${j} checks`;
+  return new UserError(`Action ${m} and action ${j} can't be in one list: ${reason}. Send them as two lists.`, { cause: error });
 }
 
 async function appliedAnswer(db: Db, row: ProposalRow): Promise<ChangeResult & { applied: number }> {
@@ -348,7 +360,8 @@ async function appliedAnswer(db: Db, row: ProposalRow): Promise<ChangeResult & {
  * caller, tool apply_changes), only while every row they write is as it was when the list was made. A second apply
  * writes nothing and answers the first change.
  */
-export async function applyChanges(ctx: Ctx, id: string, deps: Deps): Promise<ChangeResult & { applied: number }> {
+export async function applyChanges(caller: Ctx, id: string, deps: Deps): Promise<ChangeResult & { applied: number }> {
+  const ctx: Ctx = { ...caller, memo: new ReadMemo(caller.db) };
   const { db, now } = ctx;
   const ref = id.trim();
   const row = isProposalId(ref) ? await getProposal(db, ref) : null;
@@ -359,7 +372,7 @@ export async function applyChanges(ctx: Ctx, id: string, deps: Deps): Promise<Ch
     throw new UserError(`${row.id} was replaced by ${next}. Apply ${next} if the owner said yes to it.`);
   }
   if (row.expires_at <= now.toISOString()) {
-    throw new UserError(`${row.id} expired at ${timeOf(row.expires_at, await ownerTimezone(db))}. ${AGAIN}`);
+    throw new UserError(`${row.id} expired at ${timeOf(row.expires_at, await ownerTimezone(ctx))}. ${AGAIN}`);
   }
 
   const actions = recordActionSchema.array().parse(JSON.parse(row.actions));
@@ -374,8 +387,8 @@ export async function applyChanges(ctx: Ctx, id: string, deps: Deps): Promise<Ch
   if ("changed" in compared) throw new UserError(`${await recordNamed(db, compared.changed)} changed since this list was made. ${AGAIN}`);
   const input = appliedChange(db, plan, row.id, compared.ids, now);
   // Labels, field definitions and the timezone aren't rows the plan writes: the list rendered now must be the one shown.
-  const tz = await ownerTimezone(db);
-  const text = renderProposal(await proposalList(db, input, tz, now), { id: row.id, expiresLocal: timeOf(row.expires_at, tz) });
+  const tz = await ownerTimezone(ctx);
+  const text = renderProposal(await proposalList(ctx, input, tz, now), { id: row.id, expiresLocal: timeOf(row.expires_at, tz) });
   if (text !== row.text) {
     throw new UserError(`${row.id}'s list would come out different now (a stage, status, field or setting changed). ${AGAIN}`);
   }

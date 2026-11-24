@@ -45,7 +45,7 @@ test("add_time_entry under review first is a proposal", async () => {
   const answer = await okText(c, "add_time_entry", { contact: "Pat Example", startedAt: "2026-11-19T07:30", endedAt: "2026-11-19T09:00", workType: "Design" });
   const { proposal } = answer.data as { proposal: string; list: { time: { id: string }[] } };
   assert.match(proposal, /^pr_[a-z2-7]{12}$/);
-  assert.equal(answer.headline.split("\n").slice(2, 4).join("\n"), "Time\n- Time 1 h 30 min, Design, billable at $95.00/h ($142.50), for Pat Example");
+  assert.equal(answer.headline.split("\n").slice(2, 4).join("\n"), "Time\n- Time 1 h 30 min, Design, billable at $95.00/h ($142.50), for Pat Example: started Thu Nov 19, 7:30 AM");
   assert.equal(await countOf(db, "time_entries"), 0, "nothing written yet");
 
   const applied = await ok(c, "apply_changes", { proposal });
