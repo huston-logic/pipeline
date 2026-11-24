@@ -29,7 +29,7 @@ test("updateRulebook replaces one document, bumps its version and logs one audit
   assert.equal(voice?.markdown, "# Voice\n\nWarm and brief.");
   assert.equal(voice?.version, 2);
   assert.equal(voice?.updated_at, NOW.toISOString());
-  assert.equal((await getRulebook(db)).length, 4, "the other documents are untouched");
+  assert.equal((await getRulebook(db)).length, 5, "the other documents are untouched");
   const audit = await db.prepare("SELECT * FROM audit_log").first<AuditRow>();
   assert.equal(audit?.tool, "update_rulebook");
   assert.equal(audit?.target_table, "rulebook");
@@ -42,7 +42,7 @@ test("a new name creates a document; the name is normalized to lower case", asyn
   assert.equal(result.summary, `Added rulebook document "pricing-notes" (change ${result.changeId})`);
   const [doc] = await getRulebook(db, "pricing-notes");
   assert.equal(doc?.version, 1);
-  assert.deepEqual((await getRulebook(db)).map((d) => d.name), ["leads", "voice", "pipeline", "guardrails", "pricing-notes"]);
+  assert.deepEqual((await getRulebook(db)).map((d) => d.name), ["leads", "capture", "voice", "pipeline", "guardrails", "pricing-notes"]);
 });
 
 test("updateRulebook checks the name and the text, and refuses a no-op", async () => {

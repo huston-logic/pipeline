@@ -118,3 +118,14 @@ test("the instructions say a view is how the board shows a kind of person, with 
   assert.match(line, /"give me a view of all my partners": add_view with module people and filters personStatus partner/);
   for (const tool of ["list_views", "add_view", "update_view", "archive_view"]) assert.ok(line.includes(tool), tool);
 });
+
+test("the instructions say how to capture a ramble as one propose_changes call (decision 0048)", () => {
+  const line = SERVER_INSTRUCTIONS.split("\n").find((text) => text.startsWith("- When the owner rambles")) ?? "";
+  assert.equal(
+    line,
+    "- When the owner rambles (a voice note, a list of things to do), turn all of it into one propose_changes call: tasks on " +
+      "a person, a deal or nothing, notes logged on the right person or deal, dates in the owner's timezone, stage moves. " +
+      "Leave out anything you are unsure of and ask about it after showing the list. Example: \"Call Dana Friday, send Matt the " +
+      "deck, buy printer ink\" is three add_task actions: one for Dana due Friday, one for Matt, one with no person.",
+  );
+});

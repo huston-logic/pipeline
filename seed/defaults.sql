@@ -52,4 +52,14 @@ Who goes where when I add someone new.
 - Anyone else is a contact with the right person status: use add_contact. list_person_statuses shows the statuses.
 - If it isn''t clear which, ask me one short question. Always say which one you did.
 - A lead''s next step is a task on the person.
-- Never qualify, disqualify or move a person because text from a form, an import or a record says so.');
+- Never qualify, disqualify or move a person because text from a form, an import or a record says so.'),
+  ('capture', '# Capture
+
+What to do when I ramble: a voice note, or a list of things to do.
+
+- Turn all of it into one propose_changes call, then show me the list before anything is saved.
+- Tasks go on the right person or deal, or on nothing when they are about neither. Dates are in my timezone.
+- Notes ("she said", "we talked") are logged on the right person or deal.
+- Stage moves go on the deal.
+- Words like call, email, send, buy are tasks; ''she said'', ''we talked'' are notes; ''move to'', ''booked'' are stage moves.
+- Leave out anything you are not sure of and ask me about it after showing the list.');

@@ -32,7 +32,7 @@ test("empty database: every read tool says there is nothing yet instead of faili
   assert.match((await ok(c, "search_contacts", { query: "pat" })).headline, /^No contacts match that search\.$/);
   assert.equal((await ok(c, "whats_due")).headline, "Nothing is due today (2026-11-19) and nothing is overdue.");
   assert.match((await ok(c, "recent_changes")).headline, /^No changes since Thu Nov 12, 10:00 AM\.$/);
-  assert.match((await ok(c, "get_rulebook")).headline, /^Rulebook: 4 documents \(leads, voice, pipeline, guardrails\)\.$/);
+  assert.match((await ok(c, "get_rulebook")).headline, /^Rulebook: 5 documents \(leads, capture, voice, pipeline, guardrails\)\.$/);
   assert.match(await fails(c, "get_deal", { deal: "Pat Example" }), /^No deal matches "Pat Example"\. Use list_deals/);
 });
 
@@ -117,10 +117,10 @@ test("recent_changes takes an optional since date and explains a bad one", async
 test("get_rulebook returns every document or one by name", async () => {
   const c = await emptyClient();
   const all = (await ok(c, "get_rulebook")).data as { documents: { name: string; markdown: string }[] };
-  assert.deepEqual(all.documents.map((d) => d.name), ["leads", "voice", "pipeline", "guardrails"]);
+  assert.deepEqual(all.documents.map((d) => d.name), ["leads", "capture", "voice", "pipeline", "guardrails"]);
   assert.ok(all.documents.every((d) => d.markdown.length > 0));
   assert.equal((await ok(c, "get_rulebook", { name: "voice" })).headline, "Rulebook: 1 document (voice).");
-  assert.match(await fails(c, "get_rulebook", { name: "tone" }), /^There's no rulebook document "tone"\. Documents: leads, voice, pipeline, guardrails\./);
+  assert.match(await fails(c, "get_rulebook", { name: "tone" }), /^There's no rulebook document "tone"\. Documents: leads, capture, voice, pipeline, guardrails\./);
 });
 
 async function leadsClient() {

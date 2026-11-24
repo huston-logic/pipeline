@@ -174,7 +174,7 @@ test("getRulebook returns every document in order, or the one named", async () =
   const db = await openTestDb();
   assert.deepEqual(
     (await queries.getRulebook(db)).map((doc) => doc.name),
-    ["leads", "voice", "pipeline", "guardrails"],
+    ["leads", "capture", "voice", "pipeline", "guardrails"],
   );
   const [voice] = await queries.getRulebook(db, "voice");
   assert.match(voice?.markdown ?? "", /^# Voice/);
