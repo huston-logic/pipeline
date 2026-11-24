@@ -30,9 +30,10 @@ export async function timerState(db: Db, now: Date, settings: Pick<SettingsRow, 
 /** The bar: "Timer" in words (never colour alone), who it is for, since when, and Stop. */
 export function timerBar(timer: TimerInfo): Html {
   const who = timer.label === "" ? "" : html`: ${timer.label}`;
+  const named = html`<span class="visually-hidden">: timer${timer.label === "" ? "" : ` for ${timer.label}`}</span>`;
   return html`<div class="timer-bar">
 <p class="timer-bar-text"><strong>Timer</strong>${who} · since ${timer.since}</p>
-<a class="button button-small" href="${STOP_PATH}">Stop</a>
+<a class="button button-small" href="${STOP_PATH}">Stop${named}</a>
 </div>
 `;
 }

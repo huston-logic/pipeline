@@ -38,7 +38,8 @@ export interface TimerSubject {
 export interface StopInput {
   /** What was done: kept on the entry, and logged as a note on its person or deal. Owner text. */
   notes?: string;
-  workType?: string;
+  /** A work type's name or id; null means none (clearing the one the timer has); left out keeps the timer's own. */
+  workType?: string | null;
   billable?: boolean;
   /** Adds the task "Next step" (or "Next step: <deal title>") due then, on the same person or deal. */
   nextStepDate?: string;
@@ -147,7 +148,13 @@ export async function stopTimer(
   const deal = running.deal_id === null ? null : await dealById(ctx, running.deal_id);
   const contact = running.contact_id === null ? null : await contactById(ctx, running.contact_id);
   const workType =
-    input.workType !== undefined ? await findWorkType(ctx, input.workType) : running.work_type_id === null ? null : await workTypeById(ctx, running.work_type_id);
+    input.workType === null
+      ? null
+      : input.workType !== undefined
+        ? await findWorkType(ctx, input.workType)
+        : running.work_type_id === null
+          ? null
+          : await workTypeById(ctx, running.work_type_id);
   const billable = input.billable ?? (input.workType !== undefined ? workType?.billable_default === 1 : running.billable === 1);
   const notes = clean(input.notes ?? null);
   const stamp = ctx.now.toISOString();

@@ -62,21 +62,31 @@ async function stop(ctx: ActionContext): Promise<ActionResult> {
   const refused = async (extra: string[] = []) =>
     page(
       422,
-      (await timerStopPage(pageContext(ctx, here), { shown: collected.shown, billable, errors: [...collected.errors, ...extra.map((message) => ({ message }))] })) ?? "",
+      (await timerStopPage(pageContext(ctx, here), { shown: collected.shown, billable, wasBillable: ctx.form.get("was.billable") ?? (billable ? "1" : "0"), errors: [...collected.errors, ...extra.map((message) => ({ message }))] })) ?? "",
     );
   if ((await runningTimer(ctx.db)) === null) return refused(["No timer is running."]);
   if (collected.errors.length > 0) return refused();
   const input = collected.input as { notes?: string; workType?: string; nextStepDate?: string; startedAt?: string; endedAt?: string };
-  const stopInput: StopInput = { billable };
+  const stopInput: StopInput = {};
   if (input.notes !== undefined) stopInput.notes = input.notes;
-  if (input.workType !== undefined) stopInput.workType = input.workType;
+  // None clears a work type the timer has; a type chosen again is not resent, so the timer's own billable stands.
+  const running = await runningTimer(ctx.db);
+  const own = running?.work_type_id ?? null;
+  if (input.workType === undefined) {
+    if (own !== null) stopInput.workType = null;
+  } else if (input.workType !== own) {
+    stopInput.workType = input.workType;
+  }
+  // Billable is sent only when the box differs from how the form drew it; otherwise the work type's default decides.
+  const was = ctx.form.get("was.billable");
+  if (was === null || was !== (billable ? "1" : "0")) stopInput.billable = billable;
   if (input.nextStepDate !== undefined) stopInput.nextStepDate = input.nextStepDate;
   // A start or end left as the form drew it is not sent: the timer keeps its own start, and "now" is the moment of saving.
   if (input.startedAt !== undefined && input.startedAt !== ctx.form.get("was.started")) stopInput.startedAt = input.startedAt;
   if (input.endedAt !== undefined && input.endedAt !== ctx.form.get("was.ended")) stopInput.endedAt = input.endedAt;
   try {
     const result = await stopTimer(asOwner(ctx, "stop_timer"), stopInput);
-    return redirect(withChange(`${TIMER_DONE_PATH}?entry=${encodeURIComponent(result.entryId)}`, result.changeId));
+    return redirect(withChange(`${TIMER_DONE_PATH}?entry=${encodeURIComponent(result.entryId)}${result.taskId === null ? "" : `&task=${encodeURIComponent(result.taskId)}`}`, result.changeId));
   } catch (error) {
     return refused([refusal(error, "time entry")]);
   }

@@ -8,7 +8,7 @@ import { runningTimer } from "../../services/time-entries.ts";
 import { listWorkTypes } from "../../services/work-types.ts";
 import { localWhen } from "../../time.ts";
 import type { PageContext } from "../context.ts";
-import { postForm } from "../forms.ts";
+import { hidden, postForm } from "../forms.ts";
 import { html } from "../html.ts";
 import { checkbox } from "../inputs.ts";
 import { renderPage } from "../layout.ts";
@@ -32,7 +32,7 @@ export const stopSpecs = (types: Pick<WorkTypeRow, "id" | "name">[]): Spec[] => 
 ];
 
 /** A refused stop's form as it was posted, with what went wrong. */
-export type StopState = { shown: Map<string, Shown>; billable: boolean; errors: FormError[] };
+export type StopState = { shown: Map<string, Shown>; billable: boolean; wasBillable: string; errors: FormError[] };
 
 /** The page, or null while time tracking is off. `state` is a refused post: the form again with its values and errors. */
 export async function timerStopPage(ctx: PageContext, state?: StopState): Promise<string | null> {
@@ -88,6 +88,7 @@ ${postForm(
   html`${field("notes")}
 ${field("work_type")}
 ${checkbox({ id: "stop-billable", name: "billable", label: "Billable", value: "yes", checked: billable })}
+${hidden("was.billable", state === undefined ? (billable ? "1" : "0") : state.wasBillable)}
 ${field("next_step")}
 ${field("started")}
 ${field("ended")}

@@ -60,3 +60,15 @@ every page, and stop it with a few words about what was done, which become a not
   JavaScript. The owner ticks it.
 - The done page finds a next step task by the moment the entry was saved, so after the entry is edited later the
   link to it is not shown.
+
+## Changes after review
+
+- Billable follows the work type: the form carries how it drew the box (`was.billable`) and sends `billable` only when
+  the box differs; otherwise `stop_timer` takes it from the chosen work type's default.
+- `StopInput.workType` is `string | null` in `stopTimer` (a service change to 0049's code): null means no work type
+  (clearing the timer's own, and so not billable unless ticked), left out keeps it. The board sends null for None. The
+  MCP `stop_timer` schema is unchanged and stays strict.
+- The stop redirect carries the added task: `/timer/done?entry=te_...&task=tk_...&change=chg_...`. The done page
+  uses `task` only when it is a well-formed task id of the entry's own deal or person (ids only in the address).
+  This replaces the timestamp lookup above.
+- The done page loads `/board.js`, so Copy prompt appears. The bar's Stop link carries a hidden ": timer for <label>".

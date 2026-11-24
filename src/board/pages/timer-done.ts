@@ -3,8 +3,8 @@
 // a finished one.
 import type { TimeEntryRow } from "../../db/db.ts";
 import { getSettings } from "../../db/queries.ts";
-import { isTimeEntryId } from "../../ids.ts";
-import { contactById, dealById, ownerTimezone, timeEntryById, workTypeById } from "../../services/lookup.ts";
+import { isTaskId, isTimeEntryId } from "../../ids.ts";
+import { contactById, dealById, ownerTimezone, taskById, timeEntryById, workTypeById } from "../../services/lookup.ts";
 import { amountOf, formatDuration, formatMoney } from "../../services/time-format.ts";
 import { formatLocal } from "../../time.ts";
 import type { PageContext } from "../context.ts";
@@ -27,13 +27,15 @@ async function subjectOf(ctx: PageContext, entry: TimeEntryRow): Promise<Subject
   return { href: contactHref(contact.id), link: contactLink(contact.id, contact.name, contact.untrusted_fields.includes("name")) };
 }
 
-/** The "Next step" task this entry's stop added: made in the same moment, on the same person or deal. */
+/** The task the stop added, named in the address by id: used only when it is a task of the entry's own deal or person. */
 async function nextStepTaskId(ctx: PageContext, entry: TimeEntryRow): Promise<string | null> {
-  const found = await ctx.db
-    .prepare("SELECT id FROM tasks WHERE created_at = ? AND title LIKE 'Next step%' AND source = 'owner' AND IFNULL(deal_id, '') = ? AND IFNULL(contact_id, '') = ? LIMIT 1")
-    .bind(entry.updated_at, entry.deal_id ?? "", entry.contact_id ?? "")
-    .first<string>("id");
-  return found;
+  const id = ctx.query.get("task") ?? "";
+  if (!isTaskId(id)) return null;
+  const task = await taskById(ctx.db, id);
+  if (task === null) return null;
+  const sameDeal = task.deal_id !== null && task.deal_id === entry.deal_id;
+  const samePerson = task.deal_id === null && task.contact_id !== null && task.contact_id === entry.contact_id;
+  return sameDeal || samePerson ? task.id : null;
 }
 
 export async function timerDonePage(ctx: PageContext): Promise<string | null> {
@@ -54,6 +56,7 @@ export async function timerDonePage(ctx: PageContext): Promise<string | null> {
     title: "Time saved",
     description: "The time you just saved, and what it made.",
     frame: { ...ctx, timer },
+    script: true,
     body: html`<h1>Time saved</h1>
 ${section(
   "saved-heading",

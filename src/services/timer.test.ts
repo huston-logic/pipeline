@@ -184,3 +184,25 @@ test("the timer refuses while time tracking is off", async () => {
   await assert.rejects(startTimer(ctxFor(db), {}), off);
   await assert.rejects(stopTimer(ctxFor(db), {}), off);
 });
+
+test("stopping with workType null clears the timer's work type and its billable; undefined keeps both (decision 0050)", async () => {
+  const kept = await timeDb(NOW);
+  await startTimer(ctxFor(kept), { contact: "ct_seed01", workType: "Design" });
+  const keep = await stopTimer(ctxFor(kept, at(30 * MINUTE), "stop_timer"), {});
+  const keptRow = await entry(kept, keep.entryId);
+  assert.equal(keptRow?.work_type_id, "wt_design");
+  assert.equal(keptRow?.billable, 1);
+
+  const cleared = await timeDb(NOW);
+  await startTimer(ctxFor(cleared), { contact: "ct_seed01", workType: "Design" });
+  const none = await stopTimer(ctxFor(cleared, at(30 * MINUTE), "stop_timer"), { workType: null });
+  const row = await entry(cleared, none.entryId);
+  assert.equal(row?.work_type_id, null);
+  assert.equal(row?.billable, 0);
+  assert.equal(row?.rate, null);
+
+  const ticked = await timeDb(NOW);
+  await startTimer(ctxFor(ticked), { contact: "ct_seed01", workType: "Design" });
+  const both = await stopTimer(ctxFor(ticked, at(30 * MINUTE), "stop_timer"), { workType: null, billable: true });
+  assert.equal((await entry(ticked, both.entryId))?.billable, 1);
+});

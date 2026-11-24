@@ -172,7 +172,7 @@ test("the Stop bar sits right after the header and before main, says Timer in wo
   assert.ok(header > 0 && bar > header && bar < on.indexOf("<main"), "after the header, before main");
   assert.equal(on.slice(header + "</header>".length).trimStart().startsWith("<div class=\"app-body\">\n<div class=\"timer-bar\">"), true);
   assert.match(on, /<strong>Timer<\/strong>: Pat Example · since 9:10 AM/);
-  assert.match(on, /<a class="button button-small" href="\/timer\/stop">Stop<\/a>/);
+  assert.match(on, /<a class="button button-small" href="\/timer\/stop">Stop<span class="visually-hidden">: timer for Pat Example<\/span><\/a>/);
   assert.doesNotMatch(draw({ label: "", since: "9:10 AM" }), /Timer<\/strong>: /);
   assert.match(draw({ label: "", since: "9:10 AM" }), /<strong>Timer<\/strong> · since 9:10 AM/);
   assert.doesNotMatch(draw(null), /timer-bar/);

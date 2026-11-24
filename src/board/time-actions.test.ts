@@ -32,7 +32,7 @@ test("start then the bar shows on Today", async () => {
   const today = (await load(devEnv(db), "/")).body;
   assert.match(today, /<div class="timer-bar">/);
   assert.match(today, /<strong>Timer<\/strong>: Pat Example · since \d{1,2}:\d{2} [AP]M/);
-  assert.match(today, /<a class="button button-small" href="\/timer\/stop">Stop<\/a>/);
+  assert.match(today, /<a class="button button-small" href="\/timer\/stop">Stop<span class="visually-hidden">: timer for Pat Example<\/span><\/a>/);
   // Every board page carries it, and a person's page no longer offers a second Start.
   const person = (await load(devEnv(db), "/contacts/ct_seed01")).body;
   assert.match(person, /class="timer-bar"/);
@@ -82,7 +82,7 @@ test("stop saves entry, note and task and redirects to done", async () => {
     next_step: "2099-01-05",
   });
   assert.equal(res.status, 303);
-  assert.match(location, /^\/timer\/done\?entry=(te_[a-z0-9]{12})&change=(chg_[a-z0-9]{12})$/);
+  assert.match(location, /^\/timer\/done\?entry=(te_[a-z0-9]{12})&task=(tk_[a-z0-9]{12})&change=(chg_[a-z0-9]{12})$/);
   assert.equal(await auditCount(db), before + 1);
   const audit = await auditOf(db, changeIdOf(location));
   assert.equal(audit?.actor, "owner");
@@ -189,4 +189,87 @@ test("time tracking off: no Start button, no bar, 404s", async () => {
   assert.equal((await started(db)).res.status, 404);
   assert.equal((await post(env, "/timer/stop", { notes: "x" })).res.status, 404);
   assert.equal(await auditCount(db), before);
+});
+
+/** Starts a timer for Pat (optionally with a work type already on it), stops it with `fields`, answers the entry. */
+async function stoppedWith(fields: Record<string, string>, own?: string) {
+  const db = await timeDb(new Date());
+  await started(db);
+  if (own !== undefined) db.exec(`UPDATE time_entries SET work_type_id = '${own}', billable = 1`);
+  const { res } = await post(devEnv(db), "/timer/stop", fields);
+  assert.equal(res.status, 303);
+  return (await entries(db))[0];
+}
+
+test("a billable work type chosen with the box untouched saves a billable entry at its rate", async () => {
+  // The form drew the box unticked (the timer had no work type), so was.billable is "0" and the box posts nothing.
+  const row = await stoppedWith({ work_type: "wt_design", "was.billable": "0" });
+  assert.equal(row?.work_type_id, "wt_design");
+  assert.equal(row?.billable, 1);
+  assert.equal(row?.rate, 95);
+});
+
+test("ticking or unticking the box explicitly wins over the work type's default", async () => {
+  const unticked = await stoppedWith({ work_type: "wt_design", "was.billable": "1" }, "wt_design");
+  assert.equal(unticked?.billable, 0, "drawn ticked, posted unticked");
+  assert.equal(unticked?.rate, null);
+  const ticked = await stoppedWith({ work_type: "wt_admin", "was.billable": "0", billable: "yes" });
+  assert.equal(ticked?.billable, 1, "Admin is not billable by default, but the box was ticked");
+  const admin = await stoppedWith({ work_type: "wt_admin", "was.billable": "0" });
+  assert.equal(admin?.billable, 0);
+});
+
+test("None on a timer that has a work type clears it, and the entry is not billable unless the box is ticked", async () => {
+  const db = await timeDb(new Date());
+  await started(db);
+  db.exec("UPDATE time_entries SET work_type_id = 'wt_design', billable = 1");
+  const page = await load(devEnv(db), "/timer/stop");
+  assert.match(page.body, /<option value="wt_design" selected>/);
+  assert.match(page.body, /name="was\.billable" value="1"/);
+  assert.match(page.body, /name="billable" type="checkbox" value="yes" checked/);
+  const none = await post(devEnv(db), "/timer/stop", { work_type: "", "was.billable": "1", billable: "yes" }, { cookie: page.cookie, token: page.token });
+  assert.equal(none.res.status, 303);
+  const [row] = await entries(db);
+  assert.equal(row?.work_type_id, null);
+  assert.equal(row?.billable, 0, "the box was left as drawn, so the (absent) work type's default decides");
+  const ticked = await stoppedWith({ work_type: "", "was.billable": "0", billable: "yes" }, "wt_design");
+  assert.equal(ticked?.work_type_id, null);
+  assert.equal(ticked?.billable, 1);
+});
+
+test("the Stop link names the timer it stops for a screen reader", async () => {
+  const db = await timeDb(new Date());
+  await started(db);
+  const { body } = await load(devEnv(db), "/");
+  assert.match(body, /<a class="button button-small" href="\/timer\/stop">Stop<span class="visually-hidden">: timer for Pat Example<\/span><\/a>/);
+});
+
+test("the done page links its task only when the address names a real task of the entry's subject", async () => {
+  const db = await timeDb(new Date());
+  await started(db);
+  const stopped = await post(devEnv(db), "/timer/stop", { notes: "Did it.", next_step: "2099-01-05" });
+  assert.match(stopped.location, /^\/timer\/done\?entry=te_[a-z0-9]{12}&task=tk_[a-z0-9]{12}&change=chg_[a-z0-9]{12}$/);
+  assert.match((await load(devEnv(db), stopped.location)).body, /<a href="\/contacts\/ct_seed01">Next step task<\/a>/);
+
+  const entry = /entry=(te_[a-z0-9]+)/.exec(stopped.location)?.[1] ?? "";
+  const without = (await load(devEnv(db), `/timer/done?entry=${entry}`)).body;
+  assert.doesNotMatch(without, /Next step task/);
+  // tk_seed02 belongs to another person's deal, tk_nope is not there, and a malformed id is ignored.
+  for (const task of ["tk_seed02", "tk_nope", "<b>"]) {
+    const body = (await load(devEnv(db), `/timer/done?entry=${entry}&task=${encodeURIComponent(task)}`)).body;
+    assert.doesNotMatch(body, /Next step task/, task);
+  }
+  const db2 = await timeDb(new Date());
+  await started(db2);
+  const plain = await post(devEnv(db2), "/timer/stop", { notes: "No task." });
+  assert.doesNotMatch(plain.location, /task=/);
+});
+
+test("the done page loads board.js, so Copy prompt can appear", async () => {
+  const db = await timeDb(new Date());
+  await started(db);
+  const stopped = await post(devEnv(db), "/timer/stop", { notes: "Did it." });
+  const { body } = await load(devEnv(db), stopped.location);
+  assert.match(body, /<script src="\/board\.js" defer><\/script>/);
+  assert.match(body, /data-copy="ask-timer"/);
 });
