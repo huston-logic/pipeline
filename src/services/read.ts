@@ -312,6 +312,19 @@ export async function whatsDue(db: Db, now: Date, tz: string): Promise<WhatsDue>
   };
 }
 
+/** An open task for Today's list: the task item and when it was made, for the newest-first sort (decision 0047). */
+export type OpenTask = TaskItem & { createdAt: string };
+
+/** Every open task that is awake (not snoozed past now), dated or not, in no particular order. */
+export async function openTasks(db: Db, now: Date, tz: string): Promise<OpenTask[]> {
+  const found = await rows<TaskJoin>(
+    db,
+    `${TASK_SELECT} WHERE t.done_at IS NULL AND (t.snoozed_until IS NULL OR t.snoozed_until <= ?) ORDER BY t.id`,
+    [now.toISOString()],
+  );
+  return found.map((row) => ({ ...toTaskItem(row, tz), createdAt: row.created_at }));
+}
+
 export interface DealBrief {
   deal: DealItem & { fields: Record<string, unknown>; createdAt: string; archived: boolean };
   contact: ContactView;
