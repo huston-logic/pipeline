@@ -1,17 +1,26 @@
-// The timer's board posts (decision 0050): Start timer and the stop form. Each calls the service the matching MCP tool
-// calls (start_timer, stop_timer) as the owner under that tool's name; the AI edits setting does not apply to the board.
-// While time tracking is off every path here is a 404. A refused stop draws the form again (422) with the values kept.
+// The time posts: the timer's Start and stop form (decision 0050), and adding, editing and archiving an entry by hand
+// (decision 0051). Each calls the service the matching MCP tool calls (start_timer, stop_timer, add_time_entry,
+// update_time_entry) as the owner under that tool's name; the AI edits setting does not apply to the board. While time
+// tracking is off every path here is a 404. A refused form is drawn again (422) with the values kept.
 import { getSettings } from "../db/queries.ts";
+import { localDate } from "../time.ts";
 import { isContactId, isDealId, isTaskId } from "../ids.ts";
 import { UserError } from "../services/errors.ts";
-import { runningTimer } from "../services/time-entries.ts";
+import { addTimeEntry, runningTimer, type TimeEntryInput, type TimeEntryPatch, updateTimeEntry } from "../services/time-entries.ts";
+import { ownerTimezone } from "../services/lookup.ts";
 import { startTimer, type StopInput, stopTimer } from "../services/timer.ts";
-import { type ActionContext, type ActionResult, asOwner, backTo, fieldError, notFound, page, pageContext, redirect, refusal, refusedPage, type Route } from "./action-kit.ts";
+import { type ActionContext, type ActionResult, asOwner, backTo, fieldError, notFound, page, pageContext, redirect, refusal, refusedPage, type Route, stateOf } from "./action-kit.ts";
 import { timerStopPage, stopSpecs, TIMER_STOP_PATH } from "./pages/timer-stop.ts";
-import { collectNew, postedValue, type Shown } from "./record-form.ts";
+import type { PageContext } from "./context.ts";
+import { collectEdit, type Collected, collectNew, postedValue, type Shown } from "./record-form.ts";
+import { editableEntry, timeEditPage, timeNewPage } from "./pages/time-entry.ts";
+import { timeChoices, timeEditPath, TIME_NEW_PATH, timeSpecs } from "./time-form.ts";
+import { mondayOf } from "./time-week.ts";
 import { withChange } from "./return-to.ts";
 import { listWorkTypes } from "../services/work-types.ts";
 import { TIMER_DONE_PATH } from "./pages/timer-done.ts";
+
+const localDateOf = (iso: string, tz: string): string => localDate(new Date(iso), tz);
 
 const trackingOn = async (ctx: ActionContext): Promise<boolean> => (await getSettings(ctx.db)).time_tracking === 1;
 
@@ -92,7 +101,112 @@ async function stop(ctx: ActionContext): Promise<ActionResult> {
   }
 }
 
+const NOTHING_TO_SAVE = "Nothing to save: every field is as it was. Change a value, or cancel to go back.";
+
+/** The week a saved entry is in, and the way back to it: the page that shows the change. */
+const weekAddress = (date: string): string => `/time?week=${mondayOf(date.slice(0, 10))}`;
+
+/** A time form's page context: time tracking is on (the paths 404 otherwise), so More lists Time on a refused form too. */
+const timeContext = (ctx: ActionContext, here: string): PageContext => ({ ...pageContext(ctx, here), timeTracking: true });
+
+/** A start or end with a date and no time is not a moment (it would be midnight): ask for the time, as the stop form does. */
+function needTimes(collected: Collected): void {
+  for (const [name, prop] of [["started", "startedAt"], ["ended", "endedAt"]] as const) {
+    const value = collected.input[prop];
+    if (typeof value === "string" && !value.includes("T")) fieldError(collected, name, "Give the time too.");
+  }
+}
+
+/** An end and minutes together: the board says so in its own words. */
+function eitherEndOrMinutes(collected: Collected, ended: boolean, minutes: boolean): void {
+  if (ended && minutes) fieldError(collected, "minutes", "Give an end or the minutes, not both.");
+}
+
+/** What the form's choices say about billing: "1" billable, "0" not, and nothing (left to the work type) when blank. */
+const billableOf = (value: unknown): boolean | undefined => (value === "1" ? true : value === "0" ? false : undefined);
+
+/** POST /time/new: add_time_entry from the form. Then the week the entry is in, with the Undo banner. */
+async function addEntry(ctx: ActionContext): Promise<ActionResult> {
+  if (!(await trackingOn(ctx))) return notFound(ctx);
+  const collected = collectNew(timeSpecs(await timeChoices(ctx.db), "new"), ctx.form);
+  const input = collected.input as { contact?: string; deal?: string; workType?: string; startedAt?: string; endedAt?: string; minutes?: number; billable?: string; notes?: string };
+  if (collected.errors.length === 0) needTimes(collected);
+  if (collected.errors.length === 0) {
+    eitherEndOrMinutes(collected, input.endedAt !== undefined, input.minutes !== undefined);
+    if (collected.errors.length === 0 && input.endedAt === undefined && input.minutes === undefined) {
+      fieldError(collected, "ended", "A time entry needs an end or a length in minutes.");
+    }
+  }
+  const refused = async (extra: string[] = []) => page(422, (await timeNewPage(timeContext(ctx, TIME_NEW_PATH), stateOf(collected, extra))) ?? "");
+  if (collected.errors.length > 0 || input.startedAt === undefined) return refused();
+  const entry: TimeEntryInput = { startedAt: input.startedAt };
+  if (input.contact !== undefined) entry.contact = input.contact;
+  if (input.deal !== undefined) entry.deal = input.deal;
+  if (input.workType !== undefined) entry.workType = input.workType;
+  if (input.endedAt !== undefined) entry.endedAt = input.endedAt;
+  if (input.minutes !== undefined) entry.minutes = input.minutes;
+  const billable = billableOf(input.billable);
+  if (billable !== undefined) entry.billable = billable;
+  if (input.notes !== undefined) entry.notes = input.notes;
+  try {
+    const result = await addTimeEntry(asOwner(ctx, "add_time_entry"), entry);
+    return redirect(withChange(weekAddress(input.startedAt), result.changeId));
+  } catch (error) {
+    return refused([refusal(error, "time entry")]);
+  }
+}
+
+/** POST /time/<id>/edit: update_time_entry with only the fields the owner changed. */
+async function editEntry(ctx: ActionContext, id: string): Promise<ActionResult> {
+  if (!(await trackingOn(ctx))) return notFound(ctx);
+  const entry = await editableEntry(ctx, id);
+  if (entry === null) return notFound(ctx);
+  const tz = await ownerTimezone(ctx.db);
+  const specs = timeSpecs(await timeChoices(ctx.db, entry), "edit");
+  const collected = await collectEdit(specs, ctx.form, { ...entry, fields: "{}" }, tz);
+  const input = collected.input as { contact?: string | null; deal?: string | null; workType?: string | null; startedAt?: string; endedAt?: string; minutes?: number; billable?: string; notes?: string | null };
+  if (collected.errors.length === 0) needTimes(collected);
+  if (collected.errors.length === 0) eitherEndOrMinutes(collected, input.endedAt !== undefined, input.minutes !== undefined);
+  const refused = async (extra: string[] = []) => page(422, (await timeEditPage(timeContext(ctx, timeEditPath(id)), id, stateOf(collected, extra))) ?? "");
+  if (collected.errors.length > 0) return refused();
+  if (Object.keys(input).length === 0) return refused([NOTHING_TO_SAVE]);
+  const patch: TimeEntryPatch = {};
+  if (input.contact !== undefined) patch.contact = input.contact;
+  if (input.deal !== undefined) patch.deal = input.deal;
+  if (input.workType !== undefined) patch.workType = input.workType;
+  if (input.startedAt !== undefined) patch.startedAt = input.startedAt;
+  if (input.endedAt !== undefined) patch.endedAt = input.endedAt;
+  if (input.minutes !== undefined) patch.minutes = input.minutes;
+  const billable = billableOf(input.billable);
+  if (billable !== undefined) patch.billable = billable;
+  if (input.notes !== undefined) patch.notes = input.notes;
+  try {
+    const result = await updateTimeEntry(asOwner(ctx, "update_time_entry"), entry.id, patch);
+    const saved = await editableEntry(ctx, entry.id);
+    return redirect(withChange(weekAddress(localDateOf(saved?.started_at ?? entry.started_at, tz)), result.changeId));
+  } catch (error) {
+    return refused([refusal(error, "time entry")]);
+  }
+}
+
+/** POST /time/<id>/archive: update_time_entry with archived on. Then the week it was in; Undo brings it back. */
+async function archiveEntry(ctx: ActionContext, id: string): Promise<ActionResult> {
+  if (!(await trackingOn(ctx))) return notFound(ctx);
+  const entry = await editableEntry(ctx, id);
+  if (entry === null) return notFound(ctx);
+  const tz = await ownerTimezone(ctx.db);
+  try {
+    const result = await updateTimeEntry(asOwner(ctx, "update_time_entry"), entry.id, { archived: true });
+    return redirect(withChange(weekAddress(localDateOf(entry.started_at, tz)), result.changeId));
+  } catch (error) {
+    return page(422, refusedPage(ctx, "The entry wasn't archived", refusal(error, "time entry"), weekAddress(localDateOf(entry.started_at, tz)), ""));
+  }
+}
+
 export const TIME_ROUTES: Route[] = [
   { path: /^\/timer\/(start)$/, handle: (ctx) => start(ctx) },
   { path: /^\/timer\/(stop)$/, handle: (ctx) => stop(ctx), big: true },
+  { path: /^\/time\/(new)$/, handle: (ctx) => addEntry(ctx), big: true },
+  { path: /^\/time\/([^/]+)\/edit$/, handle: editEntry, big: true },
+  { path: /^\/time\/([^/]+)\/archive$/, handle: archiveEntry },
 ];

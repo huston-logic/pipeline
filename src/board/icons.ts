@@ -31,6 +31,7 @@ const PATHS: Record<IconName, string> = {
   notifications:
     '<path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2H4.5z"/>' +
     '<path d="M10 20.5a2.2 2.2 0 0 0 4 0"/>',
+  time: '<circle cx="12" cy="13" r="7.5"/><path d="M12 9v4.25l2.75 1.75M9.5 3.5h5"/>',
   email: '<rect x="3.5" y="5.5" width="17" height="13" rx="2.5"/><path d="M4.5 7.5l7.5 5.5 7.5-5.5"/>',
 };
 

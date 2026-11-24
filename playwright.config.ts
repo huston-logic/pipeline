@@ -14,7 +14,10 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: 0,
   workers: process.env.CI ? 1 : undefined,
-  globalTimeout: 5 * 60 * 1000,
+  // The whole suite's wall-clock budget. Every board route is scanned top and bottom on desktop and mobile, plus a
+  // horizontal-scroll check on mobile, one test at a time in CI, so it grows with boardRoutes: about 280 tests took
+  // 5 minutes in run 6. 12 minutes stays inside the a11y job's 15-minute timeout in .github/workflows/ci.yml.
+  globalTimeout: 12 * 60 * 1000,
   reporter: process.env.CI ? [["list"], ["html", { open: "never" }]] : [["list"]],
   use: {
     baseURL,

@@ -2,6 +2,7 @@ import { EXPORT_TABLES, type ExportTable } from "../../http/export.ts";
 import { html } from "../html.ts";
 import { icon } from "../icons.ts";
 import type { PageContext } from "../context.ts";
+import { getSettings } from "../../db/queries.ts";
 import { renderPage } from "../layout.ts";
 
 const TABLE_LABELS: Record<ExportTable, string> = {
@@ -27,8 +28,12 @@ const TABLE_LABELS: Record<ExportTable, string> = {
   email_log: "Logged emails",
 };
 
+/** The tables that only matter while time tracking is on (decision 0051); the full JSON export still holds them. */
+const TIME_TABLES: readonly ExportTable[] = ["time_entries", "work_types", "client_rates"];
+
 export async function exportPage(ctx: PageContext): Promise<string> {
-  const links = EXPORT_TABLES.map(
+  const timeOn = (await getSettings(ctx.db)).time_tracking === 1;
+  const links = EXPORT_TABLES.filter((table) => timeOn || !TIME_TABLES.includes(table)).map(
     (table) =>
       html`<li><a class="download-row" href="/api/export/${table}.csv" download>${icon("export")}<span class="download-label">${TABLE_LABELS[table]}</span> <span class="download-file">${table}.csv</span></a></li>`,
   );

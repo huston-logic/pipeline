@@ -8,7 +8,7 @@ import { herePath, type PageContext } from "./context.ts";
 import { lookOf } from "./layout.ts";
 import { briefPage } from "./pages/brief.ts";
 import { changesPage } from "./pages/changes.ts";
-import { isContactId, isDealId, isImportId } from "../ids.ts";
+import { isContactId, isDealId, isImportId, isTimeEntryId } from "../ids.ts";
 import { companiesPage } from "./pages/companies.ts";
 import { contactPage } from "./pages/contact.ts";
 import { contactEditPage } from "./pages/contact-edit.ts";
@@ -34,6 +34,9 @@ import { rulesPage } from "./pages/rules.ts";
 import { todayPage } from "./pages/today.ts";
 import { timerDonePage, TIMER_DONE_PATH } from "./pages/timer-done.ts";
 import { timerStopPage, TIMER_STOP_PATH } from "./pages/timer-stop.ts";
+import { timePage, TIME_PATH } from "./pages/time.ts";
+import { timeEditPage, timeNewPage } from "./pages/time-entry.ts";
+import { TIME_NEW_PATH } from "./time-form.ts";
 import { timerState } from "./timer-bar.ts";
 
 export type PageResult = { status: 200 | 404; body: string };
@@ -68,6 +71,8 @@ const PAGES = new Map<string, Page>([
   [PERSON_DEAL_PATH, (ctx) => personDealPage(ctx)],
   [TIMER_STOP_PATH, (ctx) => timerStopPage(ctx)],
   [TIMER_DONE_PATH, (ctx) => timerDonePage(ctx)],
+  [TIME_PATH, (ctx) => timePage(ctx)],
+  [TIME_NEW_PATH, (ctx) => timeNewPage(ctx)],
 ]);
 
 /**
@@ -81,6 +86,7 @@ const RECORD_PATHS: { path: RegExp; isId: (id: string) => boolean; page: RecordP
   { path: /^\/contacts\/([^/]+)\/edit$/, isId: isContactId, page: (ctx, id) => contactEditPage(ctx, id) },
   { path: /^\/contacts\/([^/]+)\/deals\/new$/, isId: isContactId, page: (ctx, id) => newDealPage(ctx, id) },
   { path: /^\/contacts\/([^/]+)\/qualify$/, isId: isContactId, page: (ctx, id) => qualifyPage(ctx, id) },
+  { path: /^\/time\/([^/]+)\/edit$/, isId: isTimeEntryId, page: (ctx, id) => timeEditPage(ctx, id) },
   { path: /^\/import\/([^/]+)$/, isId: isImportId, page: importDraft, gone: importGonePage },
   { path: /^\/import\/([^/]+)\/preview$/, isId: isImportId, page: importPreview, gone: importGonePage },
 ];
@@ -99,6 +105,7 @@ async function contextFor({ db, now, url, csrf }: Omit<PageRequest, "pushKey" | 
     csrf,
     look: lookOf(settings),
     banner: await changeBanner(db, url.searchParams, { csrf, here }),
+    timeTracking: settings.time_tracking === 1,
     ...(await timerState(db, now, settings)),
   };
 }
