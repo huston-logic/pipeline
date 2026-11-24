@@ -178,6 +178,71 @@ A full 2,000-row import in the Worker takes about 11 ms of CPU on a big copy, a 
 (docs/PAID-PLAN.md, "Run 5: import"). If a board import of a big file fails with "exceeded CPU", split the file, import
 it from your Mac (`npm run import:contacts`, docs/INSTALL.md step 8), or move the copy to Workers Paid.
 
+## Run 6: after you update
+
+Run 6 adds "approve before change" (the AI app shows a list and waits for your yes before it edits records), to-dos
+that belong to no one, a Today page that works like a list, capturing a ramble as one list, and an optional timer with
+time entries and billing rates. Do these in order, per copy. (A copy still on run 4 or earlier: do "Run 4" and "Run 5"
+first.)
+
+### 1. Update the copy
+
+```bash
+git switch main && git pull --ff-only
+npm run copies:update -- --copy <name> --dry-run
+npm run copies:update -- --copy <name>
+```
+
+The first command only shows what it would do. Migrations 0014 to 0018 apply when wrangler asks you to confirm: they add
+tables and columns (proposals, the "AI edits" setting, standalone to-dos, a "capture" rulebook document, time tracking)
+and keep every row. 0016 rebuilds the tasks table so a to-do can belong to no one; every task keeps its person and deal.
+Access needs no change: the new pages sit behind the board's sign-in like the rest.
+
+### 2. Reconnect the AI app's connector if the tool list looks stale
+
+New tools: `propose_changes` and `apply_changes`, `list_tasks`, and the time tools (`start_timer`, `stop_timer`,
+`add_time_entry`, `update_time_entry`, `list_time`, `list_work_types`, `add_work_type`, `update_work_type`,
+`set_client_rate`). If your AI app does not show `propose_changes`, `apply_changes`, `list_tasks` or the time tools,
+open its connector settings, remove the copy's connector and add it again (or start a new chat).
+
+### 3. What changes in daily use
+
+- **The AI app now asks first.** When you ask it to change a record, it shows a list of exactly what would change and
+  waits. Answer "Yes", "Yes with changes: ..." (it sends a new list) or "No" (nothing changes). A yes writes the whole
+  list as one change, and "Undo that" takes back all of it. A list is good for 2 hours.
+- **Apply small changes.** If you want logged calls, notes and ticked-off tasks to go straight in, say "Use Apply small
+  changes." (and "Go back to Review first." to undo that). That covers a logged call or note, a ticked task, starting a
+  timer and stopping one without a next-step date; everything else still waits for your yes.
+- **To-dos.** A to-do no longer needs a person or a deal ("Buy printer ink"). Today now shows your to-dos as a list you
+  can sort and filter, with a box to add one (up to 50 show per list, with a "Showing 50 of N" line).
+- **Time tracking is off until you turn it on.** No timer or time pages show before that.
+
+### 4. Sentences to say to the AI app
+
+Say these one at a time. The AI app reads the rulebook first. For each list it shows, answer "Yes".
+
+- **Capture.** "Call Dana Friday, send Matt the deck, buy printer ink." One list of three to-dos; after your yes, one
+  change you can undo.
+- **A call and a move.** "Log that I called Pat and move the deal to Call booked." One list, one yes, one change.
+- **Switch to quick mode.** "Use Apply small changes."
+- **Turn on time tracking.** "Turn on time tracking." Then add work types by talking: "Add a work type Drawings at 95 an
+  hour." and "Add a work type Site visit, not billable." Give one client their own rate: "Pat Example's rate is 120 an
+  hour."
+- **Time a job.** "Start a timer on Pat's deal." Later: "Stop it: drew the site plan, an hour, bill it." That saves one
+  entry billed at the work type's rate (or the client's) and logs your note on the deal.
+- **Look at the week.** "What did I bill this week?" (`list_time`: totals, billable and not).
+
+On the board, a Start button appears on deal and contact pages once time tracking is on, and the Time page (More) lists
+the week, lets you add or fix an entry by hand and downloads a month as a CSV. Work types and client rates change only
+by talking to the AI app.
+
+### 5. A big list on the free plan
+
+D1 is the copy's database; a batch is several database steps sent at once; Workers Paid is Cloudflare's $5 a month plan
+with far higher limits. A list of 25 changes (the most one list holds) makes about 30 D1 calls, inside the free plan's
+50 if each batch counts as one. Whether Cloudflare counts each statement inside a batch is still unknown (docs/PAID-PLAN.md, "Run 6"). If a
+long list fails, send it as two shorter ones, or move the copy to Workers Paid.
+
 ## Before a release that has a new migration
 
 Migrations only go forward: there is no "undo" for a database change. Try a release on a copy's preview database

@@ -5,14 +5,19 @@ file is the repo's status: update it in place at the end of every run (CLAUDE.md
 Spec: `docs/SPEC.md`. Plan: `docs/PLAN.md`. Decisions: `docs/decisions/`. Dates are in the owner's timezone
 (America/Los_Angeles), taken from the PR merge times in `gh`.
 
-Last checked against the repo and `gh` on 2026-11-23, at `main` commit `960a113` (#57).
+Last checked on 2026-11-24 from the run 6 ledger and `gh` (PR states and merge times). The local `main` was not pulled,
+so no `main` commit is named here.
 
 ## Current state
 
-**Merged.** Everything in the spec and in the run 2, 4 and 5 briefs is built and merged: #1 to #59, no other PR open
-but this status update, no open code-scanning alerts. Run 5 added CSV import from the board and from the AI app (people, deals and
-tasks, up to 2,000 rows as one change and one undo), Person statuses with sub-statuses, Add contact, saved views and a
-table layout. The repo has migrations 0001 to 0013 and decisions 0001 to 0043.
+**Merged.** Everything in the spec and in the run 2, 4, 5 and 6 briefs is built. #1 to #69 are merged. Open on
+2026-11-24: #70 (the final-review fixes) and #71 (this PR). Both have auto-merge queued (GitHub merges the PR by itself
+once the required checks pass). Run 6, "Daily work", added: approve before change (the AI app shows a list and waits for
+"Yes"; `propose_changes` and `apply_changes`, with a setting to let small changes go straight in), to-dos that belong to
+no one, a Today page that works like a list, capture of a ramble as one list (with `list_tasks`), and optional time
+tracking (timer, entries, work types, client rates, Time pages and a month CSV). The repo has migrations 0001 to 0018 and
+decisions 0001 to 0051. 0 open code-scanning alerts on 2026-11-24 (checked with `gh`; CodeQL is GitHub's code security
+scan).
 
 **Protection.** The "Protect main" ruleset is active (details in CLAUDE.md).
 
@@ -20,19 +25,19 @@ table layout. The repo has migrations 0001 to 0013 and decisions 0001 to 0043.
 PR #29 ("install lessons from the first live copy") corroborates, and its config folder is on this Mac in the
 git-ignored `.copies/`. What that copy runs now can't be checked from the repo or `gh`: whether it has been updated to
 run 4's code (migrations 0006 to 0008) is open until you confirm it. Run 5's code (migrations 0009 to 0013) reaches
-it only when you run the update (Needs Grant 1).
+it only when you run the update (Needs Grant 1); the same goes for run 6's code (migrations 0014 to 0018).
 
-**Open.** Run 6, "Daily work", is in progress (docs/PLAN.md, "Run 6"; section "Run 6" below). What is left from
-earlier runs is in "Needs Grant" and in the minor findings below.
+**Open.** What is left from earlier runs and from run 6 is in "Needs Grant" and in the minor findings below.
 
 **Dependencies** (exact-pinned in `package.json`): runtime `agents` 0.33.0, `@modelcontextprotocol/server` 2.4.0,
 `@cloudflare/workers-oauth-provider` 1.2.4, `postal-mime` 4.2.1, `zod` 4.6.7. Development: `@playwright/test` 1.65.0,
-`@modelcontextprotocol/client` 2.4.0, `typescript-eslint` 8.72.2. Added in run 4: `postal-mime` (PR #37). Run 5
+`@modelcontextprotocol/client` 2.4.0, `typescript-eslint` 8.72.2. Added in run 4: `postal-mime` (PR #37). Runs 5 and 6
 added none.
 
-**Tests.** `npm run check` on this branch passes: 1,287 unit and 51 end-to-end tests, 0 failures. Local a11y does not run on this Mac (Needs
-Grant 6) and local Lighthouse is no longer run (CLAUDE.md, #56); CI runs both. CI's `lighthouse` job now scores 20
-pages, 3 runs each (about 12 minutes instead of 30), and collects again only the pages whose runs crashed (#59).
+**Tests.** `npm run check` on the run 6 branches passes: 1,512 unit and 56 end-to-end tests, 0 failures. Local a11y does
+not run on this Mac (Needs Grant 9) and local Lighthouse is no longer run (CLAUDE.md, #56); CI runs both. CI's
+`lighthouse` job scores 20 pages, 3 runs each (about 12 minutes), and collects again only the pages whose runs crashed
+(#59). The `a11y` job runs about 284 tests and takes about 6 minutes (see Needs Grant 2).
 
 ## Changelog
 
@@ -54,18 +59,38 @@ pages, 3 runs each (about 12 minutes instead of 30), and collects again only the
   (#52); Part 2, people: Person status (#53), its tools, Add contact and the form fields (#54), saved views (#55), table
   layout (#57); CLAUDE.md drops local Lighthouse (#56); closing docs and status (#58).
 - 2026-11-23, CI: the `lighthouse` job scores at most 20 pages, 3 runs each, and retries pages whose runs crashed with
-  Chrome's `NO_NAVSTART` (#59); a CodeQL alert in a table test helper fixed in #57; status brought up to date (this
-  PR).
+  Chrome's `NO_NAVSTART` (#59); a CodeQL alert in a table test helper fixed in #57; status brought up to date (#60).
+- 2026-11-23 to 2026-11-24, run 6, "Daily work": the plan (#61); approve before change (#62); the "AI edits" setting (#63);
+  standalone to-dos (#64); Today as a list (#65); capture and `list_tasks` (#66); time and rates, data and MCP (#67);
+  the timer on the board (#68); the time pages and CSV (#69); the final-review fixes (#70: D1 calls, Today's database
+  sort, the list showing every column it writes); closing docs and status (#71, this PR).
 
 ## Needs Grant
 
 Steps only you can do, in order. Items marked "per copy" repeat for each new client copy.
 
-1. **Update the first copy to run 5** (per copy). `npm run copies:update -- --copy <name> --dry-run` first, then
-   without `--dry-run` (migrations 0009 to 0013 apply), then docs/UPDATING.md: "Run 4: after you update" if that copy never had it, then "Run 5: after you update" (reconnect
-   the connector, the sentences to try, retiring an old "Contact type" field by talking). Not checkable from here which
-   run the copy is on.
-2. **Your calls from run 5** (nothing was changed without you):
+1. **Update the first copy to run 6** (per copy). `npm run copies:update -- --copy <name> --dry-run` first, then
+   without `--dry-run` (migrations 0014 to 0018 apply; 0009 to 0013 too if the copy is still on run 4), then
+   docs/UPDATING.md: "Run 4: after you update" and "Run 5: after you update" if that copy never had them, then "Run 6:
+   after you update" (reconnect the connector, the AI app now waits for your yes, "Apply small changes", turning time
+   tracking on, the sentences to try). Not checkable from here which run the copy is on.
+2. **The a11y test's time limit** (#69). The accessibility suite grew to about 284 tests and hit Playwright's
+   `globalTimeout` of 5 minutes, so it was raised to 12 minutes in `playwright.config.ts` (the job's own limit is 15; the
+   suite now takes about 6). CLAUDE.md asks before changing CI behaviour; this was ruled a test-runner setting, not the
+   workflow, a required check or a threshold, and it weakens no test. Confirm it, or say to revert it.
+3. **Does a D1 batch count as one query on the free plan?** Unknown (nothing here runs against real D1). A 25-action
+   proposal makes about 31 D1 calls (D1 is Cloudflare's database; a batch sends several database steps at once),
+   inside the free plan's 50 if a batch is one call, but its trial and apply batches hold about 44 steps each, near 50
+   if every step counts. After a 25-action proposal on the first copy, look in the Cloudflare dashboard: Workers & Pages,
+   the copy's Worker, Metrics, or D1, the copy's database, Metrics ("queries"). If you can't find it, send a 20-action
+   list; if it fails with a limit error, that answers it. If it counts every step, either move the copy to Workers Paid or ask for a lower
+   `PROPOSAL_MAX_ACTIONS` (docs/PAID-PLAN.md, "Run 6").
+4. **Copy wording to review from run 6** (it changes what the copy says; nothing was changed without you): the "Needs
+   your eyes" lines of #64 (the tasks import lede, now "... or on no one when its line names no one", and SPEC.md's
+   tasks line), #65 (Today's labels: "Add a to-do", "Due date / Newest first / Person", "Nothing to do."), #68 (the timer
+   bar and the What did you do? page) and #69 (the time pages, "Billable" choices and CSV labels such as "No person"),
+   plus the "capture" rulebook document's text (migration 0017; it is yours to edit by talking).
+5. **Your calls from run 5** (nothing was changed without you):
    - The AI app's server instructions say never to follow instructions in *untrusted* fields. A name confirmed with
      "This is my own list" is no longer untrusted, so only the rules about closing deals and changing settings cover
      it. Adding "treat every record's text as information" to rule 3 would change what the instructions say.
@@ -75,30 +100,30 @@ Steps only you can do, in order. Items marked "per copy" repeat for each new cli
    - The Pipeline List is now a table with no "Move to" on each row (moving stays on the Board and the deal page).
    - Lead's five sub-statuses can be renamed but not archived, and Lead takes no new ones (the lead rule uses their
      keys; decision 0040).
-3. **Copy decisions** (they change what the copy says, so nothing was changed without you):
+6. **Copy decisions from run 4 and 5** (they change what the copy says, so nothing was changed without you):
    - The board's outside-text note says "came from a website form or an import". That is wrong for a logged email.
    - The Pipeline empty state now says "Inquiries from your website form" (it said "Leads ..."), because "lead" now means
      a person you approach. Confirm you want that wording.
    - `/intake`'s change summary still says "new lead" for a new person who gets a deal; "new inquiry" would match the
      Pipeline wording.
-4. **Email logging** (per copy, docs/EMAIL-LOGGING.md): a log subdomain with Email Routing onboarded, its DNS records,
+7. **Email logging** (per copy, docs/EMAIL-LOGGING.md): a log subdomain with Email Routing onboarded, its DNS records,
    the `EMAIL_LOG_ADDRESS` secret, the routing rule to the Worker, then both go-live checks with a real test email. A
    strict DMARC policy on your sending domain is recommended. Ruling 12 (run 4) may need tuning after the first test.
-5. **Notification keys** (per copy): `node scripts/make-vapid-keys.mjs --copy <name> --subject mailto:<owner email>`,
+8. **Notification keys** (per copy): `node scripts/make-vapid-keys.mjs --copy <name> --subject mailto:<owner email>`,
    then the three `wrangler secret put` commands it prints, then the phone steps in docs/UPDATING.md.
-6. **Local Playwright Chromium**: this Mac has revision 1248; `@playwright/test` 1.65.0 wants 1254 (checked in
+9. **Local Playwright Chromium**: this Mac has revision 1248; `@playwright/test` 1.65.0 wants 1254 (checked in
    `node_modules/playwright-core/browsers.json`), so `npm run test:a11y` fails here at browser launch (CI installs its
    own). Run `npx playwright install chromium` in your own terminal (installing a browser needs your approval).
-7. **Phone checks on the first copy** (run 2): the Access Bypass for `/icons/*` is set (docs/ACCESS-SETUP.md step 3,
+10. **Phone checks on the first copy** (run 2): the Access Bypass for `/icons/*` is set (docs/ACCESS-SETUP.md step 3,
    check in step 7.5); Add to Home Screen shows the green icon; "Ask Claude" opens claude.ai with the prompt filled in
    (`claude.ai/new?q=` is how claude.ai behaves today, not a documented API; decision 0021).
-8. **Cloudflare dashboard checks on the first copy:**
+11. **Cloudflare dashboard checks on the first copy:**
    - CPU items over 10 ms on the free plan (docs/PAID-PLAN.md, "Run 4 closing re-measure"): Today 13.8 ms, the hour of
      the brief 11.5, `preview_rule` on a deal rule 11.0, `list_deals` 10.3, the export 102 ms. All measured on a fake
      copy of 2,000 deals plus 2,000 leads on a busy Mac. `/companies` (7.7 ms) and `/leads` (2.1 ms) are fine.
    - D1 statements per invocation: the hourly run on the brief's hour makes 37 D1 calls holding 112 statements. If the
      free plan counts statements, lower `MAX_FIRINGS_PER_RUN` to about 8 or use Workers Paid.
-9. **Only when you want them, per copy:**
+12. **Only when you want them, per copy:**
    - Brief emails (Resend): verify the sending domain, create an API key with "Sending access" for that domain only,
      `npx wrangler secret put RESEND_API_KEY -c .copies/<copy>/wrangler.jsonc`, set `BRIEF_SENDING = "on"` and
      `BRIEF_FROM = "Pipeline <brief@<your domain>>"` in that copy's generated config, then ask the AI to
@@ -109,7 +134,7 @@ Steps only you can do, in order. Items marked "per copy" repeat for each new cli
    - A new copy: ask the client to invite your Cloudflare user (Manage Account > Members > Invite, Administrator), run
      `npx wrangler login` yourself, follow docs/INSTALL.md and docs/ACCESS-SETUP.md. Zero Trust Free covers up to 50
      users.
-10. **Leftover temp folder** from a manual test (harmless, nothing secret; the hook stops Claude deleting outside the
+13. **Leftover temp folder** from a manual test (harmless, nothing secret; the hook stops Claude deleting outside the
    repo; checked on 2026-11-21): `rm -r /var/folders/xf/zt8g4lzn0211myfvc6kzmt0r0000gn/T/pipeline-e2e-p134is`
 
 Done since the last file (checked on 2026-11-21): the CI workflow no longer runs `check:placeholders` (nothing in
@@ -139,29 +164,49 @@ Changes to scope, product or a decision since run 3, one line each:
 - Cost (run 5): a 2,000-row board import is about 11 ms of CPU, over the free plan's 10 ms (docs/PAID-PLAN.md).
 - Process (run 5): no local Lighthouse runs; CI's required job is the check (CLAUDE.md, #56). That job now scores at
   most 20 pages, 3 runs each, and retries crashed runs, so it takes about 12 minutes and stops growing (#59).
+- Product (run 6): the AI app shows a list of what it would change and waits for your "Yes", "Yes with changes: ..." or
+  "No" before it edits records; a yes is one change with one undo (0044).
+- Product (run 6): an "AI edits" setting: Review first (the default) or Apply small changes (a logged call or note, a
+  ticked task, starting or stopping a timer go straight in) (0045).
+- Product (run 6): to-dos can belong to no person or deal, and Today is a list you can sort, filter and add to, up to 50
+  shown per list (0046, 0047).
+- Product (run 6): capture: talk a ramble into the AI app and get one list of to-dos, notes and stage moves; a read
+  tool, `list_tasks`, shows every to-do including undated ones (0048).
+- Product (run 6): time tracking, off by default: a timer, time entries, work types, a rate per client (a person), a
+  Time page and a month CSV (0049 to 0051).
+- Cost (run 6): the free plan's 50 D1 calls per request: a 25-action list is about 31 calls after the fix; whether a
+  batch counts as one call is unknown. Today fell from 16 ms to 7 ms of CPU on a 3,140-task copy (docs/PAID-PLAN.md,
+  "Run 6").
 
 ---
 
 # History (kept from earlier runs; facts re-checked on 2026-11-23)
 
-## Run 6 (from 2026-11-23, in progress)
+## Run 6 (2026-11-23 to 2026-11-24)
 
 Daily work (docs/PLAN.md, "Run 6"; plan `docs/superpowers/plans/2026-11-24-run6-daily-work.md`): approve before
-change, to-dos like a list, capture through the AI app, timer and time entries with billing rates. The closing PR
-fills in the table and the final state.
+change, to-dos like a list, capture through the AI app, timer and time entries with billing rates. Every task had an
+independent review before its PR (A1 also a security review; B4, D7 and D8 an accessibility review), findings were fixed
+and re-reviewed, and a final review of the whole run found one Critical item (D1 calls) that the fix PR closed.
 
 | # | Task | PR | State |
 | --- | --- | --- | --- |
-| - | Plan | this PR | open |
-| A1 | Proposals: `propose_changes`, `apply_changes` (0044, migration 0014) | | planned |
-| A2 | The "AI edits" setting (0045, migration 0015) | | planned |
-| B3 | Standalone tasks (0046, migration 0016) | | planned |
-| B4 | Today works like a list (0047) | | planned |
-| C5 | Capture (0048, migration 0017) | | planned |
-| D6 | Time and rates: data and MCP (0049, migration 0018) | | planned |
-| D7 | The timer on the board (0050) | | planned |
-| D8 | Time pages and CSV (0051) | | planned |
-| E9 | Closing docs and status | | planned |
+| - | Plan | [#61](https://github.com/huston-logic/pipeline/pull/61) | merged |
+| A1 | Proposals: `propose_changes`, `apply_changes` (0044, migration 0014) | [#62](https://github.com/huston-logic/pipeline/pull/62) | merged |
+| A2 | The "AI edits" setting (0045, migration 0015) | [#63](https://github.com/huston-logic/pipeline/pull/63) | merged |
+| B3 | Standalone tasks (0046, migration 0016) | [#64](https://github.com/huston-logic/pipeline/pull/64) | merged |
+| B4 | Today works like a list (0047) | [#65](https://github.com/huston-logic/pipeline/pull/65) | merged |
+| C5 | Capture and `list_tasks` (0048, migration 0017) | [#66](https://github.com/huston-logic/pipeline/pull/66) | merged |
+| D6 | Time and rates: data and MCP (0049, migration 0018) | [#67](https://github.com/huston-logic/pipeline/pull/67) | merged |
+| D7 | The timer on the board (0050) | [#68](https://github.com/huston-logic/pipeline/pull/68) | merged |
+| D8 | Time pages and CSV (0051) | [#69](https://github.com/huston-logic/pipeline/pull/69) | merged |
+| - | Final-review fixes (D1 calls, Today in SQL, list shows every column) | [#70](https://github.com/huston-logic/pipeline/pull/70) | open, auto-merge queued |
+| E9 | Closing docs and status | #71 (this PR) | open, ready for auto-merge |
+
+CI on the way: #69's `a11y` job hit Playwright's 5-minute limit (the suite grew to about 284 tests), then failed two
+pages at 375 px because the screen-reader-only "Edit" text in the new tables escaped the table's scroll box and widened
+the page to 797 px; fixed with one CSS line (`.table-scroll` gets `position: relative`) and the limit raised to 12
+minutes.
 
 ### Run 6 rulings (cost if wrong)
 
@@ -180,6 +225,76 @@ fills in the table and the final state.
 - 7. Proposals are not shown on the board; the owner approves in the AI app. Cost: a board page later if wanted.
 - 8. A per-client rate is per person (a contact), not per company. Cost: a rate per person at the same company.
 - 9. Time tracking is off by default; the demo seed turns it on so the time pages are tested. Cost: none.
+- 10. Making a proposal also tries it on the database and rolls the try back, so a stored list is one that can be
+  applied. Cost: one extra D1 batch per proposal.
+- 11. Apply refuses if the list, drawn again, reads differently from the one you were shown; a long list is stored as
+  a bulk change by its size in bytes. Cost: a list that changed in wording needs a fresh proposal.
+- 12. There is no second owner confirmation inside `apply_changes`: the AI app must ask you. Proposals add a step, not
+  access, since the record tools already wrote directly. Cost: an AI acting on injected text could still propose and apply.
+- 13. At 10 open proposals, a new one drops the oldest instead of being refused. Cost: a list still waiting for a yes
+  must be proposed again.
+- 14. A name that matches only outside text, or more than 10 people, becomes a question to you; any outside-only match
+  turns every candidate into a question. Cost: more "Which Dana?" questions.
+- 15. A small change applied at once names records by the services' exact-name lookup, not the proposal's outside-name
+  protection (0045). Cost: a rare exact-name match on an outside-made record goes straight in.
+- 16. The "AI edits" setting has no board control; you set it by asking the AI app. Cost: a board setting later if wanted.
+- 17. Migration 0016 saves and restores `rule_firings.task_id` around the table rebuild, because `DROP TABLE` runs
+  `ON DELETE SET NULL` even with deferred checks (now a warning in AGENTS.md). Cost: none.
+- 18. The tasks import's board lede now says "or on no one when its line names no one" (it would be false otherwise).
+  Cost: one sentence to reword.
+- 19. Today shows at most 50 to-dos per list after sorting, with "Showing 50 of N", and no show-all. Cost: the 51st is
+  reachable only after others are done. A date-only due date is midnight in your timezone. Cost: a task due today
+  sorts before 9 AM ones.
+- 20. Today's sort, filter and 50-cut run in the database (one batch), not in the Worker. Cost: person sort uses
+  ASCII-only `lower()`, so names differing only by an accented capital may sort apart.
+- 21. Capture's acceptance sentence is number 26 (21 to 25 were taken in run 5), and the demo seed stays as it was.
+  Cost: a rename if you prefer 21.
+- 22. A read-only `list_tasks` tool was added so undated to-dos are visible to the AI app. Cost: one small tool.
+- 23. A proposed `stop_timer` ends at the time the list was made; the note is logged at the time you say yes. Cost: a
+  yes an hour later still ends the entry at the proposal time (the owner can edit it).
+- 24. A timer started in a list cannot be stopped in the same list (use `add_time_entry`). Cost: two steps.
+- 25. No work type means not billable; billable with no rate stores no rate and $0. Cost: none.
+- 26. Before the final fix, a list was checked as a whole for "shows something"; now every column a row writes must be
+  shown, with a table-driven test over every action. Cost: a stricter list drawing.
+- 27. Over MCP, `stop_timer` cannot clear a work type; the AI app uses `update_time_entry`. The board's stop form can.
+  Cost: one extra call in a rare case.
+- 28. The three time CSV links are hidden on the Export page while time tracking is off (the data stays in the JSON
+  export). Cost: none.
+- 29. Add time's "Billable" is a three-way choice (follow the work type, billable, not billable); the Stop form keeps a
+  checkbox. Cost: the two forms differ.
+- 30. The person and deal pickers on the time forms list the first 300 records. Cost: a very large copy can't pick
+  someone past 300.
+- 31. Final fix: a 25-action list was cut from 158 to 31 D1 calls (and apply from 88 to 30) with a once-per-request
+  memo of settings-like tables and name matching in one batch; `PROPOSAL_MAX_ACTIONS` stays 25. Cost: the 40-call bound
+  is proven only for the test's action mixes.
+- 32. The a11y suite's Playwright `globalTimeout` went from 5 to 12 minutes in #69, by the run controller, without
+  asking you. Cost: if you count it as "CI behaviour", it needed your OK (Needs Grant 2).
+- 33. One CSS line (`.table-scroll { position: relative }`) fixed the 797 px width bug on the table pages, checked at
+  375 px on four routes but without a subagent review. Cost: CI's required a11y job was the test.
+- 34. The "capture" rulebook document is a short, editable text added by migration 0017, so a fifth document sits after
+  "leads" on new copies and last on old ones. Cost: the order differs between copies (harmless).
+- 35. The demo seed's time entries are anchored to this week's Monday (they sat in the past, so "This week" was empty
+  on a Monday), and one fixed entry (2026-11-17) keeps `/time?week=2026-11-16` populated. Cost: none.
+
+### Run 6 minor findings (none blocks use)
+
+- Proposals: `withShownIds` does not rewrite bound extra or leading statements (safe today); the wording of the `@n`
+  task refusal and of a bind message; an unknown trial failure gives the generic server message; an apply after a
+  concurrent replace says "changed since", not "replaced by"; the layering test misses a dynamic `import()`; outside-made
+  records can be named only by id (more questions); no test for two applies racing beyond the one written; the 40-call
+  bound is proven only for the tested mixes, and it is unknown whether D1 counts each statement in a batch.
+- AI edits: `get_settings`' description is long; a small `log_activity` skips the name-match outside-name protection (as
+  before, written in 0045).
+- To-dos and Today: no positive test that a snoozed task wakes; "overdue" is defined in two places; the 50 cap can hide
+  an overdue task under "Newest first" (by design); Today's person sort is ASCII-case only.
+- Time: no daylight-saving test of a week boundary (right by construction); the stop form draws the box from the work
+  type default while an untouched box falls back to the running timer's value (differs only after an explicit override
+  at start); the done page may show an archived task; no Stop bar on the generic refusal and 404 pages; a lone
+  "(optional)" on the Next step date.
+- Time pages: the 300-entry limit on the pickers; a fixed `?week=` route drifts empty over time (one fixed seed entry
+  keeps the demo populated); the edit form pre-fills both End and Minutes; week links have no dates in their names;
+  Archive has no confirm (Undo is on the banner, as elsewhere); the `/companies` swap in Lighthouse's page list is weaker
+  than first claimed (the Time pages replace it).
 
 ## Run 5 (2026-11-22 to 2026-11-23)
 
@@ -355,12 +470,12 @@ covers only mail you send with the Bcc; forwarded mail is not parsed for the ori
 - The end-to-end email test covers only the drop path: locally nothing prepends Cloudflare's header, so the logged path
   stays unit-tested.
 - board.js's focus move and Copy prompt are only text-checked (a browser test needs the Chromium install in Needs
-  Grant 5); a double tap on a Log button logs twice (decision 0021 accepts this).
+  Grant 9); a double tap on a Log button logs twice (decision 0021 accepts this).
 - The company sort on /contacts (SQLite NOCASE) and the grouping on /companies (a collator) treat tabs and accents
   slightly differently; the Contacts search echoes the query in the page (escaped, as intended); the CSV export of a
   very large copy still needs `copies:export`.
 - **Performance:** narrow the contact read in the brief and in the deal reads to the people the request needs, if the
-  CPU items in Needs Grant 7 bite on a real copy.
+  CPU items in Needs Grant 11 bite on a real copy.
 
 ## Run 3 (2026-11-19)
 

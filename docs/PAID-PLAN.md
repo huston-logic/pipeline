@@ -318,3 +318,37 @@ on the same Mac at the same load (load average about 2.7 to 4.3):
 
 Today is back under the free plan's 10 ms on this copy (the seed alone measured 8.0 ms in the run 6 re-measure, on a
 busier Mac). What is left is mostly drawing the 100 cards and the rest of the page; the sort itself is the database's.
+
+### Run 6 re-measure: every new request (2026-11-23 and 24)
+
+Method: `scripts/cpu-check.ts`'s method (b) on the scaled copy (2,000 deals, 3,500 people of whom 2,000 leads, 20,000
+activities), plus 2,000 added open tasks (1,000 standalone, 500 undated, 3,140 open in all) and 2,000 time entries over 8
+weeks across about 1,100 people and 1,000 deals, time tracking on; medians of 20 runs after 5 warm-ups, a busy Mac (load
+average about 3 to 5). Est. Worker CPU is process CPU minus the CPU spent inside D1 calls. The Today, propose and apply
+rows were measured before the final-review fix; the "after the fix" column is from the fix wave's own runs (Today at
+the same load, back to back; propose and apply by their D1 calls and CPU on the 10-action list).
+
+| Request | Worker CPU ms (re-measure) | After the fix | D1 calls before | D1 calls after | Over 10 ms |
+| --- | --- | --- | --- | --- | --- |
+| `/` (Today), 3,140 open tasks, 50 per list | 16.0 | 7.4 | 12 | 12 | before the fix only |
+| `/?sort=subject` | | 6.9 (was 15.8) | 12 | 12 | no |
+| `propose_changes`, 10 mixed actions by id | 5.1 | about 5 | 57 | 14 | no |
+| `apply_changes` of that list | 4.0 | 4.3 to 6.6 (busy Mac) | 49 | 13 | no |
+| `/time` (a week of 250 entries) | 2.9 | | 11 | 11 | no |
+| `list_time` (this week) | 2.2 | | 8 | 8 | no |
+| `list_time` (this month, about 1,070 entries in the totals, 200 listed) | 4.3 | | 8 | 8 | no |
+| `list_tasks` (default limit 50) | 1.1 | | 2 | 2 | no |
+
+- For the time pages, `list_time` and `list_tasks` the counts are the re-measure's statements, which the fix did not
+  change.
+- **D1 calls per invocation, free plan 50.** A maximum-size list (`PROPOSAL_MAX_ACTIONS` = 25) was 158 calls to propose
+  and 88 to apply before the fix, and is now 31 and 30 (25 different deals: 256 and 131, now 30 and 29). A one-action
+  list was 16 and 11, now 6 and 5. The cap stays 25. `src/services/proposals-d1.test.ts` fails if a maximum-size list
+  needs more than 40 calls each way.
+- **Open question: does a D1 batch count as one query or one per statement?** The repo holds no copy of Cloudflare's
+  limits page and nothing here ran against real D1, so this is still unknown. Counted per call, a 25-action list is
+  about 31 and fits. Counted per statement, the trial batch and the apply batch of a 25-action list hold about 44
+  statements each, near the free plan's 50 on their own, so a big list would need Workers Paid (1,000) or a lower
+  `PROPOSAL_MAX_ACTIONS`. The owner checks it on the first real copy (docs/STATUS.md, "Needs Grant").
+- Today's CPU is now inside 10 ms on this copy because the sort, filter and cut to 50 moved into the database
+  (decision 0047). The time pages and reads are all under 5 ms.
