@@ -100,7 +100,8 @@ test("the page offers the month's CSV and a month picker that gets /time/export.
   const { body } = await load(devEnv(db), "/time");
   assert.match(body, /<a class="button button-quiet" href="\/time\/export\.csv\?month=\d{4}-\d{2}"[^>]*>Download CSV for this month<\/a>/);
   assert.match(body, /<form class="month-form" method="get" action="\/time\/export\.csv">/);
-  assert.match(body, /<input id="time-month" name="month" type="month" value="\d{4}-\d{2}">/);
+  assert.match(body, /<input id="time-month" name="month" type="month" value="\d{4}-\d{2}" aria-describedby="time-month-hint">/);
+  assert.match(body, /<p class="field-hint" id="time-month-hint">A month like 2026-11\.<\/p>/);
   assert.match(body, /<label for="time-month">Month<\/label>/);
 });
 

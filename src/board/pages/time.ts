@@ -146,7 +146,8 @@ ${section(
   html`<form class="month-form" method="get" action="${TIME_CSV_PATH}">
 <div class="field">
 <label for="time-month">Month</label>
-<input id="time-month" name="month" type="month" value="${month}">
+<p class="field-hint" id="time-month-hint">A month like 2026-11.</p>
+<input id="time-month" name="month" type="month" value="${month}" aria-describedby="time-month-hint">
 </div>
 <button class="button button-quiet" type="submit">Download CSV</button>
 </form>`,

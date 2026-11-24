@@ -13,6 +13,7 @@ import { writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { composeBrief } from "../src/brief/compose.ts";
+import { periodOf } from "../src/services/time-read.ts";
 import { nextPart } from "../src/services/describe.ts";
 import { TEXT_DATA } from "../src/services/lead-change.ts";
 import { addDays, dayBoundsUtc, DEFAULT_TZ, formatLocal, localDate, zonedToUtc } from "../src/time.ts";
@@ -866,24 +867,27 @@ export function devSeed(now: Date, tz: string): DevSeed {
   ];
 
   // The time pages' week (decision 0051): Elena has her own Design rate ($110 an hour, the others pay $95), and eight finished
-  // entries over the last ten days for three people and two deals; one is Admin, so not billable. They are all in the past, so
-  // /time shows them whichever weekday it is (the ones before this Monday are on last week's page). dl_seed01 stays untouched.
+  // entries for three people and two deals, anchored to this week's Monday so /time is never empty: three on that Monday
+  // (one may be later than the seed's "now" on a Monday morning) and five in the previous week. One is Admin, so not
+  // billable. dl_seed01 stays untouched.
+  const monday = periodOf("this_week", now, tz).from;
+  const at = (offset: number, hhmm: string) => zonedToUtc(`${addDays(monday, offset)}T${hhmm}`, tz).toISOString();
   const clientRates: Row[] = [
     { id: "cr_seed01", work_type_id: "wt_seed01", contact_id: "ct_seed04", hourly_rate: 110, archived: 0, version: 1, created_at: day(-8, "09:00"), updated_at: day(-8, "09:00") },
   ];
-  const spans: [n: number, ago: number, from: string, minutes: number, contact: string, deal: string | null, type: "wt_seed01" | "wt_seed02", rate: number | null, notes: string][] = [
-    [2, 1, "09:00", 90, "ct_seed04", "dl_seed04", "wt_seed01", 110, "Reworked the tank footing drawings."],
-    [3, 2, "13:00", 120, "ct_seed07", "dl_seed19", "wt_seed01", 95, "Marked up the building C retrofit plan."],
-    [4, 3, "10:00", 30, "ct_seed03", null, "wt_seed02", null, "Filed the balcony survey paperwork."],
-    [5, 4, "14:00", 60, "ct_seed07", "dl_seed19", "wt_seed01", 95, "Site visit prep for building C."],
-    [6, 5, "09:30", 45, "ct_seed04", "dl_seed04", "wt_seed01", 110, "Checked the tank loads with Elena."],
-    [7, 8, "10:00", 150, "ct_seed07", "dl_seed19", "wt_seed01", 95, "Surveyed the storage building C slab."],
-    [8, 9, "11:00", 60, "ct_seed03", null, "wt_seed01", 95, "Balcony condition notes."],
-    [9, 10, "15:00", 75, "ct_seed04", "dl_seed04", "wt_seed01", 110, "First pass at the tank foundations."],
+  const spans: [n: number, offset: number, from: string, minutes: number, contact: string, deal: string | null, type: "wt_seed01" | "wt_seed02", rate: number | null, notes: string][] = [
+    [2, 0, "09:00", 90, "ct_seed04", "dl_seed04", "wt_seed01", 110, "Reworked the tank footing drawings."],
+    [3, 0, "11:00", 120, "ct_seed07", "dl_seed19", "wt_seed01", 95, "Marked up the building C retrofit plan."],
+    [4, 0, "14:00", 30, "ct_seed03", null, "wt_seed02", null, "Filed the balcony survey paperwork."],
+    [5, -1, "14:00", 60, "ct_seed07", "dl_seed19", "wt_seed01", 95, "Site visit prep for building C."],
+    [6, -2, "09:30", 45, "ct_seed04", "dl_seed04", "wt_seed01", 110, "Checked the tank loads with Elena."],
+    [7, -4, "10:00", 150, "ct_seed07", "dl_seed19", "wt_seed01", 95, "Surveyed the storage building C slab."],
+    [8, -5, "11:00", 60, "ct_seed03", null, "wt_seed01", 95, "Balcony condition notes."],
+    [9, -6, "15:00", 75, "ct_seed04", "dl_seed04", "wt_seed01", 110, "First pass at the tank foundations."],
   ];
   timeEntries.push(
     ...spans.map(([n, ago, from, minutes, contact, deal, type, rate, notes]): Row => {
-      const started = day(-ago, from);
+      const started = at(ago, from);
       const ended = new Date(new Date(started).getTime() + minutes * 60_000).toISOString();
       return {
         id: `te_seed${n2(n)}`,

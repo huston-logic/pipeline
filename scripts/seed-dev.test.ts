@@ -14,8 +14,9 @@ import { dealsInView, peopleInView } from "../src/services/view-read.ts";
 import { parseFilters, parseSort } from "../src/services/view-spec.ts";
 import { listViews } from "../src/services/views.ts";
 import { undoChange } from "../src/services/undo.ts";
-import { dayBoundsUtc, DEFAULT_TZ, localDate } from "../src/time.ts";
-import { buildDevSeed, DEMO_BUSINESS_NAME, parseSeedArgs, SEED_DRAFT_EXPIRES } from "./seed-dev.ts";
+import { addDays, dayBoundsUtc, DEFAULT_TZ, localDate, zonedToUtc } from "../src/time.ts";
+import { periodOf } from "../src/services/time-read.ts";
+import { buildDevSeed, devSeed, DEMO_BUSINESS_NAME, parseSeedArgs, SEED_DRAFT_EXPIRES } from "./seed-dev.ts";
 
 const NOW = new Date("2026-11-19T18:00:00.000Z"); // 10:00 in Los Angeles
 const CONTACT_TYPES = new Set(["form", "email", "call", "meeting", "note"]);
@@ -377,4 +378,23 @@ test("two saved views (decision 0042): referrals, latest activity first, and ope
   const deals = await row("vw_seed02");
   const commercial = await dealsInView(db, NOW, DEFAULT_TZ, parseFilters(deals.filters), parseSort("deals", deals.sort));
   assert.deepEqual(commercial.items.map((deal) => deal.value), [18000, 6800, 4800, null], "open commercial jobs, highest value first");
+});
+
+test("the time entries sit in this week and the previous one, whatever day the seed is made (decision 0051)", () => {
+  const tz = "America/Los_Angeles";
+  const monday = "2026-11-16";
+  const nows = [
+    zonedToUtc(`${monday}T00:30`, tz),
+    zonedToUtc("2026-11-18T12:00", tz),
+    zonedToUtc("2026-11-22T23:30", tz),
+  ];
+  for (const now of nows) {
+    const week = periodOf("this_week", now, tz);
+    const last = { from: addDays(week.from, -7), to: addDays(week.from, -1) };
+    const dates = devSeed(now, tz).timeEntries.filter((row) => row.id !== "te_seed01").map((row) => localDate(new Date(String(row.started_at)), tz));
+    assert.equal(dates.length, 8);
+    assert.ok(dates.filter((d) => d >= week.from && d <= week.to).length >= 3, `this week at ${now.toISOString()}`);
+    assert.ok(dates.filter((d) => d >= last.from && d <= last.to).length >= 3, `last week at ${now.toISOString()}`);
+    assert.equal(dates.filter((d) => d === week.from).length, 3, "three on this week's Monday");
+  }
 });

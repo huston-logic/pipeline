@@ -34,7 +34,7 @@ a week, add time worked without the timer, correct or archive an entry, and hand
   the amount is the sum of the stored amounts. Names are written as they are (the owner's own export, like `/export`),
   every cell through the formula guard in `csv.ts`. Time with no person is "No person", with no work type "No work
   type". A missing or empty `month` is this month; a month that is not `YYYY-MM` is a plain 400 that does not repeat
-  it. The page offers "Download CSV for this month" and a month picker (a GET form).
+  it. The page offers "Download CSV for this month" and a month picker (a GET form) with a hint, "A month like 2026-11."
 - With time tracking off, `/time`, `/time/new`, `/time/<id>/edit`, `/time/export.csv` and the posts are 404, and
   Time is not in More. When on, Time sits in More after "What it caught" (`moreItemsFor`, read by the layout and `/more`
   through `PageFrame.timeTracking`); `moreItems` is the fixed list without it. The export page lists the three time CSVs
@@ -43,8 +43,8 @@ a week, add time worked without the timer, correct or archive an entry, and hand
   `/time` takes the slot of `/companies`, a list of cards whose kind `/contacts` and `/leads` already cover; the form
   pages are `boardRoutes` only.
 - The demo seed reuses 0050's Design ($95 an hour) and Admin (no rate, not billable) work types, adds a client rate
-  (Elena Novak's Design at $110 an hour, `cr_seed01`) and eight finished entries over the last ten days
-  (`te_seed02`..`te_seed09`) for three people and two deals, one of them Admin so not billable. `dl_seed01` is untouched.
+  (Elena Novak's Design at $110 an hour, `cr_seed01`) and eight finished entries anchored to this week's Monday
+  (three on that Monday, five in the previous week; `te_seed02`..`te_seed09`) for three people and two deals, one of them Admin so not billable. `dl_seed01` is untouched.
 
 ## Why
 
@@ -67,5 +67,4 @@ a week, add time worked without the timer, correct or archive an entry, and hand
   apart; the owner can use the person's page's Start timer instead.
 - The CSV groups by person, not by deal, and a deal's time is in its person's row. A copy with several deals for one
   person gets one row per work type.
-- The seed's entries are all in the past, so on a Monday they are on Previous week's page, not This week's.
 - `/companies` is no longer scored by Lighthouse; the accessibility test still visits it.

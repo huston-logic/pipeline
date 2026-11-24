@@ -31,6 +31,8 @@ async function monthDb(): Promise<SqliteD1> {
   // Archived and running entries never count.
   entry(db, "te_csv008", "2026-11-10", "09:00", 60, "ct_seed01", "wt_design", 1, 95);
   db.exec("UPDATE time_entries SET archived = 1 WHERE id = 'te_csv008'");
+  // A running timer in the month (no end, no minutes) is not an entry yet.
+  db.exec(`INSERT INTO time_entries (id, contact_id, started_at, work_type_id, billable) VALUES ('te_csv009', 'ct_seed03', '${zonedToUtc("2026-11-12T09:00", DEFAULT_TZ).toISOString()}', 'wt_design', 1)`);
   return db;
 }
 
