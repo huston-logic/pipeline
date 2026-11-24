@@ -31,7 +31,8 @@ and in the minor findings below.
 `@modelcontextprotocol/client` 2.4.0, `typescript-eslint` 8.72.2. Added in run 4: `postal-mime` (PR #37). Run 5
 added none.
 
-**Tests.** `npm run check` on this branch passes: 1,283 unit and 51 end-to-end tests, 0 failures. Local a11y does not
+**Tests.** `npm run check` passes on this branch (1,270 unit and 51 end-to-end tests) and on #57's branch (1,283 unit,
+with the table tests), 0 failures. Local a11y does not
 run on this Mac (Needs Grant 6) and local Lighthouse is no longer run (CLAUDE.md, #56); CI runs both.
 
 ## Changelog
