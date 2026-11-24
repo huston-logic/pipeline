@@ -109,8 +109,15 @@ this file before changing the repo, and update it when a rule changes.
   answers through `format.ts` (`toolResult`: a one-line headline, a blank line, pretty JSON; `toolError`). Tools call
   the services only. Headlines, change summaries and error messages never contain outside text: services name records
   through `src/services/labels.ts` (outside values become ids such as "contact ct_…"), and read items list their
-  outside keys in `untrusted_fields`. Deals and tasks have `untrusted_fields` too (migration 0002). Every write tool acts as the `ai` actor. `instructions.ts`
-  holds the server instructions. Adding a tool means adding its name to the tool-list tests (`src/mcp/server.test.ts`,
+  outside keys in `untrusted_fields`. Deals and tasks have `untrusted_fields` too (migration 0002). Every write tool acts as the `ai` actor. The record
+  tools (exactly the `RECORD_ACTIONS` tools: contacts, leads, deals, activities, tasks) propose instead of writing
+  (decision 0045): each one's `run` is `recordWrite` (`src/mcp/record-write.ts`), which answers exactly as
+  `propose_changes` does (`proposeResult`), unless the "AI edits" setting (`settings.ai_edits`, migration 0015;
+  `update_settings` `aiEdits`: `review_first`, the default, or `apply_small`) is Apply small changes and the action is
+  small (`isSmallAction`: a call or note logged on an existing person or deal, or `complete_task`), which writes at once
+  and answers the service's line. Settings, rules, stages, fields, statuses, views, the rulebook, imports and
+  `undo_change` always write at once. A new record tool goes in `RECORD_ACTIONS` and through `recordWrite`. `instructions.ts`
+  holds the server instructions (rule 7: record edits need the owner's yes). Adding a tool means adding its name to the tool-list tests (`src/mcp/server.test.ts`,
   `tests/e2e/mcp.test.ts`).
 - **MCP import** (decision 0039): `import_rows` keeps a sheet's rows (at most 500 a call, 60 columns) in a board
   import draft as CSV text (`csvLines`) and answers the check step's preview as data (counts, line numbers, ids,
@@ -140,7 +147,9 @@ this file before changing the repo, and update it when a rule changes.
   rows or a snapshot over `CHUNK_BYTES`) with a leading guard that the proposal is still open and an extra statement
   marking it applied. Names that came from outside never win a match (`name-match.ts`). `@n` names a record an earlier
   action adds, only as a note's or task's subject. At most 10 open, 2 hours each; the hourly run deletes expired ones.
-  `src/mcp` imports services, never the reverse (`src/services/layering.test.ts`).
+  The record tools themselves propose a one-action list the same way (decision 0045, the MCP bullet), and a refusal
+  of that one action reads as the service's own message (no "Action 1: "). `src/mcp` imports services, never the
+  reverse (`src/services/layering.test.ts`).
 - **People and person status** (decisions 0022, 0023, 0040): every `contacts` row has a `person_status` (a
   `person_statuses` key: Lead, Contact, Partner and any the owner adds) and a `sub_status` (a `person_substatuses` key
   of that status, or null); there is no leads table. A lead is a person whose status is Lead, with no open deal.
