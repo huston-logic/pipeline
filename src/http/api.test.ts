@@ -199,6 +199,7 @@ test("the JSON export holds every listed table, each row as stored, as a downloa
     "audit_log",
     "audit_parts",
     "briefs",
+    "client_rates",
     "contacts",
     "deals",
     "email_log",
@@ -211,7 +212,9 @@ test("the JSON export holds every listed table, each row as stored, as a downloa
     "settings",
     "stages",
     "tasks",
+    "time_entries",
     "views",
+    "work_types",
   ]);
   for (const table of EXPORT_TABLES) assert.equal(body.tables[table]?.length, await count(db, table), table);
   const robin = body.tables.contacts?.find((c) => c.id === "ct_seed02");

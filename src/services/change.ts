@@ -39,6 +39,9 @@ const PRIMARY_KEYS = {
   person_statuses: "key",
   person_substatuses: "id",
   views: "id",
+  work_types: "id",
+  client_rates: "id",
+  time_entries: "id",
 } as const satisfies Partial<Record<TableName, string>>;
 
 export type ChangeTable = keyof typeof PRIMARY_KEYS;
@@ -108,6 +111,9 @@ const ROW_NOUNS: Record<ChangeTable, string> = {
   person_statuses: "Person status",
   person_substatuses: "Sub-status",
   views: "View",
+  work_types: "Work type",
+  client_rates: "Client rate",
+  time_entries: "Time entry",
 };
 
 export const rowKey = (table: ChangeTable, id: string) => `${table}:${id}`;
@@ -227,6 +233,15 @@ export const isFireKeyFailure = (error: unknown) =>
 export const isEmailLogKeyFailure = (error: unknown) =>
   /UNIQUE constraint failed: email_log\.message_key/.test(errorText(error));
 
+/** A second running timer (the one-running index, migration 0018, decision 0049). */
+export const isRunningTimerFailure = (error: unknown) =>
+  /UNIQUE constraint failed: index 'time_entries_one_running'/.test(errorText(error));
+
+/** A second live work type with the same name, or a second live client rate for one work type and person. */
+export const isWorkTypeNameFailure = (error: unknown) => /UNIQUE constraint failed: index 'work_types_name'/.test(errorText(error));
+export const isClientRatePairFailure = (error: unknown) =>
+  /UNIQUE constraint failed: client_rates\.work_type_id, client_rates\.contact_id/.test(errorText(error));
+
 /** A change as statements: the guards and row writes, then (after any extra statements) the audit row and cleanup. */
 export interface BuiltChange {
   changeId: string;
@@ -299,6 +314,10 @@ const BULK_ORDER: readonly ChangeTable[] = [
   "deals",
   "tasks",
   "activities",
+  "work_types",
+  "client_rates",
+  // After the tasks and activities an entry points at.
+  "time_entries",
   "rules",
   "rulebook",
   "push_subscriptions",

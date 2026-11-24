@@ -18,7 +18,10 @@ import {
   type Ctx,
   isBulkTable,
   isChangeTable,
+  isClientRatePairFailure,
   isForeignKeyFailure,
+  isRunningTimerFailure,
+  isWorkTypeNameFailure,
   primaryKey,
   readSnapshot,
   type Row,
@@ -44,17 +47,29 @@ const BULK_ROWS = 50;
 type Dependent = { table: ChangeTable; column: string; one: string; many: string };
 
 /** Rows that point at a row of each table, so deleting it would break them. ON DELETE SET NULL links are left out. */
+const TIME_ENTRY = { table: "time_entries", one: "time entry", many: "time entries" } as const;
+
 const DEPENDENTS: Partial<Record<ChangeTable, Dependent[]>> = {
   contacts: [
     { table: "deals", column: "contact_id", one: "deal", many: "deals" },
     { table: "activities", column: "contact_id", one: "activity", many: "activities" },
     { table: "tasks", column: "contact_id", one: "task", many: "tasks" },
     { table: "rule_firings", column: "contact_id", one: "rule firing", many: "rule firings" },
+    { ...TIME_ENTRY, column: "contact_id" },
+    { table: "client_rates", column: "contact_id", one: "client rate", many: "client rates" },
   ],
   deals: [
     { table: "activities", column: "deal_id", one: "activity", many: "activities" },
     { table: "tasks", column: "deal_id", one: "task", many: "tasks" },
     { table: "rule_firings", column: "deal_id", one: "rule firing", many: "rule firings" },
+    { ...TIME_ENTRY, column: "deal_id" },
+  ],
+  // Time entries (decision 0049): the task or note they point at, and the work type they used.
+  tasks: [{ ...TIME_ENTRY, column: "task_id" }],
+  activities: [{ ...TIME_ENTRY, column: "activity_id" }],
+  work_types: [
+    { ...TIME_ENTRY, column: "work_type_id" },
+    { table: "client_rates", column: "work_type_id", one: "client rate", many: "client rates" },
   ],
   stages: [{ table: "deals", column: "stage_key", one: "deal", many: "deals" }],
   rules: [{ table: "rule_firings", column: "rule_id", one: "rule firing", many: "rule firings" }],
@@ -382,6 +397,23 @@ async function archiveAgainBlocker(ctx: Ctx, changeId: string, entries: Entry[],
   return null;
 }
 
+const isRunningRow = (row: Row | null) => row !== null && row.ended_at === null && row.archived === 0;
+
+/**
+ * An undo that would make a timer run again (undoing its stop, or the archiving of a running one) while another timer
+ * runs would break the one-running rule (decision 0049).
+ */
+async function runningAgainBlocker(ctx: Ctx, changeId: string, entries: Entry[], current: Map<Entry, Row | null>): Promise<string | null> {
+  const timers = entries.filter((entry) => entry.table === "time_entries");
+  const again = timers.filter((entry) => isRunningRow(entry.before) && !isRunningRow(current.get(entry) ?? null));
+  if (again.length === 0) return null;
+  const running = await ctx.db.prepare("SELECT id FROM time_entries WHERE ended_at IS NULL AND archived = 0").all<{ id: string }>();
+  // A timer this undo removes or stops doesn't count.
+  const leaving = new Set(timers.filter((entry) => !isRunningRow(entry.before)).map((entry) => entry.id));
+  if (running.results.every((row) => leaving.has(row.id))) return null;
+  return `Can't undo ${changeId}: it would start a timer again, but another one is running now. Stop it first, or leave the change.`;
+}
+
 async function dependents(ctx: Ctx, changeId: string, entries: Entry[]): Promise<string | null> {
   const deleting = entries.filter((entry) => entry.before === null);
   const found = await pointers(ctx.db, deleting);
@@ -403,6 +435,9 @@ async function dependents(ctx: Ctx, changeId: string, entries: Entry[]): Promise
       for (const row of found.get(pointerKey(dep))?.get(String(pkValue)) ?? []) {
         const key = rowKey(dep.table, String(row.id));
         if (removed.has(key)) continue;
+        // A row the same undo puts back to a `before` that doesn't point here (a stopped timer's link to its note).
+        const before = restored.get(key);
+        if (before !== undefined && dep.column in before && String(before[dep.column]) !== String(pkValue)) continue;
         removed.add(key);
         const tally = counts.get(dep.one) ?? { n: 0, one: dep.one, many: dep.many };
         tally.n += 1;
@@ -544,6 +579,9 @@ const NOUNS: Record<ChangeTable, [string, string]> = {
   person_statuses: ["person status", "person statuses"],
   person_substatuses: ["sub-status", "sub-statuses"],
   views: ["view", "views"],
+  work_types: ["work type", "work types"],
+  client_rates: ["client rate", "client rates"],
+  time_entries: ["time entry", "time entries"],
 };
 
 /** "2,000 contacts and 3 fields": the entries counted by table, in the order the tables first appear. */
@@ -611,7 +649,8 @@ export async function undoChange(ctx: Ctx, changeId: string): Promise<ChangeResu
   const reopening =
     (await reopenBlocker(ctx, id, entries, current)) ??
     (await leadAgainBlocker(ctx, id, entries, current)) ??
-    (await archiveAgainBlocker(ctx, id, entries, current));
+    (await archiveAgainBlocker(ctx, id, entries, current)) ??
+    (await runningAgainBlocker(ctx, id, entries, current));
   if (reopening !== null) throw new UserError(reopening);
 
   const changes: RowChange[] = [...entries].reverse().map((entry) => {
@@ -658,6 +697,12 @@ export async function undoChange(ctx: Ctx, changeId: string): Promise<ChangeResu
       throw new UserError(changedMessage(id, "a record it touched"), { cause: error });
     }
     if (isForeignKeyFailure(error)) throw new UserError(dependsMessage(id, "records added since"), { cause: error });
+    if (isRunningTimerFailure(error)) {
+      throw new UserError(`Can't undo ${id}: it would start a timer again, but another one is running now. Stop it first, or leave the change.`, { cause: error });
+    }
+    if (isWorkTypeNameFailure(error) || isClientRatePairFailure(error)) {
+      throw new UserError(`Can't undo ${id}: a work type or client rate it would put back has been set again since. Change that one first, or leave the change.`, { cause: error });
+    }
     throw error;
   }
 }

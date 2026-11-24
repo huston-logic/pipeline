@@ -29,6 +29,9 @@ export const TABLE_NAMES = [
   "person_substatuses",
   "views",
   "proposals",
+  "work_types",
+  "client_rates",
+  "time_entries",
 ] as const;
 
 export type TableName = (typeof TABLE_NAMES)[number];
@@ -59,6 +62,8 @@ export type SettingsRow = {
   accent_color: string | null;
   /** "review" (Review first) or "small" (Apply small changes): how the AI app's record tools write (migration 0015). */
   ai_edits: "review" | "small";
+  /** 1: the time tools and pages are on (migration 0018, decision 0049); 0, the default, refuses them. */
+  time_tracking: Flag;
 };
 
 export type StageRow = {
@@ -356,6 +361,65 @@ export type ProposalRow = {
   change_id: string | null;
   created_at: string;
   expires_at: string;
+};
+
+/** A kind of work with its default hourly rate (migration 0018, decision 0049). */
+export type WorkTypeRow = {
+  /** "wt_..." */
+  id: string;
+  /** Unique among the live work types, ignoring case. */
+  name: string;
+  /** Per hour; null for none. */
+  hourly_rate: number | null;
+  /** Whether a new entry of this type is billable unless the owner says otherwise. */
+  billable_default: Flag;
+  /** 1-based place among the live work types. */
+  position: number;
+  archived: Flag;
+  version: number;
+  created_at: string;
+  updated_at: string;
+};
+
+/** A person's own hourly rate for one work type, which beats the work type's rate (decision 0049). */
+export type ClientRateRow = {
+  /** "cr_..." */
+  id: string;
+  work_type_id: string;
+  contact_id: string;
+  hourly_rate: number;
+  /** 1: cleared. One live row per work type and person. */
+  archived: Flag;
+  version: number;
+  created_at: string;
+  updated_at: string;
+};
+
+/** Time worked, or the running timer when ended_at is null (decision 0049). */
+export type TimeEntryRow = {
+  /** "te_..." */
+  id: string;
+  contact_id: string | null;
+  deal_id: string | null;
+  task_id: string | null;
+  started_at: string;
+  /** Null exactly while the timer runs; at most one live row has none. */
+  ended_at: string | null;
+  /** 1 to 960; null exactly while the timer runs. */
+  minutes: number | null;
+  work_type_id: string | null;
+  billable: Flag;
+  /** The hourly rate used, fixed when the entry is saved; null when not billable or no rate applied. */
+  rate: number | null;
+  notes: string | null;
+  /** The note a stopped timer logged its notes as. */
+  activity_id: string | null;
+  archived: Flag;
+  /** JSON array of the columns whose values came from outside (an import). */
+  untrusted_fields: string;
+  version: number;
+  created_at: string;
+  updated_at: string;
 };
 
 /** One piece of a big change's snapshot (migration 0009): the same shape as before_json/after_json, for some rows. */

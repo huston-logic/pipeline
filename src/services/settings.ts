@@ -21,6 +21,14 @@ const AI_EDITS_STORED: Record<AiEditsChoice, AiEdits> = { review_first: "review"
 const AI_EDITS_CHOICE: Record<AiEdits, AiEditsChoice> = { review: "review_first", small: "apply_small" };
 const AI_EDITS_LABELS: Record<AiEdits, string> = { review: "Review first", small: "Apply small changes" };
 
+/** The answer every time tool and service gives while time tracking is off (decision 0049). */
+export const TIME_TRACKING_OFF = "Time tracking is off. The owner can turn it on (update_settings timeTracking true).";
+
+/** Refuses unless the owner turned time tracking on. */
+export async function requireTimeTracking(db: Db): Promise<void> {
+  if ((await getSettingsRow(db)).time_tracking !== 1) throw new UserError(TIME_TRACKING_OFF);
+}
+
 /** How the AI app's record tools write: propose everything, or apply small changes at once. */
 export async function getAiEdits(db: Db): Promise<AiEdits> {
   return (await getSettingsRow(db)).ai_edits;
@@ -38,6 +46,8 @@ export interface SettingsView {
   accentColor: string | null;
   /** How the AI app's record tools write: review_first (the default) or apply_small (decision 0045). */
   aiEdits: AiEditsChoice;
+  /** Whether the time tools and pages are on (decision 0049); off by default. */
+  timeTracking: boolean;
   /** When the latest brief was composed (the briefs log), or null before the first one. */
   lastBriefAt: string | null;
   /** When a brief last went out by email, or null when none has. */
@@ -58,6 +68,8 @@ export interface SettingsPatch {
   accentColor?: string | null;
   /** review_first or apply_small (decision 0045). */
   aiEdits?: AiEditsChoice;
+  /** true turns the time tools and pages on (decision 0049). */
+  timeTracking?: boolean;
 }
 
 export interface SettingsOptions {
@@ -78,6 +90,7 @@ export async function getSettings(db: Db): Promise<SettingsView> {
     businessName: row.business_name,
     accentColor: row.accent_color,
     aiEdits: AI_EDITS_CHOICE[row.ai_edits],
+    timeTracking: row.time_tracking === 1,
     lastBriefAt: latest?.composed_at ?? null,
     lastBriefSentAt: sent?.at ?? null,
   };
@@ -183,6 +196,10 @@ export async function updateSettings(ctx: Ctx, patch: SettingsPatch, options: Se
       set.ai_edits = stored;
       parts.push(`AI edits: ${AI_EDITS_LABELS[stored]}`);
     }
+  }
+  if (patch.timeTracking !== undefined && (patch.timeTracking ? 1 : 0) !== before.time_tracking) {
+    set.time_tracking = patch.timeTracking ? 1 : 0;
+    parts.push(`time tracking ${patch.timeTracking ? "on" : "off"}`);
   }
 
   if (parts.length === 0) {

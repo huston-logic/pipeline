@@ -32,6 +32,7 @@ test("getSettings shows the settings with the owner emails as a list", async () 
     businessName: null,
     accentColor: null,
     aiEdits: "review_first",
+    timeTracking: false,
     lastBriefAt: null,
     lastBriefSentAt: null,
   });
@@ -60,6 +61,7 @@ test("updateSettings changes only what is given, in one audited change", async (
     businessName: null,
     accentColor: null,
     aiEdits: "review_first",
+    timeTracking: false,
     lastBriefAt: null,
     lastBriefSentAt: null,
   });
