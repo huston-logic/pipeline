@@ -25,7 +25,7 @@ import { businessKey } from "./lead-change.ts";
 import { followUpsDueThisWeek, leadCounts } from "./leads-read.ts";
 import { type LeadStatus, OPEN_LEAD_STATUSES } from "./lead-status.ts";
 import { findField } from "./fields.ts";
-import { findDeal, findStage, parseObject, parseStringArray } from "./lookup.ts";
+import { findContact, findDeal, findStage, parseObject, parseStringArray } from "./lookup.ts";
 import { findPersonStatus, findSubStatus } from "./person-status.ts";
 import { type StatusLabels, statusLabels } from "./status-labels.ts";
 
@@ -323,6 +323,42 @@ export async function openTasks(db: Db, now: Date, tz: string): Promise<OpenTask
     [now.toISOString()],
   );
   return found.map((row) => ({ ...toTaskItem(row, tz), createdAt: row.created_at }));
+}
+
+export interface TaskListFilter {
+  status?: "open" | "done";
+  contact?: string;
+  deal?: string;
+  standalone?: boolean;
+  limit?: number;
+}
+
+/**
+ * The owner's tasks, open (snoozed ones included, undated ones too) or done: due first with overdue ahead and undated
+ * last, then newest. A contact filter takes the person's own tasks and their deals' (decision 0048).
+ */
+export async function listTaskItems(db: Db, filter: TaskListFilter, tz: string): Promise<(TaskItem & { doneAt: string | null })[]> {
+  if (filter.standalone === true && (filter.contact !== undefined || filter.deal !== undefined)) {
+    throw new UserError("standalone means tasks with no person and no deal, so it can't be combined with contact or deal. Leave one out.");
+  }
+  const clauses = [filter.status === "done" ? "t.done_at IS NOT NULL" : "t.done_at IS NULL"];
+  const params: unknown[] = [];
+  if (filter.standalone === true) clauses.push("t.deal_id IS NULL AND t.contact_id IS NULL");
+  if (filter.contact !== undefined) {
+    clauses.push("(t.contact_id = ? OR d.contact_id = ?)");
+    const id = (await findContact(db, filter.contact)).id;
+    params.push(id, id);
+  }
+  if (filter.deal !== undefined) {
+    clauses.push("t.deal_id = ?");
+    params.push((await findDeal(db, filter.deal)).id);
+  }
+  const found = await rows<TaskJoin>(
+    db,
+    `${TASK_SELECT} WHERE ${clauses.join(" AND ")} ORDER BY t.due_at IS NULL, t.due_at, t.created_at DESC, t.id LIMIT ?`,
+    [...params, filter.limit ?? 50],
+  );
+  return found.map((row) => ({ ...toTaskItem(row, tz), doneAt: row.done_at }));
 }
 
 export interface DealBrief {

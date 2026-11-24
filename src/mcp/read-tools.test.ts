@@ -32,7 +32,7 @@ test("empty database: every read tool says there is nothing yet instead of faili
   assert.match((await ok(c, "search_contacts", { query: "pat" })).headline, /^No contacts match that search\.$/);
   assert.equal((await ok(c, "whats_due")).headline, "Nothing is due today (2026-11-19) and nothing is overdue.");
   assert.match((await ok(c, "recent_changes")).headline, /^No changes since Thu Nov 12, 10:00 AM\.$/);
-  assert.match((await ok(c, "get_rulebook")).headline, /^Rulebook: 4 documents \(leads, voice, pipeline, guardrails\)\.$/);
+  assert.match((await ok(c, "get_rulebook")).headline, /^Rulebook: 5 documents \(leads, capture, voice, pipeline, guardrails\)\.$/);
   assert.match(await fails(c, "get_deal", { deal: "Pat Example" }), /^No deal matches "Pat Example"\. Use list_deals/);
 });
 
@@ -117,10 +117,10 @@ test("recent_changes takes an optional since date and explains a bad one", async
 test("get_rulebook returns every document or one by name", async () => {
   const c = await emptyClient();
   const all = (await ok(c, "get_rulebook")).data as { documents: { name: string; markdown: string }[] };
-  assert.deepEqual(all.documents.map((d) => d.name), ["leads", "voice", "pipeline", "guardrails"]);
+  assert.deepEqual(all.documents.map((d) => d.name), ["leads", "capture", "voice", "pipeline", "guardrails"]);
   assert.ok(all.documents.every((d) => d.markdown.length > 0));
   assert.equal((await ok(c, "get_rulebook", { name: "voice" })).headline, "Rulebook: 1 document (voice).");
-  assert.match(await fails(c, "get_rulebook", { name: "tone" }), /^There's no rulebook document "tone"\. Documents: leads, voice, pipeline, guardrails\./);
+  assert.match(await fails(c, "get_rulebook", { name: "tone" }), /^There's no rulebook document "tone"\. Documents: leads, capture, voice, pipeline, guardrails\./);
 });
 
 async function leadsClient() {
@@ -215,4 +215,39 @@ test("every deal, task, timeline and contact-deal item lists its outside values 
     contacts: { deals: { untrusted_fields: string[] }[] }[];
   };
   assert.deepEqual(contacts[0]?.deals[0]?.untrusted_fields, ["title"]);
+});
+
+test("list_tasks: undated standalone tasks, standalone filter, contact filter, done, limit, and outside titles (decision 0048)", async () => {
+  const db = await createTestDb();
+  const ctx = { db, now: NOW, actor: "ai" as const, tool: "add_task" };
+  const ann = await addLead({ ...ctx, tool: "add_lead" }, { name: "Ann Example" });
+  const bo = await addLead({ ...ctx, tool: "add_lead" }, { name: "Bo Example" });
+  await addTask(ctx, { title: "Buy printer ink" });
+  await addTask(ctx, { contactId: ann.contactId, title: "Call Ann", dueAt: "2026-11-18" });
+  await addTask(ctx, { contactId: bo.contactId, title: "Email Bo", dueAt: "2026-11-25" });
+  const done = await addTask(ctx, { title: "Old chore" });
+  await db.prepare("UPDATE tasks SET done_at = ? WHERE id = ?").bind(NOW.toISOString(), done.taskId).run();
+  await db.prepare("UPDATE tasks SET untrusted_fields = '[\"title\"]' WHERE title = 'Email Bo'").run();
+  const c = await connectInMemory(createMcpServer({ db, now: () => NOW }));
+  type Item = { id: string; title: string; dueAt: string | null; snoozedUntil: string | null; doneAt: string | null; dealId: string | null; contactId: string | null; untrusted_fields: string[] };
+
+  const open = await ok(c, "list_tasks");
+  const items = (open.data as { tasks: Item[] }).tasks;
+  assert.deepEqual(items.map((t) => t.title), ["Call Ann", "Email Bo", "Buy printer ink"], "overdue first, undated last");
+  assert.equal(open.headline, "3 open tasks.");
+  assert.ok(!open.headline.includes("Bo"), "no title in the headline");
+  assert.deepEqual(items[1]?.untrusted_fields, ["title"]);
+  assert.deepEqual([items[2]?.dueAt, items[2]?.dealId, items[2]?.contactId, items[2]?.doneAt], [null, null, null, null]);
+
+  const alone = (await ok(c, "list_tasks", { standalone: true })).data as { tasks: Item[] };
+  assert.deepEqual(alone.tasks.map((t) => t.title), ["Buy printer ink"]);
+  const ofAnn = (await ok(c, "list_tasks", { contact: "Ann Example" })).data as { tasks: Item[] };
+  assert.deepEqual(ofAnn.tasks.map((t) => t.title), ["Call Ann"]);
+  const finished = await ok(c, "list_tasks", { status: "done" });
+  assert.deepEqual((finished.data as { tasks: Item[] }).tasks.map((t) => t.title), ["Old chore"]);
+  assert.equal(finished.headline, "1 done task.");
+  assert.equal(((await ok(c, "list_tasks", { limit: 2 })).data as { tasks: Item[] }).tasks.length, 2);
+  assert.match(await fails(c, "list_tasks", { contact: "Nobody Example" }), /^No contact matches "Nobody Example"/);
+  assert.match(await fails(c, "list_tasks", { standalone: true, contact: ann.contactId }), /standalone/);
+  assert.equal((await ok(await emptyClient(), "list_tasks")).headline, "No open tasks.");
 });

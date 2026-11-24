@@ -30,6 +30,7 @@ const READ_TOOLS = [
   "list_person_statuses",
   "list_rules",
   "list_stages",
+  "list_tasks",
   "list_views",
   "pipeline_summary",
   "preview_rule",

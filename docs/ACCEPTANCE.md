@@ -1,6 +1,6 @@
 # Acceptance
 
-The twenty sentences from the spec's "Acceptance" section, plus five added in run 5 (21 to 25), each proven end to end by `tests/e2e/acceptance.test.ts`.
+The twenty sentences from the spec's "Acceptance" section, plus five added in run 5 (21 to 25) and one in run 6 (26), each proven end to end by `tests/e2e/acceptance.test.ts`.
 The test starts the real Worker with `wrangler dev --local` and a real local D1 database holding the fake seed
 (`scripts/seed-dev.ts`), connects an MCP client over Streamable HTTP the way an AI app would, and runs the sentences in
 order. Later sentences build on earlier ones: 8 undoes the change from 7, 9 sees the changes from 4 to 8.
@@ -195,3 +195,16 @@ sentence 20, against the same server. They use made-up people with `example.com`
 - Asserts: the view is listed with its path; its page lists the seed's partner (Hannah Cole) and leaves out someone who
   is not a partner.
 - Test: `25. "Give me a view of all my partners." ...`
+
+## The run 6 sentence (26)
+
+Run 6 added capture through the AI app (decision 0048). The sentence runs in `tests/e2e/capture.test.ts`, against its
+own server, with a made-up person (Matt Example) and the seed's Dana Whitfield.
+
+## 26. Call Dana Friday, send Matt the deck, buy printer ink.
+- Tools: `propose_changes` (three `add_task` actions: one for Dana with a date, one for Matt, one with no person),
+  `apply_changes`, `undo_change`, `recent_changes`.
+- Asserts: one proposal lists three tasks and asks no question; one `apply_changes` writes them as one change; Dana's
+  task is on Dana and has the date, Matt's is on Matt, the ink task has no deal and no person; one `undo_change`
+  removes all three.
+- Test: `capture: three tasks, one yes, one undo`

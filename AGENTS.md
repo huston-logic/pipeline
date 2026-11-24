@@ -128,6 +128,7 @@ this file before changing the repo, and update it when a rule changes.
   (`src/import/planned.ts`). Strict schemas; never add the own-list option. At most 10 drafts wait at once (both
   doors). A draft MCP touched is `options.source = "mcp"`: the board never offers "my own list" for it. Lines are the
   sheet's rows (columns line 1).
+- **Capture** (decision 0048): no tool of its own. One line in `instructions.ts` and a starter `capture` rulebook document (migration 0017, `seed/defaults.sql`) tell the AI app to turn a ramble into one `propose_changes` call; the owner edits the document.
 - **Proposals** (decision 0044): `propose_changes` (`src/mcp/tools-proposals.ts`, `src/services/proposals.ts`) takes
   up to 25 record actions (a record tool's input, `src/services/record-inputs.ts`, plus `action`; `src/services/proposal-
   actions.ts`), matches names to ids (`name-match.ts`; several or no matches are questions, nothing stored), and plans

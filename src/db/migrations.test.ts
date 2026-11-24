@@ -59,7 +59,7 @@ test("applyMigrations stops at upTo", async () => {
   assert.deepEqual(await applyMigrations(db, 1), ["0001_init.sql"]);
 });
 
-test("defaults: settings row, eight stages in order, four rulebook documents; loading twice is harmless", async () => {
+test("defaults: settings row, eight stages in order, five rulebook documents; loading twice is harmless", async () => {
   const db = await createTestDb();
   applySqlFile(db, "seed/defaults.sql");
 
@@ -97,7 +97,7 @@ test("defaults: settings row, eight stages in order, four rulebook documents; lo
   }>()).results;
   assert.deepEqual(
     rulebook.map((doc) => doc.name),
-    ["guardrails", "leads", "pipeline", "voice"],
+    ["capture", "guardrails", "leads", "pipeline", "voice"],
   );
   for (const doc of rulebook) assert.ok(doc.markdown.startsWith("# "), `${doc.name} starts with a heading`);
 
@@ -709,6 +709,42 @@ test("a task with no deal or contact inserts after 0016", async () => {
   const at = await db.prepare("SELECT created_at, updated_at FROM tasks WHERE id = 'tk_a'").first<{ created_at: string; updated_at: string }>();
   assert.match(at?.created_at ?? "", ISO);
   assert.match(at?.updated_at ?? "", ISO);
+});
+
+test("0017 adds capture and keeps an edited rulebook", async () => {
+  const db = new SqliteD1();
+  await applyMigrations(db, 16);
+  applySqlFile(db, "seed/defaults.sql");
+  db.exec("DELETE FROM rulebook WHERE name = 'capture'");
+  db.exec("UPDATE rulebook SET markdown = '# Pipeline\n\nMy own words.', version = 4 WHERE name = 'pipeline'");
+  const before = await snapshot(db, ["rulebook"]);
+  assert.deepEqual(await applyMigrations(db, 17), ["0017_capture_rulebook.sql"]);
+  const rows = (await snapshot(db, ["rulebook"])).rulebook ?? [];
+  assert.deepEqual(rows.filter((row) => row.name !== "capture"), before.rulebook, "every other document is exactly as it was");
+  const capture = rows.find((row) => row.name === "capture");
+  assert.ok(String(capture?.markdown).startsWith("# Capture"));
+  assert.match(String(capture?.markdown), /Words like call, email, send, buy are tasks; 'she said', 'we talked' are notes; 'move to', 'booked' are stage moves\./);
+  assert.equal(capture?.version, 1);
+});
+
+test("0017 keeps a capture document a copy already has, and the defaults say the same", async () => {
+  const db = new SqliteD1();
+  await applyMigrations(db, 16);
+  applySqlFile(db, "seed/defaults.sql");
+  db.exec("UPDATE rulebook SET markdown = '# Capture\n\nMy own rules.', version = 2 WHERE name = 'capture'");
+  const before = await snapshot(db, ["rulebook"]);
+  await applyMigrations(db, 17);
+  assert.deepEqual(await snapshot(db, ["rulebook"]), before);
+
+  const migrated = new SqliteD1();
+  await applyMigrations(migrated, 16);
+  migrated.exec("DELETE FROM rulebook WHERE name = 'capture'");
+  await applyMigrations(migrated, 17);
+  const fresh = new SqliteD1();
+  await applyMigrations(fresh, 17);
+  applySqlFile(fresh, "seed/defaults.sql");
+  const text = (d: SqliteD1) => d.prepare("SELECT markdown FROM rulebook WHERE name = 'capture'").first<string>("markdown");
+  assert.equal(await text(migrated), await text(fresh));
 });
 
 /**

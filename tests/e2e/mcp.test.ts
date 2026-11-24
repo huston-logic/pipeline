@@ -47,6 +47,7 @@ test("lists the tools over Streamable HTTP, with the server instructions", async
     "list_person_statuses",
     "list_rules",
     "list_stages",
+    "list_tasks",
     "list_views",
     "log_activity",
     "pause_rule",
