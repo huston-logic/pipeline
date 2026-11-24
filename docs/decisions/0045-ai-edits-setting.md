@@ -67,8 +67,10 @@ proposes, how its refusals read, and what "on an existing person or deal" means 
 - A record tool given a name now goes through `name-match.ts` like `propose_changes`: two matches are a question, not
   the service's "matches more than one contact" refusal (that refusal still answers a small change applied at once).
 - Logging a call on a New lead under Apply small changes also makes them Contacted (the service's own move), at once.
-- Each proposed record tool call adds an open proposal; with ten open, the next is refused until one is applied, said
-  No to, or expires (decision 0044's cap).
+- Each proposed record tool call adds an open proposal. An AI app that never applies can't block edits: at ten open
+  lists the next one drops the oldest open list (replaced by the new one, in the same batch; decision 0044 as amended
+  by this task's review), so the newest ten wait and an apply of the dropped one says which list replaced it. The cost:
+  a list the owner hasn't answered yet can be pushed out by ten newer ones; the AI proposes it again.
 - Tests that used a record tool to write now go through the yes (`approved` in `tests/helpers/mcp-client.ts`,
   `approve` in the acceptance test), and docs/ACCEPTANCE.md says which sentences are proposed.
 - D6 adds its time tools to `RECORD_ACTIONS` and decides which of them are small (starting a timer, stopping one

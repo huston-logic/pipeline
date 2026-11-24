@@ -55,8 +55,6 @@ const BULK_ROWS = 50;
 
 const AGAIN = "Propose the changes again and show the owner the new list.";
 
-const TOO_MANY = "Ten proposals are waiting. Apply or drop one first: say No to one, or send a revised list with replaces.";
-
 const TOO_LONG = "This list is too long to keep. Send it as two lists.";
 
 export type ProposeAnswer =
@@ -140,7 +138,16 @@ export async function proposeChanges(ctx: Ctx, input: { actions: RecordAction[];
   if (failed !== null) throw await refusalFor(ctx, actions, deps, failed);
 
   const statements = [
-    // In the batch, so two lists proposed at once can't both take the last place. The one it replaces doesn't count.
+    // At the cap, the oldest open lists make room (dropped, replaced by this one), so an AI app that never applies can't
+    // block new edits. The one it replaces doesn't count and isn't picked. In the batch, so two lists proposed at once
+    // each make their own room, and the guard after it still holds exactly ten.
+    db
+      .prepare(
+        "UPDATE proposals SET status = 'dropped', replaced_by = ? WHERE id IN (SELECT id FROM proposals WHERE status = 'open' " +
+          "AND expires_at > ? AND id IS NOT ? ORDER BY created_at, rowid LIMIT max(0, (SELECT COUNT(*) FROM proposals " +
+          "WHERE status = 'open' AND expires_at > ? AND id IS NOT ?) - ? + 1))",
+      )
+      .bind(id, stamp, old?.id ?? null, stamp, old?.id ?? null, PROPOSAL_MAX_OPEN),
     db
       .prepare("INSERT INTO write_guard (ok) SELECT COUNT(*) < ? FROM proposals WHERE status = 'open' AND expires_at > ? AND id IS NOT ?")
       .bind(PROPOSAL_MAX_OPEN, stamp, old?.id ?? null),
@@ -156,9 +163,9 @@ export async function proposeChanges(ctx: Ctx, input: { actions: RecordAction[];
   try {
     await db.batch(statements);
   } catch (error) {
-    if (!isGuardFailure(error)) throw error;
-    if (old !== null) await replaceable(db, old.id, now);
-    throw new UserError(TOO_MANY, { cause: error });
+    // The list it replaces was applied or replaced meanwhile: say so. (The cap's guard can't fail after the drop.)
+    if (isGuardFailure(error) && old !== null) await replaceable(db, old.id, now);
+    throw error;
   }
   return { kind: "proposal", id, expiresAt, text, list };
 }

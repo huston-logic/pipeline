@@ -276,17 +276,56 @@ test("an action's refusal names the action", async () => {
   assert.equal((await counts(db)).proposals, 0);
 });
 
-test("the 11th open proposal is refused", async () => {
+/** Ten open one-task proposals, one second apart (oldest first). */
+async function tenOpen(db: Db) {
+  const ids: string[] = [];
+  for (let i = 0; i < PROPOSAL_MAX_OPEN; i++) {
+    const at = new Date(NOW.getTime() + i * 1000);
+    ids.push((await propose(db, [{ action: "add_task", contact: "ct_seed01", title: `Task ${i + 1}` }], undefined, at)).id);
+  }
+  return ids;
+}
+
+const openCount = async (db: Db, now = NOW) =>
+  (await db.prepare("SELECT COUNT(*) AS n FROM proposals WHERE status = 'open' AND expires_at > ?").bind(now.toISOString()).first<number>("n")) ?? -1;
+
+test("the 11th open proposal drops the oldest", async () => {
   const db = await setup();
-  for (let i = 0; i < PROPOSAL_MAX_OPEN; i++) await propose(db, [{ action: "add_task", contact: "ct_seed01", title: `Task ${i + 1}` }]);
+  const ids = await tenOpen(db);
+  const at = new Date(NOW.getTime() + 60_000);
+  const eleventh = await propose(db, PATS_DAY, undefined, at);
+  assert.equal(await openCount(db, at), PROPOSAL_MAX_OPEN, "still exactly ten open");
+  const oldest = await proposal(db, ids[0] ?? "");
+  assert.deepEqual([oldest?.status, oldest?.replaced_by], ["dropped", eleventh.id]);
   await assert.rejects(
-    propose(db, PATS_DAY),
-    /^UserError: Ten proposals are waiting\. Apply or drop one first: say No to one, or send a revised list with replaces\.$/,
+    apply(db, ids[0] ?? "", at),
+    new RegExp(`^UserError: ${ids[0]} was replaced by ${eleventh.id}\\. Apply ${eleventh.id} if the owner said yes to it\\.$`),
   );
-  assert.equal((await counts(db)).proposals, PROPOSAL_MAX_OPEN);
-  // An expired one no longer counts, and the hourly run deletes it.
-  const later = new Date(NOW.getTime() + PROPOSAL_TTL_MS + 1);
+  for (const id of ids.slice(1)) assert.equal((await apply(db, id, at)).applied, 1, id);
+  assert.equal((await apply(db, eleventh.id, at)).applied, 3);
+});
+
+test("a list with replaces at the cap drops only the one it replaces", async () => {
+  const db = await setup();
+  const ids = await tenOpen(db);
+  const at = new Date(NOW.getTime() + 60_000);
+  const revised = await propose(db, [{ action: "add_task", contact: "ct_seed01", title: "Task 5, revised" }], ids[4], at);
+  assert.equal(await openCount(db, at), PROPOSAL_MAX_OPEN);
+  const rows = await Promise.all(ids.map((id) => proposal(db, id)));
+  assert.deepEqual(
+    rows.map((row) => [row?.status, row?.replaced_by ?? null]),
+    ids.map((_, i) => (i === 4 ? ["dropped", revised.id] : ["open", null])),
+    "the oldest stays open",
+  );
+});
+
+test("expired proposals don't count towards the ten and are never dropped; the hourly run deletes them", async () => {
+  const db = await setup();
+  const ids = await tenOpen(db);
+  const later = new Date(NOW.getTime() + PROPOSAL_TTL_MS + 60_000);
   await propose(db, PATS_DAY, undefined, later);
+  const rows = await Promise.all(ids.map((id) => proposal(db, id)));
+  assert.ok(rows.every((row) => row?.status === "open" && row.replaced_by === null), "none was dropped");
   assert.equal(await deleteExpiredProposals(db, later), PROPOSAL_MAX_OPEN);
   assert.equal((await counts(db)).proposals, 1);
 });

@@ -72,12 +72,16 @@ later action names a record an earlier one adds, how names are matched, and how 
   once. Refs are matched against the database only, before anything is planned.
 - **Propose.** Check the actions (schema, 1 to 25, `@n`), resolve every ref to an id, plan them with a fresh
   collector (a service's refusal comes back as "Action N: <message>", nothing stored), render the list, and insert the
-  proposal (resolved actions, `reads`, the rendered `text`, `expires_at` = 2 hours on) in one batch whose guard refuses
-  an 11th open list. Each of the three is one bound parameter, so a list whose actions, reads or text would be over
-  `CHUNK_BYTES` (as `bulk.ts` measures) is refused first: "This list is too long to keep. Send it as two lists."
-  ("Ten proposals are waiting. Apply or drop one first: say No to one, or send a revised list with replaces."). With
+  proposal (resolved actions, `reads`, the rendered `text`, `expires_at` = 2 hours on) in one batch whose guard keeps
+  at most ten open lists. Each of the three is one bound parameter, so a list whose actions, reads or text would be
+  over `CHUNK_BYTES` (as `bulk.ts` measures) is refused first: "This list is too long to keep. Send it as two lists."
+  At the cap an 11th list is not refused (amended by task A2's review, see 0045): the same batch first drops the
+  oldest open, unexpired list (status `dropped`, `replaced_by` the new id), so the guard still holds exactly ten, and
+  applying the dropped one answers "pr_x was replaced by pr_y. Apply pr_y if the owner said yes to it." Expired lists
+  don't count and are never dropped. (The earlier refusal, "Ten proposals are waiting. ...", is retired.) With
   `replaces`, the old list must still be open; it is marked `dropped` with `replaced_by` in the same batch and does not
-  count towards the ten. A "No" writes nothing: the list just expires.
+  count towards the ten, so a revised list at the cap drops only the one it replaces. A "No" writes nothing: the list
+  just expires.
 - **Apply.** Unknown is "No proposal pr_x. Propose the changes again."; applied answers its change's line and writes
   nothing; dropped is "pr_x was replaced by pr_y. Apply pr_y if the owner said yes to it."; expired is "pr_x expired at
   3:40 PM. Propose …". Otherwise the actions are planned again with `ctx.now` the apply time. The fresh `reads()` must

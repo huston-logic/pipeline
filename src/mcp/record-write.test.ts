@@ -120,6 +120,16 @@ test("apply small: log_activity email is still a proposal", async () => {
   assert.equal(await count("proposals"), 2);
 });
 
+test("an AI app that never applies can't block edits: the 11th record tool call drops the oldest list", async () => {
+  const { db, c } = await setup();
+  const ids: string[] = [];
+  for (let i = 1; i <= 11; i++) ids.push(proposalOf((await okText(c, "add_task", { contact: "ct_seed01", title: `Task ${i}` })).data));
+  const open = await db.prepare("SELECT id FROM proposals WHERE status = 'open' ORDER BY created_at, rowid").all<{ id: string }>();
+  assert.deepEqual(open.results.map((row) => row.id), ids.slice(1), "exactly ten open: the newest ten");
+  assert.equal(await fails(c, "apply_changes", { proposal: ids[0] ?? "" }), `${ids[0]} was replaced by ${ids[10]}. Apply ${ids[10]} if the owner said yes to it.`);
+  assert.match((await ok(c, "apply_changes", { proposal: ids[10] ?? "" })).headline, CHANGE_LINE);
+});
+
 test("settings, stages and rules still write at once under review first", async () => {
   const { c, count } = await setup();
   for (const [tool, args] of [

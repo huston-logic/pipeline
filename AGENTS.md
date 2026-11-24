@@ -146,7 +146,8 @@ this file before changing the repo, and update it when a rule changes.
   the list showed (no bound statement may name a swapped id), and writes one change (tool `apply_changes`; bulk over 50
   rows or a snapshot over `CHUNK_BYTES`) with a leading guard that the proposal is still open and an extra statement
   marking it applied. Names that came from outside never win a match (`name-match.ts`). `@n` names a record an earlier
-  action adds, only as a note's or task's subject. At most 10 open, 2 hours each; the hourly run deletes expired ones.
+  action adds, only as a note's or task's subject. At most 10 open, 2 hours each (an 11th drops the oldest open one in its own batch, `replaced_by` the new
+  id, decision 0045); the hourly run deletes expired ones.
   The record tools themselves propose a one-action list the same way (decision 0045, the MCP bullet), and a refusal
   of that one action reads as the service's own message (no "Action 1: "). `src/mcp` imports services, never the
   reverse (`src/services/layering.test.ts`).
