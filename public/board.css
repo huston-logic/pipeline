@@ -853,8 +853,10 @@ ol.panel {
 }
 
 /* The table layout (decision 0043): one line per record in a region that scrolls sideways on its own, so the page never
-   does; the first column stays in view while the others scroll. */
+   does; the first column stays in view while the others scroll. It is positioned so that text hidden for screen readers
+   inside a cell (position: absolute) stays inside the region; otherwise it escapes and widens the page on a phone. */
 .table-scroll {
+  position: relative;
   max-width: 100%;
   margin: 0 0 1rem;
   overflow-x: auto;
