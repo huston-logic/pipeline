@@ -49,6 +49,15 @@ test("shouldRunBrief: once per local day, at or after the brief hour", () => {
   assert.equal(shouldRunBrief(new Date("2026-11-20T06:30:00.000Z"), settings, "2026-11-19"), false, "10:30 PM is still the 19th there");
 });
 
+test("the stored brief lists a standalone overdue task", async (t) => {
+  mockFetch(t);
+  const db = await openTestDb();
+  await addTask(ctxFor(db, SEVEN, "add_task"), { title: "Buy printer ink", dueAt: "2026-11-18T09:00" });
+  assert.deepEqual(await runBrief(envFor(db), SEVEN), { composed: 1, sent: 0, failed: 0 });
+  const [row] = await briefs(db);
+  assert.equal(row?.text, ["Pipeline brief for Thursday Nov 19", "", "Overdue", "- Buy printer ink, was due Wed Nov 18, 9:00 AM"].join("\n"));
+});
+
 test("the brief is composed and stored at the brief hour, whatever brief_enabled says, and sends nothing", async (t) => {
   const calls = mockFetch(t);
   const db = await openTestDb();
