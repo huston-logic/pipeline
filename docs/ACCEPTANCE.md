@@ -1,6 +1,6 @@
 # Acceptance
 
-The twenty sentences from the spec's "Acceptance" section, each proven end to end by `tests/e2e/acceptance.test.ts`.
+The twenty sentences from the spec's "Acceptance" section, plus five added in run 5 (21 to 25), each proven end to end by `tests/e2e/acceptance.test.ts`.
 The test starts the real Worker with `wrangler dev --local` and a real local D1 database holding the fake seed
 (`scripts/seed-dev.ts`), connects an MCP client over Streamable HTTP the way an AI app would, and runs the sentences in
 order. Later sentences build on earlier ones: 8 undoes the change from 7, 9 sees the changes from 4 to 8.
@@ -153,3 +153,40 @@ checks read every table from `/api/export.json`.
   days) nor the lead 18 just put back; nothing fires until the hourly run; after it each previewed lead has exactly one
   open task from the new rule, on the person and not on a deal; a second run adds none.
 - Test: `20. "From now on, remind me five days after I contact a lead with no reply." ...`
+
+## The run 5 sentences (21 to 25)
+
+Run 5 added importing, Person statuses and saved views. Sentences 21 to 25 run in a third `describe` block, after
+sentence 20, against the same server. They use made-up people with `example.com` addresses ("Ivy, Ned and Uma Sheetfake",
+"Pat Example", "Sam Example") and the seed's partner, Hannah Cole. 22 undoes the import from 21.
+
+## 21. Import these 3 people from my sheet.
+- Tools: `import_rows` (module people, three rows), then `apply_import` with the draft and version it answered.
+- Asserts: the preview comes first and says 3 new contacts, not saved, and writes no person; after the apply there are
+  three more contacts and one change; no deal is added; the imported values are listed as outside text.
+- Test: `21. "Import these 3 people from my sheet." ...`
+
+## 22. Undo that import.
+- Tools: `undo_change` with the import's change id, `search_contacts`, `recent_changes`.
+- Asserts: one undo removes all three people; the contact count is back to what it was before the import; the newest
+  change is the undo of the import.
+- Test: `22. "Undo that import." ...`
+
+## 23. Add Pat Example from the Fernbrook trade show as a contact.
+- Tools: `add_contact` (name, email, source), `search_contacts`, `list_leads`.
+- Asserts: Pat has the person status contact and no lead status; the source is saved; the deals and tasks tables are
+  unchanged; Pat is not on the lead list.
+- Test: `23. "Add Pat Example from the Fernbrook trade show as a contact." ...`
+
+## 24. Add a new kind of person: Supplier.
+- Tools: `add_person_status` (label Supplier), `list_person_statuses`, `add_contact` with that status, and a GET of
+  `/people?status=supplier` on the board.
+- Asserts: the key is `supplier` and is listed; the board page answers 200 and shows Supplier; a person added as a
+  supplier has that status.
+- Test: `24. "Add a new kind of person: Supplier." ...`
+
+## 25. Give me a view of all my partners.
+- Tools: `add_view` (people, person status partner), `list_views`, and a GET of `/people?view=<id>` on the board.
+- Asserts: the view is listed with its path; its page lists the seed's partner (Hannah Cole) and leaves out someone who
+  is not a partner.
+- Test: `25. "Give me a view of all my partners." ...`
