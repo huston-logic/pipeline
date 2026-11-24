@@ -100,7 +100,7 @@ interface Names {
   db: Db;
 }
 
-async function planned<T>(names: Names, table: "contacts" | "deals", id: string | null): Promise<T | null> {
+async function planned<T>(names: Names, table: "contacts" | "deals" | "tasks", id: string | null): Promise<T | null> {
   if (id === null) return null;
   const row = names.planned.get(rowKey(table, id));
   if (row !== undefined) return row as unknown as T;
@@ -256,10 +256,20 @@ async function entryLine(names: Names, row: Row): Promise<string> {
   return `Time ${timeLine({ minutes: row.minutes, workType, billable: row.billable === 1, rate, who })}`;
 }
 
-/** A time entry: added or stopped, it reads as its line; archived or restored, it says so; edited, what it was. */
+/** The task an entry is for, by taskTitle (its id when the title came from outside); null for none. */
+async function entryTask(names: Names, row: Row): Promise<string | null> {
+  const task = await planned<{ id: string; title: string; untrusted_fields: string }>(names, "tasks", (row.task_id as string | null) ?? null);
+  return task === null ? (typeof row.task_id === "string" ? `task ${row.task_id}` : null) : taskTitle(task);
+}
+
+/**
+ * A time entry: added or stopped, it reads as its line (and its task, when it has one); archived or restored, it says
+ * so; edited, what it was and the task it moved to.
+ */
 async function timeItem(names: Names, id: string, before: Row | null, after: Row): Promise<Item | null> {
   if (before === null || (before.ended_at === null && after.ended_at !== null && after.archived === 0)) {
-    return { record: await entryLine(names, after), id, fields: [] };
+    const task = await entryTask(names, after);
+    return { record: await entryLine(names, after), id, fields: task === null ? [] : [{ field: "task", to: task }] };
   }
   if (before.archived !== after.archived) {
     const archived = after.archived === 1;
@@ -269,6 +279,7 @@ async function timeItem(names: Names, id: string, before: Row | null, after: Row
   const now = await entryLine(names, after);
   const fields: Item["fields"] = [];
   if (was !== now) fields.push({ field: "was", to: was.replace(/^Time /, "") });
+  if (before.task_id !== after.task_id) fields.push({ field: "task", from: (await entryTask(names, before)) ?? NONE, to: (await entryTask(names, after)) ?? NONE });
   for (const [column, field] of [["started_at", "started"], ["notes", "notes"]] as const) {
     if (before[column] === after[column]) continue;
     fields.push({ field, from: cell(names, "time_entries", before, column, before[column]), to: cell(names, "time_entries", after, column, after[column]) });

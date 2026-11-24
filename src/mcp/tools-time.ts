@@ -11,7 +11,7 @@ import { addTimeEntryInput, startTimerInput, stopTimerInput, updateTimeEntryInpu
 import { requireTimeTracking } from "../services/settings.ts";
 import { formatDuration, formatMoney } from "../services/time-format.ts";
 import { runningTimer } from "../services/time-entries.ts";
-import { entryViews, listTime, type Period, PERIOD_NAMES, type PeriodName, periodOf } from "../services/time-read.ts";
+import { checkPeriod, entryViews, listTime, type Period, PERIOD_NAMES, type PeriodName, periodOf } from "../services/time-read.ts";
 import { addWorkType, listWorkTypes, setClientRate, updateWorkType } from "../services/work-types.ts";
 import { addDays, formatLocal, zonedToUtc } from "../time.ts";
 import { toolResult } from "./format.ts";
@@ -48,7 +48,7 @@ function periodFrom(args: { period?: PeriodName; from?: string; to?: string }, n
     return { period, words: `${PERIOD_WORDS[name]} (${localDay(period.from, tz)} to ${localDay(period.to, tz)})` };
   }
   if (args.from === undefined || args.to === undefined) throw new UserError("Give both from and to (YYYY-MM-DD), or a period.");
-  const period = { from: args.from, to: args.to };
+  const period = checkPeriod({ from: args.from, to: args.to });
   if (period.from <= period.to && addDays(period.from, RANGE_MAX_DAYS - 1) < period.to) {
     throw new UserError(`A range can be at most ${RANGE_MAX_DAYS} days. Ask for a shorter one.`);
   }

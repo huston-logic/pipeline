@@ -120,6 +120,7 @@ test("update_time_entry and list_time over MCP", async () => {
   assert.equal(range.headline, "No time from Sun Nov 1 to Sun Nov 15.");
   assert.match(await fails(c, "list_time", { period: "this_week", from: "2026-11-01", to: "2026-11-15" }), /^Give a period or from and to, not both\.$/);
   assert.match(await fails(c, "list_time", { from: "2026-11-01" }), /^Give both from and to/);
+  assert.equal(await fails(c, "list_time", { from: "2026-02-30", to: "2026-03-01" }), '"2026-02-30" isn\'t a date I can read. Use YYYY-MM-DD, for example 2026-11-16.');
   const data = week.data as { entries: unknown[]; running: unknown };
   assert.equal(data.entries.length, 1);
   assert.equal(data.running, null);

@@ -11,7 +11,7 @@ import { rowLabel } from "./describe.ts";
 import { UserError } from "./errors.ts";
 import { clean, whenOrNull } from "./input.ts";
 import { isTrusted } from "./labels.ts";
-import { contactById, dealById, ownerTimezone, type Source, workTypeById } from "./lookup.ts";
+import { contactById, dealById, ownerTimezone, type Source, sourceOf, workTypeById } from "./lookup.ts";
 import { requireTimeTracking } from "./settings.ts";
 import {
   ENTRY_MAX_MINUTES,
@@ -52,6 +52,12 @@ export interface StopInput {
 function sinceText(at: string, now: Date, tz: string): string {
   const full = formatLocal(at, tz);
   return localDate(new Date(at), tz) === localDate(now, tz) ? (full.split(", ").at(-1) ?? full) : full;
+}
+
+/** "A timer is already running for <label> since 9:10 AM. Stop it first." for the timer running now, or null. */
+export async function runningTimerRefusal(src: Source, now: Date): Promise<string | null> {
+  const running = await runningTimer(src);
+  return running === null ? null : alreadyRunning(src, running, now, await ownerTimezone(sourceOf(src).db));
 }
 
 async function alreadyRunning(src: Source, running: TimeEntryRow, now: Date, tz: string): Promise<string> {

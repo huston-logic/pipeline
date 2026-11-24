@@ -89,6 +89,11 @@ test("client rate set and cleared", async () => {
   const robin = await set(90, "ct_seed02");
   assert.match(robin.summary, /^Set contact ct_seed02's Design rate to \$90\.00\/h/);
   await assert.rejects(setClientRate(ctxFor(db, "set_client_rate"), { workType: "Coding", contact: "ct_seed01", hourlyRate: 1 }), /There's no work type "Coding"/);
+  // A long name is cut where it is echoed.
+  await assert.rejects(
+    setClientRate(ctxFor(db, "set_client_rate"), { workType: "x".repeat(60), contact: "ct_seed01", hourlyRate: 1 }),
+    /^UserError: There's no work type "x{39}…"\. Work types: /,
+  );
 });
 
 test("undo of a work type in use is refused; undo of a client rate is not", async () => {

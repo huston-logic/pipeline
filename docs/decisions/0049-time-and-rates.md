@@ -41,8 +41,11 @@ stays at that rate when the rate goes up.
   is logged at the moment of stopping, as `log_activity` logs one, not at the entry's end. A timer older than 16 hours
   can't be stopped without `startedAt` or `endedAt`: "The timer has been running since Wed Nov 18, 9:00 AM (25 h), and an
   entry can be at most 16 hours. Edit the start or end: stop it with startedAt or endedAt." A timer left running past
-  midnight stores its real span; nothing is split by day. Undoing a stop puts the timer back running (refused while
-  another one runs) and removes the note and the task.
+  midnight stores its real span; nothing is split by day. A stop at the very moment of its start stores 1 minute.
+  Undoing a stop puts the timer back running (refused while another one runs) and removes the note and the task.
+- **A running timer's billable flag** is set when it starts (the work type's default) and when it stops (`billable`,
+  or the default of a work type given to `stop_timer`). Giving a running timer a work type later with
+  `update_time_entry` does not change its billable flag; set `billable` on the stop.
 - **Rates.** `rateFor(work type, person)`: the person's live client rate for the work type, else the work type's rate,
   else null. A billable entry stores that rate when it is saved (a timer when it stops); a non-billable one stores
   null. A later rate change never rewrites an entry. Editing an entry's work type, person or billable (any of them in
@@ -66,7 +69,13 @@ stays at that rate when the rate goes up.
   proposed (`withStopTimes`), so the owner's later yes stores the span they were shown and the apply's list matches the
   stored text. A start proposed now starts at the yes (the list says "now" either way). A timer started in a list
   can't be stopped in the same list ("Use add_time_entry with the start and end instead"), since the stop's note
-  would be written after the entry that points at it.
+  would be written after the entry that points at it. A time item names its task (`taskTitle`, the id when the title
+  came from outside): on an added entry, a started or stopped timer as "task ...", on an edit as "task <old> ->
+  <new>". Every list, time or not, is checked before it is stored: a plan that writes rows while the rendered list
+  shows none is refused as a programming error ("This list would change records it doesn't show. Nothing was
+  proposed."), so a gap in the renderer can never let the owner approve an empty list that writes. A second timer
+  started by another write while a list is made gets the timer's own refusal at propose, and the fresh-list answer
+  ("changed since this list was made") at apply.
 - **Periods.** `periodOf` gives local dates in the owner's timezone; weeks start on Monday. `listTime` counts finished,
   unarchived entries that started in the period; `timeByClientMonth` gives one row per person for a month ("No
   person" last).
@@ -88,4 +97,6 @@ stays at that rate when the rate goes up.
 - Time of no one's is allowed (admin, travel) and shows as "No person" in totals.
 - Undo refuses to remove a work type with entries or client rates, and a person with entries; archive the work type
   instead.
-- The board shows nothing of time yet; the export page lists the three tables.
+- Undo is generic: a time change can be undone while time tracking is off.
+- The board shows nothing of time yet, but the export page lists the three tables' CSVs even while time tracking is
+  off; D8 decides whether to hide them.

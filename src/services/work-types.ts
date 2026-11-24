@@ -12,7 +12,7 @@ import {
   isWorkTypeNameFailure,
   updatedRow,
 } from "./change.ts";
-import { joinAnd } from "./describe.ts";
+import { joinAnd, short } from "./describe.ts";
 import { UserError } from "./errors.ts";
 import { clean } from "./input.ts";
 import { contactName } from "./labels.ts";
@@ -75,8 +75,9 @@ export async function findWorkType(src: Source, ref: string): Promise<WorkTypeRo
   const live = await liveWorkTypes(db);
   const match = live.find((row) => row.name.toLowerCase() === text.toLowerCase());
   if (match) return match;
-  if (live.length === 0) throw new UserError(`There's no work type "${text}". There are no work types yet: add one with add_work_type.`);
-  throw new UserError(`There's no work type "${text}". Work types: ${live.map((row) => row.name).join(", ")}. Use one of those, or add it with add_work_type.`);
+  const shown = short(text, 40);
+  if (live.length === 0) throw new UserError(`There's no work type "${shown}". There are no work types yet: add one with add_work_type.`);
+  throw new UserError(`There's no work type "${shown}". Work types: ${live.map((row) => row.name).join(", ")}. Use one of those, or add it with add_work_type.`);
 }
 
 /** A work type by id or name, live ones first, then the latest archived one (to restore it). */
