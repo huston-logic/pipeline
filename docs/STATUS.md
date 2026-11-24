@@ -162,7 +162,7 @@ re-reviewed. From P9 on, at your request, every subagent ran on Sonnet.
 | P9 | Saved views (0042, migration 0013) | [#55](https://github.com/huston-logic/pipeline/pull/55) | merged |
 | P10 | Table layout (0043) | [#57](https://github.com/huston-logic/pipeline/pull/57) | open, queued for auto-merge |
 | - | CLAUDE.md: no local Lighthouse | [#56](https://github.com/huston-logic/pipeline/pull/56) | open, queued for auto-merge |
-| C11 | Closing docs and status | this PR | open, queued for auto-merge |
+| C11 | Closing docs and status | #58 (this PR) | open, queued for auto-merge |
 
 ### Run 5 rulings (cost if wrong)
 
