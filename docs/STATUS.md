@@ -5,13 +5,12 @@ file is the repo's status: update it in place at the end of every run (CLAUDE.md
 Spec: `docs/SPEC.md`. Plan: `docs/PLAN.md`. Decisions: `docs/decisions/`. Dates are in the owner's timezone
 (America/Los_Angeles), taken from the PR merge times in `gh`.
 
-Last checked against the repo and `gh` on 2026-11-23, at `main` commit `754579f` (#55).
+Last checked against the repo and `gh` on 2026-11-23, at `main` commit `960a113` (#57).
 
 ## Current state
 
-**Merged.** Everything in the spec and in the run 2, 4 and 5 briefs is built. Merged: #1 to #55. Open and queued for
-auto-merge: #56 (CLAUDE.md drops local Lighthouse, your request), #57 (table layout, run 5's last build task) and this
-closing PR. No open code-scanning alerts. Run 5 added CSV import from the board and from the AI app (people, deals and
+**Merged.** Everything in the spec and in the run 2, 4 and 5 briefs is built and merged: #1 to #59, no other PR open
+but this status update, no open code-scanning alerts. Run 5 added CSV import from the board and from the AI app (people, deals and
 tasks, up to 2,000 rows as one change and one undo), Person statuses with sub-statuses, Add contact, saved views and a
 table layout. The repo has migrations 0001 to 0013 and decisions 0001 to 0043.
 
@@ -23,17 +22,16 @@ git-ignored `.copies/`. What that copy runs now can't be checked from the repo o
 run 4's code (migrations 0006 to 0008) is open until you confirm it. Run 5's code (migrations 0009 to 0013) reaches
 it only when you run the update (Needs Grant 1).
 
-**Open.** #56, #57 and this PR, all queued for auto-merge behind the required checks. What is left is in "Needs Grant"
-and in the minor findings below.
+**Open.** Only this status update. What is left is in "Needs Grant" and in the minor findings below.
 
 **Dependencies** (exact-pinned in `package.json`): runtime `agents` 0.33.0, `@modelcontextprotocol/server` 2.4.0,
 `@cloudflare/workers-oauth-provider` 1.2.4, `postal-mime` 4.2.1, `zod` 4.6.7. Development: `@playwright/test` 1.65.0,
 `@modelcontextprotocol/client` 2.4.0, `typescript-eslint` 8.72.2. Added in run 4: `postal-mime` (PR #37). Run 5
 added none.
 
-**Tests.** `npm run check` passes on this branch (1,270 unit and 51 end-to-end tests) and on #57's branch (1,283 unit,
-with the table tests), 0 failures. Local a11y does not
-run on this Mac (Needs Grant 6) and local Lighthouse is no longer run (CLAUDE.md, #56); CI runs both.
+**Tests.** `npm run check` on this branch passes: 1,287 unit and 51 end-to-end tests, 0 failures. Local a11y does not run on this Mac (Needs
+Grant 6) and local Lighthouse is no longer run (CLAUDE.md, #56); CI runs both. CI's `lighthouse` job now scores 20
+pages, 3 runs each (about 12 minutes instead of 30), and collects again only the pages whose runs crashed (#59).
 
 ## Changelog
 
@@ -53,15 +51,17 @@ run on this Mac (Needs Grant 6) and local Lighthouse is no longer run (CLAUDE.md
 - 2026-11-22 to 2026-11-23, run 5, "Import and people": the plan (#46); Part 1, import: one engine (#47), one change
   at any size (#48), board import for people (#49), deals and tasks (#50), "This is my own list" (#51), import over MCP
   (#52); Part 2, people: Person status (#53), its tools, Add contact and the form fields (#54), saved views (#55), table
-  layout (#57); CLAUDE.md drops local Lighthouse (#56); closing docs and status (this PR).
+  layout (#57); CLAUDE.md drops local Lighthouse (#56); closing docs and status (#58).
+- 2026-11-23, CI: the `lighthouse` job scores at most 20 pages, 3 runs each, and retries pages whose runs crashed with
+  Chrome's `NO_NAVSTART` (#59); a CodeQL alert in a table test helper fixed in #57; status brought up to date (this
+  PR).
 
 ## Needs Grant
 
 Steps only you can do, in order. Items marked "per copy" repeat for each new client copy.
 
-1. **Update the first copy to run 5** (per copy), once #57 and this PR have merged.
-   `npm run copies:update -- --copy <name> --dry-run` first, then without `--dry-run` (migrations 0009 to 0013 apply),
-   then docs/UPDATING.md: "Run 4: after you update" if that copy never had it, then "Run 5: after you update" (reconnect
+1. **Update the first copy to run 5** (per copy). `npm run copies:update -- --copy <name> --dry-run` first, then
+   without `--dry-run` (migrations 0009 to 0013 apply), then docs/UPDATING.md: "Run 4: after you update" if that copy never had it, then "Run 5: after you update" (reconnect
    the connector, the sentences to try, retiring an old "Contact type" field by talking). Not checkable from here which
    run the copy is on.
 2. **Your calls from run 5** (nothing was changed without you):
@@ -109,7 +109,7 @@ Steps only you can do, in order. Items marked "per copy" repeat for each new cli
      `npx wrangler login` yourself, follow docs/INSTALL.md and docs/ACCESS-SETUP.md. Zero Trust Free covers up to 50
      users.
 10. **Leftover temp folder** from a manual test (harmless, nothing secret; the hook stops Claude deleting outside the
-   repo; checked still there on 2026-11-21): `rm -r /var/folders/xf/zt8g4lzn0211myfvc6kzmt0r0000gn/T/pipeline-e2e-p134is`
+   repo; checked on 2026-11-21): `rm -r /var/folders/xf/zt8g4lzn0211myfvc6kzmt0r0000gn/T/pipeline-e2e-p134is`
 
 Done since the last file (checked on 2026-11-21): the CI workflow no longer runs `check:placeholders` (nothing in
 `.github` mentions it); the CI lighthouse timeout and the owner-only reviewer proposals landed in #26; the first copy
@@ -136,11 +136,12 @@ Changes to scope, product or a decision since run 3, one line each:
   of 0022).
 - Product (run 5): saved views and a table layout for every list; the Pipeline List is a table (0042, 0043).
 - Cost (run 5): a 2,000-row board import is about 11 ms of CPU, over the free plan's 10 ms (docs/PAID-PLAN.md).
-- Process (run 5): no local Lighthouse runs; CI's required job is the check (CLAUDE.md, #56).
+- Process (run 5): no local Lighthouse runs; CI's required job is the check (CLAUDE.md, #56). That job now scores at
+  most 20 pages, 3 runs each, and retries crashed runs, so it takes about 12 minutes and stops growing (#59).
 
 ---
 
-# History (kept from earlier runs; facts re-checked on 2026-11-21)
+# History (kept from earlier runs; facts re-checked on 2026-11-23)
 
 ## Run 5 (2026-11-22 to 2026-11-23)
 
@@ -160,9 +161,14 @@ re-reviewed. From P9 on, at your request, every subagent ran on Sonnet.
 | P7 | Person status (0040, migration 0011) | [#53](https://github.com/huston-logic/pipeline/pull/53) | merged |
 | P8 | Tools, Add contact, form fields (0041, migration 0012) | [#54](https://github.com/huston-logic/pipeline/pull/54) | merged |
 | P9 | Saved views (0042, migration 0013) | [#55](https://github.com/huston-logic/pipeline/pull/55) | merged |
-| P10 | Table layout (0043) | [#57](https://github.com/huston-logic/pipeline/pull/57) | open, queued for auto-merge |
-| - | CLAUDE.md: no local Lighthouse | [#56](https://github.com/huston-logic/pipeline/pull/56) | open, queued for auto-merge |
-| C11 | Closing docs and status | #58 (this PR) | open, queued for auto-merge |
+| P10 | Table layout (0043) | [#57](https://github.com/huston-logic/pipeline/pull/57) | merged |
+| - | CLAUDE.md: no local Lighthouse | [#56](https://github.com/huston-logic/pipeline/pull/56) | merged |
+| C11 | Closing docs and status | [#58](https://github.com/huston-logic/pipeline/pull/58) | merged |
+| - | Lighthouse: 20 pages, 3 runs, retry crashed runs | [#59](https://github.com/huston-logic/pipeline/pull/59) | merged |
+
+CI on the way: `lighthouse` grew to 38 pages × 5 runs (#56 hit the 35-minute limit) and failed twice on Chrome's
+`NO_NAVSTART` (#57, #59), which led to #59. CodeQL flagged a High alert (`js/incomplete-multi-character-sanitization`)
+in a test helper that stripped HTML tags in #57; fixed in code by splitting on tags instead.
 
 ### Run 5 rulings (cost if wrong)
 

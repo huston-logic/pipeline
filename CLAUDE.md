@@ -52,8 +52,9 @@ These can go stale if the ruleset is changed in Settings, so re-check before rel
 - A new check becomes required only after 5 clean runs plus a deliberate-failure proof PR.
   Proof PRs are titled "PROOF - DO NOT MERGE: <name>" and closed (never merged) with
   `gh pr close --delete-branch`.
-- `lighthouse` sometimes fails with `NO_NAVSTART`, a Lighthouse trace-recording hiccup, not
-  a site problem. Use "Re-run failed jobs" on the run.
+- `lighthouse` sometimes hits `NO_NAVSTART`, a Chrome trace-recording hiccup, not a site
+  problem. `npm run test:lighthouse` (`scripts/lighthouse.mjs`) already collects the crashed
+  pages again, at most twice; if the job still fails with it, use "Re-run failed jobs".
 - A lockfile written by a different npm than CI's can fail CI's `npm ci` even when a
   local `npm ci` passes. CI uses npm 10 (10.9.9 on 2026-11-13, Node 22). Generate
   lockfile changes with the same npm major as CI, and check the first CI run's Install
