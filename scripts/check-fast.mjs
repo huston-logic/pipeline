@@ -1,6 +1,8 @@
-// `npm run check:fast`: the quick local check while working: config guard, lint and typecheck (both cached), and only
-// the unit tests the changed files can affect (scripts/test-select.mjs). It skips the e2e tests and the build, so
-// `npm run check` still runs before every commit.
+// `npm run check:fast`: the quick check before each commit (decision 0052): config guard, lint and typecheck (both
+// cached), and only the unit tests the changed files can affect (scripts/test-select.mjs). "Changed" is what is not
+// committed yet (against HEAD, plus untracked files), because each earlier commit was checked when it was made;
+// `npm run check:fast -- --branch` compares against where the branch left main instead. It skips the e2e tests and
+// the build: the full `npm run check` runs before every push and PR, and in CI.
 import { spawnSync } from "node:child_process";
 import { readdirSync, readFileSync } from "node:fs";
 import { extname, join, sep } from "node:path";
@@ -18,7 +20,9 @@ function git(args) {
   return r.stdout.split("\n").filter(Boolean);
 }
 
-function changedFiles() {
+function changedFiles(branch) {
+  const untracked = git(["ls-files", "--others", "--exclude-standard"]);
+  if (!branch) return [...new Set([...git(["diff", "--name-only", "HEAD"]), ...untracked])];
   let base;
   for (const ref of ["main", "origin/main"]) {
     try {
@@ -29,7 +33,7 @@ function changedFiles() {
     }
   }
   if (!base) throw new Error("no merge-base with main or origin/main");
-  return [...new Set([...git(["diff", "--name-only", base]), ...git(["ls-files", "--others", "--exclude-standard"])])];
+  return [...new Set([...git(["diff", "--name-only", base]), ...untracked])];
 }
 
 function readFiles() {
@@ -64,7 +68,7 @@ function step(name, command, args) {
 
 let selection;
 try {
-  selection = selectTests({ changed: changedFiles(), files: readFiles() });
+  selection = selectTests({ changed: changedFiles(process.argv.includes("--branch")), files: readFiles() });
 } catch (error) {
   selection = { mode: "all", tests: [], reasons: [`${error.message}, so run everything`] };
 }

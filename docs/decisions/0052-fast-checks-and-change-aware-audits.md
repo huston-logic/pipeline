@@ -14,6 +14,8 @@ scan (about 6 minutes) and Lighthouse (about 12 minutes), even PRs that changed 
 - **`npm run check:fast`** (`scripts/check-fast.mjs`) runs check:config, lint (ESLint cache), typecheck (tsc
   incremental, build info in `node_modules/.cache/`) and only the unit tests the change can reach
   (`scripts/test-select.mjs`): the changed tests, the changed files' own tests, and the tests of their direct importers.
+  "Changed" means not committed yet (against `HEAD`, plus untracked files), since each earlier commit was checked when
+  it was made; `-- --branch` compares against where the branch left main.
   It runs every unit test when it can't tell: package files, tsconfig, ESLint config, `wrangler.jsonc`, `config/`,
   migrations, seed, the test runtime helpers, a deleted code file, a git failure, a file no test names, or more than
   60% of the tests anyway. Docs that no test names run no unit tests. `npm run check` stays the full suite, and the
