@@ -44,7 +44,7 @@ import {
   runAction,
   withStopTimes,
 } from "./proposal-actions.ts";
-import { type ProposalList, proposalList, renderProposal } from "./proposal-text.ts";
+import { type ProposalList, proposalList, renderProposal, shownList } from "./proposal-text.ts";
 import { runningTimerRefusal } from "./timer.ts";
 
 export const PROPOSAL_MAX_ACTIONS = 25;
@@ -93,11 +93,12 @@ async function planActions(ctx: Ctx, actions: readonly ResolvedAction[], deps: D
 }
 
 /**
- * A list that would write rows but shows none would let the owner say yes to an empty list that changes records: a
- * gap in proposal-text.ts. That is a programming error, so it is a plain Error and nothing is proposed.
+ * A list that would write a column no item shows (`unshown`, from shownList) would let the owner say yes to a list
+ * that changes more than it says: a gap in proposal-text.ts. That is a programming error, so it is a plain Error and
+ * nothing is proposed.
  */
-export function checkListShows(input: ChangeInput, list: ProposalList): void {
-  if (input.changes.length > 0 && Object.values(list).every((items: unknown[]) => items.length === 0)) {
+export function checkListShows(unshown: readonly string[]): void {
+  if (unshown.length > 0) {
     throw new Error("This list would change records it doesn't show. Nothing was proposed.");
   }
 }
@@ -139,8 +140,8 @@ export async function proposeChanges(caller: Ctx, input: { actions: RecordAction
   if (target === null) throw new Error("A proposal planned no change.");
   const tz = await ownerTimezone(ctx);
   const built = plan.build(target, "");
-  const list = await proposalList(ctx, built, tz, now);
-  checkListShows(built, list);
+  const { list, unshown } = await shownList(ctx, built, tz, now);
+  checkListShows(unshown);
 
   const id = newId("pr");
   const stamp = now.toISOString();

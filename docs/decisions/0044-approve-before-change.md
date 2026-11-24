@@ -115,6 +115,14 @@ later action names a record an earlier one adds, how names are matched, and how 
   written (a task's done time) reads "now", so the list doesn't depend on when it is rendered. A value shows at most
   300 characters (with "…"); the record keeps the whole text. A record named from outside is named by id; an old value
   that was outside text reads "(text from outside)". The text ends with the three answers.
+  **Every change shows (run 6 final review).** Each item builder says which columns of its row it shows, and propose
+  refuses, with a plain internal error ("This list would change records it doesn't show. Nothing was proposed."), a
+  list that writes any other column of any row (for an added row, every column it sets), except the bookkeeping
+  columns above (`NOT_SHOWN` in `proposal-text.ts`). This replaced a check of the whole list (rows written, nothing
+  shown), which let a time entry's notes, a stop's moved start and the edits beside an archive go unshown. A time
+  entry added or stopped now shows its start (a running timer's line already does) and its notes; an archive or
+  restore lists every other edit beside it. `src/services/proposal-coverage.test.ts` proposes every record action with
+  each optional field set (a variant per field; a new optional field fails it until it has one).
 - **Tools** (`src/mcp/tools-proposals.ts`). `propose_changes { actions: 1..25, replaces? }` (write, not destructive:
   it writes only scratch space) answers the list, a blank line and the JSON `{ proposal, expiresAt, list }`, or the
   questions and `{ questions }`. Its text is several lines, so it answers through `toolText` (`src/mcp/format.ts`),

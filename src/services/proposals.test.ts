@@ -20,7 +20,7 @@ import {
   proposeChanges,
   TRIAL_SENTINEL,
 } from "./proposals.ts";
-import { proposalList } from "./proposal-text.ts";
+import { shownList } from "./proposal-text.ts";
 import { updateSettings } from "./settings.ts";
 import { updateStage } from "./stages.ts";
 import { undoChange } from "./undo.ts";
@@ -228,7 +228,7 @@ test("time shows in the Time group, from the rows the plan would write", async (
   const db = await setup();
   db.exec(`UPDATE settings SET time_tracking = 1; ${WORK_TYPES_SQL}`);
   const entry = await propose(db, [{ action: "add_time_entry", contact: "Pat", startedAt: "2026-11-19T07:30", endedAt: "2026-11-19T09:00", workType: "Design" }]);
-  assert.equal(entry.text.split("\n").slice(2, 4).join("\n"), "Time\n- Time 1 h 30 min, Design, billable at $95.00/h ($142.50), for Pat Example");
+  assert.equal(entry.text.split("\n").slice(2, 4).join("\n"), "Time\n- Time 1 h 30 min, Design, billable at $95.00/h ($142.50), for Pat Example: started Thu Nov 19, 7:30 AM");
   assert.equal(entry.list.time[0]?.id.startsWith("te_"), true);
 
   const timer = await propose(db, [{ action: "start_timer", deal: "dl_seed01" }]);
@@ -246,7 +246,7 @@ test("time shows in the Time group, from the rows the plan would write", async (
       "Time",
     ].join("\n"),
   );
-  assert.ok(stop.text.includes('\n- Time 1 h 30 min, Design, billable at $95.00/h ($142.50), for "Website refresh for Example Plumbing" (Pat Example)\n'));
+  assert.ok(stop.text.includes('\n- Time 1 h 30 min, Design, billable at $95.00/h ($142.50), for "Website refresh for Example Plumbing" (Pat Example): notes Homepage draft done.\n'));
   // Stored with the end it was asked at, so a later yes stores the same span.
   const stored = JSON.parse((await proposal(db, stop.id))?.actions ?? "[]") as Record<string, unknown>[];
   assert.equal(stored[0]?.endedAt, NOW.toISOString());
@@ -261,7 +261,7 @@ test("a time entry's task shows on its line, and a task-only edit lists the task
   const added = await propose(db, [{ action: "add_time_entry", task: "tk_seed01", startedAt: "2026-11-19T08:00", minutes: 15 }]);
   assert.equal(
     added.text.split("\n").slice(2, 4).join("\n"),
-    'Time\n- Time 15 min, not billable, for "Website refresh for Example Plumbing" (Pat Example): task "Prepare questions for Pat\'s call"',
+    'Time\n- Time 15 min, not billable, for "Website refresh for Example Plumbing" (Pat Example): task "Prepare questions for Pat\'s call"; started Thu Nov 19, 8:00 AM',
   );
 
   db.exec(
@@ -278,20 +278,23 @@ test("a time entry's task shows on its line, and a task-only edit lists the task
   assert.match(cleared.text, /\n- Time 1 h, [^\n]*: task "Prepare questions for Pat's call" -> \(none\)\n/);
 });
 
-test("a list that would write a row it doesn't show is refused: nothing is proposed", async () => {
+test("a list that would write a column it doesn't show is refused: nothing is proposed", async () => {
   const db = await setup();
   const deal = await db.prepare("SELECT * FROM deals WHERE id = 'dl_seed01'").first<Row>();
   assert.ok(deal);
-  // A change whose only write is a column the list never shows (a deal's last-contact time).
-  const input: ChangeInput = {
-    target: { table: "deals", id: "dl_seed01" },
-    summary: "",
-    changes: [{ table: "deals", id: "dl_seed01", before: deal, after: { ...deal, last_activity_at: NOW.toISOString(), version: Number(deal.version) + 1 } }],
-  };
-  const list = await proposalList(db, input, DEFAULT_TZ, NOW);
-  assert.deepEqual(Object.values(list).flat(), [], "the renderer skips it");
-  assert.throws(() => checkListShows(input, list), /^Error: This list would change records it doesn't show\. Nothing was proposed\.$/);
-  assert.doesNotThrow(() => checkListShows({ ...input, changes: [] }, list));
+  // A change whose only write is a column the list never shows (a deal's last-contact time): nothing to show, no gap.
+  const touched = { table: "deals" as const, id: "dl_seed01", before: deal, after: { ...deal, last_activity_at: NOW.toISOString(), version: Number(deal.version) + 1 } };
+  const quiet = await shownList(db, { target: { table: "deals", id: "dl_seed01" }, summary: "", changes: [touched] }, DEFAULT_TZ, NOW);
+  assert.deepEqual(Object.values(quiet.list).flat(), [], "the renderer skips it");
+  assert.deepEqual(quiet.unshown, []);
+  // A task added with a rule's source: the list shows the task, but not that a rule made it.
+  const task: Row = { id: "tk_new", deal_id: "dl_seed01", contact_id: "ct_seed01", title: "Call Pat", due_at: null, done_at: null, snoozed_until: null, source: "ru_seed01", untrusted_fields: "[]", version: 1, created_at: NOW.toISOString(), updated_at: NOW.toISOString() };
+  const input: ChangeInput = { target: { table: "tasks", id: "tk_new" }, summary: "", changes: [touched, { table: "tasks", id: "tk_new", before: null, after: task }] };
+  const { list, unshown } = await shownList(db, input, DEFAULT_TZ, NOW);
+  assert.equal(list.tasks.length, 1);
+  assert.deepEqual(unshown, ["tasks:tk_new source"]);
+  assert.throws(() => checkListShows(unshown), /^Error: This list would change records it doesn't show\. Nothing was proposed\.$/);
+  assert.doesNotThrow(() => checkListShows([]));
 });
 
 test("a timer started by another write while the list is made is the timer's own refusal; at apply, a fresh-list answer", async () => {

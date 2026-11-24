@@ -138,7 +138,10 @@ this file before changing the repo, and update it when a rule changes.
   `withPlanned`), so each action sees the rows the earlier ones planned. A new read in a record service must go through
   them (the collector refuses a write whose `before` isn't the planned row; the "apply equals running the actions one
   by one" test proves it). The list is rendered from the merged rows (`proposal-text.ts`), never from the action text,
-  and the proposal (`proposals`, migration 0014, scratch space like import drafts) stores the resolved actions,
+  and every column a written row changes must show in some item (each item builder says which it shows; `NOT_SHOWN`
+  is the one list of bookkeeping columns never shown), or propose refuses with a plain internal error: a new column
+  or record field needs its line in the list, and `src/services/proposal-coverage.test.ts`, which proposes every
+  `RECORD_ACTIONS` action with each optional field set, needs a variant for a new optional field. The proposal (`proposals`, migration 0014, scratch space like import drafts) stores the resolved actions,
   `reads` (every row written, with the version read) and the shown `text`, but only after a trial: apply's exact batch
   (`changeBatch`, shared with `commitChange`) plus a sentinel that always fails, so it rolls back; any error but the
   sentinel's is a plain refusal and nothing is stored. A guard a service puts in `extra` carries its reason and the ids
