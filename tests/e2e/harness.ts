@@ -1,10 +1,13 @@
-// End-to-end harness: the real Worker under `wrangler dev --local` with a real local D1 database in a new temp
-// folder (migrations, defaults and the fake seed, set up the way `npm run dev` does it). Local only: no login, no
-// remote resources. One server per test file; always `await server.stop()` in `after()`.
-// `npm run test:e2e` builds out/ once and runs the files one at a time (`--test-concurrency=1`), so no two files
-// rebuild out/ or start `wrangler dev` at the same moment.
+// End-to-end harness: the real Worker, run locally by wrangler, with a real local D1 database (migrations, defaults
+// and the fake seed, set up the way `npm run dev` does it). Local only: no login, no remote resources.
+// The database is set up once per run into a template folder (`templateState()`); each test file gets a fresh copy
+// (`prepareState()`). Always `await server.stop()` in `after()`.
+// `npm run test:e2e` (scripts/e2e.mjs) builds out/ once, makes the template, starts ONE Worker and runs the files one
+// at a time (`--test-concurrency=1`). `startDevServer()` then asks the launcher's control server (E2E_CONTROL_URL) to
+// point that Worker at a fresh copy plus the file's extra vars; `stop()` says the file is done. Without
+// E2E_CONTROL_URL (one file run on its own with `node --test`), `startDevServer()` starts its own `wrangler dev`.
 import { type ChildProcess, spawn } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -44,11 +47,35 @@ export function freePort(): Promise<number> {
   });
 }
 
-/** A new temp state folder with the local database set up in it. */
+let lazyTemplate: string | undefined;
+
+/**
+ * The template state folder: the local database set up once (migrations, defaults, the fake seed). `npm run test:e2e`
+ * makes it and passes its path in E2E_TEMPLATE_STATE; a single file run on its own builds one here, once per process,
+ * and removes it when the process ends.
+ */
+export function templateState(): string {
+  const given = process.env.E2E_TEMPLATE_STATE;
+  if (given) return given;
+  if (!lazyTemplate) {
+    const dir = mkdtempSync(join(tmpdir(), "pipeline-e2e-template-"));
+    try {
+      setupLocalDatabase({ root: ROOT, stateDir: dir, now: Date.now(), stdio: "pipe" });
+    } catch (error) {
+      rmSync(dir, { recursive: true, force: true });
+      throw error;
+    }
+    process.on("exit", () => rmSync(dir, { recursive: true, force: true }));
+    lazyTemplate = dir;
+  }
+  return lazyTemplate;
+}
+
+/** A new temp state folder holding a fresh copy of the template database. */
 export function prepareState(prefix = "pipeline-e2e-"): string {
   const stateDir = mkdtempSync(join(tmpdir(), prefix));
   try {
-    setupLocalDatabase({ root: ROOT, stateDir, now: Date.now(), stdio: "pipe" });
+    cpSync(templateState(), stateDir, { recursive: true });
   } catch (error) {
     rmSync(stateDir, { recursive: true, force: true });
     throw error;
@@ -104,11 +131,47 @@ async function waitUntilReady(url: string, child: ChildProcess, output: () => st
   throw new Error(`wrangler dev was not ready after ${START_TIMEOUT_MS / 1000}s:\n${output()}`);
 }
 
+/** The launcher's shared Worker, pointed at a fresh database copy for this file (scripts/e2e.mjs). */
+async function sharedServer(control: string, extraVars: string[]): Promise<DevServer> {
+  const call = async (path: string, body: unknown) => {
+    const res = await fetch(`${control}${path}`, { method: "POST", body: JSON.stringify(body) });
+    const text = await res.text();
+    if (res.status !== 200) throw new Error(`The e2e launcher answered ${res.status} for ${path}: ${text}`);
+    return JSON.parse(text) as { url: string; stateDir: string; logFile: string };
+  };
+  const { url, stateDir, logFile } = await call("/switch", { extraVars });
+  const output = () => {
+    try {
+      return readFileSync(logFile, "utf8");
+    } catch {
+      return "";
+    }
+  };
+  let stopped: Promise<void> | undefined;
+  return {
+    url,
+    stateDir,
+    output,
+    stop: () =>
+      (stopped ??= call("/done", {}).then(
+        () => undefined,
+        () => undefined,
+      )),
+    async runCron() {
+      const res = await fetch(`${url}/cdn-cgi/handler/scheduled`);
+      const body = await res.text();
+      if (res.status !== 200) throw new Error(`The scheduled handler answered ${res.status}: ${body}`);
+    },
+  };
+}
+
 /** `extraVars` are `NAME:value` pairs passed as `--var` on top of the dev ones, for one test file's server. */
 export async function startDevServer({ extraVars = [] }: { extraVars?: string[] } = {}): Promise<DevServer> {
   if (!existsSync(join(ROOT, "out", "index.html"))) {
     throw new Error("out/ has not been built. Run the end-to-end tests with `npm run test:e2e`, which builds it first.");
   }
+  const control = process.env.E2E_CONTROL_URL;
+  if (control) return sharedServer(control, extraVars);
   const stateDir = prepareState();
   const port = await freePort();
   const url = `http://${HOST}:${port}`;

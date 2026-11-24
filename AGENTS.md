@@ -313,8 +313,12 @@ this file before changing the repo, and update it when a rule changes.
   shows how). Every new migration must keep the data of the previous version; `src/db/migrations.test.ts` checks
   each one against fake rows for every table (add rows to `FAKE_ROWS` for a new table).
 - Files: unit tests sit beside the code (`src/**/*.test.ts`, `scripts/*.test.mjs`). `tests/e2e/*.test.ts` run the
-  real Worker under `wrangler dev --local` on a temp database (`tests/e2e/harness.ts`; one server per test file, always
-  stopped in `after()`); `tests/helpers/` holds shared test code. Unit tests that need fixed fake rows load
+  real Worker on a temp database (`tests/e2e/harness.ts`, decision 0052): `npm run test:e2e` (`scripts/e2e.mjs`) sets
+  the database up once as a template, starts one Worker (wrangler's `unstable_startWorker`) and switches it to a fresh
+  copy of the template, with that file's `extraVars`, for each file (`E2E_CONTROL_URL`, `E2E_TEMPLATE_STATE`); files
+  run one at a time; a file run on its own starts its own `wrangler dev`. Always `stop()` in `after()`.
+  `tests/helpers/` holds shared test code. `npm run check:fast` (`scripts/check-fast.mjs`, `scripts/test-select.mjs`)
+  runs check:config, lint, typecheck and only the unit tests of changed files and their direct importers. Unit tests that need fixed fake rows load
   `tests/helpers/fixture-seed.ts`, never the demo seed (`scripts/seed-dev.ts`, which the e2e tests, the preview and
   the screenshots use and which may change; decision 0016). Node 22.19+ runs the `.ts` files
   directly (type stripping), so imports between TypeScript files use explicit `.ts` extensions, and only erasable
