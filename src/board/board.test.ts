@@ -160,7 +160,10 @@ test("an unknown deal, or a path that can't be a deal id, gets the 404 page", as
   assert.equal((await get(empty, "/deals/dl_seed01")).res.status, 404);
 });
 
-test("Today shows the date, a summary, the open to-dos as cards (overdue ones tagged), the stages and the brief excerpt", async () => {
+test("Today shows the date, a summary, the open to-dos as cards (overdue ones tagged), the stages and the brief excerpt", async (t) => {
+  // Pinned at noon in the owner's timezone: a deal due "now" made just before their midnight would be overdue by the
+  // time the page is drawn (CI runs in UTC, and Los Angeles midnight is 08:00 UTC).
+  t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-11-19T20:00:00.000Z") });
   const db = await seededDb();
   db.exec(`UPDATE deals SET next_at = '2026-01-01T10:00:00.000Z' WHERE id = 'dl_seed01'`);
   db.exec(`UPDATE deals SET next_at = '${new Date().toISOString()}' WHERE id = 'dl_seed02'`);

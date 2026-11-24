@@ -380,6 +380,20 @@ test("two saved views (decision 0042): referrals, latest activity first, and ope
   assert.deepEqual(commercial.items.map((deal) => deal.value), [18000, 6800, 4800, null], "open commercial jobs, highest value first");
 });
 
+/** The entry that keeps /time?week=2026-11-16 (a fixed route in boardRoutes) a populated past week. */
+const FIXED_WEEK_ENTRY = "te_seed10";
+
+test("one entry sits on a fixed date in the fixed route's week, whenever the seed is made", () => {
+  const tz = "America/Los_Angeles";
+  for (const now of [zonedToUtc("2026-11-24T09:00", tz), zonedToUtc("2027-03-02T09:00", tz)]) {
+    const entry = devSeed(now, tz).timeEntries.find((row) => row.id === FIXED_WEEK_ENTRY);
+    assert.ok(entry, `at ${now.toISOString()}`);
+    assert.equal(entry.started_at, zonedToUtc("2026-11-17T10:00", tz).toISOString());
+    assert.equal(entry.archived, 0);
+    assert.ok(typeof entry.ended_at === "string" && typeof entry.minutes === "number" && entry.minutes > 0);
+  }
+});
+
 test("the time entries sit in this week and the previous one, whatever day the seed is made (decision 0051)", () => {
   const tz = "America/Los_Angeles";
   const monday = "2026-11-16";
@@ -391,7 +405,9 @@ test("the time entries sit in this week and the previous one, whatever day the s
   for (const now of nows) {
     const week = periodOf("this_week", now, tz);
     const last = { from: addDays(week.from, -7), to: addDays(week.from, -1) };
-    const dates = devSeed(now, tz).timeEntries.filter((row) => row.id !== "te_seed01").map((row) => localDate(new Date(String(row.started_at)), tz));
+    const dates = devSeed(now, tz)
+      .timeEntries.filter((row) => row.id !== "te_seed01" && row.id !== FIXED_WEEK_ENTRY)
+      .map((row) => localDate(new Date(String(row.started_at)), tz));
     assert.equal(dates.length, 8);
     assert.ok(dates.filter((d) => d >= week.from && d <= week.to).length >= 3, `this week at ${now.toISOString()}`);
     assert.ok(dates.filter((d) => d >= last.from && d <= last.to).length >= 3, `last week at ${now.toISOString()}`);

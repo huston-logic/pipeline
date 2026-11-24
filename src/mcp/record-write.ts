@@ -6,13 +6,12 @@
 // undo_change don't come here: they write at once as before.
 import type { CallToolResult } from "@modelcontextprotocol/server";
 import { parseOwnerEmailsVar } from "../auth/owners.ts";
-import type { Ctx } from "../services/change.ts";
 import { UserError } from "../services/errors.ts";
 import { type ActionResult, type RecordAction, runAction } from "../services/proposal-actions.ts";
 import { proposeChanges } from "../services/proposals.ts";
 import { getAiEdits } from "../services/settings.ts";
 import { toolResult } from "./format.ts";
-import type { ToolDeps } from "./tool.ts";
+import { aiCtx, type ToolDeps } from "./tool.ts";
 import { proposeResult } from "./tools-proposals.ts";
 
 /** A record named by "@n" is one a list adds, never an existing one. */
@@ -51,7 +50,7 @@ function ownMessage(error: unknown): unknown {
 
 /** Every record write tool's run(): propose (review, or not small) or apply at once, one shape of answer. */
 export async function recordWrite(deps: ToolDeps, action: RecordAction): Promise<CallToolResult> {
-  const ctx: Ctx = { db: deps.db, now: deps.now(), actor: "ai", tool: action.action };
+  const ctx = aiCtx(deps, action.action);
   const options = { extraOwnerEmails: parseOwnerEmailsVar(deps.ownerEmailsVar) };
   if (isSmallAction(action) && (await getAiEdits(deps.db)) === "small") {
     const result = await runAction(ctx, action, options);

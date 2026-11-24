@@ -4,7 +4,6 @@
 // owner asks) and write at once. list_time and list_work_types are reads. Every one refuses while time tracking is off.
 import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
-import type { Ctx } from "../services/change.ts";
 import { UserError } from "../services/errors.ts";
 import { ownerTimezone } from "../services/lookup.ts";
 import { addTimeEntryInput, startTimerInput, stopTimerInput, updateTimeEntryInput } from "../services/record-inputs.ts";
@@ -17,10 +16,8 @@ import { addDays, formatLocal, zonedToUtc } from "../time.ts";
 import { toolResult } from "./format.ts";
 import { recordWrite } from "./record-write.ts";
 import { orNull, shortText } from "./schemas.ts";
-import { registerTool, type ToolDeps } from "./tool.ts";
+import { aiCtx, registerTool, type ToolDeps } from "./tool.ts";
 import { PROPOSES } from "./tools-write.ts";
-
-const aiCtx = ({ db, now }: ToolDeps, tool: string): Ctx => ({ db, now: now(), actor: "ai", tool });
 
 /** At most this many entries come back; the totals always cover the whole period. */
 const ENTRIES_MAX = 200;

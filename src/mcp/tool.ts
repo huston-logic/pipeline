@@ -4,6 +4,7 @@
 import type { CallToolResult, McpServer, StandardSchemaWithJSON, ToolAnnotations } from "@modelcontextprotocol/server";
 import type { z } from "zod";
 import type { Db } from "../db/db.ts";
+import type { Ctx } from "../services/change.ts";
 import { inputErrorMessage, toolError } from "./format.ts";
 
 export interface ToolDeps {
@@ -12,6 +13,9 @@ export interface ToolDeps {
   /** The OWNER_EMAILS var ("a@example.com, b@example.com"): owner emails on top of settings.owner_emails. */
   ownerEmailsVar?: string;
 }
+
+/** The ctx a write tool calls its service with: the AI app as the actor, the tool's name as the tool. */
+export const aiCtx = ({ db, now }: ToolDeps, tool: string): Ctx => ({ db, now: now(), actor: "ai", tool });
 
 export type ToolKind = "read" | "write";
 

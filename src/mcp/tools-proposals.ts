@@ -4,13 +4,10 @@
 import type { CallToolResult, McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import { parseOwnerEmailsVar } from "../auth/owners.ts";
-import type { Ctx } from "../services/change.ts";
 import { RECORD_ACTIONS, recordActionSchema } from "../services/proposal-actions.ts";
 import { applyChanges, PROPOSAL_MAX_ACTIONS, PROPOSAL_MAX_OPEN, type ProposeAnswer, proposeChanges } from "../services/proposals.ts";
 import { toolResult, toolText } from "./format.ts";
-import { registerTool, type ToolDeps } from "./tool.ts";
-
-const aiCtx = ({ db, now }: ToolDeps, tool: string): Ctx => ({ db, now: now(), actor: "ai", tool });
+import { aiCtx, registerTool, type ToolDeps } from "./tool.ts";
 
 const proposalId = (description: string) => z.string().min(1).max(40).describe(description);
 

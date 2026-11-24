@@ -5,7 +5,6 @@
 import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import { parseOwnerEmailsVar } from "../auth/owners.ts";
-import type { Ctx } from "../services/change.ts";
 import { addField, updateField } from "../services/fields.ts";
 import { addPersonStatus, addSubStatus, updatePersonStatus, updateSubStatus } from "../services/person-status.ts";
 import { updateRulebook } from "../services/rulebook.ts";
@@ -30,9 +29,7 @@ import {
   updateDealInput,
 } from "../services/record-inputs.ts";
 import { FIELD_ENTITIES, FIELD_TYPES, orNull, RULE_TYPES, ruleRef, ruleSettings, shortText, statusRef, subStatusRef } from "./schemas.ts";
-import { registerTool, type ToolDeps } from "./tool.ts";
-
-const aiCtx = ({ db, now }: ToolDeps, tool: string): Ctx => ({ db, now: now(), actor: "ai", tool });
+import { aiCtx, registerTool, type ToolDeps } from "./tool.ts";
 
 /** The sentence every record tool's description ends with (decision 0045). */
 export const PROPOSES =
