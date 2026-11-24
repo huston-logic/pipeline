@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { z } from "zod";
 import { UserError } from "../services/errors.ts";
-import { GENERIC_ERROR, inputErrorMessage, toolError, toolResult } from "./format.ts";
+import { GENERIC_ERROR, inputErrorMessage, toolError, toolResult, toolText } from "./format.ts";
 
 const textOf = (result: { content: { type: string; text?: string }[] }) => {
   const [first] = result.content;
@@ -20,6 +20,20 @@ test("toolResult is a headline, a blank line, then pretty JSON of the data", () 
 test("toolResult without data is just the headline, kept on one line", () => {
   assert.equal(textOf(toolResult("Done.")), "Done.");
   assert.equal(textOf(toolResult("Two\nlines  here.")), "Two lines here.");
+});
+
+test("toolText keeps its lines, then a blank line and the JSON, which starts after the last blank line", () => {
+  const text = textOf(toolText("Proposal pr_a.\n\nAdd\n- Lead  Dana   \n\nSay Yes.", { proposal: "pr_a", list: { add: ["x\n\ny"] } }));
+  assert.equal(text, `Proposal pr_a.\n\nAdd\n- Lead Dana\n\nSay Yes.\n\n${JSON.stringify({ proposal: "pr_a", list: { add: ["x\n\ny"] } }, null, 2)}`);
+  assert.deepEqual(JSON.parse(text.slice(text.lastIndexOf("\n\n") + 2)), { proposal: "pr_a", list: { add: ["x\n\ny"] } });
+});
+
+test("a discriminated union's unknown key names the values it takes", () => {
+  const schema = z.strictObject({ actions: z.array(z.discriminatedUnion("action", [z.strictObject({ action: z.literal("a") }), z.strictObject({ action: z.literal("b") })])) });
+  const args = { actions: [{ action: "c" }] };
+  const parsed = schema.safeParse(args);
+  assert.equal(parsed.success, false);
+  assert.equal(inputErrorMessage("t", schema, parsed.error?.issues ?? [], args), 'Fix the t request: "actions.0.action" must be one of: a, b.');
 });
 
 test("toolError shows a UserError's message as an error result", () => {

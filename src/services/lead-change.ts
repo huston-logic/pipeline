@@ -3,9 +3,10 @@
 // one change, so the status always moves in the same change as the write that caused it.
 import type { ActivityType, ContactRow, Db, TaskRow } from "../db/db.ts";
 import { newId } from "../ids.ts";
-import { type RowChange, updatedRow } from "./change.ts";
+import { type RowChange, updatedRow, withGuardReason } from "./change.ts";
 import { isTrusted } from "./labels.ts";
 import { isUnqualified, type LeadStatus } from "./lead-status.ts";
+import { openDealsOf, type Source, sourceOf } from "./lookup.ts";
 import { moveForLeadStatus, type PersonMove, personStatusPatch } from "./person-move.ts";
 
 /** The company a contact's `business` names: trimmed, inner spaces collapsed, ignoring case; "" for none. */
@@ -77,12 +78,19 @@ export function contactedIfNew(contact: ContactRow, type: ActivityType, data: st
 
 /** A write_guard statement that fails the batch unless the person has no open, unarchived deal (invariant 1). */
 export function noOpenDeal(db: Db, contactId: string): D1PreparedStatement {
-  return db
-    .prepare("INSERT INTO write_guard (ok) SELECT COUNT(*) = 0 FROM deals WHERE contact_id = ? AND status = 'open' AND archived = 0")
-    .bind(contactId);
+  return withGuardReason(
+    db
+      .prepare("INSERT INTO write_guard (ok) SELECT COUNT(*) = 0 FROM deals WHERE contact_id = ? AND status = 'open' AND archived = 0")
+      .bind(contactId),
+    "a lead can't have an open deal",
+    [contactId],
+  );
 }
 
-export async function openDealCount(db: Db, contactId: string): Promise<number> {
+/** How many open, unarchived deals the person has, as the plan leaves them when the source carries one. */
+export async function openDealCount(src: Source, contactId: string): Promise<number> {
+  const { db, plan } = sourceOf(src);
+  if (plan !== undefined) return (await openDealsOf(src, contactId)).length;
   const row = await db
     .prepare("SELECT COUNT(*) AS n FROM deals WHERE contact_id = ? AND status = 'open' AND archived = 0")
     .bind(contactId)

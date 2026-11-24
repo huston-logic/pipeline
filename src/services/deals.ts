@@ -1,7 +1,6 @@
 // update_deal. The stage and the status move together: a won, lost or not_now stage sets that status, a closed
 // status moves the deal to the first stage of that kind, and an open stage reopens the deal.
 import type { ActivityRow, ContactRow, DealRow, DealStatus, StageRow } from "../db/db.ts";
-import { getContact } from "../db/queries.ts";
 import { newId } from "../ids.ts";
 import { type ChangeResult, changedColumns, commitChange, type Ctx, type RowChange, updatedRow } from "./change.ts";
 import { capitalize, columnLabel, fieldsLabel, joinAnd, nextPart, withArticle } from "./describe.ts";
@@ -14,6 +13,7 @@ import { LEAD_STATUS_LABELS } from "./lead-status.ts";
 import { CLIENT, CONTACT } from "./person-move.ts";
 import { clientIfWon, clientLabel } from "./person-status.ts";
 import {
+  contactById,
   type FieldValues,
   findDeal,
   findStage,
@@ -67,9 +67,9 @@ async function targetStage(ctx: Ctx, deal: DealRow, patch: DealPatch): Promise<S
 
 export async function updateDeal(ctx: Ctx, dealRef: string, patch: DealPatch): Promise<ChangeResult & { dealId: string }> {
   const { db } = ctx;
-  const before = await findDeal(db, dealRef);
+  const before = await findDeal(ctx, dealRef);
   const tz = await ownerTimezone(db);
-  const contact = await getContact(db, before.contact_id);
+  const contact = await contactById(ctx, before.contact_id);
   if (!contact) throw new Error(`Deal ${before.id} points at a missing contact.`);
   // An archived deal (often one moved back to leads) stays as it is; reopening it would hide an open deal.
   if (before.archived === 1) {

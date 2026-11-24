@@ -1,5 +1,5 @@
 // update_contact, and the duplicate-email answer every write that adds or changes an email shares.
-import type { ContactRow, Db, TaskRow } from "../db/db.ts";
+import type { ContactRow, TaskRow } from "../db/db.ts";
 import { findContactByEmail } from "../db/queries.ts";
 import { formatLocal, localWhen, parseWhen } from "../time.ts";
 import {
@@ -21,7 +21,18 @@ import { checkEmail, clean } from "./input.ts";
 import { contactName, isTrusted, taskTitle } from "./labels.ts";
 import { followUpTask, noOpenDeal, openDealCount } from "./lead-change.ts";
 import { isLeadStatus, isUnqualified, type LeadStatus } from "./lead-status.ts";
-import { type FieldValues, findContact, mergeFields, ownerTimezone, parseObject, parseStringArray } from "./lookup.ts";
+import {
+  contactByEmail,
+  type FieldValues,
+  findContact,
+  mergeFields,
+  ownerTimezone,
+  parseObject,
+  parseStringArray,
+  type Source,
+  sourceOf,
+  withPlanned,
+} from "./lookup.ts";
 import { LEAD, moveForLeadStatus, personStatusPatch } from "./person-move.ts";
 import { resolveMove } from "./person-status.ts";
 import { statusLabels } from "./status-labels.ts";
@@ -69,7 +80,7 @@ async function checkLeadStatus(ctx: Ctx, contact: ContactRow, status: LeadStatus
   if (!isLeadStatus(status) || !isUnqualified(status)) {
     throw new UserError(`"${String(status)}" isn't a lead status. Use one of: new, contacted, not_now, not_a_fit, bad.`);
   }
-  const open = await openDealCount(ctx.db, contact.id);
+  const open = await openDealCount(ctx, contact.id);
   if (open === 0) return;
   const who = capitalize(contactName(contact));
   throw new UserError(
@@ -80,12 +91,14 @@ async function checkLeadStatus(ctx: Ctx, contact: ContactRow, status: LeadStatus
 }
 
 /** True when the person already has an open "Check back" task with this title and due time. */
-async function openCheckBack(db: Db, contactId: string, task: TaskRow): Promise<boolean> {
-  const found = await db
-    .prepare("SELECT 1 AS one FROM tasks WHERE contact_id = ? AND deal_id IS NULL AND title = ? AND due_at = ? AND done_at IS NULL LIMIT 1")
+async function openCheckBack(src: Source, contactId: string, task: TaskRow): Promise<boolean> {
+  const found = await sourceOf(src)
+    .db.prepare("SELECT * FROM tasks WHERE contact_id = ? AND deal_id IS NULL AND title = ? AND due_at = ? AND done_at IS NULL")
     .bind(contactId, task.title, task.due_at)
-    .first<{ one: number }>();
-  return found !== null;
+    .all<TaskRow>();
+  const same = (row: Row) =>
+    row.contact_id === contactId && row.deal_id === null && row.title === task.title && row.due_at === task.due_at && row.done_at === null;
+  return withPlanned(src, "tasks", found.results, same).length > 0;
 }
 
 /** "Fri Dec 4" for a date given without a time (midnight), else "Fri Dec 4, 10:30 AM". */
@@ -100,7 +113,7 @@ function dueText(due: Date, tz: string): string {
  */
 export async function updateContact(ctx: Ctx, contactRef: string, patch: ContactPatch): Promise<ChangeResult> {
   const { db } = ctx;
-  const before = await findContact(db, contactRef);
+  const before = await findContact(ctx, contactRef);
   const set: Row = {};
   const confirmed: string[] = [];
 
@@ -115,7 +128,7 @@ export async function updateContact(ctx: Ctx, contactRef: string, patch: Contact
     const value = clean(patch[column]);
     if (column === "email" && value !== null) {
       checkEmail(value);
-      const other = await findContactByEmail(db, value);
+      const other = await contactByEmail(ctx, value);
       if (other && other.id !== before.id) {
         throw new UserError(
           `${isTrusted(other, "name") ? `${other.name} (${other.id})` : `contact ${other.id}`} already uses ` +
@@ -173,7 +186,7 @@ export async function updateContact(ctx: Ctx, contactRef: string, patch: Contact
   // Built from the updated row, so a rename in the same call names the task (and its trust) after the new name.
   let task: TaskRow | null = due === null ? null : followUpTask(after, due, ctx.now);
   // The same request twice (a double post) must not stack a second identical check-back.
-  if (task !== null && (await openCheckBack(db, before.id, task))) task = null;
+  if (task !== null && (await openCheckBack(ctx, before.id, task))) task = null;
   const changed = changedColumns(before, after).filter((c) => !["version", "updated_at", "lead_status_at"].includes(c));
   if (changed.length === 0 && task === null) {
     throw new UserError(`Nothing to change for ${contactName(before)}: every value you gave is already set.`);

@@ -624,6 +624,25 @@ test("0013 adds the views table: a module, a JSON object of filters, a layout an
   assert.equal(await count(db, "views"), 2);
 });
 
+test("0014 adds the proposals table: a JSON array of actions, a JSON object of reads and a status", async () => {
+  const db = new SqliteD1();
+  await applyMigrations(db, 13);
+  applySqlFile(db, "seed/defaults.sql");
+  assert.deepEqual(await applyMigrations(db, 14), ["0014_proposals.sql"]);
+  const at = "'2026-11-19T18:00:00.000Z', '2026-11-19T20:00:00.000Z'";
+  db.exec(`INSERT INTO proposals (id, actions, reads, text, created_at, expires_at) VALUES ('pr_a', '[]', '{}', 'List', ${at})`);
+  const row = await db.prepare("SELECT status, replaced_by, change_id FROM proposals WHERE id = 'pr_a'").first();
+  assert.deepEqual({ ...row }, { status: "open", replaced_by: null, change_id: null });
+  const insert = (values: string) => () => db.exec(`INSERT INTO proposals (id, actions, reads, text, status, created_at, expires_at) VALUES ${values}`);
+  assert.throws(insert(`('pr_b', '{}', '{}', 'List', 'open', ${at})`), /CHECK/);
+  assert.throws(insert(`('pr_b', '[]', '[]', 'List', 'open', ${at})`), /CHECK/);
+  assert.throws(insert(`('pr_b', 'nope', '{}', 'List', 'open', ${at})`), /CHECK|JSON/);
+  assert.throws(insert(`('pr_b', '[]', '{}', 'List', 'done', ${at})`), /CHECK/);
+  assert.throws(insert(`('pr_b', '[]', '{}', NULL, 'open', ${at})`), /NOT NULL/);
+  insert(`('pr_b', '[]', '{}', 'List', 'applied', ${at})`)();
+  assert.equal(await count(db, "proposals"), 2);
+});
+
 /**
  * Fake rows for every table, with only the columns the table had when it was created, so they load at any later
  * version. A migration that adds a table must add its rows here (the test below fails until it does).
@@ -662,6 +681,8 @@ const FAKE_ROWS: Record<string, string> = {
     "INSERT INTO person_substatuses (id, status_key, key, label, position) VALUES ('supplier.wholesale', 'supplier', 'wholesale', 'Wholesale', 1)",
   views:
     "INSERT INTO views (id, name, module, filters, sort, position) VALUES ('vw_fake', 'Suppliers', 'people', '{\"person_status\":\"supplier\"}', 'name-asc', 1)",
+  proposals:
+    "INSERT INTO proposals (id, actions, reads, text, created_at, expires_at) VALUES ('pr_fake', '[{\"action\":\"complete_task\",\"task\":\"tk_fake\"}]', '{\"tasks:tk_fake\":1}', 'Proposal pr_fake.', '2026-11-18T17:00:00.000Z', '2026-11-18T19:00:00.000Z')",
 };
 
 /**

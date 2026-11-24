@@ -6,6 +6,7 @@ import type { Actor, AuditPartRow, AuditRow, Db, TableName } from "../db/db.ts";
 import { newId } from "../ids.ts";
 import { CHUNK_BYTES, chunkBy, sqlBytes } from "./bulk.ts";
 import { UserError } from "./errors.ts";
+import type { PlanCollector } from "./plan.ts";
 
 export type { Actor };
 
@@ -15,6 +16,8 @@ export interface Ctx {
   actor: Actor;
   /** The tool or job making the change, for example "add_lead", "undo_change" or "rules_cron". */
   tool: string;
+  /** Collect mode (decision 0044): commitChange records the change here instead of writing it. */
+  plan?: PlanCollector;
 }
 
 export type SqlValue = string | number | null;
@@ -193,7 +196,7 @@ function writeStatement(table: ChangeTable, pk: string, change: RowChange): SqlS
 }
 
 /** The error's message and those of every `cause` below it: D1 wraps the SQLite text in its own error. */
-function errorText(error: unknown): string {
+export function errorText(error: unknown): string {
   const parts: string[] = [];
   const seen = new Set<unknown>();
   for (let current = error; current !== undefined && current !== null && !seen.has(current); ) {
@@ -505,13 +508,44 @@ function staleRow(input: ChangeInput): string {
   return only && others.length === 0 ? rowNoun(only.table, only.id) : "A record this change touches";
 }
 
-export async function commitChange(ctx: Ctx, input: ChangeInput): Promise<ChangeResult> {
+/**
+ * The one batch commitChange runs, prepared on ctx.db: the caller's leading guards, the row guards and writes, the
+ * extra statements, then the audit rows. A proposal's trial (decision 0044) runs exactly these.
+ */
+export function changeBatch(
+  ctx: Pick<Ctx, "db" | "now" | "actor" | "tool">,
+  input: ChangeInput,
+): { changeId: string; summary: string; statements: D1PreparedStatement[] } {
   const { db } = ctx;
   const { changeId, summary, writes, audit } = buildChange(ctx, input);
   const prepare = ({ sql, params }: SqlStatement) =>
     params.length === 0 ? db.prepare(sql) : db.prepare(sql).bind(...params);
+  const statements = [...(input.leading ?? []), ...writes.map(prepare), ...(input.extra ?? []), ...audit.map(prepare)];
+  return { changeId, summary, statements };
+}
+
+/**
+ * What a guard statement a service puts in `extra` is for: why it exists, in a few plain words (for a refusal that
+ * names it), and the record ids it is bound to (so a proposal's apply can tell it isn't bound to an id it swaps).
+ */
+const GUARDS = new WeakMap<D1PreparedStatement, { reason: string; ids: readonly string[] }>();
+
+export function withGuardReason(statement: D1PreparedStatement, reason: string, ids: readonly string[]): D1PreparedStatement {
+  GUARDS.set(statement, { reason, ids: [...ids] });
+  return statement;
+}
+
+export const guardReason = (statement: D1PreparedStatement): string | undefined => GUARDS.get(statement)?.reason;
+
+/** The record ids a statement is bound to, when its service said so; undefined when unknown. */
+export const guardIds = (statement: D1PreparedStatement): readonly string[] | undefined => GUARDS.get(statement)?.ids;
+
+export async function commitChange(ctx: Ctx, input: ChangeInput): Promise<ChangeResult> {
+  if (ctx.plan !== undefined) return ctx.plan.record(ctx, input);
+  const { db } = ctx;
+  const { changeId, summary, statements } = changeBatch(ctx, input);
   try {
-    await db.batch([...(input.leading ?? []), ...writes.map(prepare), ...(input.extra ?? []), ...audit.map(prepare)]);
+    await db.batch(statements);
   } catch (error) {
     if (isGuardFailure(error)) {
       throw new StaleWriteError(`${staleRow(input)} changed since you read it. Read it again and retry.`, { cause: error });

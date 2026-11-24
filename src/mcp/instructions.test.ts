@@ -87,6 +87,13 @@ test("the instructions say to show an import's preview and wait for the owner's 
   );
 });
 
+test("the instructions name propose_changes and apply_changes and the owner's three answers (decision 0044)", () => {
+  const line = SERVER_INSTRUCTIONS.split("\n").find((text) => text.startsWith("- To make several record changes at once")) ?? "";
+  for (const tool of ["propose_changes", "apply_changes"]) assert.ok(line.includes(tool), tool);
+  assert.match(line, /only after the owner says "Yes"/);
+  assert.match(line, /"Yes with changes: \.\.\." means a revised list with replaces; "No" means apply nothing/);
+});
+
 test("the instructions say a view is how the board shows a kind of person, with the partners example (decision 0042)", () => {
   const line = SERVER_INSTRUCTIONS.split("\n").find((text) => text.startsWith("- A view is")) ?? "";
   assert.match(line, /^- A view is how the board shows a kind of person or deal\. Every person status has a default view;/);

@@ -1,7 +1,6 @@
 // add_deal: a deal for someone who wants something, with a new person or one already on file (decision 0022). A lead
 // it uses becomes Qualified in the same change, so a person with an open deal is never an unqualified lead.
 import type { ActivityRow, ContactRow } from "../db/db.ts";
-import { findContactByEmail } from "../db/queries.ts";
 import { newId } from "../ids.ts";
 import type { ChangeResult, Ctx, RowChange } from "./change.ts";
 import { commitWithEmail } from "./contacts.ts";
@@ -12,7 +11,7 @@ import { checkFieldValues } from "./fields.ts";
 import { checkEmail, checkValue, clean, whenOrNull, withoutNulls } from "./input.ts";
 import { contactName, isTrusted } from "./labels.ts";
 import { qualifyIfLead } from "./lead-change.ts";
-import { type FieldValues, findContact, firstStageOfKind, ownerTimezone } from "./lookup.ts";
+import { contactByEmail, type FieldValues, findContact, firstStageOfKind, ownerTimezone } from "./lookup.ts";
 import { CONTACT, newPersonColumns } from "./person-move.ts";
 
 export interface DealInput {
@@ -44,7 +43,7 @@ export interface AddDealResult extends ChangeResult {
 export async function addDeal(ctx: Ctx, input: DealInput): Promise<AddDealResult> {
   const { db } = ctx;
   const tz = await ownerTimezone(db);
-  const chosen = input.contact === undefined ? null : await findContact(db, input.contact);
+  const chosen = input.contact === undefined ? null : await findContact(ctx, input.contact);
   const name = clean(input.name);
   if (chosen !== null && chosen.archived === 1) {
     throw new UserError(`${capitalize(contactName(chosen))} is archived, so no new deal can be added for them.`);
@@ -66,7 +65,7 @@ export async function addDeal(ctx: Ctx, input: DealInput): Promise<AddDealResult
 
   const now = ctx.now.toISOString();
   const changes: RowChange[] = [];
-  const existing = chosen ?? (email === null ? null : await findContactByEmail(db, email));
+  const existing = chosen ?? (email === null ? null : await contactByEmail(ctx, email));
   let contact: ContactRow;
   if (existing) {
     contact = existing;

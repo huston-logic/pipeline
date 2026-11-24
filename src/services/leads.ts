@@ -2,9 +2,9 @@
 // wants something is a deal instead (add-deal.ts). qualify_lead and return_to_lead move a person across the line
 // between leads and deals, each in one change (decisions 0022 and 0024).
 import type { ActivityRow, ContactRow, Db, DealRow, StageRow, TaskRow } from "../db/db.ts";
-import { findContactByEmail, getContact, listStages } from "../db/queries.ts";
+import { listStages } from "../db/queries.ts";
 import { newId } from "../ids.ts";
-import { type ChangeResult, commitChange, type Ctx, type RowChange, StaleWriteError, updatedRow } from "./change.ts";
+import { type ChangeResult, commitChange, type Ctx, type Row, type RowChange, StaleWriteError, updatedRow } from "./change.ts";
 import { commitWithEmail } from "./contacts.ts";
 import { dealNoun, newDealRow } from "./deal-row.ts";
 import { capitalize, joinAnd, nextPart } from "./describe.ts";
@@ -14,7 +14,19 @@ import { checkEmail, checkValue, clean, whenOrNull, withoutNulls } from "./input
 import { contactName, contactRef, dealTitle } from "./labels.ts";
 import { businessKey, noOpenDeal, openDealCount, withLeadStatus } from "./lead-change.ts";
 import { isUnqualified, type LeadStatus, UNQUALIFIED_STATUSES } from "./lead-status.ts";
-import { type FieldValues, findContact, findDeal, findStage, firstStageOfKind, ownerTimezone } from "./lookup.ts";
+import {
+  contactByEmail,
+  contactById,
+  type FieldValues,
+  findContact,
+  findDeal,
+  findStage,
+  firstStageOfKind,
+  ownerTimezone,
+  type Source,
+  sourceOf,
+  withPlanned,
+} from "./lookup.ts";
 import { LEAD, newPersonColumns } from "./person-move.ts";
 import { statusLabels } from "./status-labels.ts";
 
@@ -51,14 +63,15 @@ export class DuplicateLeadError extends UserError {
 }
 
 /** The first person on file (not archived) whose business is the same company, ignoring case and spaces. */
-async function sameBusiness(db: Db, business: string): Promise<ContactRow | null> {
+async function sameBusiness(src: Source, business: string): Promise<ContactRow | null> {
   const key = businessKey(business);
   if (key === "") return null;
   // SQLite's lower() only folds ASCII, so the comparison is done here, the way companies are grouped (read.ts).
-  const found = await db
-    .prepare("SELECT * FROM contacts WHERE archived = 0 AND business IS NOT NULL ORDER BY created_at, id")
+  const found = await sourceOf(src)
+    .db.prepare("SELECT * FROM contacts WHERE archived = 0 AND business IS NOT NULL ORDER BY created_at, id")
     .all<ContactRow>();
-  return found.results.find((row) => businessKey(row.business) === key) ?? null;
+  const same = (row: Row) => row.archived === 0 && typeof row.business === "string" && businessKey(row.business) === key;
+  return withPlanned(src, "contacts", found.results.filter((row) => same(row as unknown as Row)), same)[0] ?? null;
 }
 
 export async function addLead(ctx: Ctx, input: NewLeadInput): Promise<AddLeadResult> {
@@ -69,7 +82,7 @@ export async function addLead(ctx: Ctx, input: NewLeadInput): Promise<AddLeadRes
   const email = clean(input.email);
   if (email !== null) {
     checkEmail(email);
-    const other = await findContactByEmail(db, email);
+    const other = await contactByEmail(ctx, email);
     if (other) {
       const who = capitalize(contactRef(other));
       throw new DuplicateLeadError(
@@ -79,7 +92,7 @@ export async function addLead(ctx: Ctx, input: NewLeadInput): Promise<AddLeadRes
       );
     }
   } else if (business !== null && input.allowDuplicate !== true) {
-    const other = await sameBusiness(db, business);
+    const other = await sameBusiness(ctx, business);
     if (other) {
       const who = capitalize(contactRef(other));
       throw new DuplicateLeadError(`${who} already has that business. Say allowDuplicate: true to add another lead anyway.`, "business", who);
@@ -164,7 +177,7 @@ async function openStage(db: Db, ref: string | undefined): Promise<StageRow> {
 /** A lead becomes Qualified and, unless asked not to, gets a deal in the same change; nothing is copied (0022). */
 export async function qualifyLead(ctx: Ctx, input: QualifyInput): Promise<QualifyResult> {
   const { db } = ctx;
-  const contact = await findContact(db, input.contact);
+  const contact = await findContact(ctx, input.contact);
   const who = contactName(contact);
   if (contact.archived === 1) throw new UserError(`${capitalize(who)} is archived, so they can't be qualified.`);
   if (!isUnqualified(contact.lead_status)) {
@@ -240,7 +253,7 @@ export async function returnToLead(ctx: Ctx, input: ReturnInput): Promise<Return
     const what = status === "qualified" ? "Someone moved back to leads can't be Qualified." : `"${String(status)}" isn't a lead status.`;
     throw new UserError(`${what} Use one of: ${UNQUALIFIED_STATUSES.join(", ")}.`);
   }
-  const deal = await findDeal(db, input.deal);
+  const deal = await findDeal(ctx, input.deal);
   const title = capitalize(dealTitle(deal));
   if (deal.archived === 1) throw new UserError(`${title} is archived already. Nothing to do.`);
   if (deal.status === "won") {
@@ -249,18 +262,19 @@ export async function returnToLead(ctx: Ctx, input: ReturnInput): Promise<Return
         "change its status with update_deal first.",
     );
   }
-  const contact = await getContact(db, deal.contact_id);
+  const contact = await contactById(ctx, deal.contact_id);
   if (!contact) throw new Error(`Deal ${deal.id} points at a missing contact.`);
   const who = contactName(contact);
   if (contact.archived === 1) throw new UserError(`${capitalize(who)} is archived, so they can't go back to leads.`);
-  await refuseOtherOpenDeal(db, contact, deal);
+  await refuseOtherOpenDeal(ctx, contact, deal);
 
   const changes: RowChange[] = [{ table: "deals", id: deal.id, before: deal, after: updatedRow(deal, { archived: 1 }, ctx.now) }];
-  const open = await db
+  const found = await db
     .prepare("SELECT * FROM tasks WHERE deal_id = ? AND done_at IS NULL ORDER BY created_at, id")
     .bind(deal.id)
     .all<TaskRow>();
-  for (const task of open.results) {
+  const open = withPlanned(ctx, "tasks", found.results, (row) => row.deal_id === deal.id && row.done_at === null);
+  for (const task of open) {
     const moved = updatedRow(task, { deal_id: null, contact_id: contact.id }, ctx.now);
     changes.push({ table: "tasks", id: task.id, before: task, after: moved });
   }
@@ -285,8 +299,8 @@ export async function returnToLead(ctx: Ctx, input: ReturnInput): Promise<Return
 }
 
 /** Refuses while the person has an open deal other than this one (invariant 1). */
-async function refuseOtherOpenDeal(db: Db, contact: ContactRow, deal: DealRow): Promise<void> {
-  const others = (await openDealCount(db, contact.id)) - (deal.status === "open" && deal.archived === 0 ? 1 : 0);
+async function refuseOtherOpenDeal(src: Source, contact: ContactRow, deal: DealRow): Promise<void> {
+  const others = (await openDealCount(src, contact.id)) - (deal.status === "open" && deal.archived === 0 ? 1 : 0);
   if (others <= 0) return;
   const who = capitalize(contactName(contact));
   throw new UserError(

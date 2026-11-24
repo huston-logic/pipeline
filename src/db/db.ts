@@ -28,6 +28,7 @@ export const TABLE_NAMES = [
   "person_statuses",
   "person_substatuses",
   "views",
+  "proposals",
 ] as const;
 
 export type TableName = (typeof TABLE_NAMES)[number];
@@ -336,6 +337,24 @@ export type ImportDraftRow = {
 
 /** One piece of a draft's file, at most CHUNK_BYTES as a SQL literal, in seq order. */
 export type ImportDraftPartRow = { draft_id: string; seq: number; text: string };
+
+export type ProposalStatus = "open" | "applied" | "dropped";
+
+/** A list of record changes waiting for the owner's yes (migration 0014, decision 0044): scratch space, never audited. */
+export type ProposalRow = {
+  id: string;
+  /** JSON array: the resolved actions (ids; "@n" names a record an earlier action adds). */
+  actions: string;
+  /** JSON object {"<table>:<id>": version | null}: every row the plan writes, with the version read (null: added). */
+  reads: string;
+  /** The list exactly as the owner was shown it. */
+  text: string;
+  status: ProposalStatus;
+  replaced_by: string | null;
+  change_id: string | null;
+  created_at: string;
+  expires_at: string;
+};
 
 /** One piece of a big change's snapshot (migration 0009): the same shape as before_json/after_json, for some rows. */
 export type AuditPartRow = {

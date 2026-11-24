@@ -32,9 +32,11 @@ test("the hourly run fires the rules and logs only a fixed event name and counts
     { event: "cron_rules_done", rules: 1, fired: 1, alreadyFired: 0, failed: 0, deferred: 0 },
     { event: "cron_brief_done", composed: 1, sent: 0, failed: 0 },
     { event: "cron_import_drafts_done", deleted: 0 },
+    { event: "cron_proposals_done", deleted: 0 },
     { event: "cron_rules_done", rules: 1, fired: 0, alreadyFired: 0, failed: 0, deferred: 0 },
     { event: "cron_brief_done", composed: 0, sent: 0, failed: 0 },
     { event: "cron_import_drafts_done", deleted: 0 },
+    { event: "cron_proposals_done", deleted: 0 },
   ]);
   assert.doesNotMatch(JSON.stringify(lines), /Pat|Website/);
 });
@@ -51,8 +53,27 @@ test("a failing job logs a fixed failure event without details, and the other jo
   assert.deepEqual(errors.mock.calls.map((call) => call.arguments[0]), [JSON.stringify({ event: "cron_first_failed" })]);
 });
 
-test("the brief runs after the rules, so tasks the rules just made are in it; expired import drafts go last", () => {
-  assert.deepEqual(CRON_JOBS.map(([name]) => name), ["rules", "brief", "import_drafts"]);
+test("the brief runs after the rules, so tasks the rules just made are in it; expired drafts and proposals go last", () => {
+  assert.deepEqual(CRON_JOBS.map(([name]) => name), ["rules", "brief", "import_drafts", "proposals"]);
+});
+
+test("the hourly run deletes expired proposals and logs only the count (decision 0044)", async (t) => {
+  const logged = t.mock.method(console, "log", () => {});
+  const db = await openTestDb();
+  const insert = "INSERT INTO proposals (id, actions, reads, text, status, created_at, expires_at) VALUES (?, '[]', '{}', 'List', ?, ?, ?)";
+  const at = (days: number) => later(days).toISOString();
+  await db.batch([
+    db.prepare(insert).bind("pr_old", "open", at(-1), at(-0.9)),
+    db.prepare(insert).bind("pr_fresh", "open", at(0), at(0.08)),
+    db.prepare(insert).bind("pr_done", "applied", at(-0.5), at(-0.4)),
+    db.prepare(insert).bind("pr_gone", "dropped", at(-1.1), at(-1)),
+  ]);
+  const [, job] = CRON_JOBS.find(([name]) => name === "proposals") ?? [];
+  assert.ok(job);
+  assert.deepEqual(await job(envFor(db), NOW), { deleted: 2 });
+  const left = await db.prepare("SELECT id FROM proposals ORDER BY id").all<{ id: string }>();
+  assert.deepEqual(left.results.map((row) => row.id), ["pr_done", "pr_fresh"]);
+  assert.equal(logged.mock.callCount(), 0);
 });
 
 test("the hourly run deletes expired import drafts and logs only the count (decision 0036)", async (t) => {
