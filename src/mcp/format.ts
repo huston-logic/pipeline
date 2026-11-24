@@ -14,6 +14,15 @@ export function toolResult(text: string, data?: unknown): CallToolResult {
   return { content: [{ type: "text", text: body }] };
 }
 
+/**
+ * An answer whose text is several lines (a proposal's list, decision 0044): the lines as written, a blank line, then
+ * the data as pretty JSON, which has no blank line in it, so the data starts after the last blank line.
+ */
+export function toolText(text: string, data: unknown): CallToolResult {
+  const lines = text.split("\n").map((line) => line.replace(/\s+/g, " ").trimEnd());
+  return { content: [{ type: "text", text: `${lines.join("\n")}\n\n${JSON.stringify(data, null, 2)}` }] };
+}
+
 function errorResult(text: string): CallToolResult {
   return { content: [{ type: "text", text }], isError: true };
 }
@@ -125,6 +134,9 @@ function describeIssue(schema: ObjectSchema, issue: Issue, args: unknown): strin
       if (issue.origin === "array") return `${field} has too many items: at most ${issue.maximum}.`;
       return `${field} must be at most ${issue.maximum}${about}.`;
     case "invalid_union": {
+      // A discriminated union (a proposal's actions) names the values its key takes.
+      const options = (issue as { options?: unknown }).options;
+      if (Array.isArray(options) && options.length > 0) return `${field} must be one of: ${options.map(String).join(", ")}.`;
       const shapes = unionShapes(issue);
       return shapes.length > 0 ? `${field} must be ${joinOr(shapes)}${about}.` : `${field} has the wrong shape${about}.`;
     }
