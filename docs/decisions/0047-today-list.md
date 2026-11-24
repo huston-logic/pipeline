@@ -43,8 +43,11 @@ what is due. The brief fixed the labels, the query keys and the route; it left o
 
 ## Consequences
 
-- Today now lists every open task, not only the ones due today, so it grows with the list; the page is still one query
-  for tasks. A very long list is not paged.
-- The quick add label has no "(required)" in words, as the brief gave the label exactly; a blank title is caught by the
-  server with a plain message.
+- Today now lists every open task, not only the ones due today, in one query; the page draws at most 50 per list.
+- Each of the two lists shows at most 50 rows (`TASK_LIST_LIMIT`), cut after the sort and filter so overdue and soonest
+  tasks are never the ones left out; a list with more says "Showing 50 of 63 to-dos." beneath it, in the pipeline's
+  style. There is no "show all" link: the address takes only the two fixed keys (a later decision may add one).
+- The quick add title is drawn like every other required board field (AGENTS.md's board-forms rule wins over the
+  brief's bare label): "Add a to-do (required)"; the date is "Due (optional)". The sort form's button is "Show to-dos",
+  so it does not share a name with the "Show" select.
 - `whats_due` and the brief are unchanged: they still list only what is due.

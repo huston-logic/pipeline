@@ -61,7 +61,7 @@ test("Today with JavaScript off has the sort form as a GET form", async () => {
   assert.doesNotMatch(form, /name="csrf"/);
   assert.match(form, /<select id="todo-sort" name="sort">[\s\S]*<option value="newest" selected>/);
   assert.match(form, /<select id="todo-show" name="show">[\s\S]*<option value="standalone" selected>/);
-  assert.match(form, /<button class="button" type="submit">Show<\/button>/);
+  assert.match(form, /<button class="button" type="submit">Show to-dos<\/button>/);
   assert.match(body, /<form class="quick-add" method="post" action="\/tasks\/quick" novalidate>/);
 });
 
@@ -86,4 +86,46 @@ test("a snoozed task is not on the list", async () => {
   const db = await seededDb();
   const body = (await load(devEnv(db), "/")).body;
   assert.doesNotMatch(body, /Check in with Taylor/);
+});
+
+const TASK_COLUMNS = "id, deal_id, contact_id, title, due_at, done_at, snoozed_until, source, untrusted_fields, version, created_at, updated_at";
+
+/** `count` standalone tasks due on later days (plus one overdue one, made last), straight into the table. */
+function addStandalone(db: Awaited<ReturnType<typeof seededDb>>, count: number, overdue: boolean) {
+  const row = (id: string, title: string, due: string) =>
+    `('tk_pad${id}', NULL, NULL, '${title}', '${due}', NULL, NULL, 'owner', '[]', 1, '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')`;
+  const rows = Array.from({ length: count }, (_, i) => row(String(i).padStart(3, "0"), `Pad task ${i}`, `2031-01-${String((i % 28) + 1).padStart(2, "0")}T17:00:00.000Z`));
+  if (overdue) rows.push(row("zzz", "Pad overdue", "2020-01-01T17:00:00.000Z"));
+  db.exec(`INSERT INTO tasks (${TASK_COLUMNS}) VALUES ${rows.join(",")}`);
+}
+
+test("each list shows at most 50, overdue first, with a Showing line", async () => {
+  const db = await seededDb();
+  addStandalone(db, 62, true);
+  const body = (await load(devEnv(db), "/?show=standalone")).body;
+  assert.equal(body.match(/<h3 class="card-title">Pad /g)?.length, 50);
+  assert.match(body, /<h3 class="card-title">Pad overdue<\/h3>/, "the overdue task is not cut");
+  assert.match(body, /<p class="stage-more">Showing 50 of 63 to-dos\.<\/p>/);
+});
+
+test("no Showing line at 50 or fewer", async () => {
+  const db = await seededDb();
+  addStandalone(db, 50, false);
+  const body = (await load(devEnv(db), "/?show=standalone")).body;
+  assert.equal(body.match(/<h3 class="card-title">Pad /g)?.length, 50);
+  assert.doesNotMatch(body, /Showing \d+ of/);
+});
+
+test("the quick-add title is required in words, the date is optional", async () => {
+  const body = (await load(devEnv(await seededDb()), "/")).body;
+  assert.match(body, /<label for="quick-title">Add a to-do <span class="field-required">\(required\)<\/span><\/label>/);
+  assert.match(body, /<label for="quick-due">Due \(optional\)<\/label>/);
+});
+
+test("Done in a non-default view comes back to that same address", async () => {
+  const db = await seededDb();
+  const env = devEnv(db);
+  const page = await load(env, "/?sort=newest");
+  const { location } = await post(env, "/tasks/tk_seed02/complete", { return_to: "/?sort=newest" }, { cookie: page.cookie, token: page.token });
+  assert.match(location, /^\/\?sort=newest&change=chg_/);
 });

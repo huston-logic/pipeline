@@ -17,13 +17,16 @@ import { type Html, html } from "../html.ts";
 import type { PageContext } from "../context.ts";
 import { renderPage } from "../layout.ts";
 import type { FormContext } from "../forms.ts";
-import { count, dealLink, empty, labelled, addButtons, pairs, section, tag, when } from "../parts.ts";
+import { count, dealLink, formatNumber, empty, labelled, addButtons, pairs, section, tag, when } from "../parts.ts";
 import { arrangeTasks, isStandalone, TASK_SHOWS, TASK_SORTS, type TaskShow, type TaskSort, type TaskView, taskView } from "../task-list.ts";
 import { quickAddForm, taskActions } from "../task-forms.ts";
 import { briefDate, briefLine, sendStatusText } from "./brief.ts";
 import { stageCountText, summaryLine } from "./pipeline.ts";
 
 const EXCERPT_ITEMS = 4;
+
+/** Each of the two task lists shows this many rows, after the sort, so the soonest and overdue are never cut (0047). */
+export const TASK_LIST_LIMIT = 50;
 
 const has = (fields: readonly string[], key: string) => fields.includes(key);
 
@@ -82,7 +85,7 @@ function taskTools(view: TaskView): Html {
   return html`<form class="search search-filters todo-filter" action="/" method="get" aria-label="Sort and filter to-dos">
 ${choice("todo-sort", "sort", "Sort by", TASK_SORTS, SORT_LABELS, view.sort)}
 ${choice("todo-show", "show", "Show", TASK_SHOWS, SHOW_LABELS, view.show)}
-<button class="button" type="submit">Show</button>
+<button class="button" type="submit">Show to-dos</button>
 </form>`;
 }
 
@@ -90,7 +93,8 @@ function taskSections(tasks: OpenTask[], view: TaskView, startOfToday: string, f
   const { todo, undated } = arrangeTasks(tasks, view);
   if (todo.length + undated.length === 0) return empty("Nothing to do.", "Add a to-do above, or add a task on a deal or contact page.");
   const list = (items: OpenTask[]) =>
-    html`<ul class="cards">${items.map((t) => taskCard(t, t.dueAt !== null && t.dueAt < startOfToday, form))}</ul>`;
+    html`<ul class="cards">${items.slice(0, TASK_LIST_LIMIT).map((t) => taskCard(t, t.dueAt !== null && t.dueAt < startOfToday, form))}</ul>
+${items.length > TASK_LIST_LIMIT ? html`<p class="stage-more">Showing ${formatNumber(TASK_LIST_LIMIT)} of ${formatNumber(items.length)} to-dos.</p>` : ""}`;
   return html`${todo.length > 0 ? section("todo-heading", "To do", list(todo)) : ""}
 ${undated.length > 0 ? section("undated-heading", "Needs a due date", list(undated)) : ""}`;
 }
