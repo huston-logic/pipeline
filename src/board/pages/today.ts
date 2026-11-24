@@ -1,23 +1,25 @@
-// Today (/): what is overdue and due today, then the pipeline at a glance and the latest brief (style guide §5).
+// Today (/): the open to-dos as a list (decision 0047), the deals due, then the pipeline at a glance and the latest brief (style guide §5).
 import { type BriefItem, headerDate } from "../../brief/compose.ts";
 import { ownerTimezone } from "../../services/lookup.ts";
 import {
   type BriefView,
   type DealItem,
   latestBrief,
+  type OpenTask,
+  openTasks,
   pipelineSummary,
   type PipelineSummary,
-  type TaskItem,
   whatsDue,
   type WhatsDue,
 } from "../../services/read.ts";
-import { localDate } from "../../time.ts";
+import { dayBoundsUtc, localDate } from "../../time.ts";
 import { type Html, html } from "../html.ts";
 import type { PageContext } from "../context.ts";
 import { renderPage } from "../layout.ts";
 import type { FormContext } from "../forms.ts";
 import { count, dealLink, empty, labelled, addButtons, pairs, section, tag, when } from "../parts.ts";
-import { taskActions } from "../task-forms.ts";
+import { arrangeTasks, isStandalone, TASK_SHOWS, TASK_SORTS, type TaskShow, type TaskSort, type TaskView, taskView } from "../task-list.ts";
+import { quickAddForm, taskActions } from "../task-forms.ts";
 import { briefDate, briefLine, sendStatusText } from "./brief.ts";
 import { stageCountText, summaryLine } from "./pipeline.ts";
 
@@ -25,7 +27,7 @@ const EXCERPT_ITEMS = 4;
 
 const has = (fields: readonly string[], key: string) => fields.includes(key);
 
-function taskCard(task: TaskItem, overdue: boolean, form: FormContext): Html {
+function taskCard(task: OpenTask, overdue: boolean, form: FormContext): Html {
   const outside = task.untrusted_fields;
   return html`<li class="card">
 <div class="card-head">
@@ -38,6 +40,7 @@ ${pairs([
     task.dealTitle !== null && { name: "Deal", value: dealLink(task.dealId, task.dealTitle, has(outside, "dealTitle")) },
   task.dealId === null &&
     task.contactName !== null && { name: "Contact", value: labelled(task.contactName, has(outside, "contactName")) },
+  isStandalone(task) && { name: "For", value: "No person or deal" },
 ])}
 ${taskActions(task, form)}
 </li>`;
@@ -57,26 +60,50 @@ ${pairs([
 </li>`;
 }
 
-function cards(tasks: TaskItem[], deals: DealItem[], overdue: boolean, form: FormContext): Html {
-  return html`<ul class="cards">${tasks.map((t) => taskCard(t, overdue, form))}${deals.map((d) => nextStepCard(d, overdue))}</ul>`;
+const SORT_LABELS: Record<TaskSort, string> = { due: "Due date", newest: "Newest first", subject: "Person" };
+const SHOW_LABELS: Record<TaskShow, string> = { all: "All", linked: "With a person or deal", standalone: "No person or deal" };
+
+function choice<T extends string>(id: string, name: string, label: string, values: readonly T[], labels: Record<T, string>, chosen: T): Html {
+  return html`<div class="field">
+<label for="${id}">${label}</label>
+<select id="${id}" name="${name}">
+${values.map((value) => html`<option value="${value}"${value === chosen ? " selected" : ""}>${labels[value]}</option>\n`)}</select>
+</div>`;
 }
 
-function dueSections(due: WhatsDue, form: FormContext): Html {
-  const overdue = due.overdueTasks.length + due.overdueDeals.length;
-  const today = due.todayTasks.length + due.todayDeals.length;
-  if (overdue + today === 0) {
-    return section(
-      "due-heading",
-      "Due today",
-      empty("Nothing due today.", "Add a task on a deal or contact page, or add a deal or a lead."),
-    );
-  }
-  return html`${overdue > 0 ? section("overdue-heading", "Overdue", cards(due.overdueTasks, due.overdueDeals, true, form)) : ""}
-${section(
-  "due-heading",
-  "Due today",
-  today > 0 ? cards(due.todayTasks, due.todayDeals, false, form) : html`<p class="section-note">Nothing else is due today.</p>`,
-)}`;
+const SORT_NOTE: Record<TaskSort, string> = { due: "", newest: "newest first", subject: "by person" };
+const SHOW_NOTE: Record<TaskShow, string> = { all: "", linked: "with a person or deal", standalone: "with no person or deal" };
+
+/** The sort and filter in words, for a title and description that differ from the usual Today's (empty when usual). */
+const viewNote = (view: TaskView): string => [SORT_NOTE[view.sort], SHOW_NOTE[view.show]].filter((part) => part !== "").join(", ");
+
+/** Sort and filter as a plain GET form (decision 0047): the address carries only these two keys. */
+function taskTools(view: TaskView): Html {
+  return html`<form class="search search-filters todo-filter" action="/" method="get" aria-label="Sort and filter to-dos">
+${choice("todo-sort", "sort", "Sort by", TASK_SORTS, SORT_LABELS, view.sort)}
+${choice("todo-show", "show", "Show", TASK_SHOWS, SHOW_LABELS, view.show)}
+<button class="button" type="submit">Show</button>
+</form>`;
+}
+
+function taskSections(tasks: OpenTask[], view: TaskView, startOfToday: string, form: FormContext): Html {
+  const { todo, undated } = arrangeTasks(tasks, view);
+  if (todo.length + undated.length === 0) return empty("Nothing to do.", "Add a to-do above, or add a task on a deal or contact page.");
+  const list = (items: OpenTask[]) =>
+    html`<ul class="cards">${items.map((t) => taskCard(t, t.dueAt !== null && t.dueAt < startOfToday, form))}</ul>`;
+  return html`${todo.length > 0 ? section("todo-heading", "To do", list(todo)) : ""}
+${undated.length > 0 ? section("undated-heading", "Needs a due date", list(undated)) : ""}`;
+}
+
+function dealCards(deals: DealItem[], overdue: boolean): Html {
+  return html`<ul class="cards">${deals.map((d) => nextStepCard(d, overdue))}</ul>`;
+}
+
+/** The deals whose next step is overdue or due today; nothing at all when there are none. */
+function dueDeals(due: WhatsDue): Html | "" {
+  if (due.overdueDeals.length + due.todayDeals.length === 0) return "";
+  return html`${due.overdueDeals.length > 0 ? section("overdue-heading", "Overdue", dealCards(due.overdueDeals, true)) : ""}
+${due.todayDeals.length > 0 ? section("due-heading", "Due today", dealCards(due.todayDeals, false)) : ""}`;
 }
 
 function pipelineGlance(summary: PipelineSummary): Html {
@@ -119,11 +146,19 @@ ${shown.length === 0 ? html`<p>Nothing was due that day.</p>` : html`<ul class="
 export async function todayPage(ctx: PageContext): Promise<string> {
   const { db, now } = ctx;
   const tz = await ownerTimezone(db);
-  const [summary, due, brief] = await Promise.all([pipelineSummary(db, now, tz), whatsDue(db, now, tz), latestBrief(db)]);
+  const [summary, due, brief, tasks] = await Promise.all([
+    pipelineSummary(db, now, tz),
+    whatsDue(db, now, tz),
+    latestBrief(db),
+    openTasks(db, now, tz),
+  ]);
   const date = localDate(now, tz);
+  const view = taskView(ctx.query);
+  const note = viewNote(view);
+  const description = "Your open to-dos, the deals due, your open deals by stage and the latest daily brief";
   return renderPage({
-    title: "Today",
-    description: "What is overdue and due today, your open deals by stage and the latest daily brief.",
+    title: note === "" ? "Today" : `Today, ${note}`,
+    description: note === "" ? `${description}.` : `${description}. To-dos ${note}.`,
     current: "/",
     frame: ctx,
     body: html`<div class="page-head">
@@ -134,7 +169,10 @@ export async function todayPage(ctx: PageContext): Promise<string> {
 ${addButtons("today", ["deal", "lead", "import"])}
 <div class="today-columns">
 <div class="today-due">
-${dueSections(due, ctx)}
+${quickAddForm(ctx)}
+${taskTools(view)}
+${taskSections(tasks, view, dayBoundsUtc(date, tz).start.toISOString(), ctx)}
+${dueDeals(due)}
 </div>
 <div class="today-glance">
 ${pipelineGlance(summary)}

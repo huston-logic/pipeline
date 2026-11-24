@@ -476,6 +476,9 @@ export function devSeed(now: Date, tz: string): DevSeed {
     // the other came due two days ago.
     task(12, { contact: "ct_lead06" }, "Check back with Colin Reyes", day(10, "09:00"), day(-9, "10:00")),
     task(13, { contact: "ct_lead10" }, "Check back with Omar Rashid", day(-2, "09:00"), day(-15, "10:00")),
+    // Standalone to-dos (decision 0046): on no person or deal, one with a due date and one without.
+    task(14, {}, "Renew the van insurance", day(3, "09:00"), day(-1, "08:30"), { contact_id: null }),
+    task(15, {}, "Order business cards", null, day(-2, "13:45"), { contact_id: null }),
   ];
 
   const rules: Row[] = [

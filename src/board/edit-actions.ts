@@ -1,5 +1,5 @@
 // The board's editing posts (decision 0018): Add a deal for a new person, a new deal for a contact, Add contact
-// (decision 0041), Edit contact, Edit deal, Add a task, Done, Snooze and Log. Each calls the service the matching MCP
+// (decision 0041), Edit contact, Edit deal, Add a task, Today's quick add (decision 0047), Done, Snooze and Log. Each calls the service the matching MCP
 // tool calls, as the owner under that tool's name, and answers 303 back with ?change=. A refused post draws its form
 // again (422) with the values kept and the errors. The lead routes (decision 0028) are in lead-actions.ts.
 import type { ActivityType, FieldDefRow } from "../db/db.ts";
@@ -47,7 +47,7 @@ import { collectEdit, collectNew, dealSpecs, line, parseValue, personDealSpecs, 
 import { fieldId } from "./record-fields.ts";
 import { withChange } from "./return-to.ts";
 import { MORNING, snoozePresets } from "./snooze.ts";
-import { addTaskForm, snoozeForms, type Subject, subjectHref, taskSpecs } from "./task-forms.ts";
+import { addTaskForm, quickSpecs, refusedQuickAdd, snoozeForms, type Subject, subjectHref, taskSpecs } from "./task-forms.ts";
 
 const NOTHING_TO_SAVE = "Nothing to save: every field is as it was. Change a value, or cancel to go back.";
 
@@ -177,6 +177,22 @@ const addTaskTo = (kind: Subject["kind"]) =>
     }
   };
 
+/** POST /tasks/quick: add_task with no deal or contact (decision 0047), from the form at the top of Today. */
+async function quickAdd(ctx: ActionContext): Promise<ActionResult> {
+  const back = backTo(ctx, "/");
+  const collected = collectNew(quickSpecs(), ctx.form);
+  const refused = (extra: string[] = []) =>
+    page(422, refusedFormPage(ctx, "The to-do wasn't added", refusedQuickAdd({ csrf: ctx.csrf, here: back }, stateOf(collected, extra)), back, "/"));
+  if (collected.errors.length > 0) return refused();
+  try {
+    const input = collected.input as { title: string; dueAt?: string };
+    const result = await addTask(asOwner(ctx, "add_task"), { title: input.title, dueAt: input.dueAt });
+    return redirect(withChange(back, result.changeId));
+  } catch (error) {
+    return refused([refusal(error, "task")]);
+  }
+}
+
 /**
  * POST /deals/<id>/log and /contacts/<id>/log: log_activity. Task R5's one-tap logging posts here too; its Text button
  * sends via=text, passed on only when it is exactly that, so the note counts as reaching a lead (decision 0022).
@@ -278,6 +294,7 @@ export const EDIT_ROUTES: Route[] = [
   { path: /^\/deals\/([^/]+)\/edit$/, handle: editDeal, big: true },
   { path: /^\/deals\/([^/]+)\/tasks$/, handle: addTaskTo("deal") },
   { path: /^\/contacts\/([^/]+)\/tasks$/, handle: addTaskTo("contact") },
+  { path: /^\/tasks\/(quick)$/, handle: (ctx) => quickAdd(ctx) },
   { path: /^\/deals\/([^/]+)\/log$/, handle: logOn("deal"), big: true },
   { path: /^\/contacts\/([^/]+)\/log$/, handle: logOn("contact"), big: true },
   { path: /^\/tasks\/([^/]+)\/complete$/, handle: complete },
