@@ -151,6 +151,12 @@ this file before changing the repo, and update it when a rule changes.
   Companies, the status views, then saved views; the Pipeline's Board, List, then saved views (`viewSwitch` in
   `src/board/people-switch.ts`). Addresses carry only status keys and view ids, never outside text; People stays one
   tab, so the phone tab bar keeps five items.
+- **Table layout** (decision 0043): Contacts, Leads, the People views, the Pipeline List and saved deals views show as
+  cards or a table (`dataTable`, `layoutSwitch` and `withParams` in `src/board/table.ts`; the columns of a view in
+  `src/board/view-table.ts`). `layout=cards|table` and `sort=<key>-<dir>` in the address override a view's stored ones
+  for that visit and never write. A real `<table>` in a sideways-scrolling `role="region"` wrapper, a `<caption>`,
+  `<th scope="col">` sort links with `aria-sort`, the first cell a `<th scope="row">` with the record's link, a sticky
+  first column, no JavaScript. The Pipeline List is a table by default; it has no Move to form (the Board does).
 - **Sign-in:** `src/auth/dev.ts` until task 10. `AUTH_MODE=dev` works only with `ENVIRONMENT=development` on a
   loopback host; anywhere else every route answers 500. Without `AUTH_MODE`, `/mcp` answers 401.
 - **Types:** `src/env.ts` is the `Env` type the code uses. `src/worker-configuration.d.ts` holds the Workers runtime

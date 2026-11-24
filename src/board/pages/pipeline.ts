@@ -1,10 +1,14 @@
-// /pipeline: open deals as a kanban, one column per open stage, or with ?view=list as rows grouped by stage. Every
-// deal has a Move to form; Won, Lost and Not now are move targets but not columns (decision 0017). /board.js adds drag
-// and drop on the board view, on top of the forms. ?view=<vw id> is a saved deals view (deals-view.ts, decision 0042).
+// /pipeline: open deals as a kanban, one column per open stage, or with ?view=list as a table of every open deal (cards
+// with layout=cards), at most 200 (decision 0043). Every board card has a Move to form; Won, Lost and Not now are move
+// targets but not columns (decision 0017). /board.js adds drag and drop on the board view, on top of the forms.
+// ?view=<vw id> is a saved deals view (deals-view.ts, decision 0042).
 import type { StageRow } from "../../db/db.ts";
 import { listStages } from "../../db/queries.ts";
 import { ownerTimezone } from "../../services/lookup.ts";
 import { type DealItem, pipelineSummary, type PipelineSummary, stageCounts, type StageSummary } from "../../services/read.ts";
+import { dealsInView, VIEW_ROW_LIMIT } from "../../services/view-read.ts";
+import { DEFAULT_COLUMNS, DEFAULT_SORT } from "../../services/view-spec.ts";
+import { filterLabels, sortLine } from "../../services/views.ts";
 import type { PageContext } from "../context.ts";
 import type { FormContext } from "../forms.ts";
 import { type Html, html } from "../html.ts";
@@ -13,25 +17,24 @@ import { moveForm, safeDealName } from "../move.ts";
 import { viewSwitch } from "../people-switch.ts";
 import { dealsViewPage } from "./deals-view.ts";
 import { count, dealLink, empty, formatNumber, labelled, addButtons, pairs, tag, when } from "../parts.ts";
-
-type View = "board" | "list";
+import { layoutDescription, layoutSwitch, layoutTitle, pickLayout } from "../table.ts";
+import { countLine } from "../view-parts.ts";
+import { dealsList, sortFromQuery, tableSummary } from "../view-table.ts";
 
 /**
- * A board column and a list section show the deals longest in their stage, at most this many, and link to the stage's
- * own list, which shows at most STAGE_LIST_LIMIT (decision 0020): on a big copy, drawing every open deal took the page
- * to the free plan's 10 ms CPU limit.
+ * A board column shows the deals longest in its stage, at most this many, and links to the stage's own list, which
+ * shows at most VIEW_ROW_LIMIT (decision 0020): on a big copy, drawing every open deal took the page to the free
+ * plan's 10 ms CPU limit.
  */
 export const STAGE_CARD_LIMIT = 50;
-export const STAGE_LIST_LIMIT = 200;
 
 const stageListHref = (key: string) => `/pipeline?view=list&stage=${encodeURIComponent(key)}`;
 
-/** "Showing 50 of 60, longest in this stage first." and, from the board and the full list, a link to all of them. */
-function moreNote(stage: StageSummary, limit: number, link: boolean): Html | "" {
+/** "Showing 50 of 60, longest in this stage first." and a link to all of them. */
+function moreNote(stage: StageSummary, limit: number): Html | "" {
   if (stage.deals.length <= limit) return "";
   const total = formatNumber(stage.deals.length);
-  const all = link ? html` <a href="${stageListHref(stage.key)}">Show all ${total} in ${stage.label}</a>` : "";
-  return html`<p class="stage-more">Showing ${formatNumber(limit)} of ${total}, longest in this stage first.${all}</p>`;
+  return html`<p class="stage-more">Showing ${formatNumber(limit)} of ${total}, longest in this stage first. <a href="${stageListHref(stage.key)}">Show all ${total} in ${stage.label}</a></p>`;
 }
 
 const has = (fields: readonly string[], key: string) => fields.includes(key);
@@ -93,7 +96,7 @@ function column(stage: StageSummary, index: number, stages: StageRow[], form: Fo
 <p class="stage-count">${stageCountText(stage)}</p>
 </div>
 ${stage.deals.length === 0 ? noDeals : html`<ul class="column-cards">${stage.deals.slice(0, STAGE_CARD_LIMIT).map((deal) => dealCard(deal, stages, form))}</ul>`}
-${moreNote(stage, STAGE_CARD_LIMIT, true)}
+${moreNote(stage, STAGE_CARD_LIMIT)}
 </section>`;
 }
 
@@ -129,39 +132,58 @@ ${closedStages(stages, counts)}
 </div>`;
 }
 
-function dealRow(deal: DealItem, stages: StageRow[], form: FormContext): Html {
-  return html`<li class="deal-row">
-<div class="deal-row-main">
-<div class="card-head">
-<h3 class="card-title">${dealLink(deal.id, deal.title, has(deal.untrusted_fields, "title"))}</h3>
-${deal.overdue ? tag("Overdue", true) : ""}
-</div>
-${facts(deal)}
-</div>
-${move(deal, stages, form)}
-</li>`;
-}
-
-function stageSection(stage: StageSummary, index: number, stages: StageRow[], form: FormContext, limit: number, link: boolean): Html {
-  return html`<section class="stage" aria-labelledby="${stageId(index)}">
-<div class="stage-head">
-<h2 id="${stageId(index)}">${stage.label}</h2>
-<p class="stage-count">${stageCountText(stage)}</p>
-</div>
-${stage.deals.length === 0 ? noDeals : html`<ul class="panel rows deal-rows">${stage.deals.slice(0, limit).map((deal) => dealRow(deal, stages, form))}</ul>`}
-${moreNote(stage, limit, link)}
-</section>`;
-}
-
-function listView(summary: PipelineSummary, stages: StageRow[], counts: Map<string, number>, form: FormContext): Html {
-  return html`${summary.stages.map((stage, i) => stageSection(stage, i, stages, form, STAGE_CARD_LIMIT, true))}
-${closedStages(stages, counts)}`;
-}
-
-/** /pipeline?view=list&stage=<key>: one open stage's deals, longest in the stage first. */
-function stageListView(summary: PipelineSummary, stage: StageSummary, stages: StageRow[], form: FormContext): Html {
-  return html`<p class="search-clear"><a href="/pipeline?view=list">Show every stage</a></p>
-${stageSection(stage, summary.stages.indexOf(stage), stages, form, STAGE_LIST_LIMIT, false)}`;
+/** /pipeline?view=list: every open deal, or one open stage's, as a table (or cards), at most 200. */
+async function listPage(ctx: PageContext): Promise<string> {
+  const { db, now, query } = ctx;
+  const tz = await ownerTimezone(db);
+  const [stages, counts, labels] = await Promise.all([listStages(db), stageCounts(db), filterLabels(db)]);
+  const open = stages.filter((stage) => stage.kind === "open");
+  // An unknown or closed stage is ignored.
+  const only = open.find((stage) => stage.key === query.get("stage"));
+  const layout = pickLayout(query, "table");
+  const sort = sortFromQuery("deals", query, DEFAULT_SORT.deals);
+  const list = await dealsInView(db, now, tz, only === undefined ? {} : { stage: only.key }, sort, VIEW_ROW_LIMIT);
+  const name = only === undefined ? "Open deals" : `${only.label} deals`;
+  const shows = `${only === undefined ? "Every open deal" : `Open deals in ${only.label}`}; ${sortLine(sort)}.`;
+  let body: Html;
+  if (open.length === 0) {
+    body = empty("There are no open stages.", "Ask your AI app to add one.");
+  } else if (list.total === 0) {
+    body = html`<p class="lede">${shows}</p>
+${empty(only === undefined ? "No open deals yet." : "No open deals in this stage.", "Add one with Add a deal, or by talking to your AI app. Inquiries from your website form show up here too.")}`;
+  } else {
+    body = html`<p class="lede">${shows} ${countLine(list.items.length, list.total, "deal", "deals")}</p>
+${dealsList(list.items, {
+  layout,
+  path: "/pipeline",
+  query,
+  sort,
+  columns: [...DEFAULT_COLUMNS.deals],
+  fields: labels.fields,
+  tz,
+  name,
+  summary: tableSummary(list.items.length, list.total, "deal", "deals", sort),
+})}`;
+  }
+  return renderPage({
+    title: layoutTitle(only === undefined ? "Pipeline list" : `${only.label} deals`, layout, "table"),
+    description: layoutDescription(
+      only === undefined
+        ? "Every open deal, one line each, with its person, stage, value and next step."
+        : `Every open deal in ${only.label}, one line each, with its person, value and next step.`,
+      layout,
+      "table",
+    ),
+    current: "/pipeline",
+    frame: ctx,
+    body: html`<h1>Pipeline</h1>
+${await viewSwitch(db, "deals", { kind: "built_in", id: "list" })}
+${layoutSwitch("/pipeline", query, layout)}
+${addButtons("pipeline", ["deal", "lead", "import"])}
+${only === undefined ? "" : html`<p class="search-clear"><a href="/pipeline?view=list">Show every stage</a></p>`}
+${body}
+${only === undefined ? closedStages(stages, counts) : ""}`,
+  });
 }
 
 export async function pipelinePage(ctx: PageContext): Promise<string | null> {
@@ -169,32 +191,21 @@ export async function pipelinePage(ctx: PageContext): Promise<string | null> {
   const asked = ctx.query.get("view") ?? "";
   // A saved deals view (decision 0042): an id that isn't a live deals view is the board's 404.
   if (asked.startsWith("vw_")) return dealsViewPage(ctx, asked);
-  const view: View = asked === "list" ? "list" : "board";
+  if (asked === "list") return listPage(ctx);
   const tz = await ownerTimezone(db);
   const [summary, stages, counts] = await Promise.all([pipelineSummary(db, now, tz), listStages(db), stageCounts(db)]);
-  // An unknown or closed stage, or one given to the board view, is ignored.
-  const only = view === "list" ? summary.stages.find((stage) => stage.key === ctx.query.get("stage")) : undefined;
   const body =
     summary.stages.length === 0
       ? empty("There are no open stages.", "Ask your AI app to add one.")
-      : only !== undefined
-        ? stageListView(summary, only, stages, ctx)
-        : view === "list"
-          ? listView(summary, stages, counts, ctx)
-          : boardView(summary, stages, counts, ctx);
+      : boardView(summary, stages, counts, ctx);
   return renderPage({
-    title: only !== undefined ? `${only.label} deals` : view === "list" ? "Pipeline list" : "Pipeline",
-    description:
-      only !== undefined
-        ? `Every open deal in ${only.label}, longest in the stage first, with a Move to control on each.`
-        : view === "list"
-          ? "Every open deal as a list grouped by stage, with a Move to control on each."
-          : "Your open deals as a board, one column per stage, with each deal's contact, value and next date.",
+    title: "Pipeline",
+    description: "Your open deals as a board, one column per stage, with each deal's contact, value and next date.",
     current: "/pipeline",
     frame: ctx,
-    script: view === "board",
+    script: true,
     body: html`<h1>Pipeline</h1>
-${await viewSwitch(db, "deals", { kind: "built_in", id: view })}
+${await viewSwitch(db, "deals", { kind: "built_in", id: "board" })}
 <p class="lede">${openLine(summary)}</p>
 ${addButtons("pipeline", ["deal", "lead", "import"])}
 ${body}`,

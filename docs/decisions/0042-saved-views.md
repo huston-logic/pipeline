@@ -70,7 +70,7 @@ where deals views appear and what an unknown view does.
   it sorts, then the count ("2 people."). Cards: people with company, person status (and sub-status), last activity
   and next task; deals with contact, stage, value, next date and days in this stage, and the Overdue tag. No Move to
   form and no board.js on a deals view. A deals view without a stage shows open deals; with one, every deal in that
-  stage, open or closed. A table layout is stored and drawn as cards until task P10. At most 200 rows, then "Showing
+  stage, open or closed. A table layout is stored and, from 0043, drawn as a table. At most 200 rows, then "Showing
   the first 200 of N people, in this view's order." (0020). Outside names stay labelled and out of link text, as on
   every list.
 - **Undo.** Undo of adding a stage or a person status that a saved view filters by is refused ("view Demos shows Demo
