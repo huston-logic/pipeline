@@ -55,12 +55,69 @@ test("addTask for a contact only, without a due date", async () => {
   assert.equal(row.due_at, null);
 });
 
-test("addTask refuses a blank title, a bad date and a missing target", async () => {
+test("addTask refuses a blank title, a bad date and a person or deal that isn't on file", async () => {
   const { db, dealId } = await setup();
   await assert.rejects(addTask(ctxFor(db), { dealId, title: " " }), /title/);
   await assert.rejects(addTask(ctxFor(db), { dealId, title: "x", dueAt: "soon" }), /YYYY-MM-DD/);
-  await assert.rejects(addTask(ctxFor(db), { title: "x" }), /deal or a contact/);
+  await assert.rejects(addTask(ctxFor(db), { contactId: "Nobody Example", title: "x" }), /No contact matches "Nobody Example"/);
+  await assert.rejects(addTask(ctxFor(db), { dealId: "dl_nothing", title: "x" }), /No deal matches "dl_nothing"/);
   assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM tasks").first<{ n: number }>())?.n, 0);
+});
+
+test("add_task with neither adds a standalone task", async () => {
+  const { db } = await setup();
+  const result = await addTask(ctxFor(db), { title: "Buy printer ink" });
+  assert.equal(result.summary, `Added task "Buy printer ink" (change ${result.changeId})`);
+  const row = await task(db, result.taskId);
+  assert.deepEqual([row.deal_id, row.contact_id, row.title, row.due_at, row.source], [null, null, "Buy printer ink", null, "owner"]);
+
+  const dated = await addTask(ctxFor(db), { title: "Renew the van insurance", dueAt: "2026-11-21" });
+  assert.equal(dated.summary, `Added task "Renew the van insurance", due Sat Nov 21, 12:00 AM (change ${dated.changeId})`);
+});
+
+test("complete and snooze a standalone task", async () => {
+  const { db } = await setup();
+  const added = await addTask(ctxFor(db), { title: "Buy printer ink", dueAt: "2026-11-18T09:00" });
+  const snoozed = await snoozeTask(ctxFor(db, "snooze_task"), added.taskId, "2026-11-20T09:00");
+  assert.equal(snoozed.summary, `Snoozed task "Buy printer ink" until Fri Nov 20, 9:00 AM (change ${snoozed.changeId})`);
+  const done = await completeTask(ctxFor(db, "complete_task"), added.taskId);
+  assert.equal(done.summary, `Completed task "Buy printer ink" (change ${done.changeId})`);
+  const row = await task(db, added.taskId);
+  assert.equal(row.done_at, NOW.toISOString());
+  assert.equal(row.snoozed_until, "2026-11-20T17:00:00.000Z");
+
+  // A title from outside is named by id, with nothing after it.
+  const outside = await addTask(ctxFor(db), { title: "Reply to the form message" });
+  await db.prepare("UPDATE tasks SET untrusted_fields = '[\"title\"]' WHERE id = ?").bind(outside.taskId).run();
+  const closed = await completeTask(ctxFor(db, "complete_task"), outside.taskId);
+  assert.equal(closed.summary, `Completed task ${outside.taskId} (change ${closed.changeId})`);
+});
+
+test("undo of a standalone task", async () => {
+  const { db } = await setup();
+  const added = await addTask(ctxFor(db), { title: "Buy printer ink" });
+  const done = await completeTask(ctxFor(db, "complete_task"), added.taskId);
+  const later = new Date("2026-11-19T19:00:00.000Z");
+  const reopened = await undoChange(ctxFor(db, "undo_change", later), done.changeId);
+  assert.match(reopened.summary, /^Undid chg_[a-z2-7]{12}: Put back the earlier done date on task "Buy printer ink"/);
+  assert.equal((await task(db, added.taskId)).done_at, null);
+
+  const other = await addTask(ctxFor(db), { title: "Post the parcel" });
+  const undone = await undoChange(ctxFor(db, "undo_change", later), other.changeId);
+  assert.match(undone.summary, /^Undid chg_[a-z2-7]{12}: Removed task "Post the parcel"/);
+  assert.equal(await db.prepare("SELECT COUNT(*) AS n FROM tasks WHERE id = ?").bind(other.taskId).first("n"), 0);
+});
+
+test("whats_due lists a standalone task", async () => {
+  const { db } = await setup();
+  const overdue = await addTask(ctxFor(db), { title: "Buy printer ink", dueAt: "2026-11-18T09:00" });
+  const today = await addTask(ctxFor(db), { title: "Post the parcel", dueAt: "2026-11-19T15:00" });
+  const due = await whatsDue(db, NOW, "America/Los_Angeles");
+  assert.deepEqual(
+    due.overdueTasks.map((t) => [t.id, t.title, t.dealId, t.dealTitle, t.contactId, t.contactName, t.untrusted_fields]),
+    [[overdue.taskId, "Buy printer ink", null, null, null, null, []]],
+  );
+  assert.deepEqual(due.todayTasks.map((t) => t.id), [today.taskId]);
 });
 
 test("completeTask sets done_at, names the task and its deal, and refuses a second time", async () => {

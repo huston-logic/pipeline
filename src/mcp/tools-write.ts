@@ -198,7 +198,7 @@ export function registerWriteTools(server: McpServer, deps: ToolDeps): void {
       title: "Add a task",
       kind: "write",
       description:
-        "Adds a to-do or reminder for a deal or a contact, with an optional due time. " +
+        "Adds a to-do or reminder for a deal, a contact, or neither (the owner's own to-do), with an optional due time. " +
         PROPOSES,
       input: addTaskInput,
       run: (args, deps) => recordWrite(deps, { action: "add_task", ...args }),

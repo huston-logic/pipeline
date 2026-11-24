@@ -219,6 +219,32 @@ test("Today, Pipeline and Contacts each have Add a deal and Add a lead buttons t
   assert.ok(formOf(today, "/tasks/tk_seed01/complete"), "Today's task cards have Done");
 });
 
+test("Today shows a standalone task with no Deal or Contact line, and its Done goes back to Today", async () => {
+  const db = await seededDb();
+  const env = devEnv(db);
+  const due = new Date(Date.now() - 2 * 86_400_000).toISOString();
+  db.exec(`INSERT INTO tasks (id, title, due_at) VALUES ('tk_mine', 'Buy printer ink', '${due}')`);
+  db.exec(`INSERT INTO tasks (id, title, due_at, untrusted_fields) VALUES ('tk_mine2', 'Robin Sample says hi', '${due}', '["title"]')`);
+  const { res, body } = await load(env, "/");
+  assert.equal(res.status, 200);
+  assert.equal(h1Count(body), 1);
+  assert.doesNotMatch(body, /undefined|null/);
+  const card = (id: string) => {
+    const end = body.indexOf(`action="/tasks/${id}/complete"`);
+    return body.slice(body.lastIndexOf('<li class="card">', end), body.indexOf("</li>", end));
+  };
+  assert.match(card("tk_mine"), /<h3 class="card-title">Buy printer ink<\/h3>/);
+  assert.doesNotMatch(card("tk_mine"), /<dt>(Deal|Contact)<\/dt>/);
+  assert.match(card("tk_mine"), /Done<span class="visually-hidden">: Buy printer ink<\/span>/);
+  assert.match(card("tk_mine2"), /Done<span class="visually-hidden">: task tk_mine2<\/span>/);
+  assert.doesNotMatch(titleOf(body), /Robin|printer/);
+
+  const done = await post(env, "/tasks/tk_mine/complete", { return_to: "/" });
+  assert.equal(done.res.status, 303);
+  assert.match(done.location, /^\/\?change=chg_/);
+  assert.notEqual(await db.prepare("SELECT done_at FROM tasks WHERE id = 'tk_mine'").first("done_at"), null);
+});
+
 test("empty states say what can be done on the board now", async () => {
   const env = devEnv(await createTestDb());
   const today = (await load(env, "/")).body;

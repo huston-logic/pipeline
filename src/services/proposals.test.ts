@@ -150,6 +150,11 @@ test("apply equals running the actions one by one", async () => {
       { action: "log_activity", contact: "@1", type: "call", summary: "Lee picked up and asked for a price." },
     ],
     [{ action: "complete_task", task: "tk_seed01" }],
+    // A standalone task (decision 0046) beside one on a person.
+    [
+      { action: "add_task", title: "Buy printer ink", dueAt: "2026-11-21" },
+      { action: "add_task", contact: "ct_seed01", title: "Send Pat the invoice" },
+    ],
   ];
   for (const actions of scenarios) {
     const one = await setup();
@@ -195,6 +200,32 @@ test("apply equals running the actions one by one", async () => {
     }
     assert.equal((await audits(both)).length, 1);
   }
+});
+
+test("a standalone task: the list says no person or deal, and complete or snooze by its title work through a proposal", async () => {
+  const db = await setup();
+  const added = await propose(db, [{ action: "add_task", title: "Buy printer ink", dueAt: "2026-11-21" }]);
+  assert.equal(
+    added.text.split("\n").slice(2, 4).join("\n"),
+    'Tasks\n- New task "Buy printer ink": no person or deal; due Sat Nov 21',
+  );
+  const first = await apply(db, added.id);
+  assert.match(first.summary, new RegExp(`^Applied ${added.id}: Added task "Buy printer ink", due Sat Nov 21, 12:00 AM \\(change `));
+  const taskId = await db.prepare("SELECT id FROM tasks WHERE title = 'Buy printer ink'").first<string>("id");
+  assert.ok(taskId);
+
+  // Named by its title: the match needs no person or deal.
+  const snooze = await propose(db, [{ action: "snooze_task", task: "printer ink", until: "2026-11-20T09:00" }]);
+  assert.equal(JSON.parse((await proposal(db, snooze.id))?.actions ?? "[]")[0]?.task, taskId);
+  assert.equal(snooze.text.split("\n").slice(2, 4).join("\n"), 'Tasks\n- Task "Buy printer ink": snoozed until (none) -> Fri Nov 20, 9:00 AM');
+  const snoozed = await apply(db, snooze.id);
+  assert.match(snoozed.summary, /: Snoozed task "Buy printer ink" until Fri Nov 20, 9:00 AM \(change /);
+
+  const done = await propose(db, [{ action: "complete_task", task: "Buy printer ink" }]);
+  assert.equal(done.text.split("\n").slice(2, 4).join("\n"), 'Tasks\n- Task "Buy printer ink": done (none) -> now');
+  const completed = await apply(db, done.id);
+  assert.match(completed.summary, /: Completed task "Buy printer ink" \(change /);
+  assert.equal(await db.prepare("SELECT done_at FROM tasks WHERE id = ?").bind(taskId).first("done_at"), NOW.toISOString());
 });
 
 test("stale proposal is refused", async () => {

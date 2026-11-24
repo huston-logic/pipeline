@@ -6,6 +6,7 @@ import type { Ctx } from "../services/change.ts";
 import { addDeal } from "../services/add-deal.ts";
 import { logActivity } from "../services/activities.ts";
 import { addLead } from "../services/leads.ts";
+import { addTask, completeTask } from "../services/tasks.ts";
 import { composeCaught } from "./caught.ts";
 import { loadCaughtInput } from "./load.ts";
 
@@ -84,6 +85,24 @@ test("a task completed later counts; a reach on an archived deal's nudge still c
   const report = composeCaught(await loadCaughtInput(db, "2026-10", TZ));
   assert.equal(report.actedOn, 1);
   assert.equal(report.valueTouched, 700);
+});
+
+test("What it caught counts only rule-made tasks: a standalone task of the owner's is left out without an error", async () => {
+  const db = await openTestDb();
+  await addRuleRow(db);
+  const deal = await addDeal(ctxFor(db, MADE), { name: "Pat Example", dealTitle: "Website refresh", value: 500 });
+  await nudge(db, 1, { dealId: deal.dealId }, MADE, new Date(MADE.getTime() + DAY));
+  const before = composeCaught(await loadCaughtInput(db, "2026-10", TZ));
+  // The owner's own to-dos in the same month, one done: neither is a nudge.
+  await addTask(ctxFor(db, MADE, "add_task"), { title: "Buy printer ink" });
+  const done = await addTask(ctxFor(db, MADE, "add_task"), { title: "Post the parcel" });
+  await completeTask(ctxFor(db, new Date(MADE.getTime() + DAY), "complete_task"), done.taskId);
+
+  const input = await loadCaughtInput(db, "2026-10", TZ);
+  assert.deepEqual(input.tasks.map((t) => t.id), ["tk_1"]);
+  const report = composeCaught(input);
+  assert.deepEqual(report, before);
+  assert.deepEqual([report.tasksMade, report.actedOn], [1, 1]);
 });
 
 test("leads: created in the month, first reach in the month, qualified in the month; people who were never leads are left out", async () => {

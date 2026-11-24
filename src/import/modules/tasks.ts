@@ -1,6 +1,7 @@
 // The Tasks import module (decision 0037): each row is a new task on a deal (by deal_id; a deal id that isn't on file
 // skips the row) or else on a person (by contact_id, email or name), unless its `id` names a task on file, which it fills in (an empty due date only). A task
-// never adds a person or a deal: a row that matches neither is skipped. A done_at makes the task one already done.
+// never adds a person or a deal: a row that names someone and matches no one is skipped, and a row with none of
+// deal_id, contact_id, email and name filled is a standalone task (decision 0046). A done_at makes the task one already done.
 // Every value from the file is outside text: the change lists it in the task's untrusted_fields.
 import type { ContactRow, DealRow, TaskRow } from "../../db/db.ts";
 import { isContactId, isDealId, isTaskId, newId } from "../../ids.ts";
@@ -37,7 +38,8 @@ export interface TaskCreate {
   /** A well-formed task id from the file that matches no task, kept; null for a new id. */
   id: string | null;
   dealId: string | null;
-  contactId: string;
+  /** null for a standalone task (decision 0046), and then dealId is null too. */
+  contactId: string | null;
   title: string;
   dueAt: string | null;
   doneAt: string | null;
@@ -55,7 +57,10 @@ export interface TasksPlan extends PlanBase {
   unchanged: { line: number; id: string }[];
 }
 
-type Subject = { deal: DealRow | null; contact: ContactRow } | { reason: string };
+type Subject = { deal: DealRow | null; contact: ContactRow | null } | { reason: string };
+
+/** The columns that name who a task is for; a row with none of them filled names no one. */
+const SUBJECT_COLUMNS = ["deal_id", "contact_id", "email", "name"] as const;
 
 /** Rows over a column's limit never reach the plan: planRows (src/import/engine.ts) skips them first. */
 export function planTasks(rows: readonly MappedRow[], ctx: TasksCtx): TasksPlan {
@@ -75,6 +80,7 @@ export function planTasks(rows: readonly MappedRow[], ctx: TasksCtx): TasksPlan 
     contact.archived === 1 ? { reason: `contact ${contact.id} is archived` } : { deal: null, contact };
 
   const subjectOf = (values: MappedRow["values"]): Subject => {
+    if (SUBJECT_COLUMNS.every((column) => (values[column] ?? null) === null)) return { deal: null, contact: null };
     const dealText = values.deal_id ?? null;
     const dealId = dealText !== null && isDealId(dealText) ? dealText : null;
     const deal = dealId === null ? undefined : dealsById.get(dealId);
@@ -144,7 +150,7 @@ export function planTasks(rows: readonly MappedRow[], ctx: TasksCtx): TasksPlan 
       skip(subject.reason);
       continue;
     }
-    plan.create.push({ line, id, dealId: subject.deal?.id ?? null, contactId: subject.contact.id, title, dueAt, doneAt });
+    plan.create.push({ line, id, dealId: subject.deal?.id ?? null, contactId: subject.contact?.id ?? null, title, dueAt, doneAt });
   }
   return plan;
 }
@@ -196,7 +202,7 @@ export function tasksChange(plan: TasksPlan, ctx: TasksCtx, now: Date): ChangeIn
   };
 }
 
-/** Tasks on a deal or a person already on file; matched to a task on file only by id. */
+/** Tasks on a deal or a person already on file, or on no one; matched to a task on file only by id. */
 export const tasksModule: ImportModule<TasksCtx, TasksPlan> = {
   key: "tasks",
   noun: { one: "task", many: "tasks" },

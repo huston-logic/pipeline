@@ -82,6 +82,22 @@ test("sections come in order, one line per item, and empty sections are left out
   assert.equal(brief.items[0]?.line, "- Send the quote (Pat Example, Website refresh), was due Wed Nov 18, 9:00 AM");
 });
 
+test("the brief counts a standalone overdue task", () => {
+  const brief = composeBrief({
+    ...empty(),
+    tasks: {
+      overdue: [{ id: "tk_ink", title: "Buy printer ink", dueAt: "2026-11-18T17:00:00.000Z", dealTitle: null, contactName: null, untrusted_fields: [] }],
+      today: [{ id: "tk_post", title: "Post the parcel", dueAt: null, dealTitle: null, contactName: null, untrusted_fields: [] }],
+    },
+  });
+  assert.deepEqual(brief.lines.slice(2), ["Overdue", "- Buy printer ink, was due Wed Nov 18, 9:00 AM", "", "Due today", "- Post the parcel"]);
+  assert.deepEqual(brief.items.map((i) => [i.section, i.id, i.untrusted]), [
+    ["overdue", "tk_ink", false],
+    ["due_today", "tk_post", false],
+  ]);
+  assert.doesNotMatch(brief.text, /undefined|null|\(\)/);
+});
+
 test("with no tasks but a new lead, the sections that have items show and the rest are omitted", () => {
   const brief = composeBrief({
     ...empty(),

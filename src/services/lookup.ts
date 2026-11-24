@@ -190,15 +190,28 @@ export function mergeFields(stored: string, patch: FieldValues): string {
   return JSON.stringify(merged);
 }
 
-/** What an activity or task is about: a deal (and so its contact), or a contact alone. */
+type SubjectRefs = { dealId?: string | undefined; contactId?: string | undefined };
+
+/**
+ * What an activity or task is about: a deal (and so its contact), or a contact alone. An activity needs one; with
+ * `{ optional: true }` (a task, decision 0046) naming neither is a subject of nobody, but a name that matches no one is
+ * still refused.
+ */
+export async function findSubject(src: Source, refs: SubjectRefs): Promise<{ deal: DealRow | null; contact: ContactRow }>;
 export async function findSubject(
   src: Source,
-  refs: { dealId?: string | undefined; contactId?: string | undefined },
-): Promise<{ deal: DealRow | null; contact: ContactRow }> {
+  refs: SubjectRefs,
+  options: { optional: true },
+): Promise<{ deal: DealRow | null; contact: ContactRow | null }>;
+export async function findSubject(
+  src: Source,
+  refs: SubjectRefs,
+  options: { optional?: boolean } = {},
+): Promise<{ deal: DealRow | null; contact: ContactRow | null }> {
   const deal = refs.dealId === undefined ? null : await findDeal(src, refs.dealId);
   const named = refs.contactId === undefined ? null : await findContact(src, refs.contactId);
   if (!deal) {
-    if (!named) throw new UserError("This needs a deal or a contact: give a dealId or a contactId.");
+    if (!named && options.optional !== true) throw new UserError("This needs a deal or a contact: give a dealId or a contactId.");
     return { deal: null, contact: named };
   }
   const owner = await contactById(src, deal.contact_id);
