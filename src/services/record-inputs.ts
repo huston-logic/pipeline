@@ -176,11 +176,15 @@ export const addTaskInput = z.strictObject({
   deal: dealRef("The deal: its id (dl_...), its exact title, or its contact's exact name. Leave out deal and contact for a task of the owner's own.").optional(),
   contact: contactRef("The contact: their id (ct_...) or exact name. Leave out deal and contact for a task of the owner's own.").optional(),
   project: projectRef().optional(),
+  parent: z.string().min(1).max(100).describe("A sub-task: the id (tk_...) of an open task on a project to put this under. The project and person are the parent's.").optional(),
   title: shortText("What to do, in a few words."),
   dueAt: when("When it is due").optional(),
 });
 
-export const completeTaskInput = z.strictObject({ task: taskRef() });
+export const completeTaskInput = z.strictObject({
+  task: taskRef(),
+  subTasks: z.enum(["complete", "leave"]).optional().describe('Needed when the task has open sub-tasks: "complete" finishes them too, "leave" keeps them open.'),
+});
 
 export const snoozeTaskInput = z.strictObject({
   task: taskRef(),

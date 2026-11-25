@@ -2,10 +2,13 @@
 // (add_task) and Log it (log_activity). Each calls the service the matching MCP tool calls, as the owner under that tool's
 // name. While projects are off, or for an id that is no project, every path here is a 404.
 import { getContact, getSettings } from "../db/queries.ts";
-import { isContactId, isProjectId } from "../ids.ts";
-import { ownerTimezone, projectById } from "../services/lookup.ts";
+import { isContactId, isProjectId, isTaskId } from "../ids.ts";
+import { ownerTimezone, projectById, taskById } from "../services/lookup.ts";
 import { projectStatusRows } from "../services/memo.ts";
 import { addProject, type ProjectPatch, updateProject } from "../services/projects.ts";
+import { moveTask } from "../services/subtasks.ts";
+import { addTask } from "../services/tasks.ts";
+import { taskSpecs } from "./task-forms.ts";
 import { type ActionContext, type ActionResult, asOwner, backTo, notFound, page, pageContext, redirect, refusal, refusedPage, type Route, stateOf } from "./action-kit.ts";
 import type { PageContext } from "./context.ts";
 import { addTaskTo, logOn } from "./edit-actions.ts";
@@ -144,7 +147,43 @@ async function edit(ctx: ActionContext, id: string): Promise<ActionResult> {
   }
 }
 
+/** POST /tasks/<id>/subtasks: add_task with that task as the parent (the project's page, one-line form). */
+async function addSubTask(ctx: ActionContext, id: string): Promise<ActionResult> {
+  const parent = isTaskId(id) && (await projectsOn(ctx)) ? await taskById(ctx.db, id) : null;
+  if (!parent || parent.project_id == null) return notFound(ctx);
+  const here = projectHref(parent.project_id);
+  const back = backTo(ctx, here);
+  const refused = (message: string) => page(422, refusedPage(ctx, "The sub-task wasn't added", message, back, "", here));
+  const collected = collectNew(taskSpecs(), ctx.form);
+  if (collected.errors.length > 0) return refused(collected.errors.map((error) => error.message).join(" "));
+  try {
+    const input = collected.input as { title: string; dueAt?: string };
+    const result = await addTask(asOwner(ctx, "add_task"), { parent: parent.id, title: input.title, dueAt: input.dueAt });
+    return redirect(withChange(back, result.changeId));
+  } catch (error) {
+    return refused(refusal(error, "task"));
+  }
+}
+
+/** POST /tasks/<id>/move: move_task up or down among its siblings, in one change. */
+async function move(ctx: ActionContext, id: string): Promise<ActionResult> {
+  const task = isTaskId(id) && (await projectsOn(ctx)) ? await taskById(ctx.db, id) : null;
+  if (!task) return notFound(ctx);
+  const back = backTo(ctx, task.project_id == null ? "/" : projectHref(task.project_id));
+  const refused = (message: string) => page(422, refusedPage(ctx, "The task wasn't moved", message, back, "", back));
+  const dir = ctx.form.get("dir");
+  if (dir !== "up" && dir !== "down") return refused("Say which way to move it: up or down.");
+  try {
+    const result = await moveTask(asOwner(ctx, "move_task"), task.id, dir);
+    return redirect(withChange(back, result.changeId));
+  } catch (error) {
+    return refused(refusal(error, "task"));
+  }
+}
+
 export const PROJECT_ROUTES: Route[] = [
+  { path: /^\/tasks\/([^/]+)\/subtasks$/, handle: addSubTask },
+  { path: /^\/tasks\/([^/]+)\/move$/, handle: move },
   { path: /^\/projects\/(new)$/, handle: (ctx) => addInternal(ctx), big: true },
   { path: /^\/contacts\/([^/]+)\/projects$/, handle: addOfContact, big: true },
   { path: /^\/deals\/([^/]+)\/projects$/, handle: addOfDeal, big: true },

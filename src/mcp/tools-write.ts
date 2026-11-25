@@ -200,7 +200,7 @@ export function registerWriteTools(server: McpServer, deps: ToolDeps): void {
       title: "Add a task",
       kind: "write",
       description:
-        "Adds a to-do or reminder for a deal, a contact, or neither (the owner's own to-do), with an optional due time. " +
+        "Adds a to-do or reminder for a deal, a contact, a project (or under one of its tasks with parent), or neither (the owner's own to-do), with an optional due time. " +
         PROPOSES,
       input: addTaskInput,
       run: (args, deps) => recordWrite(deps, { action: "add_task", ...args }),
@@ -216,6 +216,7 @@ export function registerWriteTools(server: McpServer, deps: ToolDeps): void {
       kind: "write",
       description:
         "Marks a task done. Find the task id with whats_due or get_deal. Undo it with undo_change. " +
+        'A task with open sub-tasks needs subTasks: "complete" (finish them too, proposed first) or "leave". ' +
         PROPOSES,
       input: completeTaskInput,
       run: (args, deps) => recordWrite(deps, { action: "complete_task", ...args }),

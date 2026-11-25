@@ -3,7 +3,7 @@
 // tasks "Tasks", logged activities "Notes" (a deal's stage move is shown on its Update line), time entries "Time".
 // Keys become the owner's labels; outside text is never shown: a record named from outside is named by id
 // (labels.ts), and an old value from outside reads "(text from outside)".
-import type { ContactRow, Db, DealRow, ProjectRow } from "../db/db.ts";
+import type { ContactRow, Db, DealRow, ProjectRow, TaskRow } from "../db/db.ts";
 import { formatLocal, localWhen } from "../time.ts";
 import type { ChangeInput, ChangeTable, Row } from "./change.ts";
 import { changedColumns, oneLine, rowKey } from "./change.ts";
@@ -173,6 +173,7 @@ async function namedRows(db: Db, input: ChangeInput, planned: ReadonlyMap<string
       want("contacts", row.contact_id);
       want("deals", row.deal_id);
       want("tasks", row.task_id);
+      want("tasks", row.parent_id);
       want("projects", row.project_id);
     }
     for (const deal of deals) want("contacts", deal.contact_id);
@@ -247,6 +248,8 @@ function fieldChanges(names: Names, table: ChangeTable, before: Row | null, afte
 async function updatedFields(names: Names, table: ChangeTable, id: string, before: Row, after: Row): Promise<Item["fields"]> {
   let columns = changedColumns(before, after).filter((column) => !BOOKKEEPING.has(column));
   show(names, table, id, columns);
+  // A task's position is its order among siblings, which the list keeps; a moved task's earlier place isn't news.
+  if (table === "tasks") columns = columns.filter((column) => column !== "position" && column !== "parent_id");
   if (columns.includes("person_status") || columns.includes("sub_status")) {
     columns = [...columns.filter((column) => column !== "sub_status" && column !== "person_status"), "person_status"];
   }
@@ -352,11 +355,18 @@ async function taskItem(names: Names, id: string, before: Row | null, after: Row
   if (before !== null) return { record: `Task ${taskTitle(before as unknown as { id: string; title: string })}`, id, fields: await updatedFields(names, "tasks", id, before, after) };
   const who = await forWhom(names, after);
   // A task the owner or the AI app adds is the owner's own: its source says so and isn't worth a word.
-  show(names, "tasks", id, ["title", "deal_id", "contact_id", "project_id", "due_at", ...(after.source === "owner" ? ["source"] : [])]);
+  // The position is the order among siblings: the list's own order shows it.
+  show(names, "tasks", id, ["title", "deal_id", "contact_id", "project_id", "parent_id", "position", "due_at", ...(after.source === "owner" ? ["source"] : [])]);
+  const parent = await planned<TaskRow>(names, "tasks", (after.parent_id as string | null | undefined) ?? null);
+  const under = parent ? [{ field: "under", to: `task ${taskTitle(parent)}` }] : [];
   return {
     record: `New task ${taskTitle(after as unknown as { id: string; title: string })}`,
     id,
-    fields: [who === null ? { field: "", to: "no person or deal" } : { field: "for", to: who }, { field: "due", to: shown(names, "tasks", "due_at", after.due_at) }],
+    fields: [
+      who === null ? { field: "", to: "no person or deal" } : { field: "for", to: who },
+      ...under,
+      { field: "due", to: shown(names, "tasks", "due_at", after.due_at) },
+    ],
   };
 }
 

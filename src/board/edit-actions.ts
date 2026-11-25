@@ -31,7 +31,9 @@ import {
   refusedPage,
   stateOf,
 } from "./action-kit.ts";
-import { RETURN_FIELD } from "./forms.ts";
+import { descendants } from "../services/subtasks.ts";
+import { type FormContext, hidden, postForm, RETURN_FIELD } from "./forms.ts";
+import { renderPage } from "./layout.ts";
 import { html } from "./html.ts";
 import { errorSummary } from "./inputs.ts";
 import { addReturn } from "./lead-forms.ts";
@@ -42,12 +44,12 @@ import { checkSubStatus, personRow } from "./person-status-form.ts";
 import { dealEditPage, dealEditPath } from "./pages/deal-edit.ts";
 import { newDealPage, newDealPath, newDealSpecs } from "./pages/deal-new.ts";
 import { PERSON_DEAL_PATH, personDealPage } from "./pages/deal-new-person.ts";
-import { contactHref, dealHref } from "./parts.ts";
+import { contactHref, count, dealHref } from "./parts.ts";
 import { collectEdit, collectNew, dealSpecs, line, parseValue, personDealSpecs, postedValue } from "./record-form.ts";
 import { fieldId } from "./record-fields.ts";
 import { withChange } from "./return-to.ts";
 import { MORNING, snoozePresets } from "./snooze.ts";
-import { addTaskForm, quickSpecs, refusedQuickAdd, snoozeForms, type Subject, subjectHref, taskSpecs } from "./task-forms.ts";
+import { addTaskForm, quickSpecs, refusedQuickAdd, snoozeForms, type Subject, subjectHref, taskName, taskSpecs } from "./task-forms.ts";
 
 const NOTHING_TO_SAVE = "Nothing to save: every field is as it was. Change a value, or cancel to go back.";
 
@@ -240,12 +242,38 @@ async function taskHome(
   return { back: backTo(ctx, home), home, found: true, title: task.title, untrusted: task.untrusted_fields };
 }
 
-/** POST /tasks/<id>/complete: complete_task, one tap. */
+/** The question a task with open sub-tasks asks before it is done (no sub-task text is shown, only the count). */
+function subTasksPage(ctx: ActionContext, id: string, task: { title: string; untrusted: string }, open: number, back: string): string {
+  const name = taskName({ id, title: task.title, untrusted_fields: task.untrusted });
+  const form: FormContext = { csrf: ctx.csrf, here: back };
+  const choice = (value: string, label: string, className: string) =>
+    postForm("confirm", `/tasks/${id}/complete`, form, html`${hidden("subtasks", value)}<button class="${className}" type="submit">${label}</button>`);
+  return renderPage({
+    title: "Complete its sub-tasks too?",
+    description: "This task has open sub-tasks. Complete them too, or only this task, or cancel to go back.",
+    frame: { look: ctx.look },
+    body: html`<h1>Complete its sub-tasks too?</h1>
+<p class="lede">${name} has ${count(open, "open sub-task")}.</p>
+<div class="confirm-actions">
+${choice("complete", "Complete them too", "button")}
+${choice("leave", "Only this task", "button")}
+<a class="confirm-cancel" href="${back}">Cancel</a>
+</div>`,
+  });
+}
+
+/** POST /tasks/<id>/complete: complete_task, one tap; a task with open sub-tasks asks first. */
 async function complete(ctx: ActionContext, id: string): Promise<ActionResult> {
   const home = await taskHome(ctx, id);
   if (!home.found) return notFound(ctx);
   try {
-    const result = await completeTask(asOwner(ctx, "complete_task"), id);
+    const asked = ctx.form.get("subtasks");
+    const subTasks = asked === "complete" || asked === "leave" ? asked : undefined;
+    if (subTasks === undefined) {
+      const open = (await descendants(ctx.db, id)).filter((kid) => kid.done_at === null).length;
+      if (open > 0 && (await getTask(ctx.db, id))?.done_at === null) return page(200, subTasksPage(ctx, id, home, open, home.back));
+    }
+    const result = await completeTask(asOwner(ctx, "complete_task"), id, { subTasks });
     return redirect(withChange(home.back, result.changeId));
   } catch (error) {
     return page(422, refusedPage(ctx, "The task wasn't marked done", refusal(error, "task"), home.back, "", home.home));

@@ -215,3 +215,25 @@ test("getDealBrief lists the deal's projects only while projects are on", async 
   await db.prepare("UPDATE settings SET projects = 0").run();
   assert.equal("projects" in (await getDealBrief(db, "dl_seed07", DEFAULT_TZ, NOW)), false);
 });
+
+test("task items carry parent, depth, position and direct sub-task counts; an outside parent title is null; off hides them", async () => {
+  const { db, retrofit } = await setup();
+  const top = (await addTask(ctxFor(db, "add_task"), { project: retrofit, title: "Order anchors" })).taskId;
+  const kid = (await addTask(ctxFor(db, "add_task"), { parent: top, title: "Pick supplier" })).taskId;
+  const grand = (await addTask(ctxFor(db, "add_task"), { parent: kid, title: "Get quotes" })).taskId;
+  const other = (await addTask(ctxFor(db, "add_task"), { parent: top, title: "Pay deposit" })).taskId;
+  await completeTask(ctxFor(db, "complete_task"), other);
+  const byId = async () => new Map((await listTaskItems(db, { status: "open", project: retrofit }, DEFAULT_TZ)).map((t) => [t.id, t]));
+  const items = await byId();
+  assert.deepEqual([items.get(top)?.parentId, items.get(top)?.depth, items.get(top)?.subTasks], [null, 0, { open: 1, done: 1 }]);
+  assert.deepEqual([items.get(kid)?.parentId, items.get(kid)?.parentTitle, items.get(kid)?.depth, items.get(kid)?.position], [top, "Order anchors", 1, 1]);
+  assert.deepEqual([items.get(grand)?.depth, items.get(grand)?.subTasks], [2, { open: 0, done: 0 }]);
+  await db.prepare("UPDATE tasks SET untrusted_fields = '[\"title\"]' WHERE id = ?").bind(top).run();
+  const outside = (await byId()).get(kid);
+  assert.deepEqual([outside?.parentId, outside?.parentTitle], [top, null]);
+  await db.prepare("UPDATE tasks SET parent_id = ? WHERE id = ?").bind(grand, top).run();
+  assert.equal(((await byId()).get(top))?.depth, 2);
+  await db.prepare("UPDATE settings SET projects = 0").run();
+  const off = (await listTaskItems(db, {}, DEFAULT_TZ)).find((t) => t.id === kid);
+  assert.deepEqual([off?.parentId, off?.parentTitle, off?.depth], [null, null, 0]);
+});

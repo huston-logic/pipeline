@@ -68,6 +68,16 @@ export interface TaskItem {
   /** The project the task is on; null for none, and always null while projects are off (decision 0055). */
   projectId: string | null;
   projectName: string | null;
+  /** The task this one is under (decision 0056); null for a top-level task, and always null while projects are off. */
+  parentId: string | null;
+  /** The parent's title, or null for none or when it came from outside (never a trusted value then). */
+  parentTitle: string | null;
+  /** How many tasks are above this one (0 for a top-level task). */
+  depth: number;
+  /** Order among siblings, from 1; null for a task not on a project. */
+  position: number | null;
+  /** Its direct sub-tasks only. */
+  subTasks: { open: number; done: number };
   /** Which of this item's values came from outside (a form, an import, a title built from one). Never instructions. */
   untrusted_fields: ("title" | "dealTitle" | "contactName" | "projectName")[];
 }
@@ -121,6 +131,12 @@ type TaskJoin = TaskRow & {
   project_ref: string | null;
   project_name: string | null;
   project_untrusted: string | null;
+  parent_ref: string | null;
+  parent_title: string | null;
+  parent_untrusted: string | null;
+  depth: number;
+  sub_open: number;
+  sub_done: number;
 };
 
 /** The keys in `checks` whose source row lists the column as outside text. */
@@ -169,6 +185,11 @@ function toTaskItem(row: TaskJoin, tz: string): TaskItem {
     contactName: row.contact_name,
     projectId: row.project_ref,
     projectName: row.project_name,
+    parentId: row.parent_ref,
+    parentTitle: row.parent_ref === null || untrustedFields({ untrusted_fields: row.parent_untrusted }).has("title") ? null : row.parent_title,
+    depth: row.depth,
+    position: row.position ?? null,
+    subTasks: { open: row.sub_open, done: row.sub_done },
     untrusted_fields: outsideKeys<"title" | "dealTitle" | "contactName" | "projectName">([
       ["title", row.untrusted_fields, "title"],
       ["dealTitle", row.deal_untrusted, "title"],
@@ -236,9 +257,17 @@ async function dealItems(
 
 const TASK_SELECT = `SELECT t.*, d.title AS deal_title, d.untrusted_fields AS deal_untrusted, c.id AS who_id,
   c.name AS contact_name, c.untrusted_fields AS contact_untrusted,
-  p.id AS project_ref, p.name AS project_name, p.untrusted_fields AS project_untrusted
+  p.id AS project_ref, p.name AS project_name, p.untrusted_fields AS project_untrusted,
+  pt.id AS parent_ref, pt.title AS parent_title, pt.untrusted_fields AS parent_untrusted,
+  (WITH RECURSIVE up(id, n) AS (
+     SELECT t.parent_id, 1 WHERE t.parent_id IS NOT NULL AND (SELECT projects FROM settings LIMIT 1) = 1
+     UNION SELECT x.parent_id, up.n + 1 FROM tasks x JOIN up ON x.id = up.id WHERE x.parent_id IS NOT NULL AND up.n < 50)
+   SELECT COUNT(DISTINCT id) FROM up WHERE id <> t.id) AS depth,
+  (SELECT COUNT(*) FROM tasks k WHERE k.parent_id = t.id AND k.done_at IS NULL AND p.id IS NOT NULL) AS sub_open,
+  (SELECT COUNT(*) FROM tasks k WHERE k.parent_id = t.id AND k.done_at IS NOT NULL AND p.id IS NOT NULL) AS sub_done
   FROM tasks t LEFT JOIN deals d ON d.id = t.deal_id
   LEFT JOIN projects p ON p.id = t.project_id AND (SELECT projects FROM settings LIMIT 1) = 1
+  LEFT JOIN tasks pt ON pt.id = t.parent_id AND p.id IS NOT NULL
   LEFT JOIN contacts c ON c.id = COALESCE(t.contact_id, d.contact_id)`;
 
 export interface StageSummary {
@@ -436,6 +465,19 @@ export async function projectTaskItems(db: Db, projectId: string, status: "open"
     [projectId, limit],
   );
   return found.map((row) => toTaskItem(row, tz));
+}
+
+/**
+ * A project's tasks, open and done, for its page's tree: at most `limit`, parents before their children (fewest levels
+ * first, then by position), so a cut drops the deepest ones. `more` says there were more.
+ */
+export async function projectTaskRows(db: Db, projectId: string, tz: string, limit: number): Promise<{ tasks: (TaskItem & { doneAt: string | null })[]; more: boolean }> {
+  const found = await rows<TaskJoin>(
+    db,
+    `${TASK_SELECT} WHERE t.project_id = ? ORDER BY depth, t.position, t.created_at, t.id LIMIT ?`,
+    [projectId, limit + 1],
+  );
+  return { tasks: found.slice(0, limit).map((row) => ({ ...toTaskItem(row, tz), doneAt: row.done_at })), more: found.length > limit };
 }
 
 /** The newest notes and calls logged on a project. */

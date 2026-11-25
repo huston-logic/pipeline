@@ -11,7 +11,7 @@ import { rowLabel } from "./describe.ts";
 import { UserError } from "./errors.ts";
 import { clean, whenOrNull } from "./input.ts";
 import { isTrusted } from "./labels.ts";
-import { contactById, dealById, ownerTimezone, projectById, type Source, workTypeById } from "./lookup.ts";
+import { contactById, dealById, nextPosition, ownerTimezone, projectById, type Source, workTypeById } from "./lookup.ts";
 import { requireTimeTracking } from "./settings.ts";
 import {
   ENTRY_MAX_MINUTES,
@@ -198,6 +198,8 @@ export async function stopTimer(
       deal_id: deal?.id ?? null,
       contact_id: contact?.id ?? null,
       project_id: project?.id ?? null,
+      parent_id: null,
+      position: project ? await nextPosition(ctx, project.id, null) : null,
       title: nextStepTitle(deal, project),
       due_at: whenOrNull(input.nextStepDate, tz),
       done_at: null,

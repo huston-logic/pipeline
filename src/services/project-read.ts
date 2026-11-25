@@ -8,7 +8,7 @@ import { projectStatusRows, settingsRow } from "./memo.ts";
 import { projectStatusLabels } from "./project-statuses.ts";
 import { fieldMatch, type Where } from "./where-kit.ts";
 import { findProject } from "./projects.ts";
-import { projectTaskItems, projectTimeline, type TaskItem, type TimelineItem } from "./read.ts";
+import { projectTaskItems, projectTaskRows, projectTimeline, type TaskItem, type TimelineItem } from "./read.ts";
 import { requireProjects } from "./settings.ts";
 import { amountOf } from "./time-format.ts";
 import { UserError } from "./errors.ts";
@@ -85,7 +85,39 @@ export type ProjectDetail = Omit<ProjectItem, "openTasks"> & {
   time: ProjectTime | null;
   /** How many tasks are open (the list is capped). */
   openTaskCount: number;
+  /** The task tree (decision 0057), built from at most 500 tasks. */
+  taskTree: TaskTree;
 };
+
+export type TaskNode = TaskItem & { doneAt: string | null; children: TaskNode[] };
+
+export interface TaskTree {
+  /** Top-level tasks not done, each with all its sub-tasks (done ones too), siblings in order. */
+  open: TaskNode[];
+  /** Top-level done tasks with their subtrees, latest done first, at most 20. */
+  done: TaskNode[];
+  /** There were more than 500 tasks; the deepest were left out. */
+  truncated: boolean;
+}
+
+export const TREE_TASK_LIMIT = 500;
+
+/** Arranges the rows (parents first) into nodes; a task whose parent is not among the rows is left out. */
+async function taskTree(db: Db, projectId: string, tz: string): Promise<TaskTree> {
+  const { tasks, more } = await projectTaskRows(db, projectId, tz, TREE_TASK_LIMIT);
+  const nodes = new Map<string, TaskNode>(tasks.map((task) => [task.id, { ...task, children: [] }]));
+  const top: TaskNode[] = [];
+  for (const node of nodes.values()) {
+    if (node.parentId === null) top.push(node);
+    else nodes.get(node.parentId)?.children.push(node);
+  }
+  const doneFirst = (a: TaskNode, b: TaskNode) => (b.doneAt ?? "").localeCompare(a.doneAt ?? "") || b.id.localeCompare(a.id);
+  return {
+    open: top.filter((node) => node.doneAt === null),
+    done: top.filter((node) => node.doneAt !== null).sort(doneFirst).slice(0, SECTION_LIMIT),
+    truncated: more,
+  };
+}
 
 type ProjectJoin = {
   id: string;
@@ -243,6 +275,7 @@ export async function getProject(db: Db, ref: string, _now: Date): Promise<Proje
     ...item,
     notes: row.notes,
     openTaskCount,
+    taskTree: await taskTree(db, project.id, tz),
     openTasks: await projectTaskItems(db, project.id, "open", tz, OPEN_TASK_LIMIT),
     doneTasks: await projectTaskItems(db, project.id, "done", tz, SECTION_LIMIT),
     timeline: await projectTimeline(db, project.id, tz, SECTION_LIMIT),

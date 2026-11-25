@@ -16,6 +16,10 @@ export interface BriefTask {
   contactName: string | null;
   /** The task's project; null or missing for none, and always null while projects are off. */
   projectName?: string | null;
+  /** Set only for a sub-task: the project's id (for its safe label) and the parent's title, null when it came from outside. */
+  projectId?: string | null;
+  parentId?: string | null;
+  parentTitle?: string | null;
   untrusted_fields: readonly string[];
 }
 
@@ -100,6 +104,15 @@ export const OUTSIDE_LABEL = "[from outside] ";
 
 const textLine = (item: BriefItem) => (item.untrusted ? `- ${OUTSIDE_LABEL}${item.line.slice(2)}` : item.line);
 
+/** "Order anchors", or "a task" when the parent's title came from outside. */
+const subTaskParent = (task: BriefTask) => (task.parentTitle == null ? "a task" : flat(task.parentTitle));
+
+/** The project's name, or "project pj_…" when it came from outside; a sub-task always has a project. */
+function subTaskProject(task: BriefTask): string {
+  if (task.projectName == null) return "no project";
+  return task.untrusted_fields.includes("projectName") ? `project ${task.projectId ?? ""}`.trim() : flat(task.projectName);
+}
+
 export function composeBrief(input: BriefInput): ComposedBrief {
   const { now, tz } = input;
   const date = localDate(now, tz);
@@ -109,15 +122,19 @@ export function composeBrief(input: BriefInput): ComposedBrief {
     items.push({ section, id, line: `- ${line}`, untrusted: fields.length > 0 });
 
   const taskLine = (task: BriefTask, when: string) => {
+    const due = task.dueAt === null ? "" : `, ${when} ${formatLocal(task.dueAt, tz)}`;
+    if (task.parentId != null) return `${flat(task.title)}, under ${subTaskParent(task)}, ${subTaskProject(task)}${due}`;
     const project = task.projectName == null ? null : `project "${flat(task.projectName)}"`;
     const who = [task.contactName === null ? null : flat(task.contactName), task.dealTitle === null ? null : flat(task.dealTitle), project].filter(
       (part): part is string => part !== null,
     );
     const context = who.length > 0 ? ` (${who.join(", ")})` : "";
-    return `${flat(task.title)}${context}${task.dueAt === null ? "" : `, ${when} ${formatLocal(task.dueAt, tz)}`}`;
+    return `${flat(task.title)}${context}${due}`;
   };
-  for (const task of input.tasks.overdue) add("overdue", task.id, taskLine(task, "was due"), task.untrusted_fields);
-  for (const task of input.tasks.today) add("due_today", task.id, taskLine(task, "due"), task.untrusted_fields);
+  // A sub-task's parent and project are named by their safe labels, so an outside name never makes the item untrusted.
+  const fieldsOf = (task: BriefTask) => (task.parentId != null ? task.untrusted_fields.filter((f) => f !== "projectName") : task.untrusted_fields);
+  for (const task of input.tasks.overdue) add("overdue", task.id, taskLine(task, "was due"), fieldsOf(task));
+  for (const task of input.tasks.today) add("due_today", task.id, taskLine(task, "due"), fieldsOf(task));
   for (const deal of input.quietDeals) {
     const line = `${flat(deal.title)} (${flat(deal.contactName)}): ${plural(deal.quietDays, "day")} with no contact`;
     add("gone_quiet", deal.id, line, deal.untrusted_fields);
