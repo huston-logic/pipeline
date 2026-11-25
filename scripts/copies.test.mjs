@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join, relative, resolve } from "node:path";
 import { createFakeCloudflare, STUB_ACCOUNT_ID } from "../tests/helpers/wrangler-stub.mjs";
 import { createTestDb } from "../src/db/sqlite-d1.ts";
-import { EXPORT_TABLES } from "../src/http/export.ts";
+import { EXPORT_TABLES, exportSelect } from "../src/http/export.ts";
 import { parseCsv } from "../src/http/csv.ts";
 import { checkWranglerConfig } from "./check-config.mjs";
 import {
@@ -387,7 +387,7 @@ test("export reads every export table and writes JSON, CSV and all.json in the b
   const selects = commands(h.calls).filter((cmd) => cmd.at(-1).startsWith("SELECT"));
   assert.deepEqual(
     selects,
-    EXPORT_TABLES.map((table) => ["wrangler", "d1", "execute", "DB", ...remote, `SELECT * FROM ${table} ORDER BY rowid`]),
+    EXPORT_TABLES.map((table) => ["wrangler", "d1", "execute", "DB", ...remote, exportSelect(table)]),
   );
   assert.ok(commands(h.calls).some((cmd) => cmd.at(-1) === "PRAGMA table_info(deals)"), "an empty table still gets its header");
   assert.ok(!commands(h.calls).some((cmd) => cmd.at(-1) === "PRAGMA table_info(contacts)"));

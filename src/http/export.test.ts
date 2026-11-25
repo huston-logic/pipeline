@@ -1,10 +1,15 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { createTestDb } from "../db/sqlite-d1.ts";
 import {
   csvFilename,
+  EXPORT_COLUMNS,
+  EXPORT_HIDDEN_COLUMNS,
   EXPORT_ROWS_PER_CHUNK,
   EXPORT_TABLES,
+  exportAll,
   exportJsonChunks,
+  exportTableCsv,
   type ExportTable,
   type FullExport,
   jsonFilename,
@@ -24,6 +29,10 @@ test("the export holds every table of the copy's data, time tracking's three inc
       "time_entries",
       "work_types",
       "client_rates",
+      "campaigns",
+      "campaign_steps",
+      "campaign_recipients",
+      "email_suppressions",
       "stages",
       "person_statuses",
       "person_substatuses",
@@ -39,6 +48,28 @@ test("the export holds every table of the copy's data, time tracking's three inc
       "email_log",
     ],
   );
+});
+
+test("the recipients export, JSON and CSV, never holds an unsubscribe token, empty or not", async () => {
+  const db = await createTestDb();
+  const emptyCsv = await exportTableCsv(db, "campaign_recipients");
+  assert.ok(emptyCsv.startsWith("id,campaign_id,step_id,contact_id,email,"), "the header row is there when empty");
+  assert.doesNotMatch(emptyCsv, /unsub_token/);
+  db.exec("INSERT INTO contacts (id, name, email) VALUES ('ct_a', 'Pat Example', 'pat@example.com')");
+  db.exec("INSERT INTO campaigns (id, name, audience) VALUES ('cp_a', 'Autumn', '{}')");
+  db.exec("INSERT INTO campaign_steps (id, campaign_id, position, subject, body) VALUES ('cs_a', 'cp_a', 1, 'Hi', 'Hello')");
+  db.exec(
+    "INSERT INTO campaign_recipients (id, campaign_id, step_id, contact_id, email, status, unsub_token) VALUES ('rc_a', 'cp_a', 'cs_a', 'ct_a', 'pat@example.com', 'queued', 'secret-token-value')",
+  );
+  const csv = await exportTableCsv(db, "campaign_recipients");
+  assert.match(csv, /rc_a/);
+  assert.doesNotMatch(csv, /unsub_token|secret-token-value/);
+  const full = JSON.stringify((await exportAll(db, new Date("2026-11-24T18:00:00.000Z"))).tables);
+  assert.match(full, /rc_a/);
+  assert.doesNotMatch(full, /unsub_token|secret-token-value/);
+  assert.deepEqual(EXPORT_HIDDEN_COLUMNS, { campaign_recipients: ["unsub_token"] });
+  const info = (await db.prepare("PRAGMA table_info(campaign_recipients)").all<{ name: string }>()).results.map((c) => c.name);
+  assert.deepEqual([...(EXPORT_COLUMNS.campaign_recipients ?? []), "unsub_token"].sort(), [...info].sort(), "no column is left out by mistake");
 });
 
 test("export file names are letters, digits, dots, dashes and underscores only", () => {

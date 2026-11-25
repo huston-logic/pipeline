@@ -218,6 +218,30 @@ const sameRow = (current: Row | null, expected: Row | null) =>
 const dependsMessage = (changeId: string, what: string) =>
   `Can't undo ${changeId}: other records now depend on it (${what}). Change those first, or leave it.`;
 
+/**
+ * The tools whose changes can never be undone: a campaign's sending steps (an email that went out can't be taken back;
+ * Pause or Cancel stops the rest) and an unsubscribe or delivery result (the person asked, or the mail system said so).
+ */
+export const CAMPAIGN_FINAL_TOOLS = [
+  "campaign_approve",
+  "campaign_schedule",
+  "campaign_send",
+  "campaign_pause",
+  "campaign_resume",
+  "campaign_cancel",
+  "campaign_test",
+  "unsubscribe",
+  "campaign_webhook",
+] as const;
+
+const finalMessage = (changeId: string, tool: string) =>
+  `Can't undo ${changeId}. ` +
+  (tool === "unsubscribe"
+    ? "An unsubscribe can't be undone."
+    : "A campaign's sending steps can't be undone. Use Pause or Cancel on its page.");
+
+const isFinalTool = (tool: string) => (CAMPAIGN_FINAL_TOOLS as readonly string[]).includes(tool);
+
 const alreadyUndone = (changeId: string, audit: AuditRow) =>
   `${changeId} was already undone (by ${audit.undone_by ?? "an earlier undo"}). Nothing to do.`;
 
@@ -582,6 +606,9 @@ const NOUNS: Record<ChangeTable, [string, string]> = {
   work_types: ["work type", "work types"],
   client_rates: ["client rate", "client rates"],
   time_entries: ["time entry", "time entries"],
+  campaigns: ["campaign", "campaigns"],
+  campaign_steps: ["campaign email", "campaign emails"],
+  email_suppressions: ["campaign email block", "campaign email blocks"],
 };
 
 /** "2,000 contacts and 3 fields": the entries counted by table, in the order the tables first appear. */
@@ -633,6 +660,7 @@ export async function undoChange(ctx: Ctx, changeId: string): Promise<ChangeResu
   const original = await db.prepare("SELECT * FROM audit_log WHERE id = ?").bind(id).first<AuditRow>();
   if (!original) throw new UserError(`There's no change ${id}. Use recent_changes to find the change id.`);
   if (original.undo_of !== null) throw new UserError("Undo entries can't be undone; make the change again instead.");
+  if (isFinalTool(original.tool)) throw new UserError(finalMessage(id, original.tool));
   if (original.undone_at !== null) throw new UserError(alreadyUndone(id, original));
   if (!isChangeTable(original.target_table)) throw new Error(`Change ${id} targets an unknown table.`);
 

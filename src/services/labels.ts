@@ -50,6 +50,9 @@ export const activityText = (activity: ActivityLike) =>
 /** How a summary names a push subscription: by id only, never by its endpoint (decision 0030). */
 export const pushLabel = (id: string) => `notifications on one device (${id})`;
 
+/** A campaign by id only: its name may be written by the AI, so no summary or error carries it. */
+export const campaignLabel = (id: string) => `campaign ${id}`;
+
 /** The row's untrusted_fields without `fields`: what is left once the owner or the AI has set them. */
 export function withoutUntrusted(row: WithProvenance, fields: string[]): string {
   return JSON.stringify([...untrustedFields(row)].filter((field) => !fields.includes(field)));

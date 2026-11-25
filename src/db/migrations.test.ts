@@ -797,6 +797,84 @@ test("0018: one running timer, an end and minutes together, at most 16 hours, li
   await assert.rejects(db.prepare("UPDATE time_entries SET deal_id = 'dl_none' WHERE id = 'te_h'").run(), /FOREIGN KEY/);
 });
 
+test("0019 from the previous version: settings keep their values and gain campaigns off, no address, a limit of 90", async () => {
+  const db = new SqliteD1();
+  await applyMigrations(db, 18);
+  applySqlFile(db, "seed/defaults.sql");
+  db.exec("UPDATE settings SET timezone = 'Europe/London', time_tracking = 1, version = 6");
+  assert.deepEqual(await applyMigrations(db, 19), ["0019_campaigns.sql"]);
+  const row = await db.prepare("SELECT timezone, time_tracking, version, campaigns, postal_address, campaign_daily_limit FROM settings").first();
+  assert.deepEqual(
+    { ...row },
+    { timezone: "Europe/London", time_tracking: 1, version: 6, campaigns: 0, postal_address: null, campaign_daily_limit: 90 },
+  );
+  assert.throws(() => db.exec("UPDATE settings SET campaigns = 2"), /CHECK/);
+  assert.throws(() => db.exec("UPDATE settings SET campaign_daily_limit = 0"), /CHECK/);
+  assert.throws(() => db.exec("UPDATE settings SET campaign_daily_limit = 5001"), /CHECK/);
+  db.exec("UPDATE settings SET campaign_daily_limit = 5000");
+  assert.throws(() => db.exec("UPDATE settings SET postal_address = ''"), /CHECK/);
+  assert.throws(() => db.exec(`UPDATE settings SET postal_address = '${"x".repeat(301)}'`), /CHECK/);
+  db.exec("UPDATE settings SET postal_address = '1 Example Street'");
+  for (const table of ["campaigns", "campaign_steps", "campaign_recipients", "campaign_batches", "email_suppressions"]) {
+    assert.equal(await count(db, table), 0, table);
+  }
+});
+
+test("0019: one recipient per person and per address, a token on one row only, one live suppression per address", async () => {
+  const db = await createTestDb();
+  await addContact(db, "ct_a", "pat@example.com");
+  await addContact(db, "ct_b", "sam@example.com");
+  db.exec("INSERT INTO campaigns (id, name, audience) VALUES ('cp_a', 'Autumn', '{\"kind\":\"status\",\"status\":\"client\"}')");
+  db.exec("INSERT INTO campaign_steps (id, campaign_id, position, subject, body) VALUES ('cs_a', 'cp_a', 1, 'Hello', 'Hi {first_name}')");
+  const campaign = await db.prepare("SELECT status, first_name_fallback, archived, version FROM campaigns").first();
+  assert.deepEqual({ ...campaign }, { status: "draft", first_name_fallback: "there", archived: 0, version: 1 });
+  assert.throws(() => db.exec("INSERT INTO campaigns (id, name, audience) VALUES ('cp_b', 'Bad', 'not json')"), /CHECK/);
+  assert.throws(() => db.exec("INSERT INTO campaigns (id, name, status, audience) VALUES ('cp_b', 'Bad', 'live', '{}')"), /CHECK/);
+  assert.throws(() => db.exec("INSERT INTO campaigns (id, name, audience) VALUES ('cp_b', '', '{}')"), /CHECK/);
+  assert.throws(() => db.exec("INSERT INTO campaign_steps (id, campaign_id, position, subject, body) VALUES ('cs_b', 'cp_a', 1, 'Again', 'Hi')"), /UNIQUE/);
+  assert.throws(() => db.exec("INSERT INTO campaign_steps (id, campaign_id, position, subject, body, button_label) VALUES ('cs_b', 'cp_a', 2, 'S', 'B', 'Book')"), /CHECK/);
+  assert.throws(
+    () => db.exec("INSERT INTO campaign_steps (id, campaign_id, position, subject, body, button_label, button_url) VALUES ('cs_b', 'cp_a', 2, 'S', 'B', 'Book', 'http://example.com/')"),
+    /CHECK/,
+  );
+  db.exec("INSERT INTO campaign_steps (id, campaign_id, position, subject, body, button_label, button_url) VALUES ('cs_b', 'cp_a', 2, 'S', 'B', 'Book', 'https://example.com/book')");
+
+  const recipient = (id: string, contact: string, email: string, status: string, token: string | null) => () =>
+    db
+      .prepare("INSERT INTO campaign_recipients (id, campaign_id, step_id, contact_id, email, status, unsub_token) VALUES (?, 'cp_a', 'cs_a', ?, ?, ?, ?)")
+      .bind(id, contact, email, status, token)
+      .run();
+  await recipient("rc_a", "ct_a", "pat@example.com", "queued", "tok_a")();
+  await assert.rejects(recipient("rc_b", "ct_a", "other@example.com", "queued", "tok_b")(), /UNIQUE/, "one row per person and step");
+  await assert.rejects(recipient("rc_c", "ct_b", "pat@example.com", "queued", "tok_c")(), /UNIQUE/, "one live row per address");
+  await assert.rejects(recipient("rc_d", "ct_b", "sam@example.com", "queued", "tok_a")(), /UNIQUE/, "one row per token");
+  await assert.rejects(recipient("rc_e", "ct_b", "Sam@Example.com", "queued", "tok_e")(), /CHECK/, "emails are stored lowercased");
+  await assert.rejects(recipient("rc_f", "ct_b", "sam@example.com", "pending", "tok_f")(), /CHECK/);
+  // A skipped row neither holds the address nor needs a token, and several skipped rows may have none.
+  await recipient("rc_g", "ct_b", "pat@example.com", "skipped", null)();
+  db.exec("DELETE FROM campaign_recipients WHERE id = 'rc_g'");
+  db.exec("INSERT INTO contacts (id, name) VALUES ('ct_c', 'No Email'), ('ct_d', 'Also None')");
+  await recipient("rc_h", "ct_c", "x@example.com", "skipped", null)();
+  await recipient("rc_i", "ct_d", "x@example.com", "skipped", null)();
+  await assert.rejects(
+    db.prepare("UPDATE campaign_recipients SET skip_reason = 'rude' WHERE id = 'rc_h'").run(),
+    /CHECK/,
+  );
+
+  db.exec("INSERT INTO campaign_batches (id, campaign_id, kind) VALUES ('cb_a', 'cp_a', 'send')");
+  assert.deepEqual({ ...(await db.prepare("SELECT status, attempts, last_status FROM campaign_batches").first()) }, { status: "in_flight", attempts: 1, last_status: null });
+  assert.throws(() => db.exec("INSERT INTO campaign_batches (id, campaign_id, kind) VALUES ('cb_b', 'cp_a', 'bulk')"), /CHECK/);
+
+  const suppression = (id: string, email: string, cleared: string | null = null) => () =>
+    db.prepare("INSERT INTO email_suppressions (id, email, reason, cleared_at) VALUES (?, ?, 'unsubscribed', ?)").bind(id, email, cleared).run();
+  await suppression("su_a", "pat@example.com")();
+  await assert.rejects(suppression("su_b", "pat@example.com")(), /UNIQUE/);
+  await assert.rejects(suppression("su_c", "Pat@Example.com")(), /CHECK/);
+  await suppression("su_d", "pat@example.com", "2026-11-20T10:00:00.000Z")();
+  assert.throws(() => db.exec("INSERT INTO email_suppressions (id, email, reason) VALUES ('su_e', 'z@example.com', 'rude')"), /CHECK/);
+  await assert.rejects(db.prepare("UPDATE campaign_recipients SET contact_id = 'ct_none' WHERE id = 'rc_a'").run(), /FOREIGN KEY/);
+});
+
 /**
  * Fake rows for every table, with only the columns the table had when it was created, so they load at any later
  * version. A migration that adds a table must add its rows here (the test below fails until it does).
@@ -843,6 +921,15 @@ const FAKE_ROWS: Record<string, string> = {
     "INSERT INTO time_entries (id, contact_id, deal_id, task_id, started_at, ended_at, minutes, work_type_id, billable, rate, notes, activity_id) " +
     "VALUES ('te_fake', 'ct_fake', 'dl_fake', 'tk_fake', '2026-11-18T17:00:00.000Z', '2026-11-18T18:30:00.000Z', 90, 'wt_fake', 1, 95.5, 'Homepage', 'ac_fake'), " +
     "('te_fakerun', NULL, NULL, NULL, '2026-11-18T19:00:00.000Z', NULL, NULL, NULL, 0, NULL, NULL, NULL)",
+  campaigns:
+    "INSERT INTO campaigns (id, name, audience, suggested_send_at) VALUES ('cp_fake', 'Autumn news', '{\"kind\":\"status\",\"status\":\"contact\"}', '2026-11-20T17:00:00.000Z')",
+  campaign_steps:
+    "INSERT INTO campaign_steps (id, campaign_id, position, subject, body, button_label, button_url) VALUES ('cs_fake', 'cp_fake', 1, 'Hello', 'Hi {first_name}', 'Book', 'https://example.com/book')",
+  campaign_batches: "INSERT INTO campaign_batches (id, campaign_id, kind) VALUES ('cb_fake', 'cp_fake', 'send')",
+  campaign_recipients:
+    "INSERT INTO campaign_recipients (id, campaign_id, step_id, contact_id, email, first_name, status, unsub_token, batch_id) VALUES ('rc_fake', 'cp_fake', 'cs_fake', 'ct_fake', 'pat@example.com', 'Pat', 'queued', 'fake-token', 'cb_fake')",
+  email_suppressions:
+    "INSERT INTO email_suppressions (id, email, reason, contact_id, campaign_id) VALUES ('su_fake', 'gone@example.com', 'unsubscribed', 'ct_fake', 'cp_fake')",
 };
 
 /**

@@ -15,6 +15,10 @@ export const EXPORT_TABLES = [
   "time_entries",
   "work_types",
   "client_rates",
+  "campaigns",
+  "campaign_steps",
+  "campaign_recipients",
+  "email_suppressions",
   "stages",
   "person_statuses",
   "person_substatuses",
@@ -43,12 +47,41 @@ export function isExportTable(name: string): name is ExportTable {
   return (EXPORT_TABLES as readonly string[]).includes(name);
 }
 
-// Table names come only from EXPORT_TABLES, never from the request, so interpolating them is safe.
-const selectAll = (table: ExportTable) => `SELECT * FROM ${table} ORDER BY rowid`;
+/** Columns an export never holds: a recipient's unsubscribe token is a secret link (campaigns design, ruling 9). */
+export const EXPORT_HIDDEN_COLUMNS: Partial<Record<ExportTable, readonly string[]>> = {
+  campaign_recipients: ["unsub_token"],
+};
+
+/** A table with hidden columns is read by naming the others, in table order; a test keeps the two lists whole. */
+export const EXPORT_COLUMNS: Partial<Record<ExportTable, readonly string[]>> = {
+  campaign_recipients: [
+    "id",
+    "campaign_id",
+    "step_id",
+    "contact_id",
+    "email",
+    "first_name",
+    "status",
+    "skip_reason",
+    "batch_id",
+    "claimed_at",
+    "resend_id",
+    "sent_at",
+    "delivered_at",
+    "bounced_at",
+    "complained_at",
+    "unsubscribed_at",
+    "version",
+  ],
+};
+
+/** The read of one table, shared with `npm run copies:export`. Names come only from the lists above, never from a request. */
+export const exportSelect = (table: ExportTable): string =>
+  `SELECT ${EXPORT_COLUMNS[table]?.join(", ") ?? "*"} FROM ${table} ORDER BY rowid`;
 
 /** Every table in one D1 batch, so the tables are read from the same moment. */
 export async function exportAll(db: Db, now: Date): Promise<FullExport> {
-  const results = await db.batch<ExportRow>(EXPORT_TABLES.map((table) => db.prepare(selectAll(table))));
+  const results = await db.batch<ExportRow>(EXPORT_TABLES.map((table) => db.prepare(exportSelect(table))));
   const tables = Object.fromEntries(EXPORT_TABLES.map((table, i) => [table, results[i]?.results ?? []]));
   return { exportedAt: now.toISOString(), tables: tables as FullExport["tables"] };
 }
@@ -91,7 +124,7 @@ export function exportJsonStream(full: FullExport): ReadableStream<Uint8Array> {
 
 /** One table as CSV, with its header row even when the table is empty. */
 export async function exportTableCsv(db: Db, table: ExportTable): Promise<string> {
-  const [columns = [], ...values] = await db.prepare(selectAll(table)).raw<unknown[]>({ columnNames: true });
+  const [columns = [], ...values] = await db.prepare(exportSelect(table)).raw<unknown[]>({ columnNames: true });
   const rows = values.map((value) => Object.fromEntries(columns.map((column, i) => [column, value[i]])));
   return toCsv(rows, columns);
 }
