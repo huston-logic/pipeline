@@ -10,7 +10,8 @@ import { UserError } from "../services/errors.ts";
 import { type ActionResult, type RecordAction, runAction } from "../services/proposal-actions.ts";
 import { proposeChanges } from "../services/proposals.ts";
 import { getAiEdits } from "../services/settings.ts";
-import { toolResult } from "./format.ts";
+import { wonDealsOfChange } from "../services/won-offers.ts";
+import { answerApplied } from "./start-project.ts";
 import { aiCtx, type ToolDeps } from "./tool.ts";
 import { proposeResult } from "./tools-proposals.ts";
 
@@ -24,14 +25,14 @@ const existing = (ref: string | undefined) => ref === undefined || !ref.trim().s
  */
 export function isSmallAction(action: RecordAction): boolean {
   if (action.action === "complete_task") return true;
-  if (action.action === "start_timer") return existing(action.deal) && existing(action.contact) && existing(action.task);
+  if (action.action === "start_timer") return existing(action.deal) && existing(action.contact) && existing(action.task) && existing(action.project);
   if (action.action === "stop_timer") return action.nextStepDate === undefined;
   if (action.action !== "log_activity") return false;
   return (action.type === "call" || action.type === "note") && existing(action.deal) && existing(action.contact);
 }
 
 /** The ids each record tool has always answered beside its change id, when the action made them. */
-const ANSWER_IDS = ["contactId", "dealId", "activityId", "taskId", "entryId", "matchedExisting"] as const;
+const ANSWER_IDS = ["contactId", "dealId", "activityId", "taskId", "entryId", "projectId", "matchedExisting"] as const;
 
 function answerData(result: ActionResult): Record<string, unknown> {
   const data: Record<string, unknown> = { changeId: result.changeId };
@@ -54,7 +55,9 @@ export async function recordWrite(deps: ToolDeps, action: RecordAction): Promise
   const options = { extraOwnerEmails: parseOwnerEmailsVar(deps.ownerEmailsVar) };
   if (isSmallAction(action) && (await getAiEdits(deps.db)) === "small") {
     const result = await runAction(ctx, action, options);
-    return toolResult(result.summary, answerData(result));
+    // Only a deal edit can mark a deal Won; the Won question (decision 0055) reads what the change did.
+    const won = action.action === "update_deal" ? await wonDealsOfChange(deps.db, result.changeId) : [];
+    return answerApplied(deps.db, result.summary, answerData(result), won);
   }
   try {
     return proposeResult(await proposeChanges(ctx, { actions: [action] }, options));

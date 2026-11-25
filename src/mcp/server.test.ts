@@ -23,6 +23,7 @@ const NOW = new Date("2026-11-19T18:00:00.000Z");
 const READ_TOOLS = [
   "get_campaign",
   "get_deal",
+  "get_project",
   "get_rulebook",
   "get_settings",
   "list_campaigns",
@@ -30,6 +31,7 @@ const READ_TOOLS = [
   "list_fields",
   "list_leads",
   "list_person_statuses",
+  "list_projects",
   "list_rules",
   "list_stages",
   "list_tasks",
@@ -50,6 +52,7 @@ const WRITE_TOOLS = [
   "add_field",
   "add_lead",
   "add_person_status",
+  "add_project",
   "add_rule",
   "add_stage",
   "add_sub_status",
@@ -79,6 +82,8 @@ const WRITE_TOOLS = [
   "update_deal",
   "update_field",
   "update_person_status",
+  "update_project",
+  "update_project_status",
   "update_rule",
   "update_rulebook",
   "update_settings",
@@ -132,6 +137,8 @@ const DESTRUCTIVE = [
   "update_deal",
   "update_field",
   "update_person_status",
+  "update_project",
+  "update_project_status",
   "update_rule",
   "update_rulebook",
   "update_settings",
@@ -152,6 +159,7 @@ const IDEMPOTENT = [
   "update_deal",
   "update_field",
   "update_person_status",
+  "update_project_status",
   "update_rule",
   "update_rulebook",
   "update_settings",
@@ -239,7 +247,8 @@ test("propose_changes names every record tool an action can be, and the whole @n
   assert.ok(
     description.includes(
       '"@n" names the person, deal or task action n adds: as the deal or contact of a later log_activity or add_task, or ' +
-        "as the deal, contact or task of a later start_timer or add_time_entry.",
+        "as the deal, contact or task of a later start_timer or add_time_entry. \"@n\" also names the project an earlier " +
+        "add_project adds, as the project of a later add_task, log_activity, start_timer or add_time_entry.",
     ),
     description,
   );

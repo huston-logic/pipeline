@@ -86,6 +86,7 @@ export async function approved(
   for (const [key, groups, prefix] of [
     ["contactId", [list.add, list.update], "ct_"],
     ["dealId", [list.add, list.update], "dl_"],
+    ["projectId", [list.add, list.update], "pj_"],
     ["taskId", [list.tasks], "tk_"],
     ["activityId", [list.notes], "ac_"],
   ] as const) {
