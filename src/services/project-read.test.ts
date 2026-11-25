@@ -10,7 +10,7 @@ import { logActivity } from "./activities.ts";
 import type { Ctx } from "./change.ts";
 import { getProject, listProjects } from "./project-read.ts";
 import { addProject, updateProject } from "./projects.ts";
-import { getDealBrief, listTaskItems, openTaskLists, whatsDue } from "./read.ts";
+import { getDealBrief, listTaskItems, openTaskLists, projectTaskItems, whatsDue } from "./read.ts";
 import { addTask, completeTask } from "./tasks.ts";
 import { addTimeEntry } from "./time-entries.ts";
 import { startTimer } from "./timer.ts";
@@ -56,12 +56,27 @@ test("listProjects: soonest target first, none last, then name; archived left ou
     startAt: null,
     targetAt: first?.targetAt,
     archived: false,
+    fields: {},
     openTasks: 0,
     untrusted_fields: [],
   });
   await updateProject(ctxFor(db, "update_project"), shed, { archived: true });
   assert.deepEqual(ids((await listProjects(db, {})).items), [garden, retrofit]);
   assert.deepEqual(ids((await listProjects(db, { includeArchived: true })).items), [garden, retrofit, shed]);
+});
+
+test("listProjects status open or closed means every live status of that kind, and statuses carry their kind", async () => {
+  const { db, garden, retrofit, shed } = await setup();
+  await updateProject(ctxFor(db, "update_project"), shed, { status: "done" });
+  assert.deepEqual(ids((await listProjects(db, { status: "open" })).items), [garden, retrofit]);
+  assert.deepEqual(ids((await listProjects(db, { status: "Closed" })).items), [shed]);
+  const all = await listProjects(db, {});
+  assert.deepEqual(all.statuses, [
+    { key: "active", label: "Active", kind: "open" },
+    { key: "on_hold", label: "On hold", kind: "open" },
+    { key: "done", label: "Done", kind: "closed" },
+  ]);
+  await assert.rejects(listProjects(db, { status: "nope" }), /no status "nope"/);
 });
 
 test("listProjects sorts by name or newest and filters by status and person", async () => {
@@ -150,6 +165,18 @@ test("getProject keeps the latest 20 done tasks and 20 notes; the time is null w
   assert.equal(detail.doneTasks[0]?.title, "Task 21", "latest done first");
   assert.equal(detail.timeline.length, 20);
   assert.equal(detail.time, null);
+});
+
+test("the done-task read selects only the latest rows, ties broken by id, in SQL", async () => {
+  const { db, retrofit } = await setup({ time: false });
+  for (let i = 0; i < 6; i++) {
+    const t = await addTask(ctxFor(db, "add_task"), { project: "Retrofit", title: `Task ${i}` });
+    await completeTask(ctxFor(db, "complete_task"), t.taskId);
+  }
+  const expected = (
+    await db.prepare("SELECT id FROM tasks WHERE project_id = ? ORDER BY done_at DESC, id DESC LIMIT 3").bind(retrofit).all<{ id: string }>()
+  ).results.map((r) => r.id);
+  assert.deepEqual(ids(await projectTaskItems(db, retrofit, "done", DEFAULT_TZ, 3)), expected);
 });
 
 test("an unknown project is a plain refusal", async () => {

@@ -1,32 +1,50 @@
-// add_project and update_project (decision 0055). A project is delivery work after a sale: a person, an optional won
-// deal it came from, a status, dates and notes. Making one never changes its deal; the deal's open tasks move only
-// when asked (moveOpenTasks), in the same change.
+// add_project and update_project (decision 0055). A project is delivery work after a sale: an optional person (none for
+// an internal project), an optional won deal it came from, a status, dates and notes. Making one never changes its
+// deal; the deal's open tasks move (moveOpenTasks) or are completed (completeOpenTasks) only when asked, in the same
+// change.
 import type { ContactRow, ProjectRow, ProjectStatusRow } from "../db/db.ts";
 import { newId } from "../ids.ts";
 import { formatLocal } from "../time.ts";
 import { type ChangeResult, commitChange, type Ctx, type RowChange, updatedRow } from "./change.ts";
-import { capitalize } from "./describe.ts";
+import { capitalize, fieldsLabel } from "./describe.ts";
 import { UserError } from "./errors.ts";
-import { clean, whenOrNull } from "./input.ts";
+import { checkFieldValues } from "./fields.ts";
+import { clean, whenOrNull, withoutNulls } from "./input.ts";
 import { contactName, dealLabel, dealTitle, isTrusted, projectLabel, projectTitle } from "./labels.ts";
-import { contactById, findSubject, openTasksOfDeal, ownerTimezone, projectById, type Source, sourceOf } from "./lookup.ts";
+import {
+  contactById,
+  type FieldValues,
+  findSubject,
+  mergeFields,
+  openTasksOfDeal,
+  ownerTimezone,
+  parseObject,
+  projectById,
+  type Source,
+  sourceOf,
+} from "./lookup.ts";
 import { projectStatusRows } from "./memo.ts";
+import { defaultProjectStatus, projectStatusLabels } from "./project-statuses.ts";
 import { requireProjects } from "./settings.ts";
 
 export interface ProjectInput {
   /** At most 200 characters on one line; defaults to the deal's title when that is the owner's. */
   name?: string;
-  /** Contact id or exact name. */
+  /** Contact id or exact name; leave out with the deal for an internal project. */
   contact?: string;
   /** A won deal's id, title or contact name. */
   deal?: string;
-  /** A status key or label; Active when left out. */
+  /** A status key or label; the first open status when left out. */
   status?: string;
   startAt?: string;
   targetAt?: string;
   notes?: string;
+  /** Custom project field values by key; checked against the live project fields. */
+  fields?: FieldValues;
   /** Moves every open task of the deal onto the project; needs a deal. */
   moveOpenTasks?: boolean;
+  /** Marks every open task of the deal done, leaving them on the deal; needs a deal, and wins over moveOpenTasks. */
+  completeOpenTasks?: boolean;
 }
 
 export interface ProjectPatch {
@@ -35,6 +53,8 @@ export interface ProjectPatch {
   startAt?: string | null;
   targetAt?: string | null;
   notes?: string | null;
+  /** Only the keys given change; null clears one. */
+  fields?: FieldValues;
   archived?: boolean;
 }
 
@@ -48,8 +68,8 @@ function checkName(raw: string | null | undefined): string {
   return name;
 }
 
-/** A project status by key or label (ignoring case). */
-async function findProjectStatus(src: Source, ref: string): Promise<ProjectStatusRow> {
+/** A live project status by key or label (ignoring case); an archived one is never accepted. */
+export async function findProjectStatus(src: Source, ref: string): Promise<ProjectStatusRow> {
   const text = ref.trim();
   const statuses = await projectStatusRows(src);
   const match = statuses.find((s) => s.key === text) ?? statuses.find((s) => s.label.toLowerCase() === text.toLowerCase());
@@ -85,38 +105,41 @@ function checkDates(startAt: string | null, targetAt: string | null): void {
   }
 }
 
-export async function addProject(ctx: Ctx, input: ProjectInput): Promise<ChangeResult & { projectId: string; contactId: string }> {
+export async function addProject(ctx: Ctx, input: ProjectInput): Promise<ChangeResult & { projectId: string; contactId?: string }> {
   await requireProjects(ctx);
   const tz = await ownerTimezone(ctx);
   const { deal, contact } = await findSubject(ctx, { dealId: input.deal, contactId: input.contact }, { optional: true });
-  if (contact === null) throw new UserError("A project needs a person: give contact, or a won deal.");
-  if (contact.archived === 1) throw new UserError(`${capitalize(contactName(contact))} is archived, so no project can be added for them.`);
+  if (contact !== null && contact.archived === 1) throw new UserError(`${capitalize(contactName(contact))} is archived, so no project can be added for them.`);
   if (deal && deal.status !== "won") {
     throw new UserError(`A project comes from a won deal. Mark ${dealTitle(deal)} Won first, or leave the deal out.`);
   }
-  if (deal && deal.archived === 1) throw new UserError(`${capitalize(dealLabel(deal, contact))} is archived, so a project can't come from it.`);
+  if (deal && contact && deal.archived === 1) throw new UserError(`${capitalize(dealLabel(deal, contact))} is archived, so a project can't come from it.`);
   if (input.moveOpenTasks === true && !deal) throw new UserError("moveOpenTasks needs a deal: give the won deal whose open tasks should move.");
+  if (input.completeOpenTasks === true && !deal) throw new UserError("completeOpenTasks needs a deal: give the won deal whose open tasks should be completed.");
 
   const given = clean(input.name);
   if (given === null && deal && !isTrusted(deal, "title")) {
     throw new UserError("Name the project in a few words (the deal's title came from outside).");
   }
   const name = checkName(given ?? (deal ? deal.title : null));
-  const status = await findProjectStatus(ctx, input.status ?? "active");
+  const status = input.status === undefined ? await defaultProjectStatus(ctx) : await findProjectStatus(ctx, input.status);
   const startAt = whenOrNull(input.startAt ?? null, tz);
   const targetAt = whenOrNull(input.targetAt ?? null, tz);
   checkDates(startAt, targetAt);
+  const fields = withoutNulls(input.fields ?? {});
+  await checkFieldValues(ctx, "project", fields);
 
   const now = ctx.now.toISOString();
   const project: ProjectRow = {
     id: newId("pj"),
     name,
-    contact_id: contact.id,
+    contact_id: contact?.id ?? null,
     deal_id: deal?.id ?? null,
     status_key: status.key,
     start_at: startAt,
     target_at: targetAt,
     notes: clean(input.notes),
+    fields: JSON.stringify(fields),
     archived: 0,
     untrusted_fields: "[]",
     version: 1,
@@ -124,25 +147,28 @@ export async function addProject(ctx: Ctx, input: ProjectInput): Promise<ChangeR
     updated_at: now,
   };
   const changes: RowChange[] = [{ table: "projects", id: project.id, before: null, after: project }];
-  const moved = deal && input.moveOpenTasks === true ? await openTasksOfDeal(ctx, deal.id) : [];
-  for (const task of moved) {
-    const after = updatedRow(task, { project_id: project.id, deal_id: null, contact_id: contact.id }, ctx.now);
-    changes.push({ table: "tasks", id: task.id, before: task, after });
+  const complete = input.completeOpenTasks === true;
+  const open = deal && (complete || input.moveOpenTasks === true) ? await openTasksOfDeal(ctx, deal.id) : [];
+  for (const task of open) {
+    const set = complete ? { done_at: ctx.now.toISOString() } : { project_id: project.id, deal_id: null, contact_id: contact?.id ?? null };
+    changes.push({ table: "tasks", id: task.id, before: task, after: updatedRow(task, set, ctx.now) });
   }
   const from = deal ? `, from ${dealTitle(deal)}` : "";
-  const movedText = moved.length === 0 ? "" : ` (moved ${moved.length} open task${moved.length === 1 ? "" : "s"})`;
+  const taskWord = `${open.length} open task${open.length === 1 ? "" : "s"}`;
+  const movedText = open.length === 0 ? "" : ` (${complete ? "completed" : "moved"} ${taskWord})`;
+  const forText = contact === null ? "" : ` for ${contactName(contact)}`;
   const result = await commitChange(ctx, {
     target: { table: "projects", id: project.id },
-    summary: `Added project ${projectTitle(project)} for ${contactName(contact)}${from}${movedText}`,
+    summary: `Added project ${projectTitle(project)}${forText}${from}${movedText}`,
     changes,
   });
-  return { ...result, projectId: project.id, contactId: contact.id };
+  return { ...result, projectId: project.id, ...(contact === null ? {} : { contactId: contact.id }) };
 }
 
 export async function updateProject(ctx: Ctx, ref: string, patch: ProjectPatch): Promise<ChangeResult & { projectId: string }> {
   const before = await findProject(ctx, ref);
-  const contact: ContactRow | null = await contactById(ctx, before.contact_id);
-  if (!contact) throw new Error(`Project ${before.id} points at a missing contact.`);
+  const contact: ContactRow | null = before.contact_id === null ? null : await contactById(ctx, before.contact_id);
+  if (before.contact_id !== null && !contact) throw new Error(`Project ${before.id} points at a missing contact.`);
   const tz = await ownerTimezone(ctx);
   const set: Partial<ProjectRow> = {};
   const parts: string[] = [];
@@ -157,7 +183,7 @@ export async function updateProject(ctx: Ctx, ref: string, patch: ProjectPatch):
   if (patch.status !== undefined) {
     const status = await findProjectStatus(ctx, patch.status);
     if (status.key !== before.status_key) {
-      const labels = new Map((await projectStatusRows(ctx)).map((s) => [s.key, s.label]));
+      const labels = await projectStatusLabels(ctx);
       set.status_key = status.key;
       parts.push(`status ${labels.get(before.status_key) ?? before.status_key} -> ${status.label}`);
     }
@@ -180,6 +206,15 @@ export async function updateProject(ctx: Ctx, ref: string, patch: ProjectPatch):
       parts.push(notes === null ? "notes cleared" : "notes updated");
     }
   }
+  if (patch.fields !== undefined) {
+    await checkFieldValues(ctx, "project", patch.fields);
+    const merged = mergeFields(before.fields, patch.fields);
+    const [was, now] = [parseObject(before.fields), parseObject(merged)];
+    if (JSON.stringify(now) !== JSON.stringify(was)) {
+      set.fields = merged;
+      parts.push(fieldsLabel(was, now));
+    }
+  }
   if (patch.archived !== undefined && (patch.archived ? 1 : 0) !== before.archived) {
     set.archived = patch.archived ? 1 : 0;
     parts.push(patch.archived ? "archived" : "brought back");
@@ -192,7 +227,7 @@ export async function updateProject(ctx: Ctx, ref: string, patch: ProjectPatch):
   const after = updatedRow(before, set, ctx.now);
   const result = await commitChange(ctx, {
     target: { table: "projects", id: before.id },
-    summary: `Updated project ${projectTitle(before)} (${contactName(contact)}): ${parts.join(", ")}`,
+    summary: `Updated project ${projectLabel(before, contact)}: ${parts.join(", ")}`,
     changes: [{ table: "projects", id: before.id, before, after }],
   });
   return { ...result, projectId: before.id };

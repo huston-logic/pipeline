@@ -4,10 +4,9 @@
 import { getSettings } from "../../db/queries.ts";
 import { isProjectId } from "../../ids.ts";
 import { ownerTimezone, projectById } from "../../services/lookup.ts";
-import { projectStatusRows } from "../../services/memo.ts";
 import type { PageContext } from "../context.ts";
 import { projectHref } from "../parts.ts";
-import { PROJECT_PREFIX, projectSavePath, projectSpecs } from "../project-form.ts";
+import { PROJECT_PREFIX, projectFieldDefs, projectSavePath, projectSpecs, statusChoices } from "../project-form.ts";
 import { editShown } from "../record-form.ts";
 import { type FormState, recordFormPage } from "./record-page.ts";
 import { projectEditPath } from "./project.ts";
@@ -17,8 +16,8 @@ export async function projectEditPage(ctx: PageContext, id: string, state?: Form
   const project = await projectById(ctx.db, id);
   if (project === null) return null;
   const tz = await ownerTimezone(ctx.db);
-  const specs = projectSpecs(await projectStatusRows(ctx.db));
-  const shown = state?.shown ?? (await editShown(specs, { ...project, fields: "{}" }, tz));
+  const specs = projectSpecs(await statusChoices(ctx.db, project.status_key), { defs: await projectFieldDefs(ctx.db) });
+  const shown = state?.shown ?? (await editShown(specs, project, tz));
   const back = projectHref(project.id);
   return recordFormPage(ctx, {
     title: "Edit project",

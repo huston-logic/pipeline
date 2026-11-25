@@ -22,7 +22,7 @@ async function setup(more = "") {
   return { db, c, count };
 }
 
-const RETROFIT = "INSERT INTO projects (id, name, contact_id, target_at) VALUES ('pj_seed01', 'Retrofit', 'ct_seed01', '2026-12-04T08:00:00.000Z')";
+const RETROFIT = "INSERT INTO projects (id, name, contact_id, status_key, target_at) VALUES ('pj_seed01', 'Retrofit', 'ct_seed01', 'active', '2026-12-04T08:00:00.000Z')";
 
 test("add_project and update_project propose under Review first and under Apply small changes, and write nothing", async () => {
   const { c, count } = await setup(RETROFIT);
@@ -50,7 +50,9 @@ test("a project tool while projects are off says so", async () => {
   await ok(c, "update_settings", { projects: false });
   assert.match(await fails(c, "list_projects"), /^Projects are off\./);
   assert.match(await fails(c, "get_project", { project: "pj_x" }), /^Projects are off\./);
-  assert.match(await fails(c, "update_project_status", { status: "done", label: "Finished" }), /^Projects are off\./);
+  assert.match(await fails(c, "update_project_status", { key: "done", label: "Finished" }), /^Projects are off\./);
+  assert.match(await fails(c, "add_project_status", { label: "Waiting" }), /^Projects are off\./);
+  assert.match(await fails(c, "archive_project_status", { key: "done" }), /^Projects are off\./);
   assert.match(await fails(c, "add_project", { contact: "ct_seed03", name: "x" }), /^Projects are off\./);
   assert.match(await fails(c, "add_task", { project: "Retrofit", title: "x" }), /^Projects are off\./);
   assert.match(await fails(c, "add_task", { project: "pj_none", title: "x" }), /^Projects are off\./);
@@ -58,7 +60,7 @@ test("a project tool while projects are off says so", async () => {
 
 test("update_project_status renames a status at once, as the AI, and undo takes it back", async () => {
   const { db, c } = await setup();
-  const renamed = await ok(c, "update_project_status", { status: "done", label: "Finished" });
+  const renamed = await ok(c, "update_project_status", { key: "Done", label: "Finished" });
   assert.match(renamed.headline, /^Renamed project status "Done" to "Finished" \(change chg_/);
   assert.equal(await db.prepare("SELECT label FROM project_statuses WHERE key = 'done'").first<string>("label"), "Finished");
   const log = await db.prepare("SELECT actor, tool FROM audit_log ORDER BY rowid DESC").first<{ actor: string; tool: string }>();
@@ -66,7 +68,23 @@ test("update_project_status renames a status at once, as the AI, and undo takes 
   const { changeId } = renamed.data as { changeId: string };
   await ok(c, "undo_change", { changeId });
   assert.equal(await db.prepare("SELECT label FROM project_statuses WHERE key = 'done'").first<string>("label"), "Done");
-  assert.match(await fails(c, "update_project_status", { status: "nope", label: "x" }), /^There's no project status "nope"/);
+  assert.match(await fails(c, "update_project_status", { key: "nope", label: "x" }), /^There's no project status "nope"/);
+});
+
+test("add_project_status and archive_project_status write at once as the AI; list_projects takes open or closed", async () => {
+  const { db, c } = await setup(RETROFIT);
+  const added = await ok(c, "add_project_status", { label: "Waiting on client" });
+  assert.match(added.headline, /^Added project status "Waiting on client" \(key waiting_on_client, open\)/);
+  const log = await db.prepare("SELECT actor, tool FROM audit_log ORDER BY rowid DESC").first<{ actor: string; tool: string }>();
+  assert.deepEqual({ ...log }, { actor: "ai", tool: "add_project_status" });
+  const moved = await ok(c, "update_project_status", { key: "waiting_on_client", kind: "closed", position: 1 });
+  assert.match(moved.headline, /^Updated project status "Waiting on client": now closed, moved to position 1 of 4/);
+  const closed = await ok(c, "list_projects", { status: "closed" });
+  assert.equal((closed.data as { total: number }).total, 0);
+  assert.deepEqual((closed.data as { statuses: { kind: string }[] }).statuses.map((s) => s.kind), ["closed", "open", "open", "closed"]);
+  assert.match(await fails(c, "archive_project_status", { key: "active" }), /^1 project has Active\. Move it first with update_project/);
+  const archived = await ok(c, "archive_project_status", { key: "waiting_on_client" });
+  assert.match(archived.headline, /^Archived project status Waiting on client \(change chg_/);
 });
 
 test("list_projects answers counts in its headline and the items, statuses and total as data", async () => {
@@ -147,7 +165,7 @@ test("no Won question while projects are off, when the deal has a live project, 
   assert.doesNotMatch(offApplied.headline, /Ask the owner/);
   assert.equal("startProject" in (offApplied.data as object), false);
 
-  const covered = await setup("INSERT INTO projects (id, name, contact_id, deal_id) VALUES ('pj_a', 'Cafe launch', 'ct_seed05', 'dl_seed05')");
+  const covered = await setup("INSERT INTO projects (id, name, contact_id, deal_id, status_key) VALUES ('pj_a', 'Cafe launch', 'ct_seed05', 'dl_seed05', 'active')");
   const coveredApplied = await approved(covered.c, "update_deal", { deal: "dl_seed05", status: "won" });
   assert.doesNotMatch(coveredApplied.headline, /Ask the owner/);
   covered.db.exec("UPDATE projects SET archived = 1 WHERE id = 'pj_a'; UPDATE deals SET status = 'open' WHERE id = 'dl_seed05'");

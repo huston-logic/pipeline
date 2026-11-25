@@ -8,15 +8,27 @@ import { contactName, isTrusted } from "../../services/labels.ts";
 import { dealById, openTasksOfDeal } from "../../services/lookup.ts";
 import { projectStatusRows } from "../../services/memo.ts";
 import type { PageContext } from "../context.ts";
-import type { Html } from "../html.ts";
+import { type Html, html } from "../html.ts";
 import { checkbox } from "../inputs.ts";
 import { contactHref, dealHref } from "../parts.ts";
-import { addProjectOfContactPath, addProjectOfDealPath, MOVE_TASKS, newProjectOfContactPath, newProjectOfDealPath, PROJECT_PREFIX, projectSpecs } from "../project-form.ts";
+import { PROJECTS_PATH } from "./projects.ts";
+import {
+  addProjectOfContactPath,
+  addProjectOfDealPath,
+  COMPLETE_TASKS,
+  MOVE_TASKS,
+  newInternalProjectPath,
+  newProjectOfContactPath,
+  newProjectOfDealPath,
+  PROJECT_PREFIX,
+  projectFieldDefs,
+  projectSpecs,
+} from "../project-form.ts";
 import type { Shown } from "../record-form.ts";
 import { type FormState, recordFormPage } from "./record-page.ts";
 
-/** A refused form's state, with whether the move box was ticked. */
-export type NewProjectState = FormState & { move?: boolean };
+/** A refused form's state, with whether the move and complete boxes were ticked. */
+export type NewProjectState = FormState & { move?: boolean; complete?: boolean };
 
 const OUTSIDE_NAME_HINT = "The deal's title came from outside. Name the project in a few words.";
 
@@ -47,7 +59,27 @@ export async function newProjectOfContactPage(ctx: PageContext, id: string, stat
     cancel: back,
     submit: "Add the project",
     prefix: PROJECT_PREFIX,
-    groups: [{ specs: projectSpecs(await projectStatusRows(ctx.db)) }],
+    groups: [{ specs: projectSpecs(await projectStatusRows(ctx.db), { defs: await projectFieldDefs(ctx.db) }) }],
+    shown: state?.shown ?? firstShown(""),
+    errors: state?.errors ?? [],
+  });
+}
+
+/** /projects/new: an internal project, with no person and no deal. */
+export async function newInternalProjectPage(ctx: PageContext, state?: NewProjectState): Promise<string | null> {
+  if ((await getSettings(ctx.db)).projects !== 1) return null;
+  return recordFormPage(ctx, {
+    title: "Start a project",
+    description: "Start a project of your own: a name, a status, a start and target date, and notes.",
+    heading: "Start a project",
+    lede: "An internal project has no person. Add its tasks and time on its page.",
+    current: PROJECTS_PATH,
+    back: { href: PROJECTS_PATH, text: "Back to projects" },
+    action: newInternalProjectPath,
+    cancel: PROJECTS_PATH,
+    submit: "Add the project",
+    prefix: PROJECT_PREFIX,
+    groups: [{ specs: projectSpecs(await projectStatusRows(ctx.db), { defs: await projectFieldDefs(ctx.db) }) }],
     shown: state?.shown ?? firstShown(""),
     errors: state?.errors ?? [],
   });
@@ -67,10 +99,29 @@ export async function newProjectOfDealPage(ctx: PageContext, id: string, state?:
   if (deal === null) return null;
   const trusted = isTrusted(deal, "title");
   const open = (await openTasksOfDeal(ctx.db, deal.id)).length;
+  const fresh = state === undefined;
   const box: Html | undefined =
     open === 0
       ? undefined
-      : checkbox({ id: "project-move-tasks", name: MOVE_TASKS, label: `Also move this deal's ${openTasksText(open)} to the project`, value: "yes", checked: state?.move === true });
+      : html`<fieldset class="field field-when">
+<legend>This deal's open tasks</legend>
+${checkbox({
+          id: "project-move-tasks",
+          name: MOVE_TASKS,
+          label: "Move open tasks to the project",
+          value: "yes",
+          checked: fresh || state.move === true,
+          hint: `This deal has ${openTasksText(open)}.`,
+        })}
+${checkbox({
+          id: "project-complete-tasks",
+          name: COMPLETE_TASKS,
+          label: "Complete all open tasks",
+          value: "yes",
+          checked: state?.complete === true,
+          hint: "Marks them done and leaves them on the deal, instead of moving them.",
+        })}
+</fieldset>`;
   const words = dealWords(deal);
   const back = dealHref(deal.id);
   return recordFormPage(ctx, {
@@ -84,7 +135,7 @@ export async function newProjectOfDealPage(ctx: PageContext, id: string, state?:
     cancel: back,
     submit: "Add the project",
     prefix: PROJECT_PREFIX,
-    groups: [{ specs: projectSpecs(await projectStatusRows(ctx.db), trusted ? {} : { nameHint: OUTSIDE_NAME_HINT }), after: box }],
+    groups: [{ specs: projectSpecs(await projectStatusRows(ctx.db), { defs: await projectFieldDefs(ctx.db), ...(trusted ? {} : { nameHint: OUTSIDE_NAME_HINT }) }), after: box }],
     shown: state?.shown ?? firstShown(trusted ? deal.title : ""),
     errors: state?.errors ?? [],
   });

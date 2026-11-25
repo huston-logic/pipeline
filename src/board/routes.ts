@@ -7,7 +7,8 @@
 // outside values labelled), a new deal for ct_seed07, editing dl_seed01 and Qualify for ct_lead03. ct_lead03 is a Contacted lead
 // (decision 0029). The import pages (decision 0036) are the seed's drafts: im_seed01 at the matching step, im_seed02
 // at the check step, im_seed03 applied; the deals and tasks imports' first steps are their own pages (decision 0037).
-// The views (decision 0042) are Partner's default view and the seed's saved views: vw_seed01 (people), vw_seed02 (deals).
+// The views (decision 0042) are Partner's default view and the seed's saved views: vw_seed01 (people), vw_seed02 (deals),
+// vw_seed03 (projects).
 // The table layout (decision 0043) is the Pipeline's List (a table by default), Contacts and a saved people view.
 // The timer pages (decision 0050): /timer/stop with no timer running (the seed starts none) and the seed's finished entry
 // te_seed01 on /timer/done.
@@ -85,6 +86,8 @@ export const boardRoutes: string[] = [
   "/time/new",
   "/time/te_seed01/edit",
   "/projects",
+  "/projects?view=vw_seed03",
+  "/projects/new",
   "/projects/pj_seed01",
   "/projects/pj_seed01/edit",
   "/contacts/ct_seed07/projects/new",
@@ -106,7 +109,7 @@ export const boardRoutes: string[] = [
 export const publicRoutes: string[] = ["/unsubscribe/test", "/unsubscribe/rcseed01FakeSeedTokenFakeSeedTokenFakeSeedT"];
 
 /** At most this many pages go through Lighthouse, so the CI job's time stops growing with the board. */
-export const LIGHTHOUSE_MAX_ROUTES = 20;
+export const LIGHTHOUSE_MAX_ROUTES = 22;
 
 /**
  * The pages Lighthouse scores: one of each kind of board page (a list, a record page, a form, an import step, ...),
@@ -135,6 +138,8 @@ export const lighthouseRoutes: string[] = [
   "/import",
   "/import/im_seed01",
   "/campaigns/cp_seed01",
+  "/projects",
+  "/projects/pj_seed01",
 ];
 
 /** The phone tab bar and the top of the side bar, in this order. */

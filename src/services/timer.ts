@@ -169,12 +169,12 @@ export async function stopTimer(
   const parts: string[] = [];
 
   let activityId: string | null = null;
-  if (notes !== null && contact !== null) {
+  if (notes !== null && (contact !== null || project !== null)) {
     // Logged now, as log_activity logs a note: the moment the owner wrote it.
     const activity: ActivityRow = {
       id: newId("ac"),
       deal_id: deal?.id ?? null,
-      contact_id: contact.id,
+      contact_id: contact?.id ?? null,
       project_id: project?.id ?? null,
       type: "note",
       summary: notes,

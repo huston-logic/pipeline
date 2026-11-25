@@ -252,13 +252,13 @@ export function registerReadTools(server: McpServer, deps: ToolDeps): void {
       description:
         "The owner's to-dos: open ones by default (snoozed ones included, and ones with no date or no person), or done " +
         "ones with status done. Overdue first, undated last, then newest. Filters: contact (id or name; their own " +
-        "tasks and their deals'), deal (id or name), standalone true (only tasks with no person and no deal), limit " +
+        "tasks and their deals'), deal (id or name), standalone true (only tasks with no person, no deal and no project), limit " +
         "(1 to 100, default 50). Use it for \"What's on my list?\" and to find a task's id.",
       input: z.strictObject({
         status: z.enum(["open", "done"]).optional().describe("open (the default) or done."),
         contact: shortText("Only this person's tasks and their deals' tasks: id or exact name.").optional(),
         deal: shortText("Only this deal's tasks: id or title.").optional(),
-        standalone: z.boolean().optional().describe("true: only tasks that belong to no person and no deal."),
+        standalone: z.boolean().optional().describe("true: only tasks that belong to no person, no deal and no project."),
         project: shortText("Only this project's tasks: its id (pj_...) or exact name. Refused while projects are off.").optional(),
         limit: z.number().int().min(1).max(100).optional().describe("At most this many, default 50."),
       }),
@@ -283,7 +283,7 @@ export function registerReadTools(server: McpServer, deps: ToolDeps): void {
         "count, plus every status. Filters: status (key or label), contact (id or exact name), includeArchived, sort " +
         "(target, name or newest). At most 200. Refused while projects are off.",
       input: z.strictObject({
-        status: shortText("Only this status: its key or label (see the statuses in the answer).").optional(),
+        status: shortText("Only this status: its key or label (see the statuses in the answer), or \"open\" or \"closed\" for every live status of that kind.").optional(),
         contact: shortText("Only this person's projects: id or exact name.").optional(),
         includeArchived: z.boolean().optional().describe("true to include archived projects."),
         sort: z.enum(["target", "name", "newest"]).optional().describe("target (the default), name or newest."),
@@ -429,8 +429,9 @@ export function registerReadTools(server: McpServer, deps: ToolDeps): void {
       title: "List custom fields",
       kind: "read",
       description:
-        "The owner's custom fields on contacts and deals: id, key, label, type (text, number, date, choice) and the " +
-        "choices of a choice field. Use the keys when setting field values. Archived fields are left out unless asked for.",
+        "The owner's custom fields on contacts, deals and, while Projects is on, projects: id, key, label, type (text, " +
+        "number, date, choice) and the choices of a choice field. Use the keys when setting field values. Archived fields " +
+        "are left out unless asked for.",
       input: z.strictObject({
         entity: z.enum(FIELD_ENTITIES).optional().describe("Only fields of this kind of record."),
         includeArchived: z.boolean().optional().describe("true to list archived fields too."),
@@ -438,12 +439,12 @@ export function registerReadTools(server: McpServer, deps: ToolDeps): void {
       async run({ entity, includeArchived }, { db }) {
         const fields = await fieldOverview(db, { entity, includeArchived });
         const of = (kind: string) => fields.filter((f) => f.entity === kind).length;
-        return toolResult(
-          fields.length === 0
-            ? "There are no custom fields yet. Add one with add_field."
-            : `${count(of("deal"), "deal field")} and ${count(of("contact"), "contact field")}.`,
-          { fields },
-        );
+        const projects = of("project");
+        const counts =
+          projects === 0
+            ? `${count(of("deal"), "deal field")} and ${count(of("contact"), "contact field")}`
+            : `${count(of("deal"), "deal field")}, ${count(of("contact"), "contact field")} and ${count(projects, "project field")}`;
+        return toolResult(fields.length === 0 ? "There are no custom fields yet. Add one with add_field." : `${counts}.`, { fields });
       },
     },
     deps,

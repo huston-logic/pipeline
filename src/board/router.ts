@@ -47,7 +47,7 @@ import { campaignSettingsPage } from "./pages/campaign-settings.ts";
 import { PROJECTS_PATH, projectsPage } from "./pages/projects.ts";
 import { projectPage } from "./pages/project.ts";
 import { projectEditPage } from "./pages/project-edit.ts";
-import { newProjectOfContactPage, newProjectOfDealPage } from "./pages/project-new.ts";
+import { newInternalProjectPage, newProjectOfContactPage, newProjectOfDealPage } from "./pages/project-new.ts";
 import { timerState } from "./timer-bar.ts";
 
 export type PageResult = { status: 200 | 404; body: string };
@@ -94,6 +94,7 @@ const PAGES = new Map<string, Page>([
   [TIME_PATH, (ctx) => timePage(ctx)],
   [TIME_NEW_PATH, (ctx) => timeNewPage(ctx)],
   [PROJECTS_PATH, (ctx) => projectsPage(ctx)],
+  ["/projects/new", (ctx) => newInternalProjectPage(ctx)],
   [CAMPAIGNS_PATH, (ctx) => campaignsPage(ctx)],
   [CAMPAIGN_SETTINGS_PATH, (ctx) => campaignSettingsPage(ctx)],
   [CAMPAIGNS_NEW_PATH, (ctx) => campaignNewPage(ctx)],

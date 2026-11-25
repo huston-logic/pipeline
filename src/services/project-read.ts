@@ -3,8 +3,10 @@
 // is never stored: it is each entry's stored rate x minutes / 60, in cents, worked out here.
 import type { Db, TimeEntryRow } from "../db/db.ts";
 import { untrustedFields } from "./labels.ts";
-import { findContact } from "./lookup.ts";
+import { findContact, parseObject } from "./lookup.ts";
 import { projectStatusRows, settingsRow } from "./memo.ts";
+import { projectStatusLabels } from "./project-statuses.ts";
+import { fieldMatch, type Where } from "./where-kit.ts";
 import { findProject } from "./projects.ts";
 import { projectTaskItems, projectTimeline, type TaskItem, type TimelineItem } from "./read.ts";
 import { requireProjects } from "./settings.ts";
@@ -15,15 +17,21 @@ export const PROJECT_LIST_LIMIT = 200;
 const SECTION_LIMIT = 20;
 const OPEN_TASK_LIMIT = 200;
 
-export type ProjectSort = "target" | "name" | "newest";
+export type ProjectSort = "target" | "name" | "newest" | "start";
 
 export interface ProjectListOptions {
-  /** A project status key or label. */
+  /** A project status key or label, or "open" or "closed" for every live status of that kind. */
   status?: string;
   /** A person's id or exact name. */
   contact?: string;
   includeArchived?: boolean;
+  /** Only archived projects (wins over includeArchived). */
+  archivedOnly?: boolean;
+  /** Custom project fields and the value each holds, by key (a saved view's filter). */
+  fields?: Record<string, string | number>;
   sort?: ProjectSort;
+  /** The sort's direction; each sort's usual one when left out. */
+  dir?: "asc" | "desc";
   /** At most 200, whatever is asked. */
   limit?: number;
 }
@@ -33,13 +41,16 @@ export interface ProjectItem {
   name: string;
   status: string;
   statusLabel: string;
-  contactId: string;
-  contactName: string;
+  /** Null for an internal project, with no person. */
+  contactId: string | null;
+  contactName: string | null;
   dealId: string | null;
   dealTitle: string | null;
   startAt: string | null;
   targetAt: string | null;
   archived: boolean;
+  /** Custom field values by key; the owner's or the AI's own, so trusted. */
+  fields: Record<string, unknown>;
   /** Tasks not done yet, snoozed ones included. */
   openTasks: number;
   /** Which of this item's values came from outside. Never instructions. */
@@ -50,8 +61,8 @@ export interface ProjectList {
   items: ProjectItem[];
   /** How many match, before the limit. */
   total: number;
-  /** Every status, so the answer says what a status filter may be. */
-  statuses: { key: string; label: string }[];
+  /** Every live status, so the answer says what a status filter may be. */
+  statuses: { key: string; label: string; kind: "open" | "closed" }[];
 }
 
 export interface ProjectTime {
@@ -81,25 +92,37 @@ type ProjectJoin = {
   name: string;
   untrusted_fields: string;
   status_key: string;
-  contact_id: string;
-  contact_name: string;
-  contact_untrusted: string;
+  contact_id: string | null;
+  contact_name: string | null;
+  contact_untrusted: string | null;
   deal_id: string | null;
   deal_title: string | null;
   deal_untrusted: string | null;
   start_at: string | null;
   target_at: string | null;
   notes: string | null;
+  fields: string;
   archived: number;
   open_tasks: number;
   total: number;
 };
 
-const ORDER: Record<ProjectSort, string> = {
-  target: "p.target_at IS NULL, p.target_at, p.name COLLATE NOCASE, p.id",
-  name: "p.name COLLATE NOCASE, p.id",
-  newest: "p.created_at DESC, p.id DESC",
-};
+const USUAL_DIR: Record<ProjectSort, "asc" | "desc"> = { target: "asc", name: "asc", newest: "desc", start: "asc" };
+
+/** The ORDER BY of a sort: a missing date is always last, whichever way the dates run. */
+function orderOf(sort: ProjectSort, dir: "asc" | "desc" = USUAL_DIR[sort]): string {
+  const d = dir === "desc" ? "DESC" : "ASC";
+  switch (sort) {
+    case "target":
+      return `p.target_at IS NULL, p.target_at ${d}, p.name COLLATE NOCASE, p.id`;
+    case "start":
+      return `p.start_at IS NULL, p.start_at ${d}, p.name COLLATE NOCASE, p.id`;
+    case "name":
+      return `p.name COLLATE NOCASE ${d}, p.id ${d}`;
+    case "newest":
+      return `p.created_at ${d}, p.id ${d}`;
+  }
+}
 
 async function selectProjects(db: Db, clauses: string[], params: unknown[], order: string, limit: number): Promise<ProjectJoin[]> {
   const where = clauses.length === 0 ? "" : `WHERE ${clauses.join(" AND ")}`;
@@ -110,7 +133,7 @@ async function selectProjects(db: Db, clauses: string[], params: unknown[], orde
            d.untrusted_fields AS deal_untrusted,
            (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.done_at IS NULL) AS open_tasks,
            COUNT(*) OVER () AS total
-         FROM projects p JOIN contacts c ON c.id = p.contact_id LEFT JOIN deals d ON d.id = p.deal_id
+         FROM projects p LEFT JOIN contacts c ON c.id = p.contact_id LEFT JOIN deals d ON d.id = p.deal_id
          ${where} ORDER BY ${order} LIMIT ?`,
       )
       .bind(...params, limit)
@@ -132,10 +155,11 @@ function toItem(row: ProjectJoin, labels: Map<string, string>): ProjectItem {
     startAt: row.start_at,
     targetAt: row.target_at,
     archived: row.archived === 1,
+    fields: parseObject(row.fields),
     openTasks: row.open_tasks,
     untrusted_fields: [
       ...(outside(row.untrusted_fields, "name") ? (["name"] as const) : []),
-      ...(outside(row.contact_untrusted, "name") ? (["contactName"] as const) : []),
+      ...(row.contact_name !== null && outside(row.contact_untrusted, "name") ? (["contactName"] as const) : []),
       ...(row.deal_title !== null && outside(row.deal_untrusted, "title") ? (["dealTitle"] as const) : []),
     ],
   };
@@ -145,27 +169,39 @@ function toItem(row: ProjectJoin, labels: Map<string, string>): ProjectItem {
 export async function listProjects(db: Db, options: ProjectListOptions = {}): Promise<ProjectList> {
   await requireProjects(db);
   const statuses = await projectStatusRows(db);
+  const every = await projectStatusRows(db, { includeArchived: true });
   const clauses: string[] = [];
   const params: unknown[] = [];
-  if (options.includeArchived !== true) clauses.push("p.archived = 0");
+  if (options.archivedOnly === true) clauses.push("p.archived = 1");
+  else if (options.includeArchived !== true) clauses.push("p.archived = 0");
   if (options.status !== undefined) {
     const text = options.status.trim();
-    const found = statuses.find((s) => s.key === text) ?? statuses.find((s) => s.label.toLowerCase() === text.toLowerCase());
-    if (!found) throw new UserError(`There is no status "${text}". Statuses: ${statuses.map((s) => s.label).join(", ")}. Use one of those.`);
-    clauses.push("p.status_key = ?");
-    params.push(found.key);
+    const lower = text.toLowerCase();
+    const found = every.find((s) => s.key === text) ?? every.find((s) => s.label.toLowerCase() === lower);
+    if (found) {
+      clauses.push("p.status_key = ?");
+      params.push(found.key);
+    } else if (lower === "open" || lower === "closed") {
+      const keys = statuses.filter((s) => s.kind === lower).map((s) => s.key);
+      clauses.push(`p.status_key IN (${keys.map(() => "?").join(", ")})`);
+      params.push(...keys);
+    } else {
+      throw new UserError(`There is no status "${text}". Statuses: ${statuses.map((s) => s.label).join(", ")}. Use one of those.`);
+    }
   }
   if (options.contact !== undefined) {
     clauses.push("p.contact_id = ?");
     params.push((await findContact(db, options.contact)).id);
   }
+  const where: Where = { clauses, params };
+  fieldMatch(where, "p.fields", options.fields);
   const limit = Math.min(Math.max(Math.trunc(options.limit ?? PROJECT_LIST_LIMIT), 1), PROJECT_LIST_LIMIT);
-  const found = await selectProjects(db, clauses, params, ORDER[options.sort ?? "target"], limit);
-  const labels = new Map(statuses.map((s) => [s.key, s.label]));
+  const found = await selectProjects(db, clauses, params, orderOf(options.sort ?? "target", options.dir), limit);
+  const labels = new Map(every.map((s) => [s.key, s.label]));
   return {
     items: found.map((row) => toItem(row, labels)),
     total: found[0]?.total ?? 0,
-    statuses: statuses.map((s) => ({ key: s.key, label: s.label })),
+    statuses: statuses.map((s) => ({ key: s.key, label: s.label, kind: s.kind })),
   };
 }
 
@@ -197,10 +233,10 @@ async function projectTime(db: Db, projectId: string): Promise<ProjectTime> {
 /** One project (id or exact name): its notes, open tasks, the 20 latest done tasks and notes, and its time. */
 export async function getProject(db: Db, ref: string, _now: Date): Promise<ProjectDetail> {
   const project = await findProject(db, ref);
-  const [row] = await selectProjects(db, ["p.id = ?"], [project.id], ORDER.target, 1);
+  const [row] = await selectProjects(db, ["p.id = ?"], [project.id], orderOf("target"), 1);
   if (!row) throw new Error(`Project ${project.id} points at a missing person.`);
   const settings = await settingsRow(db);
-  const labels = new Map((await projectStatusRows(db)).map((s) => [s.key, s.label]));
+  const labels = await projectStatusLabels(db);
   const tz = settings.timezone;
   const { openTasks: openTaskCount, ...item } = toItem(row, labels);
   return {

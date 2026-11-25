@@ -1,5 +1,5 @@
 Pipeline engine: build spec v1
-Approved Nov 18, 2026; board changed by the run 2 brief the same day (decision 0014); leads, the monthly report, email logging and phone notifications added by the run 4 brief on Nov 20 (decision 0022); campaigns added by the run 8 brief on Nov 24 (decision 0053); projects added by the run 9 brief on Nov 25 (decision 0055). Product reasons live in the Huston Logic project doc `product-direction.md`. This file is what to build.
+Approved Nov 18, 2026; board changed by the run 2 brief the same day (decision 0014); leads, the monthly report, email logging and phone notifications added by the run 4 brief on Nov 20 (decision 0022); campaigns added by the run 8 brief on Nov 24 (decision 0053); projects added by the run 9 brief on Nov 25 (decision 0055); project statuses and custom fields on projects added by the run 10 brief on Nov 25 (decision 0056). Product reasons live in the Huston Logic project doc `product-direction.md`. This file is what to build.
 What it is
 A small sales follow-up system for a small-business owner who does their own selling. The owner runs it by talking to whichever AI app they use (Claude, ChatGPT, others) through one MCP endpoint. It keeps contacts, deals and notes, says who needs a follow-up, fires the owner's own rules on a schedule, and sends a daily brief. The owner shapes it by talking: stages, fields, rules, voice. Every client gets their own copy, hosted in the repo owner's Cloudflare account (decision 0054), and every copy runs identical code.
 Non-negotiables
@@ -17,7 +17,7 @@ Data (Cloudflare D1, forward-only migrations)
 
 * `settings`: timezone, brief hour, brief email address, brief on or off, allowed owner email(s), business name, accent colour, time tracking on or off (decision 0049), campaigns on or off, postal address, campaign daily limit, projects on or off (decision 0055)
 * `stages`: key, label, position, kind (open, won, lost, not_now), archived
-* `field_defs`: entity (contact or deal), key, label, type (text, number, date, choice), choices, archived
+* `field_defs`: entity (contact, deal or project), key, label, type (text, number, date, choice), choices, archived
 * `contacts`: name, email (unique when present), phone, business, source, notes, custom field values (JSON, validated against `field_defs`), lead status (null: never a lead; `new`, `contacted`, `not_now`, `not_a_fit`, `bad`, `qualified`) and when it last changed, created and updated times. A lead is a person with a lead status and no open deal (decision 0022).
 * `deals`: contact, title, stage, value, next step, next date, status, custom field values, stage entered at, last activity at
 * `activities`: deal or contact, type (form, email, call, meeting, note, stage_change, system), summary, untrusted text, occurred at, actor (owner, ai, system)
@@ -34,15 +34,15 @@ Data (Cloudflare D1, forward-only migrations)
 * `campaign_recipients`: one row per person per campaign step, frozen at approval: email, first name, status, skip reason, unsubscribe token, delivery times (decision 0053)
 * `campaign_batches`: one row per request to Resend (a send or a test), with its status and attempts (decision 0053)
 * `email_suppressions`: addresses that get no campaign email, for unsubscribed, bounced or complained; the owner alone can clear an unsubscribe (decision 0053)
-* `project_statuses`: key (`active`, `on_hold`, `done`; fixed), label, position; renamed only (decision 0055)
-* `projects`: name, person, optional won deal, status, start and target dates, notes, archived (decision 0055)
+* `project_statuses`: key, label, position, kind (open or closed), archived; the owner adds, renames, reorders and archives them (decision 0056; started as `active`, `on_hold`, `done`)
+* `projects`: name, optional person (none: an internal project), optional won deal, status, start and target dates, notes, custom field values (JSON), archived (decisions 0055, 0056)
 * Tasks, activities and time entries may name a project (decision 0055)
 
 Default stages: New inquiry, Replied, Call booked, Call done, Proposal sent, Won, Lost, Not now.
 Building blocks the owner changes by talking
 
 * Stages: add, rename, reorder, archive. Archiving is refused while open deals sit in the stage; the error offers to move them.
-* Custom fields on contacts and deals: add, rename, archive.
+* Custom fields on contacts, deals and projects: add, rename, archive.
 * Tasks and reminders: add, complete, snooze.
 * Rules, four types:
    * `stage_followup`: when a deal has been in stage S for N days with no logged activity, create a follow-up task.
@@ -56,7 +56,7 @@ Building blocks the owner changes by talking
 MCP tools
 
 * Read: `get_rulebook`, `pipeline_summary`, `list_deals` (filters for stage, status, due, quiet), `get_deal` (a pre-call brief: contact, timeline, open tasks, next step), `search_contacts` (leads included, with their status and person status; filters for lead status, person status, sub-status and a custom field), `list_leads` (filters for status, source, quiet, follow-up due), `whats_due`, `list_tasks` (open or done to-dos, including undated and standalone ones; filters for person, deal, standalone), `recent_changes`, `list_stages`, `list_person_statuses`, `list_fields`, `list_rules`, `list_views`, `preview_rule`, `get_settings`, `list_campaigns`, `get_campaign`, `preview_campaign_recipients`, `list_time` (a period, this week by default, or from and to; filters for person and deal; totals billable and not, by person and deal), `list_work_types`, `list_projects`, `get_project` (decision 0055; refused while projects are off)
-* Write: `add_lead` (a person with status `new` and no deal), `add_deal` (a new or existing person plus a deal), `add_contact` (a person with any person status, Contact by default, and no deal), `qualify_lead`, `return_to_lead`, `update_contact` (including lead status, a Not now follow-up date, person status and sub-status), `update_deal` (stage, next step, next date, value, fields, status), `log_activity`, `add_task`, `complete_task`, `snooze_task`, `add_stage`, `update_stage`, `archive_stage`, `add_person_status`, `update_person_status`, `add_sub_status`, `update_sub_status`, `add_view`, `update_view`, `archive_view` (saved views of people or deals: filters, sort, layout, columns), `add_field`, `update_field`, `add_rule`, `update_rule`, `pause_rule`, `resume_rule`, `update_rulebook`, `update_settings`, `undo_change`, and time (decision 0049; refused while time tracking is off): `start_timer`, `stop_timer` (notes logged as a note, an optional next-step task), `add_time_entry`, `update_time_entry` (record edits, proposed like the other record tools), `add_work_type`, `update_work_type`, `set_client_rate` (configuration, only when the owner asks), `add_campaign_draft`, `update_campaign_draft` (campaign drafts only; no tool sends, schedules or approves; decision 0053). Projects (decision 0055; refused while projects are off): `add_project`, `update_project` (record edits, proposed like the other record tools), `update_project_status` (configuration). `add_task`, `log_activity`, `start_timer`, `add_time_entry` and `update_time_entry` take a project.
+* Write: `add_lead` (a person with status `new` and no deal), `add_deal` (a new or existing person plus a deal), `add_contact` (a person with any person status, Contact by default, and no deal), `qualify_lead`, `return_to_lead`, `update_contact` (including lead status, a Not now follow-up date, person status and sub-status), `update_deal` (stage, next step, next date, value, fields, status), `log_activity`, `add_task`, `complete_task`, `snooze_task`, `add_stage`, `update_stage`, `archive_stage`, `add_person_status`, `update_person_status`, `add_sub_status`, `update_sub_status`, `add_view`, `update_view`, `archive_view` (saved views of people, deals or projects: filters, sort, layout, columns), `add_field`, `update_field`, `add_rule`, `update_rule`, `pause_rule`, `resume_rule`, `update_rulebook`, `update_settings`, `undo_change`, and time (decision 0049; refused while time tracking is off): `start_timer`, `stop_timer` (notes logged as a note, an optional next-step task), `add_time_entry`, `update_time_entry` (record edits, proposed like the other record tools), `add_work_type`, `update_work_type`, `set_client_rate` (configuration, only when the owner asks), `add_campaign_draft`, `update_campaign_draft` (campaign drafts only; no tool sends, schedules or approves; decision 0053). Projects (decision 0055; refused while projects are off): `add_project`, `update_project` (record edits, proposed like the other record tools), `add_project_status`, `update_project_status` (label, kind, position), `archive_project_status` (configuration). `add_project` takes `fields` and `completeOpenTasks`, and needs no person; saved views may be of projects (decision 0056). `add_task`, `log_activity`, `start_timer`, `add_time_entry` and `update_time_entry` take a project.
 * Server instructions:
    * Read the rulebook before the first write in a conversation.
    * Ask the owner before marking a deal Won, Lost or Not now.
@@ -102,7 +102,7 @@ HTTP routes
    * Installs to a phone home screen (web app manifest and icon); a service worker only shows the brief notification and opens the Brief tab, and caches nothing.
    * Export download (full JSON plus CSV per table).
    * Accessible, works on a phone, passes the template's a11y and Lighthouse checks using seed data.
-   * Projects (decision 0055): off until turned on; a list and a project page; a won deal offers Start a project.
+   * Projects (decision 0055): off until turned on; a list and a project page; after a deal is marked Won the board offers Start a project, with its open tasks moved or completed; saved project views (decision 0056).
 
 Campaigns (decision 0053)
 

@@ -34,12 +34,12 @@ test("the time pages are in boardRoutes and /time takes a Lighthouse slot", () =
   assert.ok(!lighthouseRoutes.includes("/time/new"), "form pages are boardRoutes only");
 });
 
-test("Lighthouse scores at most 20 pages, each one a board page, none twice", () => {
+test("Lighthouse scores at most 22 pages, each one a board page, none twice", () => {
   assert.ok(
     lighthouseRoutes.length <= LIGHTHOUSE_MAX_ROUTES,
     `lighthouseRoutes has ${lighthouseRoutes.length} pages; keep it at ${LIGHTHOUSE_MAX_ROUTES} or fewer by swapping one out.`,
   );
-  assert.equal(LIGHTHOUSE_MAX_ROUTES, 20);
+  assert.equal(LIGHTHOUSE_MAX_ROUTES, 22);
   assert.equal(new Set(lighthouseRoutes).size, lighthouseRoutes.length);
   for (const route of lighthouseRoutes) assert.ok(boardRoutes.includes(route), `${route} is not in boardRoutes`);
 });

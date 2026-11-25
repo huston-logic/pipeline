@@ -62,11 +62,16 @@ ${form === undefined ? "" : taskActions(task, form)}
 }
 
 /** One timeline entry. `deal` adds a line linking the deal it is on, for the contact page (tagged when archived). */
-export function timelineItem(item: TimelineItem, deal?: { id: string; title: string; outside: boolean; archived?: boolean }): Html {
+export function timelineItem(
+  item: TimelineItem,
+  deal?: { id: string; title: string; outside: boolean; archived?: boolean },
+  project?: { id: string; name: string; outside: boolean },
+): Html {
   return html`<li>
 <p class="row-head">${tag(ACTIVITY[item.type])} ${when(item.occurredAt, item.occurredAtLocal)} <span class="row-by">Logged by ${ACTOR[item.actor]}</span></p>
 <p class="row-text">${labelled(item.summary, item.untrusted_fields.includes("summary"))}</p>
 ${deal === undefined ? "" : html`<p class="row-deal">On ${dealLink(deal.id, deal.title, deal.outside)}${deal.archived ? html` ${tag("Archived")}` : ""}</p>`}
+${project === undefined ? "" : html`<p class="row-deal">On project ${projectLink(project.id, project.name, project.outside)}</p>`}
 ${
   item.untrusted_text === null
     ? ""

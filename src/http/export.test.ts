@@ -77,7 +77,7 @@ test("the recipients export, JSON and CSV, never holds an unsubscribe token, emp
 test("the projects, their statuses and every project_id column are in the JSON and the CSVs", async () => {
   const db = await createTestDb();
   db.exec("INSERT INTO contacts (id, name, email) VALUES ('ct_a', 'Pat Example', 'pat@example.com')");
-  db.exec("INSERT INTO projects (id, name, contact_id) VALUES ('pj_a', 'Website', 'ct_a')");
+  db.exec("INSERT INTO projects (id, name, contact_id, status_key) VALUES ('pj_a', 'Website', 'ct_a', 'active')");
   db.exec("INSERT INTO tasks (id, title, project_id) VALUES ('tk_a', 'Plan', 'pj_a')");
   db.exec("INSERT INTO activities (id, type, summary, occurred_at, actor, contact_id, project_id) VALUES ('ac_a', 'note', 'Called', '2026-11-03T17:00:00.000Z', 'owner', 'ct_a', 'pj_a')");
   db.exec("INSERT INTO time_entries (id, started_at, project_id) VALUES ('te_a', '2026-11-03T17:00:00.000Z', 'pj_a')");

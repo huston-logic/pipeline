@@ -12,9 +12,12 @@ import { joinAnd, short } from "./describe.ts";
 import { UserError } from "./errors.ts";
 import { findField, validateFieldValues } from "./fields.ts";
 import { clean } from "./input.ts";
-import { findStage, stageLabels } from "./lookup.ts";
+import { findContact, findStage, stageLabels } from "./lookup.ts";
+import { projectStatusRows, settingsRow } from "./memo.ts";
 import { CONTACT, LEAD } from "./person-move.ts";
 import { findPersonStatus, findSubStatus } from "./person-status.ts";
+import { findProjectStatus } from "./projects.ts";
+import { requireProjects } from "./settings.ts";
 import { type StatusLabels, statusLabels } from "./status-labels.ts";
 import {
   BUILT_IN_VIEWS,
@@ -44,8 +47,9 @@ import {
 
 const MAX_NAME = 60;
 
-const ENTITY: Record<ViewModule, FieldEntity> = { people: "contact", deals: "deal" };
-const MODULE_WORDS: Record<ViewModule, string> = { people: "people", deals: "deals" };
+const ENTITY: Record<ViewModule, FieldEntity> = { people: "contact", deals: "deal", projects: "project" };
+const MODULE_WORDS: Record<ViewModule, string> = { people: "people", deals: "deals", projects: "projects" };
+const RECORD_WORD: Record<ViewModule, string> = { people: "person", deals: "deal", projects: "project" };
 
 const sameText = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 
@@ -109,10 +113,21 @@ async function liveField(db: Db, module: ViewModule, ref: string): Promise<Field
   return def;
 }
 
+/** A projects view's status: "open" or "closed" (every live status of that kind), or one live status by key or label. */
+async function projectStatusFilter(db: Db, ref: string): Promise<{ key: string; label: string }> {
+  const text = filterText(ref, "status").toLowerCase();
+  if (text === "open" || text === "closed") return { key: text, label: text };
+  const found = await findProjectStatus(db, ref);
+  return { key: found.key, label: found.label };
+}
+
 const WRONG_MODULE: Record<keyof ViewFilterInput, string | null> = {
   personStatus: "Person status filters people, not deals. Make a people view for it, or leave personStatus out.",
   subStatus: "A sub-status filters people, not deals. Make a people view for it, or leave subStatus out.",
   stage: "Stage filters deals, not people. Make a deals view for it, or leave stage out.",
+  status: "Status filters projects. Make a projects view for it, or leave status out.",
+  contact: "Contact filters projects. Make a projects view for it, or leave contact out.",
+  archived: "Archived filters projects. Make a projects view for it, or leave archived out.",
   source: null,
   q: null,
   fields: null,
@@ -126,10 +141,29 @@ export async function resolveFilters(db: Db, module: ViewModule, input: ViewFilt
     if (!Object.hasOwn(WRONG_MODULE, key)) {
       throw new UserError(`"${key}" isn't a view filter. A ${MODULE_WORDS[module]} view filters by ${joinAnd([...allowed])}.`);
     }
-    if (!allowed.includes(key as keyof ViewFilterInput)) throw new UserError(WRONG_MODULE[key as keyof ViewFilterInput] ?? "");
+    if (!allowed.includes(key as keyof ViewFilterInput)) {
+      throw new UserError(
+        module === "projects"
+          ? `"${key}" isn't a filter of a projects view. A projects view filters by ${joinAnd([...allowed])}.`
+          : (WRONG_MODULE[key as keyof ViewFilterInput] ?? ""),
+      );
+    }
   }
   const filters: ViewFilters = {};
   const words: string[] = [];
+  if (input.status !== undefined) {
+    const status = await projectStatusFilter(db, input.status);
+    filters.status = status.key;
+    words.push(`status ${status.label}`);
+  }
+  if (input.contact !== undefined) {
+    filters.contact = (await findContact(db, input.contact)).id;
+    words.push(`person ${filters.contact}`);
+  }
+  if (input.archived === true) {
+    filters.archived = true;
+    words.push("archived projects");
+  }
   if (input.subStatus !== undefined && input.personStatus === undefined) {
     throw new UserError("A sub-status belongs to one person status. Give personStatus too, for example personStatus contact and subStatus client.");
   }
@@ -218,7 +252,7 @@ export async function resolveColumns(db: Db, module: ViewModule, input: readonly
     out.push(key);
   }
   if (out[0] !== FIRST_COLUMN[module]) {
-    throw new UserError(`Start the columns with ${FIRST_COLUMN[module]}: it links to each ${module === "people" ? "person" : "deal"}.`);
+    throw new UserError(`Start the columns with ${FIRST_COLUMN[module]}: it links to each ${RECORD_WORD[module]}.`);
   }
   return out;
 }
@@ -280,7 +314,10 @@ const filterLine = (words: string[]) => (words.length === 0 ? "no filters" : wor
 export async function addView(ctx: Ctx, input: ViewInput): Promise<ChangeResult & { viewId: string }> {
   const { db } = ctx;
   const module = input.module;
-  if (module !== "people" && module !== "deals") throw new UserError(`A view's module is people or deals (got "${String(module)}").`);
+  if (module !== "people" && module !== "deals" && module !== "projects") {
+    throw new UserError(`A view's module is people, deals or projects (got "${String(module)}").`);
+  }
+  if (module === "projects") await requireProjects(db);
   const all = await viewRows(db, module);
   const live = all.filter((row) => row.archived === 0);
   const name = cleanName(input.name, module, live);
@@ -321,8 +358,10 @@ async function pickView(db: Db, ref: string): Promise<{ view: ViewRow; all: View
   const text = ref.trim();
   const every = await viewRows(db);
   const view = every.find((row) => row.id === text) ?? every.find((row) => row.archived === 0 && sameText(row.name, text));
+  if (view?.module === "projects") await requireProjects(db);
   if (!view) {
-    const live = every.filter((row) => row.archived === 0).map((row) => `${row.name} (${row.id})`);
+    const shown = (await settingsRow(db)).projects === 1 ? every : every.filter((row) => row.module !== "projects");
+    const live = shown.filter((row) => row.archived === 0).map((row) => `${row.name} (${row.id})`);
     throw new UserError(
       live.length === 0 ? `There's no saved view "${short(text, 60)}". There are none yet.` : `There's no saved view "${short(text, 60)}". Views: ${live.join(", ")}.`,
     );
@@ -437,19 +476,26 @@ export interface ViewItem {
 }
 
 export const statusViewPath = (key: string) => `/people?status=${encodeURIComponent(key)}`;
-export const savedViewPath = (view: Pick<ViewRow, "id" | "module">) =>
-  view.module === "people" ? `/people?view=${encodeURIComponent(view.id)}` : `/pipeline?view=${encodeURIComponent(view.id)}`;
+export const projectStatusViewPath = (key: string) => `/projects?status=${encodeURIComponent(key)}`;
+const VIEW_PAGE: Record<ViewModule, string> = { people: "/people", deals: "/pipeline", projects: "/projects" };
+export const savedViewPath = (view: Pick<ViewRow, "id" | "module">) => `${VIEW_PAGE[view.module]}?view=${encodeURIComponent(view.id)}`;
 
-/** Labels for reading stored filters back: statuses, stages and custom fields. */
+/** Labels for reading stored filters back: statuses, stages, project statuses and custom fields. */
 export interface FilterLabels {
   statuses: StatusLabels;
   stages: Map<string, string>;
+  projectStatuses: Map<string, string>;
   fields: FieldDefRow[];
 }
 
 export async function filterLabels(db: Db): Promise<FilterLabels> {
-  const [statuses, stages, fields] = await Promise.all([statusLabels(db), stageLabels(db), listFieldDefs(db, { includeArchived: true })]);
-  return { statuses, stages, fields };
+  const [statuses, stages, fields, projectStatuses] = await Promise.all([
+    statusLabels(db),
+    stageLabels(db),
+    listFieldDefs(db, { includeArchived: true }),
+    projectStatusRows(db, { includeArchived: true }),
+  ]);
+  return { statuses, stages, fields, projectStatuses: new Map(projectStatuses.map((s) => [s.key, s.label])) };
 }
 
 /** How stored filters read: "person status Partner (Architect)", "stage Won", "Project type Commercial". */
@@ -457,6 +503,9 @@ export function filterWords(module: ViewModule, filters: ViewFilters, labels: Fi
   const words: string[] = [];
   if (filters.person_status !== undefined) words.push(`person status ${labels.statuses.both(filters.person_status, filters.sub_status ?? null)}`);
   if (filters.stage !== undefined) words.push(`stage ${labels.stages.get(filters.stage) ?? filters.stage}`);
+  if (filters.status !== undefined) words.push(`status ${labels.projectStatuses.get(filters.status) ?? filters.status}`);
+  if (filters.contact !== undefined) words.push(`person ${filters.contact}`);
+  if (filters.archived === true) words.push("archived projects");
   if (filters.source !== undefined) words.push(`source ${short(filters.source, 40)}`);
   for (const [key, value] of Object.entries(filters.fields ?? {})) {
     const def = labels.fields.find((field) => field.entity === ENTITY[module] && field.key === key);
@@ -520,7 +569,7 @@ async function statusViewRows(db: Db): Promise<{ key: string; label: string }[]>
 
 /** list_views: each module's built-in views, then the default view of each person status, then the saved views. */
 export async function listViews(db: Db, options: { module?: ViewModule; includeArchived?: boolean } = {}): Promise<ViewItem[]> {
-  const [statuses, rows, labels] = await Promise.all([statusViewRows(db), viewRows(db, options.module), filterLabels(db)]);
+  const [statuses, rows, labels, settings] = await Promise.all([statusViewRows(db), viewRows(db, options.module), filterLabels(db), settingsRow(db)]);
   const builtIn = (module: ViewModule): ViewItem[] =>
     BUILT_IN_VIEWS[module].map((view) => ({
       kind: "built_in",
@@ -540,7 +589,9 @@ export async function listViews(db: Db, options: { module?: ViewModule; includeA
     }));
   const saved = (module: ViewModule) =>
     rows.filter((row) => row.module === module && (options.includeArchived === true || row.archived === 0)).map((row) => savedItem(row, labels));
-  const modules = options.module === undefined ? (["people", "deals"] as const) : [options.module];
+  const all: readonly ViewModule[] = options.module === undefined ? ["people", "deals", "projects"] : [options.module];
+  // While projects are off nothing about them shows, not even the built-in Open view.
+  const modules = all.filter((module) => module !== "projects" || settings.projects === 1);
   return modules.flatMap((module) => [
     ...builtIn(module),
     ...(module === "people" ? statuses.map((status) => statusItem(status.key, status.label)) : []),
@@ -564,16 +615,18 @@ export async function switchItems(db: Db, module: ViewModule): Promise<SwitchIte
     .prepare(
       `SELECT 'status' AS kind, key AS id, label AS name, 0 AS saved, position FROM person_statuses
          WHERE ? = 'people' AND archived = 0 AND key NOT IN (?, ?)
+       UNION ALL SELECT 'status', key, label, 0, position FROM project_statuses WHERE ? = 'projects' AND archived = 0
        UNION ALL SELECT 'saved', id, name, 1, position FROM views WHERE module = ? AND archived = 0
        ORDER BY saved, position, id`,
     )
-    .bind(module, LEAD, CONTACT, module)
+    .bind(module, LEAD, CONTACT, module, module)
     .all<{ kind: "status" | "saved"; id: string; name: string }>();
+  const statusPath = module === "projects" ? projectStatusViewPath : statusViewPath;
   return found.results.map((row) => ({
     kind: row.kind,
     id: row.id,
     name: row.name,
-    path: row.kind === "status" ? statusViewPath(row.id) : savedViewPath({ id: row.id, module }),
+    path: row.kind === "status" ? statusPath(row.id) : savedViewPath({ id: row.id, module }),
   }));
 }
 

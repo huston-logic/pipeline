@@ -848,7 +848,9 @@ export function devSeed(now: Date, tz: string): DevSeed {
     columns: JSON.stringify(
       module === "people"
         ? ["name", "business", "person_status", "sub_status", "next_task", "last_activity"]
-        : ["deal", "person", "stage", "value", "next_step", "days_in_stage"],
+        : module === "projects"
+          ? ["project", "status", "person", "start", "target", "open_tasks"]
+          : ["deal", "person", "stage", "value", "next_step", "days_in_stage"],
     ),
     position: 1,
     archived: 0,
@@ -859,6 +861,8 @@ export function devSeed(now: Date, tz: string): DevSeed {
   const views: Row[] = [
     view(1, "Referrals", "people", { source: "referral" }, "last_activity-desc", day(-4, "09:00")),
     view(2, "Commercial jobs", "deals", { fields: { project_type: "Commercial" } }, "value-desc", day(-4, "09:05")),
+    // Projects are on in the demo (decision 0055): the open ones, soonest target first.
+    view(3, "Open work", "projects", { status: "open" }, "target-asc", day(-4, "09:10")),
   ];
 
   // Time tracking is on in the demo (decision 0049): two work types and one finished entry with its note, no timer running.

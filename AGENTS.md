@@ -38,7 +38,7 @@ hooks and the commands are in `CLAUDE.md`.
   token, the look and the change banner) and return `renderPage({ title, description, body, current, frame: ctx })`
   from `src/board/layout.ts` (the layout appends " · <business name>" to the title and draws the banner). Every board
   path is listed in `boardRoutes` in `src/board/routes.ts` (import-free; the accessibility test and `npm run screenshots`
-  read it); `lighthouserc.cjs` scores `lighthouseRoutes`, one of each kind of page, at most 20 (a test checks), 3 runs
+  read it); `lighthouserc.cjs` scores `lighthouseRoutes`, one of each kind of page, at most 22 (a test checks), 3 runs
   each; `npm run test:lighthouse` (`scripts/lighthouse.mjs`) collects again, at most twice, only the pages whose runs
   crashed (Chrome's `NO_NAVSTART`), then checks scores once. Every new page goes in `boardRoutes`; a new kind of page
   also takes a `lighthouseRoutes` slot. The file also has the nav (`navItems`: Today, Pipeline, People, Brief, More; `moreItems`: Rules, Changes, Export, Import; `moreItemsFor(true)` adds Time while time tracking is on, decision 0051). Pages are
@@ -260,14 +260,19 @@ hooks and the commands are in `CLAUDE.md`.
   `via: "campaign"`, and no read counts it as reaching anyone. `/unsubscribe/*` and `/hooks/resend` are answered in
   `src/index.ts` before the board and are not board routes; the token or the Svix signature is the check. The
   unsubscribe token is never shown, logged, exported or sent to MCP.
-- **Projects** (decision 0055): delivery after the sale, kept apart from selling. Off until `settings.projects`
+- **Projects** (decisions 0055, 0056): delivery after the sale, kept apart from selling. Off until `settings.projects`
   (`update_settings projects`); while off every project tool, service and input refuses with `PROJECTS_OFF`
   (`requireProjects` in `src/services/settings.ts`), a proposal before any name is matched, and nothing about projects
-  shows. Tables `projects` (`pj_`: name, person, optional won deal, status, start and target, notes, archived) and
-  `project_statuses` (fixed keys `active`, `on_hold`, `done`; renamed only, `update_project_status`; read through the
-  memo's `projectStatusRows`); `project_id` on tasks, activities and time entries (migration 0020). The link rules live in
-  `src/services/project-links.ts`: a record on a project gets the project's person and no deal, a deal with a project is
-  refused, an archived project takes nothing new, and `update_time_entry` never moves an entry off its project unless
+  shows. Tables `projects` (`pj_`: name, optional person, optional won deal, status, start and target, notes, custom
+  `fields`, archived) and `project_statuses` (a table the owner shapes: `add_project_status`, `update_project_status`,
+  `archive_project_status`; kind open or closed; at least one live of each; a new project takes the first live open
+  status; read through the memo's `projectStatusRows`). Custom fields take entity `project`; saved views take module
+  `projects` (`/projects?view=<vw id>`). A project may have no person (an internal project: its records have no person
+  and no deal, so every reader of a project's person must allow none). `addProject` takes `completeOpenTasks` (the
+  deal's open tasks are done, not moved). The board's Won confirm goes to Start a project when the deal has no live
+  project. Lighthouse allows 22 routes (`LIGHTHOUSE_MAX_ROUTES`). `project_id` on tasks, activities and time entries
+  (migration 0020). The link rules live in `src/services/project-links.ts`: a record on a project gets the project's
+  person (none for an internal project) and no deal, a deal with a project is refused, an archived project takes nothing new, and `update_time_entry` never moves an entry off its project unless
   given `project: null`. `src/services/projects.ts` (`addProject`, `updateProject`, `findProject`; a project's deal must
   be Won; `moveOpenTasks` moves the deal's open tasks in the same change) and `src/services/project-read.ts`
   (`listProjects`, `getProject`). `add_project` and `update_project` are in `RECORD_ACTIONS` (proposed, never small);

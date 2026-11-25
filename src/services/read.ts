@@ -348,11 +348,11 @@ const TASK_ORDER: Record<TaskSort, string> = {
   subject: "c.name IS NULL, lower(c.name), t.due_at, t.created_at, t.id",
 };
 
-/** A standalone task has no deal and no person (a task on a deal always has the deal's person). */
+/** A standalone task has no deal, no person and no project (a task on a deal always has the deal's person; one on an internal project has the project). */
 const TASK_FILTER: Record<TaskShow, string> = {
   all: "",
-  linked: " AND (t.deal_id IS NOT NULL OR t.contact_id IS NOT NULL)",
-  standalone: " AND t.deal_id IS NULL AND t.contact_id IS NULL",
+  linked: " AND (t.deal_id IS NOT NULL OR t.contact_id IS NOT NULL OR t.project_id IS NOT NULL)",
+  standalone: " AND t.deal_id IS NULL AND t.contact_id IS NULL AND t.project_id IS NULL",
 };
 
 export interface OpenTaskLists {
@@ -401,11 +401,11 @@ export interface TaskListFilter {
  */
 export async function listTaskItems(db: Db, filter: TaskListFilter, tz: string): Promise<(TaskItem & { doneAt: string | null })[]> {
   if (filter.standalone === true && (filter.contact !== undefined || filter.deal !== undefined)) {
-    throw new UserError("standalone means tasks with no person and no deal, so it can't be combined with contact or deal. Leave one out.");
+    throw new UserError("standalone means tasks with no person, no deal and no project, so it can't be combined with contact or deal. Leave one out.");
   }
   const clauses = [filter.status === "done" ? "t.done_at IS NOT NULL" : "t.done_at IS NULL"];
   const params: unknown[] = [];
-  if (filter.standalone === true) clauses.push("t.deal_id IS NULL AND t.contact_id IS NULL");
+  if (filter.standalone === true) clauses.push("t.deal_id IS NULL AND t.contact_id IS NULL AND t.project_id IS NULL");
   if (filter.contact !== undefined) {
     clauses.push("(t.contact_id = ? OR d.contact_id = ?)");
     const id = (await findContact(db, filter.contact)).id;
@@ -429,7 +429,7 @@ export async function listTaskItems(db: Db, filter: TaskListFilter, tz: string):
 
 /** A project's tasks for its page: the open ones (snoozed too) due first, or the done ones, latest done first. */
 export async function projectTaskItems(db: Db, projectId: string, status: "open" | "done", tz: string, limit: number): Promise<TaskItem[]> {
-  const order = status === "open" ? "t.due_at IS NULL, t.due_at, t.created_at, t.id" : "t.done_at DESC, t.id";
+  const order = status === "open" ? "t.due_at IS NULL, t.due_at, t.created_at, t.id" : "t.done_at DESC, t.id DESC";
   const found = await rows<TaskJoin>(
     db,
     `${TASK_SELECT} WHERE t.project_id = ? AND t.done_at IS ${status === "open" ? "" : "NOT "}NULL ORDER BY ${order} LIMIT ?`,
@@ -792,6 +792,8 @@ export interface ContactTimelineItem extends TimelineItem {
   dealId: string | null;
   /** That deal, archived ones included, so an entry on a deal is never shown as one on the contact alone. */
   deal: { id: string; title: string; untrusted_fields: "title"[]; archived: boolean } | null;
+  /** The project the entry is on; null for none, and always null while projects are off (decision 0055). */
+  project: { id: string; name: string; untrusted_fields: "name"[] } | null;
 }
 
 export interface ContactDetail {
@@ -821,11 +823,19 @@ export async function contactDetail(db: Db, id: string, tz: string, now: Date): 
     [id, id],
   );
   const timeline = await rows<
-    ActivityRow & { deal_title: string | null; deal_untrusted: string | null; deal_archived: number | null }
+    ActivityRow & {
+      deal_title: string | null;
+      deal_untrusted: string | null;
+      deal_archived: number | null;
+      project_name: string | null;
+      project_untrusted: string | null;
+    }
   >(
     db,
-    `SELECT a.*, d.title AS deal_title, d.untrusted_fields AS deal_untrusted, d.archived AS deal_archived
+    `SELECT a.*, d.title AS deal_title, d.untrusted_fields AS deal_untrusted, d.archived AS deal_archived,
+       p.name AS project_name, p.untrusted_fields AS project_untrusted
      FROM activities a LEFT JOIN deals d ON d.id = a.deal_id
+     LEFT JOIN projects p ON p.id = a.project_id AND (SELECT projects FROM settings LIMIT 1) = 1
      WHERE a.contact_id = ? OR a.deal_id IN ${theirs}
      ORDER BY a.occurred_at DESC, a.rowid DESC LIMIT ?`,
     [id, id, CONTACT_TIMELINE_LIMIT + 1],
@@ -836,9 +846,17 @@ export async function contactDetail(db: Db, id: string, tz: string, now: Date): 
     openTasks: tasks.map((task) => toTaskItem(task, tz)),
     timeline: timeline
       .slice(0, CONTACT_TIMELINE_LIMIT)
-      .map(({ deal_title, deal_untrusted, deal_archived, ...activity }) => ({
+      .map(({ deal_title, deal_untrusted, deal_archived, project_name, project_untrusted, ...activity }) => ({
         ...toTimelineItem(activity, tz),
         dealId: activity.deal_id,
+        project:
+          !activity.project_id || project_name === null
+            ? null
+            : {
+                id: activity.project_id,
+                name: project_name,
+                untrusted_fields: outsideKeys<"name">([["name", project_untrusted, "name"]]),
+              },
         deal:
           activity.deal_id === null || deal_title === null
             ? null

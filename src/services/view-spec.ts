@@ -4,7 +4,7 @@
 import type { ViewLayout, ViewModule } from "../db/db.ts";
 import { parseObject, parseStringArray } from "./lookup.ts";
 
-export const VIEW_MODULES = ["people", "deals"] as const satisfies readonly ViewModule[];
+export const VIEW_MODULES = ["people", "deals", "projects"] as const satisfies readonly ViewModule[];
 export const VIEW_LAYOUTS = ["cards", "table"] as const satisfies readonly ViewLayout[];
 
 export type Dir = "asc" | "desc";
@@ -13,15 +13,21 @@ export type Dir = "asc" | "desc";
 export const VIEW_SORTS = {
   people: { name: "asc", business: "asc", last_activity: "desc", next_task: "asc", created: "desc" },
   deals: { days_in_stage: "desc", value: "desc", next_date: "asc", created: "desc" },
+  projects: { target: "asc", name: "asc", newest: "desc", start: "asc" },
 } as const satisfies Record<ViewModule, Record<string, Dir>>;
 
 export type PeopleSort = keyof typeof VIEW_SORTS.people;
 export type DealsSort = keyof typeof VIEW_SORTS.deals;
-export type SortKey = PeopleSort | DealsSort;
+export type ProjectsSort = keyof typeof VIEW_SORTS.projects;
+export type SortKey = PeopleSort | DealsSort | ProjectsSort;
 
+/** Every sort key of every module, once each ("name" is both People's and Projects'). */
 export const ALL_SORT_KEYS: readonly SortKey[] = [
-  ...(Object.keys(VIEW_SORTS.people) as PeopleSort[]),
-  ...(Object.keys(VIEW_SORTS.deals) as DealsSort[]),
+  ...new Set([
+    ...(Object.keys(VIEW_SORTS.people) as PeopleSort[]),
+    ...(Object.keys(VIEW_SORTS.deals) as DealsSort[]),
+    ...(Object.keys(VIEW_SORTS.projects) as ProjectsSort[]),
+  ]),
 ];
 
 export interface ViewSort {
@@ -32,6 +38,7 @@ export interface ViewSort {
 export const DEFAULT_SORT: Record<ViewModule, ViewSort> = {
   people: { key: "name", dir: "asc" },
   deals: { key: "days_in_stage", dir: "desc" },
+  projects: { key: "target", dir: "asc" },
 };
 
 export const sortText = (sort: ViewSort) => `${sort.key}-${sort.dir}`;
@@ -56,6 +63,9 @@ export const SORT_WORDS: Record<SortKey, Record<Dir, string>> = {
   days_in_stage: { desc: "longest in their stage first", asc: "newest in their stage first" },
   value: { desc: "highest value first", asc: "lowest value first" },
   next_date: { asc: "soonest next date first", desc: "latest next date first" },
+  target: { asc: "soonest target date first", desc: "latest target date first" },
+  newest: { desc: "newest first", asc: "oldest first" },
+  start: { asc: "earliest start first", desc: "latest start first" },
 };
 
 /** The built-in columns of each module, with the header each one has. A custom field's column is "fields.<key>". */
@@ -83,16 +93,26 @@ export const VIEW_COLUMNS = {
     source: "Source",
     created: "Added",
   },
+  projects: {
+    project: "Project",
+    status: "Status",
+    person: "Person",
+    deal: "Deal",
+    start: "Start",
+    target: "Target",
+    open_tasks: "Open tasks",
+  },
 } as const satisfies Record<ViewModule, Record<string, string>>;
 
 export const columnsOf = (module: ViewModule): Record<string, string> => VIEW_COLUMNS[module];
 
 /** The column every view of the module starts with: it links to the record. */
-export const FIRST_COLUMN: Record<ViewModule, string> = { people: "name", deals: "deal" };
+export const FIRST_COLUMN: Record<ViewModule, string> = { people: "name", deals: "deal", projects: "project" };
 
 export const DEFAULT_COLUMNS: Record<ViewModule, readonly string[]> = {
   people: ["name", "business", "person_status", "sub_status", "next_task", "last_activity"],
   deals: ["deal", "person", "stage", "value", "next_step", "days_in_stage"],
+  projects: ["project", "status", "person", "start", "target", "open_tasks"],
 };
 
 export const MAX_COLUMNS = 12;
@@ -109,6 +129,7 @@ export const BUILT_IN_VIEWS: Record<ViewModule, readonly { key: string; name: st
     { key: "board", name: "Board", path: "/pipeline" },
     { key: "list", name: "List", path: "/pipeline?view=list" },
   ],
+  projects: [{ key: "open", name: "Open", path: "/projects" }],
 };
 
 /** Stored filters (migration 0013). Keys, never labels. */
@@ -119,6 +140,12 @@ export interface ViewFilters {
   q?: string;
   fields?: Record<string, string | number>;
   stage?: string;
+  /** Projects: a live status key, or "open" / "closed" for every live status of that kind. */
+  status?: string;
+  /** Projects: a person's id. */
+  contact?: string;
+  /** Projects: only archived ones. Without it archived projects are left out. */
+  archived?: boolean;
 }
 
 /** The same filters as the MCP tools take and answer them. */
@@ -129,11 +156,15 @@ export interface ViewFilterInput {
   q?: string;
   fields?: Record<string, string | number>;
   stage?: string;
+  status?: string;
+  contact?: string;
+  archived?: boolean;
 }
 
 export const FILTER_KEYS: Record<ViewModule, readonly (keyof ViewFilterInput)[]> = {
   people: ["personStatus", "subStatus", "source", "q", "fields"],
   deals: ["stage", "source", "q", "fields"],
+  projects: ["status", "contact", "archived", "fields"],
 };
 
 export const MAX_FILTER_FIELDS = 10;
@@ -150,10 +181,11 @@ export function parseFilters(json: string): ViewFilters {
     return {};
   }
   const out: ViewFilters = {};
-  for (const key of ["person_status", "sub_status", "source", "q", "stage"] as const) {
+  for (const key of ["person_status", "sub_status", "source", "q", "stage", "status", "contact"] as const) {
     const value = text(raw[key]);
     if (value !== undefined) out[key] = value;
   }
+  if (raw.archived === true) out.archived = true;
   const fields = raw.fields;
   if (typeof fields === "object" && fields !== null && !Array.isArray(fields)) {
     const kept = Object.entries(fields).filter(
@@ -170,6 +202,9 @@ export function filtersForTools(filters: ViewFilters): ViewFilterInput {
   if (filters.person_status !== undefined) out.personStatus = filters.person_status;
   if (filters.sub_status !== undefined) out.subStatus = filters.sub_status;
   if (filters.stage !== undefined) out.stage = filters.stage;
+  if (filters.status !== undefined) out.status = filters.status;
+  if (filters.contact !== undefined) out.contact = filters.contact;
+  if (filters.archived !== undefined) out.archived = filters.archived;
   if (filters.source !== undefined) out.source = filters.source;
   if (filters.q !== undefined) out.q = filters.q;
   if (filters.fields !== undefined) out.fields = filters.fields;

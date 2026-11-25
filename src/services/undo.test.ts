@@ -155,6 +155,42 @@ test("undo of a project's add is refused while a task points at it, and works on
   assert.equal(await count(db, "projects"), 0);
 });
 
+test("undo of a project change recorded before 0021 (snapshots without fields) still works", async () => {
+  const { db, contactId } = await setup();
+  const now = CREATED.toISOString();
+  // The row as migration 0020 made it: no `fields` column.
+  const before = {
+    id: "pj_old",
+    name: "Website refresh",
+    contact_id: contactId,
+    deal_id: null,
+    status_key: "active",
+    start_at: null,
+    target_at: null,
+    notes: null,
+    archived: 0,
+    untrusted_fields: "[]",
+    version: 1,
+    created_at: now,
+    updated_at: now,
+  };
+  await db
+    .prepare("INSERT INTO projects (id, name, contact_id, status_key, version, created_at, updated_at) VALUES (?, ?, ?, 'on_hold', 2, ?, ?)")
+    .bind("pj_old", "Website refresh", contactId, now, now)
+    .run();
+  const after = { ...before, status_key: "on_hold", version: 2 };
+  // The audit row as it was written before 0021, recorded by hand: the project is already in its changed state.
+  await db
+    .prepare(
+      "INSERT INTO audit_log (id, at, actor, tool, target_table, target_id, before_json, after_json, summary) VALUES ('chg_pjold', ?, 'ai', 'update_project', 'projects', 'pj_old', ?, ?, 'Moved a project (change chg_pjold)')",
+    )
+    .bind(now, JSON.stringify({ "projects:pj_old": before }), JSON.stringify({ "projects:pj_old": after }))
+    .run();
+  await undoChange(undoCtx(db), "chg_pjold");
+  const row = await db.prepare("SELECT status_key, fields, version FROM projects WHERE id = 'pj_old'").first();
+  assert.deepEqual({ ...row }, { status_key: "active", fields: "{}", version: 3 });
+});
+
 test("undo of add_deal with nothing added since removes the contact, the deal and the note", async () => {
   const db = await openTestDb();
   const lead = await addDeal(ctxAt(db, CREATED, "add_deal"), {

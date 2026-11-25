@@ -14,7 +14,7 @@ export type Spec = {
   name: string;
   label: string;
   kind: FieldKindName;
-  group: "contact" | "deal";
+  group: "contact" | "deal" | "project";
   required?: boolean;
   requiredMessage?: string;
   hint?: string;
@@ -98,6 +98,9 @@ export function contactSpecs(defs: FieldDefRow[], options: { notes?: boolean; ba
     ...customSpecs(defs, "contact", bag),
   ];
 }
+
+/** The live custom project fields, one input each (decision 0055). */
+export const projectFieldSpecs = (defs: FieldDefRow[]): Spec[] => customSpecs(defs, "project", "fields");
 
 /** A deal's title, value, next step and date, custom deal fields, and for a new deal a note to log on it. */
 export function dealSpecs(defs: FieldDefRow[], options: { titleRequired: boolean; notes: boolean; titleProp?: string }): Spec[] {

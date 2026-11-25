@@ -53,6 +53,7 @@ const WRITE_TOOLS = [
   "add_lead",
   "add_person_status",
   "add_project",
+  "add_project_status",
   "add_rule",
   "add_stage",
   "add_sub_status",
@@ -62,6 +63,7 @@ const WRITE_TOOLS = [
   "add_work_type",
   "apply_changes",
   "apply_import",
+  "archive_project_status",
   "archive_stage",
   "archive_view",
   "complete_task",
@@ -128,6 +130,7 @@ test("every read tool is annotated read-only and every write tool is not", async
 // repeat call is refused or changes something again.
 const DESTRUCTIVE = [
   "apply_changes",
+  "archive_project_status",
   "archive_stage",
   "archive_view",
   "set_client_rate",

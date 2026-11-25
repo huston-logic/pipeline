@@ -113,10 +113,10 @@ test("every ref of a list is matched in one D1 call, each as it would be alone",
 test("a project by id, or by its exact name among the live ones, in the same one D1 call", async () => {
   const db = await setup();
   db.exec(
-    "INSERT INTO projects (id, name, contact_id) VALUES ('pj_a', 'Retrofit', 'ct_seed01'), ('pj_b', 'Retrofit', 'ct_seed02'), " +
-      "('pj_c', 'Fence  Install', 'ct_seed01'), ('pj_old', 'Old shed', 'ct_seed01'); " +
+    "INSERT INTO projects (id, name, contact_id, status_key) VALUES ('pj_a', 'Retrofit', 'ct_seed01', 'active'), ('pj_b', 'Retrofit', 'ct_seed02', 'active'), " +
+      "('pj_c', 'Fence  Install', 'ct_seed01', 'active'), ('pj_old', 'Old shed', 'ct_seed01', 'active'); " +
       "UPDATE projects SET archived = 1 WHERE id = 'pj_old'; " +
-      "INSERT INTO projects (id, name, contact_id, untrusted_fields) VALUES ('pj_out', 'Pergola', 'ct_seed01', '[\"name\"]')",
+      "INSERT INTO projects (id, name, contact_id, status_key, untrusted_fields) VALUES ('pj_out', 'Pergola', 'ct_seed01', 'active', '[\"name\"]')",
   );
   const refs = ["pj_c", "pj_old", " fence install ", "Retrofit", "Old shed", "Nobody", "Fence", "Pergola"];
   const counted = countingDb(db);

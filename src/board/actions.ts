@@ -2,7 +2,7 @@
 // same service function as the matching MCP tool, as the owner. src/board/post.ts runs the sign-in, origin, body and
 // CSRF checks before any handler sees the form. The editing routes (decision 0018) are in edit-actions.ts.
 import type { DealRow, StageRow } from "../db/db.ts";
-import { getContact, getDeal, listStages } from "../db/queries.ts";
+import { getContact, getDeal, getSettings, listStages } from "../db/queries.ts";
 import { isChangeId, isDealId } from "../ids.ts";
 import { updateDeal } from "../services/deals.ts";
 import { UserError } from "../services/errors.ts";
@@ -20,6 +20,7 @@ import { IMPORT_ROUTES } from "./import-actions.ts";
 import { CAMPAIGN_ROUTES } from "./campaign-actions.ts";
 import { TIME_ROUTES } from "./time-actions.ts";
 import { PROJECT_ROUTES } from "./project-actions.ts";
+import { newProjectOfDealPath } from "./project-form.ts";
 import { PUSH_ROUTES } from "./push-actions.ts";
 import { type FormContext, hidden, postForm } from "./forms.ts";
 import { html } from "./html.ts";
@@ -51,6 +52,13 @@ ${postForm(
   });
 }
 
+/** Projects are on and the deal has no live project: a new Won goes on to Start a project (run 10). */
+async function needsProject(ctx: ActionContext, dealId: string): Promise<boolean> {
+  if ((await getSettings(ctx.db)).projects !== 1) return false;
+  const live = await ctx.db.prepare("SELECT 1 AS one FROM projects WHERE deal_id = ? AND archived = 0 LIMIT 1").bind(dealId).first();
+  return live === null;
+}
+
 /** POST /deals/<id>/move: update_deal with the stage. Won, Lost and Not now need confirm=yes, or ask first. */
 async function moveDeal(ctx: ActionContext, id: string): Promise<ActionResult> {
   const deal = isDealId(id) ? await getDeal(ctx.db, id) : null;
@@ -68,6 +76,7 @@ async function moveDeal(ctx: ActionContext, id: string): Promise<ActionResult> {
       return page(200, confirmPage(ctx, deal, dealLabel(deal, contact), stage, back));
     }
     const result = await updateDeal(asOwner(ctx, "update_deal"), deal.id, { stage: stage.key });
+    if (stage.kind === "won" && (await needsProject(ctx, deal.id))) return redirect(withChange(newProjectOfDealPath(deal.id), result.changeId));
     return redirect(withChange(back, result.changeId));
   } catch (error) {
     if (!(error instanceof UserError)) throw error;

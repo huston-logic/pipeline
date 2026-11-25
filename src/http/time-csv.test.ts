@@ -54,7 +54,7 @@ const OLD_HEADER = ["client", "work type", "hours", "billable hours", "rate", "a
 /** Pat has Design time on two projects and on none; projects are on only when asked. */
 async function projectDb(on: boolean): Promise<SqliteD1> {
   const db = await monthDb();
-  db.exec("INSERT INTO projects (id, name, contact_id) VALUES ('pj_web001', 'Website', 'ct_seed01'), ('pj_bro001', 'Brochure', 'ct_seed01')");
+  db.exec("INSERT INTO projects (id, name, contact_id, status_key) VALUES ('pj_web001', 'Website', 'ct_seed01', 'active'), ('pj_bro001', 'Brochure', 'ct_seed01', 'active')");
   entry(db, "te_csv010", "2026-11-07", "09:00", 30, "ct_seed01", "wt_design", 1, 95);
   db.exec("UPDATE time_entries SET project_id = 'pj_web001' WHERE id = 'te_csv001'");
   db.exec("UPDATE time_entries SET project_id = 'pj_bro001' WHERE id = 'te_csv010'");

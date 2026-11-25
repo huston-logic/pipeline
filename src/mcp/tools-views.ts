@@ -21,25 +21,35 @@ const filters = z
     stage: filterText("Deals views: only deals in this stage, open or closed, by key or label (see list_stages). Without it a deals view shows open deals.").optional(),
     source: filterText("Only people (or, for deals, the deal's person) with this source, ignoring case.").optional(),
     q: filterText("Search text: the name, email, phone or company contains it (for deals, the deal's title too).").optional(),
+    status: filterText(
+      "Projects views: only projects in this status, by key or label (see list_projects), or open or closed for every " +
+        "live status of that kind.",
+    ).optional(),
+    contact: filterText("Projects views: only projects of this person, by id or exact name.").optional(),
+    archived: z.boolean().optional().describe("Projects views: true to show only archived projects. Otherwise archived ones are left out."),
     fields: z
       .record(z.string().max(100), z.union([z.string().max(2_000), z.number()]))
       .refine((value) => Object.keys(value).length <= MAX_FILTER_FIELDS, `at most ${MAX_FILTER_FIELDS} fields`)
       .optional()
-      .describe("Custom fields and the value each holds, by field key or label: contact fields for people, deal fields for deals."),
+      .describe("Custom fields and the value each holds, by field key or label: contact fields for people, deal fields for deals, project fields for projects."),
   })
   .describe(
     "What the view shows. People views take personStatus, subStatus, source, q and fields; deals views take stage, " +
-      "source, q and fields. Leave a filter out to show everyone (or every open deal).",
+      "source, q and fields; projects views take status, contact, archived and fields. Leave a filter out to show " +
+      "everyone (or every open deal, or every project not archived).",
   );
 
-const sorts = (module: "people" | "deals") => Object.keys(VIEW_SORTS[module]).join(", ");
-const columns = (module: "people" | "deals") => Object.keys(VIEW_COLUMNS[module]).join(", ");
+const sorts = (module: "people" | "deals" | "projects") => Object.keys(VIEW_SORTS[module]).join(", ");
+const columns = (module: "people" | "deals" | "projects") => Object.keys(VIEW_COLUMNS[module]).join(", ");
 
 const viewSettings = {
   sort: z
     .enum(ALL_SORT_KEYS as [string, ...string[]])
     .optional()
-    .describe(`People views: ${sorts("people")}. Deals views: ${sorts("deals")}. Default: name for people, days_in_stage for deals.`),
+    .describe(
+      `People views: ${sorts("people")}. Deals views: ${sorts("deals")}. Projects views: ${sorts("projects")}. Default: name ` +
+        "for people, days_in_stage for deals, target for projects.",
+    ),
   direction: z.enum(["asc", "desc"]).optional().describe("asc or desc. Default: the sort's own (A to Z, longest in stage, newest first)."),
   layout: z.enum(VIEW_LAYOUTS).optional().describe("cards (the default) or table."),
   columns: z
@@ -48,8 +58,8 @@ const viewSettings = {
     .max(MAX_COLUMNS)
     .optional()
     .describe(
-      `The columns, in order, starting with name (people) or deal (deals). People: ${columns("people")}. Deals: ` +
-        `${columns("deals")}. Custom fields by key or label. Default: the usual ones.`,
+      `The columns, in order, starting with name (people), deal (deals) or project (projects). People: ${columns("people")}. ` +
+        `Deals: ${columns("deals")}. Projects: ${columns("projects")}. Custom fields by key or label. Default: the usual ones.`,
     ),
 };
 
@@ -61,11 +71,12 @@ export function registerViewTools(server: McpServer, deps: ToolDeps): void {
       title: "List views",
       kind: "read",
       description:
-        "The ways the board shows people and deals, in the order of its view switches: the built-in views (Contacts, " +
-        "Leads, Companies; Board, List), then one default view for each person status other than Lead and Contact, then " +
-        "the saved views. Each has its board path; saved ones have their id, filters, sort, layout, columns and position.",
+        "The ways the board shows people, deals and (while Projects is on) projects, in the order of its view switches: the " +
+        "built-in views (Contacts, Leads, Companies; Board, List; Open), then one default view for each person status other " +
+        "than Lead and Contact, then the saved views. Each has its board path; saved ones have their id, filters, sort, " +
+        "layout, columns and position.",
       input: z.strictObject({
-        module: z.enum(VIEW_MODULES).optional().describe("people or deals; both when left out."),
+        module: z.enum(VIEW_MODULES).optional().describe("people, deals or projects; all of them when left out."),
         includeArchived: z.boolean().optional().describe("true to list archived saved views too."),
       }),
       async run({ module, includeArchived }, { db }) {
@@ -84,13 +95,13 @@ export function registerViewTools(server: McpServer, deps: ToolDeps): void {
       title: "Add a view",
       kind: "write",
       description:
-        "Saves a view of people or deals for the board: a name, filters, a sort, a layout and columns. It shows in the " +
-        "People switch (people) or the Pipeline switch (deals) after the built-in views. Every person status already " +
-        "has a default view (see list_views); add one when the owner wants a narrower or differently sorted list. Only " +
-        "when the owner asks.",
+        "Saves a view of people, deals or projects for the board: a name, filters, a sort, a layout and columns. It shows in " +
+        "the People switch (people), the Pipeline switch (deals) or the Projects switch (projects, only while Projects is " +
+        "on) after the built-in views. Every person status already has a default view (see list_views); add one when the " +
+        "owner wants a narrower or differently sorted list. Only when the owner asks.",
       input: z.strictObject({
         name: z.string().trim().min(1).max(100).describe('What the view is called, for example "Partners" (up to 60 characters).'),
-        module: z.enum(VIEW_MODULES).describe("people or deals."),
+        module: z.enum(VIEW_MODULES).describe("people, deals or projects."),
         filters: filters.optional(),
         ...viewSettings,
         position: z.number().int().min(1).max(100).optional().describe("Its place among the module's saved views, counting from 1. Default: last."),

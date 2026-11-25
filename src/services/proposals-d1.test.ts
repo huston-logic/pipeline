@@ -105,7 +105,7 @@ const PROJECT_LIST: RecordAction[] = [
 
 test("a maximum-size list of projects, with tasks, notes and time on them, stays at most 40 D1 calls each way", async () => {
   assert.equal(PROJECT_LIST.length, PROPOSAL_MAX_ACTIONS);
-  const more = "UPDATE settings SET projects = 1; INSERT INTO projects (id, name, contact_id) VALUES ('pj_seed01', 'Retrofit', 'ct_seed01')";
+  const more = "UPDATE settings SET projects = 1; INSERT INTO projects (id, name, contact_id, status_key) VALUES ('pj_seed01', 'Retrofit', 'ct_seed01', 'active')";
   assertAtMost(await measure(PROJECT_LIST, more), 40);
 });
 

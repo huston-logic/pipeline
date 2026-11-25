@@ -7,30 +7,20 @@ import { formatLocal } from "../time.ts";
 import { untrustedFields } from "./labels.ts";
 import { NEXT_TASK_CTE } from "./leads-read.ts";
 import { parseObject, parseStringArray } from "./lookup.ts";
+import { listProjects, type ProjectItem, type ProjectSort } from "./project-read.ts";
 import { statusLabels } from "./status-labels.ts";
-import type { DealsSort, PeopleSort, ViewFilters, ViewSort } from "./view-spec.ts";
+import { type DealsSort, type PeopleSort, type ProjectsSort, VIEW_SORTS, type ViewFilters, type ViewSort } from "./view-spec.ts";
+import { fieldMatch, type Where } from "./where-kit.ts";
 
 export const VIEW_ROW_LIMIT = 200;
 const DAY_MS = 86_400_000;
 
 const escapeLike = (text: string) => text.replace(/[\\%_]/g, (c) => `\\${c}`);
 
-type Where = { clauses: string[]; params: unknown[] };
-
 function textMatch(where: Where, columns: string[], text: string | undefined): void {
   if (text === undefined) return;
   where.clauses.push(columns.map((column) => `${column} LIKE ? ESCAPE '\\'`).join(" OR "));
   where.params.push(...columns.map(() => `%${escapeLike(text.trim())}%`));
-}
-
-/** A custom field holds the value: a number exactly, anything else as text ignoring (ASCII) case, as search_contacts. */
-function fieldMatch(where: Where, column: string, fields: Record<string, string | number> | undefined): void {
-  for (const [key, value] of Object.entries(fields ?? {})) {
-    const path = `$."${key}"`;
-    if (typeof value === "number") where.clauses.push(`json_extract(${column}, ?) = ?`);
-    else where.clauses.push(`lower(CAST(json_extract(${column}, ?) AS TEXT)) = lower(?)`);
-    where.params.push(path, value);
-  }
 }
 
 /** The source as the owner typed it, ignoring case and spaces at either end. */
@@ -250,4 +240,22 @@ export async function dealsInView(
     };
   });
   return { items, total: found.results[0]?.total ?? 0 };
+}
+
+/**
+ * The projects a projects view shows: unarchived ones (only archived ones with `archived`) that match its filters, in any
+ * status unless it names one. A project may have no person. Refuses while projects are off.
+ */
+export async function projectsInView(db: Db, filters: ViewFilters, sort: ViewSort, limit?: number): Promise<ViewList<ProjectItem>> {
+  const key: ProjectSort = Object.hasOwn(VIEW_SORTS.projects, sort.key) ? (sort.key as ProjectsSort) : "target";
+  const list = await listProjects(db, {
+    sort: key,
+    dir: sort.dir,
+    limit: limitOf(limit),
+    ...(filters.status === undefined ? {} : { status: filters.status }),
+    ...(filters.contact === undefined ? {} : { contact: filters.contact }),
+    ...(filters.archived === true ? { archivedOnly: true } : {}),
+    ...(filters.fields === undefined ? {} : { fields: filters.fields }),
+  });
+  return { items: list.items, total: list.total };
 }

@@ -12,7 +12,7 @@ const origin = "http://localhost:4822";
 module.exports = {
   ci: {
     collect: {
-      // One of each kind of board page, at most 20 (src/board/routes.ts); the a11y test covers every page. The 404 page
+      // One of each kind of board page, at most 22 (src/board/routes.ts); the a11y test covers every page. The 404 page
       // is left out: it returns an error status, which Lighthouse scores as a failed page.
       url: lighthouseRoutes.map((route) => origin + route),
       // 3 runs: the median still ignores one bad run. Accessibility, SEO and best practices score the same every run;

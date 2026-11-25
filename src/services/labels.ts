@@ -44,9 +44,9 @@ export const dealLabel = (deal: TitledLike, contact: ContactLike) => `${dealTitl
 export const projectTitle = (project: WithProvenance & { id: string; name: string }) =>
   isTrusted(project, "name") ? `"${project.name}"` : `project ${project.id}`;
 
-/** "\"Website refresh\" (Pat Example)", with each part safe on its own. */
-export const projectLabel = (project: WithProvenance & { id: string; name: string }, contact: ContactLike) =>
-  `${projectTitle(project)} (${contactName(contact)})`;
+/** "\"Website refresh\" (Pat Example)", with each part safe on its own; an internal project is its title alone. */
+export const projectLabel = (project: WithProvenance & { id: string; name: string }, contact: ContactLike | null) =>
+  contact === null ? projectTitle(project) : `${projectTitle(project)} (${contactName(contact)})`;
 
 /** "\"Call back\"", or "task tk_…" when the title came from outside. */
 export const taskTitle = (task: TitledLike) => (isTrusted(task, "title") ? `"${task.title}"` : `task ${task.id}`);

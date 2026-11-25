@@ -156,6 +156,9 @@ ${
             item.deal === null
               ? undefined
               : { id: item.deal.id, title: item.deal.title, outside: item.deal.untrusted_fields.includes("title"), archived: item.deal.archived },
+            item.project === null
+              ? undefined
+              : { id: item.project.id, name: item.project.name, outside: item.project.untrusted_fields.includes("name") },
           ),
         )}</ol>`
 }`,
@@ -167,7 +170,9 @@ function hasOutsideText(detail: ContactDetail): boolean {
     detail.contact.untrusted_fields.length > 0 ||
     detail.deals.some((deal) => deal.untrusted_fields.length > 0) ||
     detail.openTasks.some((task) => task.untrusted_fields.length > 0) ||
-    detail.timeline.some((item) => item.untrusted_text !== null || item.untrusted_fields.length > 0)
+    detail.timeline.some(
+      (item) => item.untrusted_text !== null || item.untrusted_fields.length > 0 || (item.project?.untrusted_fields.length ?? 0) > 0,
+    )
   );
 }
 

@@ -28,16 +28,21 @@ const projectStatusInput = (what: string) => shortText(`${what}: its key or labe
 
 export const addProjectInput = z.strictObject({
   name: shortText("The project's name, on one line. The default is the deal's title when it is the owner's own.").optional(),
-  contact: contactRef("The project's person: their id (ct_...) or exact name. Needed unless deal is given.").optional(),
+  contact: contactRef("The project's person: their id (ct_...) or exact name. Leave out contact and deal for an internal project.").optional(),
   deal: dealRef("The won deal it comes from: its id (dl_...) or exact title. Its person is the project's person.").optional(),
   status: projectStatusInput("The status. The default is active").optional(),
   startAt: when("When the project starts").optional(),
   targetAt: when("When it should be done").optional(),
   notes: longText("Notes about the project.").optional(),
+  fields: fieldValues("project").optional(),
   moveOpenTasks: z
     .boolean()
     .optional()
     .describe("With deal: true also moves the deal's open tasks onto the project. The default is false."),
+  completeOpenTasks: z
+    .boolean()
+    .optional()
+    .describe("With deal: true marks the deal's open tasks done; they stay on the deal. Wins over moveOpenTasks. The default is false."),
 });
 
 export const updateProjectInput = z.strictObject({
@@ -47,6 +52,7 @@ export const updateProjectInput = z.strictObject({
   startAt: orNull(when("The new start, or null to clear it")).optional(),
   targetAt: orNull(when("The new target, or null to clear it")).optional(),
   notes: orNull(longText("The project's notes, or null to clear them.")).optional(),
+  fields: fieldValues("project").optional(),
   archived: z.boolean().optional().describe("true to archive the project, false to bring it back."),
 });
 

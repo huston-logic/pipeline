@@ -98,7 +98,6 @@ test("addProject refuses what the link rules forbid", async () => {
   const { db, dealId, contactId } = await setup();
   const other = await addDeal(ctxFor(db, "add_deal"), { name: "Sam Example", dealTitle: "Open one" });
 
-  await assert.rejects(addProject(ctxFor(db), { name: "Nobody" }), /A project needs a person: give contact, or a won deal\./);
   await assert.rejects(addProject(ctxFor(db), { deal: other.dealId }), /A project comes from a won deal\. Mark "Open one" Won first, or leave the deal out\./);
   await assert.rejects(addProject(ctxFor(db), { deal: dealId, contact: other.contactId }), /belongs to Pat Example, not Sam Example/);
   await assert.rejects(addProject(ctxFor(db), { contact: contactId, moveOpenTasks: true, name: "x" }), /moveOpenTasks needs a deal/);
@@ -145,6 +144,39 @@ test("moveOpenTasks moves open and snoozed tasks off the deal, leaves done ones,
     assert.equal(row.due_at, was?.due_at);
   }
   assert.equal(await db.prepare("SELECT id FROM projects WHERE id = ?").bind(result.projectId).first(), null);
+});
+
+test("completeOpenTasks marks the deal's open and snoozed tasks done, leaves them on the deal, wins over moveOpenTasks, and undo reopens them", async () => {
+  const { db, dealId } = await setup();
+  const open = await addTask(ctxFor(db, "add_task"), { dealId, title: "Order steel" });
+  const snoozed = await addTask(ctxFor(db, "add_task"), { dealId, title: "Call engineer" });
+  await snoozeTask(ctxFor(db, "snooze_task"), snoozed.taskId, "2026-12-05");
+  const done = await addTask(ctxFor(db, "add_task"), { dealId, title: "Sign contract" });
+  await db.prepare("UPDATE tasks SET done_at = '2026-11-18T18:00:00.000Z' WHERE id = ?").bind(done.taskId).run();
+  const doneBefore = await taskRow(db, done.taskId);
+
+  const result = await addProject(ctxFor(db), { deal: dealId, name: "Retrofit", moveOpenTasks: true, completeOpenTasks: true });
+  assert.equal(result.summary, `Added project "Retrofit" for Pat Example, from "Seismic retrofit" (completed 2 open tasks) (change ${result.changeId})`);
+  for (const id of [open.taskId, snoozed.taskId]) {
+    const row = await taskRow(db, id);
+    assert.deepEqual([row.done_at, row.deal_id, row.project_id], [NOW.toISOString(), dealId, null]);
+  }
+  assert.deepEqual(await taskRow(db, done.taskId), doneBefore);
+
+  await undoChange(ctxFor(db, "undo_change"), result.changeId);
+  assert.equal((await taskRow(db, open.taskId)).done_at, null);
+  assert.equal((await taskRow(db, snoozed.taskId)).done_at, null);
+});
+
+test("completeOpenTasks needs a deal and says so for one task in the singular", async () => {
+  const { db, dealId, contactId } = await setup();
+  await assert.rejects(addProject(ctxFor(db), { contact: contactId, name: "x", completeOpenTasks: true }), /completeOpenTasks needs a deal/);
+  await assert.rejects(addProject(ctxFor(db), { name: "x", completeOpenTasks: true }), /completeOpenTasks needs a deal/);
+  await addTask(ctxFor(db, "add_task"), { dealId, title: "Order steel" });
+  const result = await addProject(ctxFor(db), { deal: dealId, name: "Retrofit", completeOpenTasks: true });
+  assert.match(result.summary, /\(completed 1 open task\) \(change /);
+  const none = await addProject(ctxFor(db), { deal: dealId, name: "Again", completeOpenTasks: true });
+  assert.doesNotMatch(none.summary, /completed/);
 });
 
 test("updateProject changes the fields it is given and says what changed", async () => {
@@ -196,7 +228,7 @@ test("archive and bring back; an archived project is not found by name and links
   assert.match(back.summary, /: brought back \(change/);
   const links = await projectLinks(db, "retrofit");
   assert.equal(links.project.id, projectId);
-  assert.equal((links.contact satisfies ContactRow).id, contactId);
+  assert.equal(links.contact?.id, contactId);
 });
 
 test("findProject names several matches with their ids", async () => {
@@ -228,6 +260,7 @@ test("checkOnProject refuses a deal beside a project and another person", async 
   assert.throws(() => checkOnProject(project, contact, { deal: true, contact: null }), /Give the project or the deal, not both\./);
   assert.throws(() => checkOnProject(project, contact, { deal: false, contact: sam }), /"Retrofit" belongs to Pat Example, not Sam Example\./);
   checkOnProject(project, contact, { deal: false, contact });
+  assert.ok(contact);
   checkOnProject(project, contact, { deal: false, contact: null });
-  assert.equal(contact.id, contactId);
+  assert.equal(contact?.id, contactId);
 });
