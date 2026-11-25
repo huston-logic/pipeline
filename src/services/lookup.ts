@@ -189,6 +189,25 @@ export async function siblingTasks(src: Source, projectId: string, parentId: str
   return all.sort((a, b) => (a.position ?? 0) - (b.position ?? 0) || a.id.localeCompare(b.id));
 }
 
+/** Every task of a project, open and done, in tree order (a parent before its children), as the plan leaves them. */
+export async function projectTasksOf(src: Source, projectId: string): Promise<TaskRow[]> {
+  const { db } = sourceOf(src);
+  const found = await db.prepare("SELECT * FROM tasks WHERE project_id = ? ORDER BY position, created_at, id").bind(projectId).all<TaskRow>();
+  const all = withPlanned(src, "tasks", found.results, (row) => row.project_id === projectId);
+  const children = new Map<string | null, TaskRow[]>();
+  for (const task of all) children.set(task.parent_id ?? null, [...(children.get(task.parent_id ?? null) ?? []), task]);
+  const out: TaskRow[] = [];
+  const walk = (parent: string | null) => {
+    const kids = (children.get(parent) ?? []).sort((a, b) => (a.position ?? 0) - (b.position ?? 0) || a.id.localeCompare(b.id));
+    for (const kid of kids) {
+      out.push(kid);
+      walk(kid.id);
+    }
+  };
+  walk(null);
+  return out;
+}
+
 /** The position a new task takes: last among its siblings (same project, same parent), planned tasks counted, plus one. */
 export async function nextPosition(src: Source, projectId: string, parentId: string | null): Promise<number> {
   const siblings = await siblingTasks(src, projectId, parentId);

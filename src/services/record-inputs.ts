@@ -43,6 +43,9 @@ export const addProjectInput = z.strictObject({
     .boolean()
     .optional()
     .describe("With deal: true marks the deal's open tasks done; they stay on the deal. Wins over moveOpenTasks. The default is false."),
+  template: shortText(
+    "A project template to copy: its id (tp_...) or exact name (see list_templates). Its tasks are copied as they are now; a template with due days and no startAt makes the project start today.",
+  ).optional(),
 });
 
 export const updateProjectInput = z.strictObject({
@@ -186,6 +189,36 @@ export const taskPlanItemInput = z.strictObject({
   due: when("When it is due").optional(),
   dueDays: z.number().int().min(0).max(3650).describe("Days after the project's start date; use this or due.").optional(),
   under: z.number().int().describe("The 1-based number of an earlier task in this list to put this under.").optional(),
+  workType: shortText("The work type for time on this task: its name or id (see list_work_types). Needs time tracking on.").optional(),
+});
+
+export const templateTaskInput = z.strictObject({
+  title: shortText("What to do, in a few words."),
+  dueDays: z.number().int().min(0).max(3650).describe("Days after the project's start date.").optional(),
+  workType: shortText("The work type: its name or id (see list_work_types). Needs time tracking on.").optional(),
+  under: z.number().int().describe("The 1-based number of an earlier task in this list to put this under.").optional(),
+});
+
+const templateRef = () => z.string().min(1).max(200).describe("The template: its id (tp_...) or exact name (see list_templates).");
+
+export const addTemplateInput = z.strictObject({
+  name: shortText("The template's name, on one line."),
+  description: longText("What the template is for.").optional(),
+  tasks: z.array(templateTaskInput).min(1).max(100).describe("The tasks, in order, at most 100."),
+});
+
+export const updateTemplateInput = z.strictObject({
+  template: templateRef(),
+  name: shortText("The new name, on one line.").optional(),
+  description: orNull(longText("The new description, or null to clear it.")).optional(),
+  archived: z.boolean().optional().describe("true to archive the template, false to bring it back."),
+  tasks: z.array(templateTaskInput).min(1).max(100).describe("Replaces the whole task list: every live task is archived and these are added.").optional(),
+});
+
+export const saveProjectAsTemplateInput = z.strictObject({
+  project: projectRef().describe("The project to copy: its id (pj_...) or exact name."),
+  name: shortText("The new template's name, on one line."),
+  description: longText("What the template is for.").optional(),
 });
 
 export const addTaskPlanInput = z.strictObject({

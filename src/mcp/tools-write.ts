@@ -24,6 +24,9 @@ import {
   updateProjectInput,
   addTaskInput,
   addTaskPlanInput,
+  addTemplateInput,
+  saveProjectAsTemplateInput,
+  updateTemplateInput,
   completeTaskInput,
   logActivityInput,
   qualifyLeadInput,
@@ -221,6 +224,56 @@ export function registerWriteTools(server: McpServer, deps: ToolDeps): void {
         PROPOSES,
       input: addTaskPlanInput,
       run: (args, deps) => recordWrite(deps, { action: "add_task_plan", ...args }),
+    },
+    deps,
+  );
+
+  registerTool(
+    server,
+    {
+      name: "add_template",
+      title: "Add a project template",
+      kind: "write",
+      description:
+        "Adds a project template: a named task list (1 to 100 tasks, one flat list in order; an item's under is the 1-based " +
+        "number of an earlier item, dueDays counts from a project's start) that add_project can copy with template. " +
+        "Refused while projects are off. " +
+        PROPOSES,
+      input: addTemplateInput,
+      run: (args, deps) => recordWrite(deps, { action: "add_template", ...args }),
+    },
+    deps,
+  );
+
+  registerTool(
+    server,
+    {
+      name: "update_template",
+      title: "Update a project template",
+      kind: "write",
+      destructive: true,
+      description:
+        "Renames a template, changes its description, archives or restores it, or replaces its whole task list with tasks " +
+        "(the old live tasks are archived). Projects already made from it are not changed. Refused while projects are off. " +
+        PROPOSES,
+      input: updateTemplateInput,
+      run: (args, deps) => recordWrite(deps, { action: "update_template", ...args }),
+    },
+    deps,
+  );
+
+  registerTool(
+    server,
+    {
+      name: "save_project_as_template",
+      title: "Save a project as a template",
+      kind: "write",
+      description:
+        "Makes a new template from a project's tasks, open and done, keeping their nesting, order and work types; a task's " +
+        "due date becomes days after the project's start when both dates exist. Refused while projects are off. " +
+        PROPOSES,
+      input: saveProjectAsTemplateInput,
+      run: (args, deps) => recordWrite(deps, { action: "save_project_as_template", ...args }),
     },
     deps,
   );

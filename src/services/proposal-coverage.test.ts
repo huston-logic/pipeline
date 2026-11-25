@@ -45,6 +45,12 @@ const OPEN_TASK_ON_WON_DEAL = "INSERT INTO tasks (id, deal_id, contact_id, title
 const PROJECT_WITH_DATES =
   "UPDATE projects SET start_at = '2026-12-01T08:00:00.000Z', target_at = '2027-01-30T08:00:00.000Z', notes = 'Phase one.' WHERE id = 'pj_seed01'";
 
+/** A template with a nested task, due days and a work type. */
+const TEMPLATE_KIT =
+  "INSERT INTO project_templates (id, name, description) VALUES ('tp_kit', 'Kitchen kit', 'The usual.'); " +
+  "INSERT INTO template_tasks (id, template_id, parent_id, position, title, due_days, work_type_id) VALUES " +
+  "('tt_a', 'tp_kit', NULL, 1, 'Survey', 3, 'wt_design'), ('tt_b', 'tp_kit', 'tt_a', 1, 'Measure', NULL, NULL)";
+
 type Variant = { input: Record<string, unknown>; setup?: string };
 
 /** Each record action with each optional field set at least once, in inputs the service accepts. */
@@ -143,16 +149,31 @@ const VARIANTS: Record<RecordActionName, Variant[]> = {
     { input: { deal: "dl_seed07", name: "Salon launch", completeOpenTasks: true }, setup: OPEN_TASK_ON_WON_DEAL },
     { input: { deal: "dl_seed07", name: "Salon launch", moveOpenTasks: true, completeOpenTasks: true }, setup: OPEN_TASK_ON_WON_DEAL },
     { input: { name: "Office move", fields: { scope: "Two floors" } } },
+    { input: { name: "Kitchen job", template: "Kitchen kit" }, setup: TEMPLATE_KIT },
+    { input: { name: "Kitchen job", template: "tp_kit", startAt: "2026-12-01", moveOpenTasks: true, deal: "dl_seed07" }, setup: `${TEMPLATE_KIT}; ${OPEN_TASK_ON_WON_DEAL}` },
   ],
   add_task_plan: [
     {
       input: {
         project: "Retrofit",
         under: "tk_proj",
-        tasks: [{ title: "Survey", dueDays: 3 }, { title: "Measure", under: 1, due: "2026-12-05" }, { title: "Order" }],
+        tasks: [{ title: "Survey", dueDays: 3, workType: "Design" }, { title: "Measure", under: 1, due: "2026-12-05" }, { title: "Order" }],
       },
       setup: `${ENTRY_ON_PROJECT}; UPDATE projects SET start_at = '2026-12-01T08:00:00.000Z' WHERE id = 'pj_seed01'`,
     },
+  ],
+  add_template: [
+    { input: { name: "Retrofit kit", description: "For retrofits.", tasks: [{ title: "Survey", dueDays: 3, workType: "Design" }, { title: "Measure", under: 1 }, { title: "Order" }] } },
+    { input: { name: "Bare kit", tasks: [{ title: "One" }] } },
+  ],
+  update_template: [
+    { input: { template: "tp_kit", name: "Kitchen kit 2", description: "Changed." }, setup: TEMPLATE_KIT },
+    { input: { template: "Kitchen kit", description: null }, setup: TEMPLATE_KIT },
+    { input: { template: "tp_kit", archived: true }, setup: TEMPLATE_KIT },
+    { input: { template: "tp_kit", tasks: [{ title: "Fresh survey", dueDays: 1, workType: "Admin" }, { title: "Sub", under: 1 }] }, setup: TEMPLATE_KIT },
+  ],
+  save_project_as_template: [
+    { input: { project: "pj_seed01", name: "Saved kit", description: "From Retrofit." }, setup: `${ENTRY_ON_PROJECT}; UPDATE projects SET start_at = '2026-12-01T08:00:00.000Z' WHERE id = 'pj_seed01'; UPDATE tasks SET due_at = '2026-12-04T08:00:00.000Z', work_type_id = 'wt_design' WHERE id = 'tk_proj'` },
   ],
   update_project: [
     { input: { project: "Retrofit", name: "Retrofit phase 2", status: "done", startAt: "2026-12-02", targetAt: "2027-02-01", notes: "Anchors ordered." } },

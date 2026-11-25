@@ -108,7 +108,8 @@ async function liveTask(src: Source, id: string): Promise<{ task: TemplateTaskRo
  */
 async function commitTemplate(ctx: Ctx, input: ChangeInput, name?: string, except?: string): Promise<ChangeResult> {
   try {
-    return await commitChange(ctx, { ...input, bulk: needsBulk(input.changes) });
+    // A plan collects the rows as they are; the proposal's apply makes the change bulk when it is big.
+    return await commitChange(ctx, { ...input, bulk: ctx.plan === undefined && needsBulk(input.changes) });
   } catch (error) {
     if (name !== undefined && isTemplateNameFailure(error)) await checkNameFree(ctx, name, except);
     throw error;
@@ -128,42 +129,9 @@ export async function addTemplate(
   if (items.length > TEMPLATE_TASKS_MAX) throw tooMany(items.length);
   checkTree(items);
   await checkNameFree(ctx, name);
-  const resolved: { title: string; dueDays: number | null; workType: string | null }[] = [];
-  // Each distinct work type reference is looked up once.
-  const known = new Map<string, string>();
-  for (const [i, item] of items.entries()) {
-    let workType: string | null = null;
-    if (item.workType !== undefined) {
-      const key = item.workType.trim().toLowerCase();
-      workType = known.get(key) ?? (await workTypeId(ctx, item.workType));
-      known.set(key, workType);
-    }
-    resolved.push({
-      title: clean(item.title) === null ? fail(`Task ${i + 1} needs a title. Say in a few words what to do.`) : checkText(item.title, "task title"),
-      dueDays: item.dueDays === undefined ? null : checkDueDays(item.dueDays),
-      workType,
-    });
-  }
   const template: ProjectTemplateRow = { id: newId("tp"), name, description, archived: 0, untrusted_fields: "[]", ...stamps(ctx) };
   const ids = items.map(() => newId("tt"));
-  const next = new Map<string | null, number>();
-  const rows: TemplateTaskRow[] = items.map((item, i) => {
-    const parent = item.under === undefined ? null : (ids[item.under - 1] ?? null);
-    const position = (next.get(parent) ?? 0) + 1;
-    next.set(parent, position);
-    const r = resolved[i];
-    return {
-      id: ids[i] ?? "",
-      template_id: template.id,
-      parent_id: parent,
-      position,
-      title: r?.title ?? "",
-      due_days: r?.dueDays ?? null,
-      work_type_id: r?.workType ?? null,
-      archived: 0,
-      ...stamps(ctx),
-    };
-  });
+  const rows = await taskRowsFor(ctx, template.id, items, ids);
   const group = `template:${template.id}`;
   const count = rows.length;
   const result = await commitTemplate(ctx, {
@@ -175,6 +143,37 @@ export async function addTemplate(
     ],
   }, name);
   return { ...result, templateId: template.id, taskIds: ids };
+}
+
+/** The rows for a list of task inputs (checked, `under` numbers read as earlier items), each work type looked up once. */
+async function taskRowsFor(ctx: Ctx, templateId: string, items: readonly TemplateTaskInput[], ids: readonly string[]): Promise<TemplateTaskRow[]> {
+  const known = new Map<string, string>();
+  const next = new Map<string | null, number>();
+  const rows: TemplateTaskRow[] = [];
+  for (const [i, item] of items.entries()) {
+    let workType: string | null = null;
+    if (item.workType !== undefined) {
+      const key = item.workType.trim().toLowerCase();
+      workType = known.get(key) ?? (await workTypeId(ctx, item.workType));
+      known.set(key, workType);
+    }
+    const title = clean(item.title) === null ? fail(`Task ${i + 1} needs a title. Say in a few words what to do.`) : checkText(item.title, "task title");
+    const parent = item.under === undefined ? null : (ids[item.under - 1] ?? null);
+    const position = (next.get(parent) ?? 0) + 1;
+    next.set(parent, position);
+    rows.push({
+      id: ids[i] ?? "",
+      template_id: templateId,
+      parent_id: parent,
+      position,
+      title,
+      due_days: item.dueDays === undefined ? null : checkDueDays(item.dueDays),
+      work_type_id: workType,
+      archived: 0,
+      ...stamps(ctx),
+    });
+  }
+  return rows;
 }
 
 function checkDescription(value: string | null): string | null {
@@ -193,9 +192,14 @@ function fail(message: string): never {
 export async function updateTemplate(
   ctx: Ctx,
   ref: string,
-  patch: { name?: string; description?: string | null; archived?: boolean },
+  patch: { name?: string; description?: string | null; archived?: boolean; tasks?: TemplateTaskInput[] },
 ): Promise<ChangeResult & { templateId: string }> {
   const before = await findTemplate(ctx, ref);
+  const items = patch.tasks;
+  if (items !== undefined) {
+    if (items.length > TEMPLATE_TASKS_MAX) throw tooMany(items.length);
+    checkTree(items);
+  }
   const set: Partial<ProjectTemplateRow> = {};
   const parts: string[] = [];
   const restoring = patch.archived === false && before.archived === 1;
@@ -216,16 +220,30 @@ export async function updateTemplate(
   if (patch.archived !== undefined && (patch.archived ? 1 : 0) !== before.archived) {
     set.archived = patch.archived ? 1 : 0;
     parts.push(patch.archived ? "archived" : "restored");
-  } else if (before.archived === 1 && parts.length > 0) {
+  } else if (before.archived === 1 && (parts.length > 0 || items !== undefined)) {
     throw new UserError(`${templateText(before)} is archived. Restore it first (archived false).`);
   }
-  if (parts.length === 0) throw new UserError(`Nothing to change on ${templateText(before)}: every value you gave is already set.`);
+  const taskChanges: RowChange[] = [];
+  if (items !== undefined) {
+    const old = await templateTasksOf(ctx, before.id);
+    const rows = await taskRowsFor(ctx, before.id, items, items.map(() => newId("tt")));
+    taskChanges.push(
+      ...old.map((row) => ({ table: "template_tasks" as const, id: row.id, before: row, after: updatedRow(row, { archived: 1 }, ctx.now) })),
+      ...rows.map((row) => ({ table: "template_tasks" as const, id: row.id, before: null, after: row })),
+    );
+    parts.push(`tasks replaced (${old.length} out, ${rows.length} in)`);
+  }
+  if (parts.length === 0 || (Object.keys(set).length === 0 && taskChanges.length === 0)) {
+    throw new UserError(`Nothing to change on ${templateText(before)}: every value you gave is already set.`);
+  }
   if (set.name !== undefined || restoring) await checkNameFree(ctx, set.name ?? before.name, before.id);
   const after = updatedRow(before, set, ctx.now);
+  const templateChanged = Object.keys(set).length > 0;
+  const changes: RowChange[] = [...(templateChanged ? [{ table: "project_templates" as const, id: before.id, before, after }] : []), ...taskChanges];
   const result = await commitTemplate(ctx, {
-    target: { table: "project_templates", id: before.id },
+    target: templateChanged ? { table: "project_templates", id: before.id } : { table: "template_tasks", id: taskChanges[0]?.id ?? "" },
     summary: `Updated ${templateText(after)}: ${parts.join(", ")}`,
-    changes: [{ table: "project_templates", id: before.id, before, after }],
+    changes,
   }, after.name, before.id);
   return { ...result, templateId: before.id };
 }

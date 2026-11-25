@@ -260,7 +260,7 @@ export const isRunningTimerFailure = (error: unknown) =>
 export const isWorkTypeNameFailure = (error: unknown) => /UNIQUE constraint failed: index 'work_types_name'/.test(errorText(error));
 /** A second live template with the same name (ignoring case). */
 export const isTemplateNameFailure = (error: unknown) => /UNIQUE constraint failed: index 'project_templates_name'/.test(errorText(error));
-export const isClientRatePairFailure =(error: unknown) =>
+export const isClientRatePairFailure = (error: unknown) =>
   /UNIQUE constraint failed: client_rates\.work_type_id, client_rates\.contact_id/.test(errorText(error));
 
 /** A second live block on one address (an undo of clearing a block, after a newer block was made). */
@@ -369,7 +369,7 @@ export function needsBulk(changes: readonly RowChange[]): boolean {
   return sqlBytes(snapshot("before")) > CHUNK_BYTES || sqlBytes(snapshot("after")) > CHUNK_BYTES;
 }
 
-export const isBulkTable =(table: ChangeTable) => BULK_ORDER.includes(table);
+export const isBulkTable = (table: ChangeTable) => BULK_ORDER.includes(table);
 
 /** Rows of one table written by one statement shape: an insert or an update of the same columns. */
 type BulkGroup = { table: ChangeTable; columns: string[]; rows: Row[] };

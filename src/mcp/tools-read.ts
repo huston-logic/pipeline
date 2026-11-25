@@ -14,6 +14,7 @@ import { personStatusOverview } from "../services/person-status.ts";
 import { type StatusLabels, statusLabels } from "../services/status-labels.ts";
 import { getDealBrief, listDealsFiltered, listTaskItems, pipelineSummary, recentChanges, searchContacts, whatsDue } from "../services/read.ts";
 import { getProject, listProjects } from "../services/project-read.ts";
+import { getTemplate, listTemplates } from "../services/template-read.ts";
 import { listRules, previewRuleFor, type RulePreview } from "../services/rules.ts";
 import { formatLocal, parseWhen } from "../time.ts";
 import { toolResult } from "./format.ts";
@@ -267,6 +268,40 @@ export function registerReadTools(server: McpServer, deps: ToolDeps): void {
         const kind = status === "done" ? "done" : "open";
         const headline = tasks.length === 0 ? `No ${kind} tasks.` : count(tasks.length, `${kind} task`);
         return toolResult(tasks.length === 0 ? headline : `${headline}.`, { tasks });
+      },
+    },
+    deps,
+  );
+
+  registerTool(
+    server,
+    {
+      name: "list_templates",
+      title: "List project templates",
+      kind: "read",
+      description:
+        "Project templates (a named task list a new project can copy): id, name, description and live task count. " +
+        "includeArchived adds archived ones. Refused while projects are off.",
+      input: z.strictObject({ includeArchived: z.boolean().optional().describe("true to include archived templates.") }),
+      async run(args, { db }) {
+        const list = await listTemplates(db, args);
+        return toolResult(list.length === 0 ? "No templates." : `${count(list.length, "template")}.`, { templates: list });
+      },
+    },
+    deps,
+  );
+
+  registerTool(
+    server,
+    {
+      name: "get_template",
+      title: "Get a project template",
+      kind: "read",
+      description: "One template's live tasks as a tree (depth, due days after the start, work type). Give its id or exact name. Refused while projects are off.",
+      input: z.strictObject({ template: shortText("The template: its id (tp_...) or exact name.") }),
+      async run(args, { db }) {
+        const view = await getTemplate(db, args.template);
+        return toolResult(`Template ${view.name}: ${count(view.tasks.length, "task")}.`, view);
       },
     },
     deps,

@@ -9,6 +9,8 @@ import { clean, whenOrNull } from "./input.ts";
 import { projectLabel } from "./labels.ts";
 import { nextPosition, ownerTimezone } from "./lookup.ts";
 import { projectLinks } from "./project-links.ts";
+import { requireTimeTracking } from "./settings.ts";
+import { findWorkType } from "./work-types.ts";
 import { parentLinks } from "./subtasks.ts";
 
 export const TASK_PLAN_MAX = 100;
@@ -21,6 +23,8 @@ export interface TaskPlanItem {
   dueDays?: number;
   /** The 1-based number of an earlier item in this list this one goes under. */
   under?: number;
+  /** A work type's id or name; needs time tracking on. */
+  workType?: string;
 }
 
 export interface TaskPlanInput {
@@ -62,6 +66,20 @@ export async function addTaskPlan(ctx: Ctx, input: TaskPlanInput): Promise<Chang
     return parseWhen(addDays(localDate(new Date(project.start_at), tz), item.dueDays), tz).toISOString();
   });
   const titles = tasks.map((item, i) => clean(item.title) ?? fail(`Task ${i + 1} needs a title. Say in a few words what to do.`));
+  // Each distinct work type is looked up once; any work type needs time tracking on.
+  const types = new Map<string, string>();
+  const workTypes: (string | null)[] = [];
+  for (const item of tasks) {
+    if (item.workType === undefined) {
+      workTypes.push(null);
+      continue;
+    }
+    await requireTimeTracking(ctx);
+    const key = item.workType.trim().toLowerCase();
+    const id = types.get(key) ?? (await findWorkType(ctx, item.workType)).id;
+    types.set(key, id);
+    workTypes.push(id);
+  }
 
   const now = ctx.now.toISOString();
   const ids = tasks.map(() => newId("tk"));
@@ -86,6 +104,7 @@ export async function addTaskPlan(ctx: Ctx, input: TaskPlanInput): Promise<Chang
       due_at: dueAt[i] ?? null,
       done_at: null,
       snoozed_until: null,
+      ...(workTypes[i] === null || workTypes[i] === undefined ? {} : { work_type_id: workTypes[i] }),
       source: "owner",
       untrusted_fields: "[]",
       version: 1,

@@ -101,6 +101,10 @@ export function checkListShows(unshown: readonly string[]): void {
   }
 }
 
+function checkPlannedTasks(planned: number): void {
+  if (planned > TASK_PLAN_MAX) throw new UserError(`A proposal holds at most ${TASK_PLAN_MAX} planned tasks; this one has ${planned}. Split it into two lists.`);
+}
+
 /** The proposal a revised list replaces: it must still be open. */
 async function replaceable(db: Db, id: string, now: Date): Promise<ProposalRow> {
   const row = isProposalId(id) ? await getProposal(db, id) : null;
@@ -126,8 +130,8 @@ export async function proposeChanges(caller: Ctx, input: { actions: RecordAction
     throw new UserError(`A proposal holds at most ${PROPOSAL_MAX_ACTIONS} actions; this one has ${count}. Split it into smaller lists.`);
   }
   const checked = checkActions(input.actions);
-  const planned = checked.reduce((sum, action) => sum + (action.action === "add_task_plan" ? action.tasks.length : 0), 0);
-  if (planned > TASK_PLAN_MAX) throw new UserError(`A proposal holds at most ${TASK_PLAN_MAX} planned tasks; this one has ${planned}. Split it into two lists.`);
+  const planned = checked.reduce((sum, action) => sum + ("tasks" in action && action.tasks !== undefined ? action.tasks.length : 0), 0);
+  checkPlannedTasks(planned);
   const old = input.replaces === undefined ? null : await replaceable(db, input.replaces.trim(), now);
   const { actions, questions } = await resolveActions(ctx, checked);
   if (questions.length > 0) return { kind: "questions", questions };
@@ -140,6 +144,8 @@ export async function proposeChanges(caller: Ctx, input: { actions: RecordAction
   if (target === null) throw new Error("A proposal planned no change.");
   const tz = await ownerTimezone(ctx);
   const built = plan.build(target, "");
+  // Tasks a template copy or a saved project adds only show once planned.
+  checkPlannedTasks(built.changes.filter((change) => change.before === null && (change.table === "template_tasks" || (change.table === "tasks" && change.group !== undefined))).length);
   const { list, unshown } = await shownList(ctx, built, tz, now);
   checkListShows(unshown);
 
