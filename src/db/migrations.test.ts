@@ -747,6 +747,27 @@ test("0017 keeps a capture document a copy already has, and the defaults say the
   assert.equal(await text(migrated), await text(fresh));
 });
 
+test("0023 gives an unchanged capture document the planning text and keeps an edited one, the defaults say the same", async () => {
+  const unchanged = new SqliteD1();
+  await applyMigrations(unchanged, 22);
+  const old = await unchanged.prepare("SELECT markdown FROM rulebook WHERE name = 'capture'").first<string>("markdown");
+  assert.deepEqual(await applyMigrations(unchanged, 23), ["0023_capture_plans.sql"]);
+  const text = (d: SqliteD1) => d.prepare("SELECT markdown FROM rulebook WHERE name = 'capture'").first<string>("markdown");
+  const fresh = new SqliteD1();
+  await applyMigrations(fresh, 23);
+  applySqlFile(fresh, "seed/defaults.sql");
+  assert.equal(await text(unchanged), await text(fresh));
+  assert.notEqual(await text(unchanged), old);
+  assert.match(String(await text(unchanged)), /add_task_plan/);
+
+  const edited = new SqliteD1();
+  await applyMigrations(edited, 22);
+  edited.exec("UPDATE rulebook SET markdown = markdown || char(10) || 'Also: my own line.', version = 3 WHERE name = 'capture'");
+  const before = await snapshot(edited, ["rulebook"]);
+  await applyMigrations(edited, 23);
+  assert.deepEqual(await snapshot(edited, ["rulebook"]), before);
+});
+
 test("0018 from the previous version: settings keep their values and time tracking starts off", async () => {
   const db = new SqliteD1();
   await applyMigrations(db, 17);
@@ -1080,6 +1101,7 @@ const FAKE_ROWS: Record<string, string> = {
  */
 const MEANT_TO_CHANGE: Record<string, { table: string; row: (row: Record<string, unknown>) => boolean; columns: string[] }[]> = {
   "0012_leads_rulebook.sql": [{ table: "rulebook", row: (row) => row.name === "leads", columns: ["markdown", "version", "updated_at"] }],
+  "0023_capture_plans.sql": [{ table: "rulebook", row: (row) => row.name === "capture", columns: ["markdown", "version", "updated_at"] }],
 };
 
 /** Tables that hold no rows between batches or belong to SQLite or wrangler. */
