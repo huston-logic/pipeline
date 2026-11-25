@@ -86,6 +86,9 @@ test("every board route answers 200 with the seed: one <h1>, landmarks, a unique
   db.exec("UPDATE settings SET projects = 1");
   db.exec(`INSERT INTO projects (id, name, contact_id, status_key, created_at, updated_at)
     VALUES ('pj_seed01', 'Storage building B', 'ct_seed01', 'active', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')`);
+  // The demo seed's template (boardRoutes) is stood in for by one fake template with a first task.
+  db.exec(`INSERT INTO project_templates (id, name) VALUES ('tp_seed01', 'Website build')`);
+  db.exec(`INSERT INTO template_tasks (id, template_id, position, title) VALUES ('tt_seed01', 'tp_seed01', 1, 'Kickoff call')`);
   const titles = new Set<string>();
   const descriptions = new Set<string>();
   for (const path of boardRoutes) {
@@ -660,8 +663,15 @@ test("board pages answer GET and HEAD only: any other method is 405 (writes have
   // 0028), and the import's first step to /import (decision 0036), behind the same checks as every board write: a bare
   // POST (no origin, no cookie, no token) is refused.
   // The project forms post elsewhere (decision 0055): New project to .../projects, Edit project to the project's own path.
-  const projectForm = (path: string) => /\/projects\/new$/.test(path) || /^\/projects\/[^/]+\/edit$/.test(path);
-  const formPage = (path: string) => (/\/(?:edit|new|qualify|campaign-emails\/allow)$/.test(path) && !projectForm(path)) || /^\/projects\/[^/?]+$/.test(path) || ["/import", "/timer/stop", "/campaigns/settings"].includes(path.split("?")[0] ?? "");
+  // The template pages (run 10) post the same way: New template to /templates, a template to its own path, a task's edit
+  // to /template-tasks/<id>.
+  const projectForm = (path: string) =>
+    /\/projects\/new$/.test(path) || /^\/projects\/[^/]+\/edit$/.test(path) || /^\/templates\/[^/]+\/tasks\/[^/]+\/edit$/.test(path);
+  const formPage = (path: string) =>
+    (/\/(?:edit|new|qualify|campaign-emails\/allow)$/.test(path) && !projectForm(path)) ||
+    /^\/projects\/[^/?]+$/.test(path) ||
+    /^\/templates\/[^/?]+$/.test(path) ||
+    ["/import", "/timer/stop", "/campaigns/settings", "/templates"].includes(path.split("?")[0] ?? "");
   for (const path of boardRoutes) {
     for (const method of ["POST", "PUT", "DELETE", "PATCH"]) {
       if (method === "POST" && formPage(path)) {

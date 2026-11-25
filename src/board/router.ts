@@ -9,7 +9,7 @@ import { herePath, type PageContext } from "./context.ts";
 import { lookOf } from "./layout.ts";
 import { briefPage } from "./pages/brief.ts";
 import { changesPage } from "./pages/changes.ts";
-import { isCampaignId, isContactId, isDealId, isImportId, isProjectId, isTimeEntryId } from "../ids.ts";
+import { isCampaignId, isContactId, isDealId, isImportId, isProjectId, isTemplateId, isTimeEntryId } from "../ids.ts";
 import { companiesPage } from "./pages/companies.ts";
 import { contactPage } from "./pages/contact.ts";
 import { contactEditPage } from "./pages/contact-edit.ts";
@@ -48,6 +48,10 @@ import { PROJECTS_PATH, projectsPage } from "./pages/projects.ts";
 import { projectPage } from "./pages/project.ts";
 import { projectEditPage } from "./pages/project-edit.ts";
 import { newInternalProjectPage, newProjectOfContactPage, newProjectOfDealPage } from "./pages/project-new.ts";
+import { templatePage } from "./pages/template.ts";
+import { templateTaskEditPage } from "./pages/template-task-edit.ts";
+import { TEMPLATES_NEW_PATH, templateNewPage, templatesPage } from "./pages/templates.ts";
+import { TEMPLATES_PATH } from "./template-form.ts";
 import { timerState } from "./timer-bar.ts";
 
 export type PageResult = { status: 200 | 404; body: string };
@@ -95,6 +99,8 @@ const PAGES = new Map<string, Page>([
   [TIME_NEW_PATH, (ctx) => timeNewPage(ctx)],
   [PROJECTS_PATH, (ctx) => projectsPage(ctx)],
   ["/projects/new", (ctx) => newInternalProjectPage(ctx)],
+  [TEMPLATES_PATH, (ctx) => templatesPage(ctx)],
+  [TEMPLATES_NEW_PATH, (ctx) => templateNewPage(ctx)],
   [CAMPAIGNS_PATH, (ctx) => campaignsPage(ctx)],
   [CAMPAIGN_SETTINGS_PATH, (ctx) => campaignSettingsPage(ctx)],
   [CAMPAIGNS_NEW_PATH, (ctx) => campaignNewPage(ctx)],
@@ -117,12 +123,16 @@ const RECORD_PATHS: { path: RegExp; isId: (id: string) => boolean; page: RecordP
   { path: /^\/projects\/([^/]+)\/edit$/, isId: isProjectId, page: (ctx, id) => projectEditPage(ctx, id) },
   { path: /^\/contacts\/([^/]+)\/projects\/new$/, isId: isContactId, page: (ctx, id) => newProjectOfContactPage(ctx, id) },
   { path: /^\/deals\/([^/]+)\/projects\/new$/, isId: isDealId, page: (ctx, id) => newProjectOfDealPage(ctx, id) },
+  { path: /^\/templates\/([^/]+)$/, isId: isTemplateId, page: (ctx, id) => templatePage(ctx, id) },
   { path: /^\/campaigns\/([^/]+)$/, isId: isCampaignId, page: (ctx, id) => campaignReviewPage(ctx, id) },
   { path: /^\/campaigns\/([^/]+)\/edit$/, isId: isCampaignId, page: (ctx, id) => campaignEditPage(ctx, id) },
   { path: /^\/campaigns\/([^/]+)\/people$/, isId: isCampaignId, page: (ctx, id) => campaignPeoplePage(ctx, id) },
   { path: /^\/import\/([^/]+)$/, isId: isImportId, page: importDraft, gone: importGonePage },
   { path: /^\/import\/([^/]+)\/preview$/, isId: isImportId, page: importPreview, gone: importGonePage },
 ];
+
+/** /templates/<tp id>/tasks/<tt id>/edit: the one page with two ids in its address. */
+const TEMPLATE_TASK_EDIT = /^\/templates\/([^/]+)\/tasks\/([^/]+)\/edit$/;
 
 /** /import: the start of the board import, for the module its `module=` names (decisions 0036, 0037). */
 const IMPORT_START = "/import";
@@ -160,6 +170,15 @@ export function matchBoardPage(pathname: string): BoardPage | null {
     return async (request) => {
       const ctx = await contextFor(request);
       const body = await importStart(ctx);
+      return body === null ? { status: 404, body: notFoundPage({ look: ctx.look }) } : { status: 200, body };
+    };
+  }
+  const taskEdit = TEMPLATE_TASK_EDIT.exec(pathname);
+  if (taskEdit?.[1] !== undefined && taskEdit[2] !== undefined) {
+    const [templateId, taskId] = [taskEdit[1], taskEdit[2]];
+    return async (request) => {
+      const ctx = await contextFor(request);
+      const body = await templateTaskEditPage(ctx, templateId, taskId);
       return body === null ? { status: 404, body: notFoundPage({ look: ctx.look }) } : { status: 200, body };
     };
   }

@@ -49,7 +49,9 @@ export const isActivityId = (id: string): boolean => /^ac_[a-z0-9]{1,32}$/.test(
 export const isProjectId = (id: string): boolean => /^pj_[a-z0-9]{1,32}$/.test(id);
 
 /** The same check for a campaign id ("cp_" ...), used by the board's campaign pages (decision 0053). */
-export const isCampaignId = (id: string): boolean => /^cp_[a-z0-9]{1,32}$/.test(id);
+export const isTemplateId = (id: string): boolean => /^tp_[a-z0-9]{1,32}$/.test(id);
+export const isTemplateTaskId = (id: string): boolean => /^tt_[a-z0-9]{1,32}$/.test(id);
+export const isCampaignId =(id: string): boolean => /^cp_[a-z0-9]{1,32}$/.test(id);
 
 export function newId(prefix: IdPrefix): string {
   const bytes = crypto.getRandomValues(new Uint8Array(12));

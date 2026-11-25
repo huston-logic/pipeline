@@ -34,10 +34,10 @@ const descriptionOf = (body: string) => /<meta name="description" content="([^"]
 test("More lists Projects after Time and before Campaigns, only while projects are on", async () => {
   assert.ok(!moreItems.some((item) => item.href === "/projects"));
   const all = moreItemsFor({ timeTracking: true, campaigns: true, projects: true }).map((item) => item.href);
-  assert.ok(all.indexOf("/time") + 1 === all.indexOf("/projects") && all.indexOf("/projects") + 1 === all.indexOf("/campaigns"));
+  assert.ok(all.indexOf("/time") + 1 === all.indexOf("/projects") && all.indexOf("/projects") + 2 === all.indexOf("/campaigns"));
   assert.deepEqual(moreItemsFor({ timeTracking: false, campaigns: false, projects: false }), moreItems);
   assert.deepEqual(moreItemsFor({ timeTracking: false, campaigns: false }), moreItems);
-  assert.deepEqual(moreItemsFor({ timeTracking: false, campaigns: false, projects: true }).filter((item) => item.href !== "/projects"), moreItems);
+  assert.deepEqual(moreItemsFor({ timeTracking: false, campaigns: false, projects: true }).filter((item) => item.href !== "/projects" && item.href !== "/templates"), moreItems);
 
   const on = await projectsDb();
   assert.match((await load(devEnv(on), "/more")).body, /href="\/projects"/);

@@ -73,7 +73,7 @@ function sectionOf(path: string): string | null {
   if (path.startsWith("/deals/")) return "/pipeline";
   const people = ["/companies", "/leads", "/people"];
   if (path.startsWith("/contacts/") || people.includes(path) || path.startsWith("/leads/")) return "/contacts";
-  const inMore = ["/time/", "/campaigns/", "/projects/"].some((prefix) => path.startsWith(prefix));
+  const inMore = ["/time/", "/campaigns/", "/projects/", "/templates/"].some((prefix) => path.startsWith(prefix));
   if (moreItemsFor({ timeTracking: true, campaigns: true, projects: true }).some((item) => item.href === path) || inMore) {
     return "/more";
   }

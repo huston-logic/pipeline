@@ -119,7 +119,8 @@ export async function projectsPage(ctx: PageContext): Promise<string | null> {
     frame: ctx,
     body: html`<h1>Projects</h1>
 <p class="lede">${LEDE}</p>
-<p class="card-actions"><a class="button button-small" href="/projects/new">Start a project</a></p>
+<p class="card-actions"><a class="button button-small" href="/projects/new">Start a project</a>
+<a class="button button-quiet button-small" href="/templates">Templates</a></p>
 ${await viewSwitch(db, "projects", shown)}
 ${tools(choices, status, sort, layout)}
 ${layoutSwitch(PROJECTS_PATH, query, layout)}
