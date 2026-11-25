@@ -12,6 +12,7 @@ import { activityText, contactName, dealLabel, dealTitle, isTrusted, projectTitl
 import { parseObject, stageLabels } from "./lookup.ts";
 import { fieldDefRows, memoWorkType, type Reader, readerOf } from "./memo.ts";
 import { LEAD } from "./person-move.ts";
+import { projectStatusLabels } from "./project-statuses.ts";
 import { type StatusLabels, statusLabels } from "./status-labels.ts";
 import { timeLine, timerLine } from "./time-format.ts";
 
@@ -83,11 +84,21 @@ const ORDER: Partial<Record<ChangeTable, string[]>> = {
   contacts: ["name", "person_status", "business", "email", "phone", "source", "notes", "fields", "archived"],
   deals: ["stage_key", "status", "title", "contact_id", "value", "next_step", "next_at", "fields", "archived"],
   tasks: ["title", "for", "due_at", "snoozed_until", "done_at"],
+  projects: ["name", "status_key", "start_at", "target_at", "notes", "archived"],
 };
 
-const LABELS: Record<string, string> = { person_status: "person status", contact_id: "person", due_at: "due", done_at: "done", snoozed_until: "snoozed until" };
+const LABELS: Record<string, string> = {
+  person_status: "person status",
+  contact_id: "person",
+  due_at: "due",
+  done_at: "done",
+  snoozed_until: "snoozed until",
+  status_key: "status",
+  start_at: "start",
+  target_at: "target",
+};
 
-const DATE_COLUMNS = new Set(["next_at", "due_at", "done_at", "snoozed_until", "occurred_at", "started_at", "ended_at"]);
+const DATE_COLUMNS = new Set(["next_at", "due_at", "done_at", "snoozed_until", "occurred_at", "started_at", "ended_at", "start_at", "target_at"]);
 
 const STATUS_WORDS: Record<string, string> = { open: "open", won: "won", lost: "lost", not_now: "not now" };
 
@@ -100,6 +111,8 @@ interface Names {
   now: string;
   stages: Map<string, string>;
   statuses: StatusLabels;
+  /** Each project status key and its label. */
+  projectStatuses: Map<string, string>;
   fields: Map<string, string>;
   planned: Map<string, Row>;
   /** The rows the list names that the plan doesn't write, read up front in one batch (null: not found). */
@@ -187,6 +200,7 @@ function shown(names: Names, table: ChangeTable, column: string, value: unknown)
   if (column === "stage_key") return names.stages.get(String(value)) ?? String(value);
   if (column === "archived") return value === 1 ? "yes" : "no";
   if (table === "deals" && column === "status") return STATUS_WORDS[String(value)] ?? String(value);
+  if (table === "projects" && column === "status_key") return names.projectStatuses.get(String(value)) ?? String(value);
   if (typeof value === "boolean") return value ? "yes" : "no";
   return short(String(value), SHOWN_MAX);
 }
@@ -293,6 +307,30 @@ function addedFields(names: Names, table: "contacts" | "deals", id: string, row:
       out.push({ field: columnLabel("sub_status"), to: names.statuses.sub(String(row.person_status), sub) ?? sub });
     }
   }
+  return out;
+}
+
+/** `Project "Retrofit"`, or `Project pj_...` when the name came from outside; an edit adds the person. */
+async function projectRecord(names: Names, row: Row, withPerson: boolean): Promise<string> {
+  const project = row as unknown as ProjectRow;
+  const word = isTrusted(project, "name") ? `Project ${projectTitle(project)}` : `Project ${project.id}`;
+  const owner = withPerson ? await planned<ContactRow>(names, "contacts", project.contact_id) : null;
+  return owner ? `${word} (${contactName(owner)})` : word;
+}
+
+/** What an added project sets: its person, the deal it comes from, status, dates and notes. */
+async function addedProjectFields(names: Names, id: string, row: Row): Promise<Item["fields"]> {
+  show(names, "projects", id, ["name", "contact_id", "deal_id", "status_key", "start_at", "target_at", "notes", "archived"]);
+  const owner = await planned<ContactRow>(names, "contacts", String(row.contact_id));
+  const deal = await planned<DealRow>(names, "deals", (row.deal_id as string | null) ?? null);
+  const out: Item["fields"] = [{ field: "person", to: owner ? contactName(owner) : String(row.contact_id) }];
+  if (deal) out.push({ field: "from deal", to: dealTitle(deal) });
+  out.push(
+    { field: "status", to: cell(names, "projects", row, "status_key", row.status_key) },
+    { field: "start", to: cell(names, "projects", row, "start_at", row.start_at) },
+    { field: "target", to: cell(names, "projects", row, "target_at", row.target_at) },
+  );
+  if (row.notes !== null && row.notes !== "") out.push({ field: "notes", to: cell(names, "projects", row, "notes", row.notes) });
   return out;
 }
 
@@ -426,6 +464,7 @@ export async function shownList(src: Reader, input: ChangeInput, tz: string, now
     now: now.toISOString(),
     stages: await stageLabels(src),
     statuses: await statusLabels(src),
+    projectStatuses: await projectStatusLabels(src),
     fields: new Map(fieldDefs.map((def) => [`${def.entity}.${def.key}`, def.label])),
     planned: plannedRows,
     read: await namedRows(readerOf(src).db, input, plannedRows),
@@ -463,6 +502,15 @@ export async function shownList(src: Reader, input: ChangeInput, tz: string, now
       }
       const fields = await updatedFields(names, table, id, before, after);
       if (fields.length > 0) list.update.push({ record, id, fields });
+      continue;
+    }
+    if (table === "projects") {
+      if (before === null) {
+        list.add.push({ record: await projectRecord(names, after, false), id, fields: await addedProjectFields(names, id, after) });
+        continue;
+      }
+      const edits = await updatedFields(names, table, id, before, after);
+      if (edits.length > 0) list.update.push({ record: await projectRecord(names, before, true), id, fields: edits });
       continue;
     }
     const fields = before === null ? [] : await updatedFields(names, table, id, before, after);

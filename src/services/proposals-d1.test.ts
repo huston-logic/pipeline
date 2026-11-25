@@ -79,6 +79,36 @@ test("a maximum-size proposal makes at most 40 D1 calls to propose and 40 to app
   assertAtMost(await measure(actions), 40);
 });
 
+/** Projects (decision 0055): three the list adds, one on file named by its name, each with tasks, notes and time. */
+const PROJECT_LIST: RecordAction[] = [
+  { action: "add_project", contact: "Pat", name: "Fence repair", targetAt: "2026-12-20" },
+  { action: "add_task", project: "@1", title: "Order posts" },
+  { action: "add_task", project: "@1", title: "Dig the holes", dueAt: "2026-11-21" },
+  { action: "log_activity", project: "@1", type: "note", summary: "Pat approved the layout." },
+  { action: "start_timer", project: "@1", workType: "Design" },
+  { action: "add_time_entry", project: "@1", startedAt: "2026-11-19T08:00", minutes: 30, workType: "Design" },
+  { action: "add_project", contact: "Casey", name: "Garden path" },
+  { action: "add_task", project: "@7", title: "Pick the stones" },
+  { action: "log_activity", project: "@7", type: "call", summary: "Casey called about the stones." },
+  { action: "add_time_entry", project: "@7", startedAt: "2026-11-19T09:00", minutes: 20, workType: "Admin" },
+  { action: "add_task", project: "Retrofit", title: "Order anchors" },
+  { action: "log_activity", project: "Retrofit", type: "note", summary: "Anchors are on back order." },
+  { action: "add_time_entry", project: "Retrofit", startedAt: "2026-11-19T09:30", minutes: 25, workType: "Design" },
+  { action: "update_project", project: "Retrofit", status: "done" },
+  { action: "add_project", contact: "Jordan", name: "Bike rack" },
+  { action: "add_task", project: "@15", title: "Measure the wall" },
+  { action: "add_task", project: "@15", title: "Order the rack" },
+  { action: "add_task", project: "Retrofit", title: "Send the invoice" },
+  { action: "log_activity", project: "@15", type: "note", summary: "Jordan picked a colour." },
+  ...RAMBLE.slice(2, 8),
+];
+
+test("a maximum-size list of projects, with tasks, notes and time on them, stays at most 40 D1 calls each way", async () => {
+  assert.equal(PROJECT_LIST.length, PROPOSAL_MAX_ACTIONS);
+  const more = "UPDATE settings SET projects = 1; INSERT INTO projects (id, name, contact_id) VALUES ('pj_seed01', 'Retrofit', 'ct_seed01')";
+  assertAtMost(await measure(PROJECT_LIST, more), 40);
+});
+
 test("a one-action proposal makes at most 12 D1 calls to propose and 12 to apply", async () => {
   assertAtMost(await measure([{ action: "log_activity", deal: "Pat", type: "call", summary: "Pat wants a quote by Friday." }]), 12);
 });

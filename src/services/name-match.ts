@@ -4,13 +4,13 @@
 // A match on a name, business or title that came from outside (untrusted_fields) never wins and never stands in
 // alone: when any candidate matched only on outside text, every candidate is a question. More than MATCH_MAX
 // candidates is one "too many" answer. A deal can also be named by its person, when that person has exactly one open
-// deal; a task by its title, among open tasks. Only the database is read: refs are resolved before anything is planned.
+// deal; a task by its title, among open tasks; a project by its exact name, among the unarchived. Only the database is read: refs are resolved before anything is planned.
 // Every ref of a list is read at once (matchAll): a statement per way of reading each kind of record, all in one D1
 // batch, so a list of any length costs one D1 call to resolve (decision 0044, "D1 calls"). A ref shaped like an id is
 // read by id only, so it scans no names; read by name too only if no record has that id (a second batch). The one case
 // that differs from a lone match: a deal ref that is a person's id finds that person's deal even if some deal's title
 // is exactly that id.
-import type { ContactRow, Db, DealRow, TaskRow } from "../db/db.ts";
+import type { ContactRow, Db, DealRow, ProjectRow, TaskRow } from "../db/db.ts";
 import { isTrusted } from "./labels.ts";
 import { businessKey } from "./lead-change.ts";
 
@@ -90,6 +90,14 @@ function taskMatch(key: string, byId: readonly TaskRow[], found: readonly TaskRo
   return decide(exact, loose, (row) => !isTrusted(row, "title"), "tasks");
 }
 
+/** A project ref: by id (archived too, the service says so), else the live projects whose whole name is the ref. */
+function projectMatch(key: string, byId: readonly ProjectRow[], found: readonly ProjectRow[]): Match<ProjectRow> {
+  const [one] = byId;
+  if (one !== undefined) return { kind: "one", row: one };
+  const exact = found.filter((row) => nameKey(row.name) === key);
+  return decide(exact, [], (row) => !isTrusted(row, "name"), "projects");
+}
+
 /** Refs per statement: each binds one parameter (its id or its LIKE pattern), and D1 takes 100 a statement. */
 const REFS_PER_READ = 90;
 
@@ -130,12 +138,14 @@ export interface Refs {
   contacts?: readonly string[];
   deals?: readonly string[];
   tasks?: readonly string[];
+  projects?: readonly string[];
 }
 
 export interface Matches {
   contacts: Match<ContactRow>[];
   deals: Match<DealRow>[];
   tasks: Match<TaskRow>[];
+  projects: Match<ProjectRow>[];
 }
 
 type Kind = keyof Matches;
@@ -143,7 +153,7 @@ type Ref = { ref: string; key: string; byName: boolean };
 
 /** One batch: every ref by id, and those with `byName` by name too. Answers each ref's match, and the refs to read again by name. */
 async function readOnce(db: Db, lists: Record<Kind, Ref[]>): Promise<{ matches: Matches; again: Record<Kind, number[]> }> {
-  const { contacts, deals, tasks } = lists;
+  const { contacts, deals, tasks, projects } = lists;
   const ids = (list: readonly Ref[], from = 0): Asked[] => list.flatMap(({ ref, key }, i) => (key === "" ? [] : [{ n: from + i, value: ref.trim() }]));
   const names = (list: readonly Ref[], from = 0): Asked[] =>
     list.flatMap(({ key, byName }, i) => (key === "" || !byName ? [] : [{ n: from + i, value: likePattern(key) }]));
@@ -157,17 +167,19 @@ async function readOnce(db: Db, lists: Record<Kind, Ref[]>): Promise<{ matches: 
     readsFor(db, names(deals), "d.*", `contacts c ON ${BY_NAME} JOIN deals d ON d.contact_id = c.id AND ${OPEN_DEAL}`, "d.created_at, d.id"),
     readsFor(db, ids(tasks), "t.*", "tasks t ON t.id = refs.v", "t.created_at, t.id"),
     readsFor(db, names(tasks), "t.*", "tasks t ON t.done_at IS NULL AND t.title LIKE refs.v ESCAPE '\\'", "t.created_at, t.id"),
+    readsFor(db, ids(projects), "p.*", "projects p ON p.id = refs.v", "p.created_at, p.id"),
+    readsFor(db, names(projects), "p.*", "projects p ON p.archived = 0 AND p.name LIKE refs.v ESCAPE '\\'", "p.created_at, p.id"),
   ];
   const statements = groups.flat();
   const results = statements.length === 0 ? [] : await db.batch<Tagged>(statements);
   let at = 0;
-  const [peopleById, peopleByName, dealsById, dealsByTitle, personDealsById, personDealsByName, tasksById, tasksByTitle] = groups.map((group) => {
+  const [peopleById, peopleByName, dealsById, dealsByTitle, personDealsById, personDealsByName, tasksById, tasksByTitle, projectsById, projectsByName] = groups.map((group) => {
     const rows = results.slice(at, at + group.length).flatMap((result) => result.results);
     at += group.length;
     return rows;
   });
   const none = { kind: "none" } as const;
-  const again: Record<Kind, number[]> = { contacts: [], deals: [], tasks: [] };
+  const again: Record<Kind, number[]> = { contacts: [], deals: [], tasks: [], projects: [] };
   const personMatch = (n: number, key: string): Match<ContactRow> =>
     contactMatch(key, rowsOf<ContactRow>(peopleById, n), rowsOf<ContactRow>(peopleByName, n));
   const matches: Matches = {
@@ -193,6 +205,12 @@ async function readOnce(db: Db, lists: Record<Kind, Ref[]>): Promise<{ matches: 
       if (byId.length === 0 && !byName) again.tasks.push(i);
       return taskMatch(key, byId, rowsOf<TaskRow>(tasksByTitle, i));
     }),
+    projects: projects.map(({ key, byName }, i) => {
+      if (key === "") return none;
+      const byId = rowsOf<ProjectRow>(projectsById, i);
+      if (byId.length === 0 && !byName) again.projects.push(i);
+      return projectMatch(key, byId, rowsOf<ProjectRow>(projectsByName, i));
+    }),
   };
   return { matches, again };
 }
@@ -205,12 +223,17 @@ async function readOnce(db: Db, lists: Record<Kind, Ref[]>): Promise<{ matches: 
 export async function matchAll(db: Db, refs: Refs): Promise<Matches> {
   const list = (values: readonly string[] | undefined): Ref[] =>
     (values ?? []).map((ref) => ({ ref, key: nameKey(ref), byName: !ID_SHAPED.test(ref.trim()) }));
-  const lists: Record<Kind, Ref[]> = { contacts: list(refs.contacts), deals: list(refs.deals), tasks: list(refs.tasks) };
+  const lists: Record<Kind, Ref[]> = {
+    contacts: list(refs.contacts),
+    deals: list(refs.deals),
+    tasks: list(refs.tasks),
+    projects: list(refs.projects),
+  };
   const { matches, again } = await readOnce(db, lists);
-  if (again.contacts.length + again.deals.length + again.tasks.length === 0) return matches;
+  if (again.contacts.length + again.deals.length + again.tasks.length + again.projects.length === 0) return matches;
   const pick = (kind: Kind): Ref[] => again[kind].map((i) => ({ ...(lists[kind][i] as Ref), byName: true }));
-  const second = (await readOnce(db, { contacts: pick("contacts"), deals: pick("deals"), tasks: pick("tasks") })).matches;
-  for (const kind of ["contacts", "deals", "tasks"] as const) {
+  const second = (await readOnce(db, { contacts: pick("contacts"), deals: pick("deals"), tasks: pick("tasks"), projects: pick("projects") })).matches;
+  for (const kind of ["contacts", "deals", "tasks", "projects"] as const) {
     again[kind].forEach((i, j) => {
       const found = second[kind][j];
       if (found !== undefined) (matches[kind] as unknown[])[i] = found;

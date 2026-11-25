@@ -46,6 +46,7 @@ import {
 } from "./proposal-actions.ts";
 import { type ProposalList, proposalList, renderProposal, shownList } from "./proposal-text.ts";
 import { runningTimerRefusal } from "./timer.ts";
+import { wonDealIds } from "./won-offers.ts";
 
 export const PROPOSAL_MAX_ACTIONS = 25;
 export const PROPOSAL_MAX_OPEN = 10;
@@ -349,10 +350,13 @@ async function refusalFor(ctx: Ctx, plan: PlanCollector, error: unknown): Promis
   return new UserError(`Action ${m} and action ${j} can't be in one list: ${reason}. Send them as two lists.`, { cause: error });
 }
 
-async function appliedAnswer(db: Db, row: ProposalRow): Promise<ChangeResult & { applied: number }> {
+/** An applied list's answer: how many actions, and the deals it marked Won (none for a list applied before). */
+export type ApplyResult = ChangeResult & { applied: number; wonDeals: string[] };
+
+async function appliedAnswer(db: Db, row: ProposalRow): Promise<ApplyResult> {
   const changeId = row.change_id ?? "";
   const audit = await db.prepare("SELECT summary FROM audit_log WHERE id = ?").bind(changeId).first<{ summary: string }>();
-  return { changeId, summary: `${row.id} was already applied: ${audit?.summary ?? `(change ${changeId})`}`, applied: 0 };
+  return { changeId, summary: `${row.id} was already applied: ${audit?.summary ?? `(change ${changeId})`}`, applied: 0, wonDeals: [] };
 }
 
 /**
@@ -360,7 +364,7 @@ async function appliedAnswer(db: Db, row: ProposalRow): Promise<ChangeResult & {
  * caller, tool apply_changes), only while every row they write is as it was when the list was made. A second apply
  * writes nothing and answers the first change.
  */
-export async function applyChanges(caller: Ctx, id: string, deps: Deps): Promise<ChangeResult & { applied: number }> {
+export async function applyChanges(caller: Ctx, id: string, deps: Deps): Promise<ApplyResult> {
   const ctx: Ctx = { ...caller, memo: new ReadMemo(caller.db) };
   const { db, now } = ctx;
   const ref = id.trim();
@@ -394,7 +398,7 @@ export async function applyChanges(caller: Ctx, id: string, deps: Deps): Promise
   }
   try {
     const result = await commitChange(applyCtx(ctx), input);
-    return { ...result, applied: actions.length };
+    return { ...result, applied: actions.length, wonDeals: wonDealIds(input.changes) };
   } catch (error) {
     const latest = await getProposal(db, row.id);
     if (latest?.status === "applied") return appliedAnswer(db, latest);

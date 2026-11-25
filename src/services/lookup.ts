@@ -32,7 +32,9 @@ async function rowById<T>(src: Source, table: ById, id: string): Promise<T | nul
   // Work types are configuration (a plan never writes them): the memo may hold them.
   const memoized = table === "work_types" ? await memoWorkType(src, id) : undefined;
   if (memoized !== undefined) return memoized as unknown as T | null;
-  return db.prepare(`SELECT * FROM ${table} WHERE id = ?`).bind(id).first<T>();
+  const read = () => db.prepare(`SELECT * FROM ${table} WHERE id = ?`).bind(id).first<T>();
+  if (plan === undefined) return read();
+  return (await plan.readOnce(table, id, read as () => Promise<Row | null>)) as T | null;
 }
 
 export const contactById = (src: Source, id: string) => rowById<ContactRow>(src, "contacts", id);

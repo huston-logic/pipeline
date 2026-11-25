@@ -39,7 +39,13 @@ const ENTRY_ON_PROJECT =
   "INSERT INTO tasks (id, contact_id, project_id, title) VALUES ('tk_proj', 'ct_seed01', 'pj_seed01', 'Order anchors'); " +
   "INSERT INTO time_entries (id, contact_id, project_id, started_at, ended_at, minutes, billable) VALUES ('te_proj', 'ct_seed01', 'pj_seed01', '2026-11-18T17:00:00.000Z', '2026-11-18T17:30:00.000Z', 30, 0)";
 
-type Variant = { input: Record<string, unknown>; setup?: string };
+/** An open task on the won deal, for a project that moves it. */
+const OPEN_TASK_ON_WON_DEAL = "INSERT INTO tasks (id, deal_id, contact_id, title) VALUES ('tk_won', 'dl_seed07', 'ct_seed07', 'Hang the sign')";
+/** The seeded project, with dates and notes to clear. */
+const PROJECT_WITH_DATES =
+  "UPDATE projects SET start_at = '2026-12-01T08:00:00.000Z', target_at = '2027-01-30T08:00:00.000Z', notes = 'Phase one.' WHERE id = 'pj_seed01'";
+
+type Variant ={ input: Record<string, unknown>; setup?: string };
 
 /** Each record action with each optional field set at least once, in inputs the service accepts. */
 const VARIANTS: Record<RecordActionName, Variant[]> = {
@@ -120,6 +126,20 @@ const VARIANTS: Record<RecordActionName, Variant[]> = {
     { input: { entry: "te_done", archived: true, notes: "Duplicate of Tuesday's.", minutes: 45 } },
     { input: { entry: "te_done", project: "pj_seed01", task: null } },
     { input: { entry: "te_proj", project: null }, setup: ENTRY_ON_PROJECT },
+  ],
+  add_project: [
+    {
+      input: { deal: "dl_seed07", name: "Salon launch", status: "On hold", startAt: "2026-12-01", targetAt: "2027-01-30", notes: "Phase one.", moveOpenTasks: true },
+      setup: OPEN_TASK_ON_WON_DEAL,
+    },
+    { input: { contact: "ct_seed03", name: "Garden path" } },
+    { input: { deal: "dl_seed07" } },
+  ],
+  update_project: [
+    { input: { project: "Retrofit", name: "Retrofit phase 2", status: "done", startAt: "2026-12-02", targetAt: "2027-02-01", notes: "Anchors ordered." } },
+    { input: { project: "pj_seed01", startAt: null, targetAt: null, notes: null }, setup: PROJECT_WITH_DATES },
+    { input: { project: "pj_seed01", archived: true } },
+    { input: { project: "pj_seed01", status: "on_hold", archived: false } },
   ],
 };
 
