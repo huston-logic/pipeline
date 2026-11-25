@@ -1063,6 +1063,21 @@ test("0024 adds templates and a task work type: old tasks keep their values, the
   assert.deepEqual((await db.prepare("PRAGMA foreign_key_check").all()).results, []);
 });
 
+test("0025 from the previous version: settings keep their values and approval starts in chat; only chat or board", async () => {
+  const db = new SqliteD1();
+  await applyMigrations(db, 24);
+  applySqlFile(db, "seed/defaults.sql");
+  db.exec("UPDATE settings SET timezone = 'Europe/London', ai_edits = 'small', version = 4");
+
+  assert.deepEqual(await applyMigrations(db, 25), ["0025_ai_approval.sql"]);
+
+  const row = await db.prepare("SELECT timezone, ai_edits, version, ai_approval FROM settings").first();
+  assert.deepEqual({ ...row }, { timezone: "Europe/London", ai_edits: "small", version: 4, ai_approval: "chat" });
+  db.exec("UPDATE settings SET ai_approval = 'board'");
+  assert.throws(() => db.exec("UPDATE settings SET ai_approval = 'email'"), /CHECK/);
+  assert.throws(() => db.exec("UPDATE settings SET ai_approval = NULL"), /NOT NULL/);
+});
+
 /**
  * Fake rows for every table, with only the columns the table had when it was created, so they load at any later
  * version. A migration that adds a table must add its rows here (the test below fails until it does).

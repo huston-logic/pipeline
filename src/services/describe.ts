@@ -95,6 +95,7 @@ const COLUMN_LABELS: Record<string, string> = {
   snoozed_until: "snooze",
   accent_color: "accent colour",
   ai_edits: "AI edits",
+  ai_approval: "AI approval",
   time_tracking: "time tracking",
   activity_id: "note",
   work_type_id: "work type",

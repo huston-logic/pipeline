@@ -26,8 +26,7 @@ clearly one or the other, ask me.
   STATUS.md as "open, ready for auto-merge".
 - This repo has no production deploy of its own: merging into `main` deploys nothing.
   I provision and update every client copy myself with `npm run copies:provision` / `npm run copies:update`
-  (decision 0007, docs/INSTALL.md, docs/UPDATING.md), using my own wrangler login, which each client has
-  invited into their Cloudflare account. Never run `wrangler deploy` by hand (a hook blocks it).
+  (decision 0007, docs/INSTALL.md, docs/UPDATING.md), using my own wrangler login on the hosting account (decision 0054). Never run `wrangler deploy` by hand (a hook blocks it).
 
 ## Protect main (GitHub ruleset)
 Read from GitHub on 2026-11-13 (`gh api repos/[[GITHUB_OWNER]]/[[REPO_NAME]]/rulesets`).
