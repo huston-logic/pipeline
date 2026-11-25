@@ -234,6 +234,10 @@ export type TaskRow = {
   deal_id: string | null;
   /** The project this task is on (migration 0020), else null. */
   project_id?: string | null;
+  /** The task this one is under (migration 0022): same project; null for a top-level task. */
+  parent_id?: string | null;
+  /** Order among siblings (same project, same parent), from 1; null for a task not on a project. */
+  position?: number | null;
   contact_id: string | null;
   title: string;
   due_at: string | null;

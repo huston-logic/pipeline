@@ -985,6 +985,35 @@ test("0021 shapes projects: statuses get a kind, ids, versions and links survive
   assert.ok(links.results.every((row) => /REFERENCES "?(activities|projects)"? \(id\)/.test(row.sql)), "links still name the rebuilt tables");
 });
 
+test("0022 numbers each project's existing tasks by created_at then id, all top level; other tasks stay null", async () => {
+  const db = new SqliteD1();
+  await applyMigrations(db, 21);
+  applySqlFile(db, "seed/defaults.sql");
+  db.exec(`INSERT INTO projects (id, name, status_key) VALUES ('pj_a', 'Retrofit', 'active'), ('pj_b', 'Logo', 'active');
+    INSERT INTO tasks (id, title, project_id, created_at) VALUES
+      ('tk_3', 'Third', 'pj_a', '2026-11-19T10:00:00.000Z'), ('tk_2b', 'Second b', 'pj_a', '2026-11-18T10:00:00.000Z'),
+      ('tk_2a', 'Second a', 'pj_a', '2026-11-18T10:00:00.000Z'), ('tk_1', 'First', 'pj_a', '2026-11-17T10:00:00.000Z'),
+      ('tk_b1', 'Logo one', 'pj_b', '2026-11-17T10:00:00.000Z');
+    INSERT INTO tasks (id, title) VALUES ('tk_plain', 'Buy ink');`);
+  const before = await snapshot(db, ["tasks"]);
+
+  assert.deepEqual(await applyMigrations(db, 22), ["0022_subtasks.sql"]);
+
+  const after = await db.prepare("SELECT id, title, version, parent_id, position FROM tasks ORDER BY id").all();
+  assert.deepEqual(after.results.map((r) => ({ ...r })), [
+    { id: "tk_1", title: "First", version: 1, parent_id: null, position: 1 },
+    { id: "tk_2a", title: "Second a", version: 1, parent_id: null, position: 2 },
+    { id: "tk_2b", title: "Second b", version: 1, parent_id: null, position: 3 },
+    { id: "tk_3", title: "Third", version: 1, parent_id: null, position: 4 },
+    { id: "tk_b1", title: "Logo one", version: 1, parent_id: null, position: 1 },
+    { id: "tk_plain", title: "Buy ink", version: 1, parent_id: null, position: null },
+  ]);
+  assert.equal((await snapshot(db, ["tasks"])).tasks?.length, before.tasks?.length);
+  db.exec("INSERT INTO tasks (id, title, project_id, parent_id, position) VALUES ('tk_sub', 'Sub', 'pj_a', 'tk_1', 1)");
+  assert.throws(() => db.exec("INSERT INTO tasks (id, title, parent_id) VALUES ('tk_bad', 'Bad', 'tk_none')"), /FOREIGN KEY/);
+  assert.deepEqual((await db.prepare("PRAGMA foreign_key_check").all()).results, []);
+});
+
 /**
  * Fake rows for every table, with only the columns the table had when it was created, so they load at any later
  * version. A migration that adds a table must add its rows here (the test below fails until it does).

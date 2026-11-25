@@ -7,8 +7,9 @@ import { capitalize, rowLabel } from "./describe.ts";
 import { UserError } from "./errors.ts";
 import { clean, whenOrNull } from "./input.ts";
 import { contactName, dealLabel, projectLabel } from "./labels.ts";
-import { findSubject, ownerTimezone, projectById, type Source, taskWithLinks } from "./lookup.ts";
+import { findSubject, nextPosition, ownerTimezone, projectById, type Source, taskWithLinks } from "./lookup.ts";
 import { projectSubject } from "./project-links.ts";
+import { parentLinks } from "./subtasks.ts";
 
 export interface TaskInput {
   /** Deal id, title or contact name. */
@@ -17,6 +18,8 @@ export interface TaskInput {
   contactId?: string;
   /** Project id or exact name: the task is the project's and its person's, with no deal. */
   project?: string;
+  /** A task id: the new task goes under it (sub-task); the parent must be an open task on a live project. */
+  parent?: string;
   title: string;
   dueAt?: string;
 }
@@ -36,10 +39,18 @@ export async function addTask(ctx: Ctx, input: TaskInput): Promise<ChangeResult 
   if (title === null) throw new UserError("A task needs a title. Say in a few words what to do.");
   const tz = await ownerTimezone(ctx);
   const dueAt = whenOrNull(input.dueAt ?? null, tz);
-  const { deal, contact, project } =
-    input.project === undefined
-      ? { ...(await findSubject(ctx, input, { optional: true })), project: null }
-      : { deal: null, ...(await projectSubject(ctx, input.project, input)) };
+  let parent: TaskRow | null = null;
+  let where: { deal: DealRow | null; contact: ContactRow | null; project: ProjectRow | null };
+  if (input.parent !== undefined) {
+    const found = await parentLinks(ctx, input.parent, { project: input.project, dealId: input.dealId, contactId: input.contactId });
+    parent = found.parent;
+    where = { deal: null, ...found.links };
+  } else if (input.project === undefined) {
+    where = { ...(await findSubject(ctx, input, { optional: true })), project: null };
+  } else {
+    where = { deal: null, ...(await projectSubject(ctx, input.project, input)) };
+  }
+  const { deal, contact, project } = where;
   const now = ctx.now.toISOString();
 
   const task: TaskRow = {
@@ -47,6 +58,8 @@ export async function addTask(ctx: Ctx, input: TaskInput): Promise<ChangeResult 
     deal_id: deal?.id ?? null,
     contact_id: contact?.id ?? null,
     project_id: project?.id ?? null,
+    parent_id: parent?.id ?? null,
+    position: project === null ? null : await nextPosition(ctx, project.id, parent?.id ?? null),
     title,
     due_at: dueAt,
     done_at: null,

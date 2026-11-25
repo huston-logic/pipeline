@@ -93,6 +93,7 @@ const VARIANTS: Record<RecordActionName, Variant[]> = {
     { input: { deal: "dl_seed01", title: "Send the examples", dueAt: "2026-11-21" } },
     { input: { contact: "ct_seed06", title: "Find the card" } },
     { input: { project: "pj_seed01", title: "Order anchors", dueAt: "2026-11-21" } },
+    { input: { parent: "tk_proj", title: "Check the anchors", dueAt: "2026-11-22" }, setup: ENTRY_ON_PROJECT },
   ],
   complete_task: [{ input: { task: "tk_seed01" } }],
   snooze_task: [{ input: { task: "tk_seed02", until: "2026-11-22" } }],

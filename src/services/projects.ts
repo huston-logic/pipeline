@@ -149,8 +149,11 @@ export async function addProject(ctx: Ctx, input: ProjectInput): Promise<ChangeR
   const changes: RowChange[] = [{ table: "projects", id: project.id, before: null, after: project }];
   const complete = input.completeOpenTasks === true;
   const open = deal && (complete || input.moveOpenTasks === true) ? await openTasksOfDeal(ctx, deal.id) : [];
-  for (const task of open) {
-    const set = complete ? { done_at: ctx.now.toISOString() } : { project_id: project.id, deal_id: null, contact_id: contact?.id ?? null };
+  // Moved tasks are appended at top level in order (the project is new, so they number from 1).
+  for (const [i, task] of open.entries()) {
+    const set = complete
+      ? { done_at: ctx.now.toISOString() }
+      : { project_id: project.id, deal_id: null, contact_id: contact?.id ?? null, parent_id: null, position: i + 1 };
     changes.push({ table: "tasks", id: task.id, before: task, after: updatedRow(task, set, ctx.now) });
   }
   const from = deal ? `, from ${dealTitle(deal)}` : "";

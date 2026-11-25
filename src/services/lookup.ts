@@ -138,6 +138,24 @@ export async function openTasksOfDeal(src: Source, dealId: string): Promise<Task
   return withPlanned(src, "tasks", found.results, isOpenTaskOf(dealId));
 }
 
+/** A project's tasks under one parent (null: top level) in order, as the plan leaves them: planned ones count too. */
+export async function siblingTasks(src: Source, projectId: string, parentId: string | null): Promise<TaskRow[]> {
+  const { db } = sourceOf(src);
+  const found = await db
+    .prepare("SELECT * FROM tasks WHERE project_id = ? AND parent_id IS ? ORDER BY position, created_at, id")
+    .bind(projectId, parentId)
+    .all<TaskRow>();
+  const match = (row: Row) => row.project_id === projectId && (row.parent_id ?? null) === parentId;
+  const all = withPlanned(src, "tasks", found.results, match);
+  return all.sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
+}
+
+/** The position a new task takes: last among its siblings (same project, same parent), planned tasks counted, plus one. */
+export async function nextPosition(src: Source, projectId: string, parentId: string | null): Promise<number> {
+  const siblings = await siblingTasks(src, projectId, parentId);
+  return siblings.reduce((most, task) => Math.max(most, task.position ?? 0), 0) + 1;
+}
+
 /** The contact using this email (ignoring case, archived ones too), as the plan leaves them. */
 export async function contactByEmail(src: Source, email: string): Promise<ContactRow | null> {
   const { db } = sourceOf(src);

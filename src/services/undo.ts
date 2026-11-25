@@ -90,7 +90,8 @@ const DEPENDENTS: Partial<Record<ChangeTable, Dependent[]>> = {
     { ...PROJECT, column: "deal_id" },
   ],
   // Time entries (decision 0049): the task or note they point at, and the work type they used.
-  tasks: [{ ...TIME_ENTRY, column: "task_id" }],
+  // A sub-task (migration 0022) points at its parent task.
+  tasks: [{ ...TIME_ENTRY, column: "task_id" }, { table: "tasks", column: "parent_id", one: "sub-task", many: "sub-tasks" }],
   activities: [{ ...TIME_ENTRY, column: "activity_id" }],
   work_types: [
     { ...TIME_ENTRY, column: "work_type_id" },
