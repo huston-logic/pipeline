@@ -5,6 +5,7 @@
 import { loadCampaign, archiveCampaign, duplicateCampaign } from "../campaigns/drafts.ts";
 import { approveCampaign, cancelCampaign, pauseCampaign, resumeCampaign } from "../campaigns/freeze.ts";
 import { type CampaignEnv, sendingBlocker } from "../campaigns/readiness.ts";
+import { sendTestEmail } from "../campaigns/test-send.ts";
 import type { CampaignRow } from "../db/db.ts";
 import { getSettings } from "../db/queries.ts";
 import { isCampaignId } from "../ids.ts";
@@ -185,7 +186,18 @@ async function archive(ctx: ActionContext, id: string): Promise<ActionResult> {
   }
 }
 
+/** Send test to me: one email to the signed-in owner. Writes no audit change, so the page's fingerprint stays good. */
+async function sendTest(ctx: ActionContext, id: string): Promise<ActionResult> {
+  const campaign = await known(ctx, id);
+  if (campaign === null || campaign.archived === 1 || (campaign.status !== "draft" && campaign.status !== "scheduled")) return notFound(ctx);
+  const { step } = await loadCampaign(ctx.db, id);
+  const settings = await getSettings(ctx.db);
+  const result = await sendTestEmail(campaignEnvOf(ctx.env), ctx.db, ctx.now, { campaign, step, settings, to: ctx.email, baseUrl: ctx.origin });
+  return result.ok ? redirect(`${campaignPath(id)}?test=sent`) : refused(ctx, id, result.message);
+}
+
 export const CAMPAIGN_SEND_ROUTES: Route[] = [
+  { path: /^\/campaigns\/([^/]+)\/test$/, handle: sendTest },
   { path: /^\/campaigns\/([^/]+)\/approve$/, handle: (ctx, id) => send(ctx, id, false) },
   { path: /^\/campaigns\/([^/]+)\/schedule$/, handle: (ctx, id) => send(ctx, id, true) },
   { path: /^\/campaigns\/([^/]+)\/cancel$/, handle: (ctx, id) => stop(ctx, id, "cancel") },

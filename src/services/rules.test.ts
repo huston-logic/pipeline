@@ -695,6 +695,8 @@ test("the hourly run's reach test in SQL agrees with isReach for every activity 
     ["stage_change", '{"from":"a","to":"b"}'],
     ["system", null],
     ["system", TEXT_DATA],
+    ["email", '{"via":"campaign","campaign":"cp_case01"}'],
+    ["email", '{"via":"other"}'],
   ];
   cases.forEach(([type, data], i) => {
     db.exec(`INSERT INTO contacts (id, name, lead_status, lead_status_at, person_status, sub_status) VALUES ('ct_case${i}', 'Case ${i} Example', 'new', '${stamp}', 'lead', 'new')`);

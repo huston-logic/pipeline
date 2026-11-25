@@ -1,6 +1,7 @@
-// The owner lifting a campaign block (decision 0053). Only an unsubscribe can be lifted, and only from the person's page:
+// A recipient's unsubscribe, and the owner lifting a campaign block (decision 0053). Only an unsubscribe can be lifted, and only from the person's page:
 // a bounce or a spam complaint stays for good. No MCP tool reaches this file (layering.test.ts).
-import type { ContactRow, EmailSuppressionRow } from "../db/db.ts";
+import type { CampaignRecipientRow, ContactRow, EmailSuppressionRow } from "../db/db.ts";
+import { newId } from "../ids.ts";
 import { type ChangeResult, commitChange, type Ctx, type RowChange, updatedRow } from "../services/change.ts";
 import { UserError } from "../services/errors.ts";
 import { contactName } from "../services/labels.ts";
@@ -18,6 +19,80 @@ export async function liveUnsubscribes(db: Ctx["db"], contact: Pick<ContactRow, 
   const rows = await liveSuppressions(db, [{ email: campaignEmailOf(contact), contactId: contact.id }]);
   return rows.filter((row) => row.reason === "unsubscribed");
 }
+
+const markUnsubscribed = (db: Ctx["db"], recipientId: string, now: Date): D1PreparedStatement =>
+  db
+    .prepare("UPDATE campaign_recipients SET unsubscribed_at = ?, version = version + 1 WHERE id = ? AND unsubscribed_at IS NULL")
+    .bind(now.toISOString(), recipientId);
+
+export interface BlockSpec {
+  reason: EmailSuppressionRow["reason"];
+  tool: string;
+  summary: string;
+  /** The recipient-row update that goes with the block; it runs in the same change, or alone if the address is already blocked. */
+  mark: D1PreparedStatement;
+}
+
+/**
+ * Blocks the recipient's address with a live suppression and runs `mark`, in one system change. An address that is
+ * already blocked gets no second row; an unsubscribe is upgraded to the bounce or complaint (clearing only lifts unsubscribes), any other live block stays, and only `mark` runs, unaudited.
+ */
+export async function blockAddress(db: Ctx["db"], now: Date, recipient: CampaignRecipientRow, spec: BlockSpec): Promise<void> {
+  const email = recipient.email.trim().toLowerCase();
+  const live = () => db.prepare("SELECT * FROM email_suppressions WHERE email = ? AND cleared_at IS NULL").bind(email).first<EmailSuppressionRow>();
+  const ctx: Ctx = { db, now, actor: "system", tool: spec.tool };
+  // A second pass covers two blocks at once: the other one's row now stands, and may itself need the upgrade.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const current = await live();
+    try {
+      if (current === null) {
+        const row: EmailSuppressionRow = {
+          id: newId("su"),
+          email,
+          reason: spec.reason,
+          contact_id: recipient.contact_id,
+          campaign_id: recipient.campaign_id,
+          created_at: now.toISOString(),
+          cleared_at: null,
+          version: 1,
+        };
+        await commitChange(ctx, {
+          target: { table: "email_suppressions", id: row.id },
+          summary: spec.summary,
+          changes: [{ table: "email_suppressions", id: row.id, before: null, after: row }],
+          extra: [spec.mark],
+        });
+        return;
+      }
+      if (current.reason === "unsubscribed" && spec.reason !== "unsubscribed") {
+        await commitChange(ctx, {
+          target: { table: "email_suppressions", id: current.id },
+          summary: spec.summary,
+          changes: [{ table: "email_suppressions", id: current.id, before: current, after: updatedRow(current, { reason: spec.reason }, now) }],
+          extra: [spec.mark],
+        });
+        return;
+      }
+      break;
+    } catch (error) {
+      if (attempt === 1) throw error;
+    }
+  }
+  await spec.mark.run();
+}
+
+/**
+ * Records a recipient's unsubscribe from their own link: a live `unsubscribed` block on the address and the row's
+ * `unsubscribed_at`, in one system change. An address that is already blocked (any reason) gets no second block; only
+ * `unsubscribed_at` is set. A repeat writes nothing. Works with campaigns off: an unsubscribe is never refused.
+ */
+export const suppress = (db: Ctx["db"], now: Date, recipient: CampaignRecipientRow): Promise<void> =>
+  blockAddress(db, now, recipient, {
+    reason: "unsubscribed",
+    tool: "unsubscribe",
+    summary: `Unsubscribed contact ${recipient.contact_id} from campaign emails`,
+    mark: markUnsubscribed(db, recipient.id, now),
+  });
 
 /** Allows campaign emails to this person again: every live unsubscribe that applies to them is cleared, in one change. */
 export async function clearSuppression(ctx: Ctx, contactId: string): Promise<ChangeResult> {

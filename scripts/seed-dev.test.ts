@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
+import { publicRoutes } from "../src/board/routes.ts";
 import type { ActivityRow, AuditRow, ContactRow, DealRow, ImportDraftRow, TaskRow } from "../src/db/db.ts";
 import { createTestDb, type SqliteD1 } from "../src/db/sqlite-d1.ts";
 import { UserError } from "../src/services/errors.ts";
@@ -449,4 +450,14 @@ test("campaigns (decision 0053): a draft to Partners, a sent one with every kind
   for (const mail of mails) assert.deepEqual([mail.type, mail.summary, mail.actor, mail.deal_id], ["email", "Campaign: November newsletter", "system", null]);
   const picked = await db.prepare("SELECT audience FROM campaigns WHERE id = 'cp_seed03'").first<{ audience: string }>();
   assert.equal((JSON.parse(picked?.audience ?? "{}") as { people: string[] }).people.length, 2);
+});
+
+test("publicRoutes: the unsubscribe page's token belongs to a delivered recipient of cp_seed02", async () => {
+  const db = await seeded();
+  const token = publicRoutes.find((path) => path !== "/unsubscribe/test")?.slice("/unsubscribe/".length);
+  const row = await db
+    .prepare("SELECT status, campaign_id FROM campaign_recipients WHERE unsub_token = ?")
+    .bind(token ?? "")
+    .first<{ status: string; campaign_id: string }>();
+  assert.deepEqual([row?.status, row?.campaign_id], ["delivered", "cp_seed02"]);
 });

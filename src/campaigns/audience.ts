@@ -78,7 +78,27 @@ async function peopleOf(db: Db, audience: Audience): Promise<ContactRow[]> {
   return found.results;
 }
 
-export type LiveSuppression = Pick<EmailSuppressionRow, "id" | "email" | "contact_id" | "reason" | "created_at" | "version">;
+/** The reasons that follow the person to a new address; a bounce is the address's only. One list for both forms of the rule. */
+const PERSONAL_REASONS = "('unsubscribed', 'complained')";
+
+/**
+ * `suppressionIn`'s rule as SQL for the sender's claim, over a campaign_recipients row (`recipient` is its table name or
+ * alias): `applies` is true for a live suppression on the row's address, or a personal one on its person; `reason` is the
+ * one that wins (the address's first, then the newest personal one), as a scalar subquery.
+ */
+export function recipientSuppression(recipient: string): { applies: string; reason: string } {
+  const byAddress = `s.cleared_at IS NULL AND s.email = ${recipient}.email`;
+  const byPerson = `s.cleared_at IS NULL AND s.reason IN ${PERSONAL_REASONS} AND s.contact_id = ${recipient}.contact_id`;
+  return {
+    applies: `EXISTS (SELECT 1 FROM email_suppressions s WHERE ${byAddress} OR (${byPerson}))`,
+    // SQLite can't order a subquery by an outer column, so the address's reason is tried first with COALESCE.
+    reason:
+      `COALESCE((SELECT s.reason FROM email_suppressions s WHERE ${byAddress} LIMIT 1), ` +
+      `(SELECT s.reason FROM email_suppressions s WHERE ${byPerson} ORDER BY s.created_at DESC, s.id DESC LIMIT 1))`,
+  };
+}
+
+export type LiveSuppression =Pick<EmailSuppressionRow, "id" | "email" | "contact_id" | "reason" | "created_at" | "version">;
 
 /**
  * Live suppressions that apply to these people, in one read: by address (any reason), and by person for an unsubscribe
@@ -93,7 +113,7 @@ export async function liveSuppressions(db: Db, members: Pick<Member, "email" | "
       .prepare(
         "SELECT id, email, contact_id, reason, created_at, version FROM email_suppressions WHERE cleared_at IS NULL AND (" +
           "email IN (SELECT json_extract(j.value, '$.e') FROM json_each(?) AS j) OR " +
-          "(reason IN ('unsubscribed', 'complained') AND contact_id IN (SELECT json_extract(j.value, '$.c') FROM json_each(?) AS j)))",
+          `(reason IN ${PERSONAL_REASONS} AND contact_id IN (SELECT json_extract(j.value, '$.c') FROM json_each(?) AS j)))`,
       )
       .bind(json, json)
       .all<LiveSuppression>();

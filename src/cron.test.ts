@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { CRON_JOBS, runScheduled } from "./cron.ts";
+import { CAMPAIGN_CRON, CAMPAIGN_JOBS, CRON_JOBS, runScheduled } from "./cron.ts";
 import type { Db } from "./db/db.ts";
 import { openTestDb } from "./db/sqlite-d1.ts";
 import type { Env } from "./env.ts";
@@ -55,6 +55,11 @@ test("a failing job logs a fixed failure event without details, and the other jo
 
 test("the brief runs after the rules, so tasks the rules just made are in it; expired drafts and proposals go last", () => {
   assert.deepEqual(CRON_JOBS.map(([name]) => name), ["rules", "brief", "import_drafts", "proposals"]);
+});
+
+test("the campaign cron has its own schedule and one job", () => {
+  assert.equal(CAMPAIGN_CRON, "5,20,35,50 * * * *");
+  assert.deepEqual(CAMPAIGN_JOBS.map(([name]) => name), ["campaigns"]);
 });
 
 test("the hourly run deletes expired proposals and logs only the count (decision 0044)", async (t) => {

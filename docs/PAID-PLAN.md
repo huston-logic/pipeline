@@ -371,4 +371,25 @@ fixture seed plus 2,000 people (some with no address, some suppressed) by `src/c
   every bound JSON to at most 90,000 bytes as a SQL literal.
 - Rough Node timing of `approveCampaign` for 2,000 people on the `node:sqlite` shim: about 35 ms, most of it the shim's
   own SQL work. It is not the method of `scripts/cpu-check.ts`; the Worker CPU is not measured yet.
-- The sender's numbers come in a later task of run 8.
+
+The sender (`runCampaigns`, `src/campaigns/send.ts`) runs on its own Cron Trigger (`5,20,35,50 * * * *`), so it has its own
+10 ms and 50 D1 calls and never shares them with the brief's hour. Counted by `src/campaigns/send.test.ts` with
+`tests/helpers/counting-db.ts` on a fresh 100-person campaign (fetch mocked):
+
+| run | D1 calls | statements |
+| --- | --- | --- |
+| idle (campaigns off, or nothing to send) | 1 | 7, all reads, in one batch |
+| 100 emails: read, claim, resolve | 3 | 7 + 7 + 8 |
+| a resend of a batch in flight, then a new batch of 100 | 5 | 7 + 1 (takes the batch over) + 8 + 7 + 8 (the test holds every run to 12) |
+
+- The 3 calls of a 100-email run: one batch of 7 reads (settings, batches in flight and their rows, the campaigns that
+  could send, their emails, the in-flight batches' campaigns, the day's room); the claim, one atomic batch of 7 (skip the archived and the suppressed,
+  make the batch, claim up to 100 rows, close the campaign if nothing is left, read the batch and its rows back); and the
+  resolve, one audited change of 8 (the batch guard, 100 activity inserts as one bulk statement, the rows `sent` with
+  their Resend ids as one JSON parameter, the batch `done`, the campaign closed if nothing is left, the audit row). A
+  scheduled campaign being started adds one call, a refused batch that pauses the campaign adds one change.
+- Rough Node timing, fetch mocked, on the `node:sqlite` shim: about 25 ms for the whole 100-email run, and 1.4 to 3.7 ms
+  for rendering and encoding the 100 emails (first run cold, then warm). Most of the 25 ms is the shim's own SQL work. The
+  Worker's CPU for a send is not measured (`scripts/cpu-check.ts` does not cover it); the HTTPS request to Resend is
+  network time, not CPU. Whoever deploys the first copy with campaigns on should read the invocation's CPU in the
+  Cloudflare dashboard once.

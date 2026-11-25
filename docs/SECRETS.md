@@ -15,6 +15,8 @@ and this repo never see them, and nothing here should be pasted into chat, a pul
 | `OWNER_EMAILS` | Comma-separated emails, or unset | Optional, per copy, in the copy's own config `vars`. Who may sign in, together with `settings.owner_emails` (decision 0005); compared ignoring case. Provisioning writes the owner emails into `settings.owner_emails` only and leaves this unset (decision 0007), so there is one list to change. With neither, the board and `/api` answer 500 and no one can connect `/mcp` |
 | `BRIEF_SENDING` | `on`, or unset | The master switch for emailing the daily brief (decision 0011). Unset (the default) or any other value keeps sending off; the brief is still composed and stored each day. Set it in the copy's own config `vars`, never in this repo's `wrangler.jsonc`. |
 | `BRIEF_FROM` | An address on a domain verified in Resend, or unset | The "from" address of the brief email. Unset keeps sending off. Set it in the copy's own config `vars`. |
+| `CAMPAIGN_SENDING` | `on`, or unset | The master switch for sending campaign emails (decision 0053). Unset (the default) or any other value keeps sending off. Set it in the copy's own config `vars`, never in this repo's `wrangler.jsonc`. Setup: docs/CAMPAIGNS.md, step 4. |
+| `CAMPAIGN_FROM` | An address on the campaign sending subdomain verified in Resend, or unset | The "from" address of campaign emails, for example `Name <news@news.example.com>`. Unset keeps sending off. Set it in the copy's own config `vars`. Setup: docs/CAMPAIGNS.md, step 4. |
 | `MCP_ALLOWED_HOSTNAMES` | Comma-separated hostnames, or unset | Per copy (provisioning writes it for a custom hostname). A copy on a custom domain must set it (for example `pipeline.example.com`): `/mcp` and its OAuth sign-in answer only on the listed hosts. Unset, they answer only on `*.workers.dev` and localhost (decisions 0004 and 0006). |
 
 ## Secrets
@@ -26,6 +28,8 @@ right Worker: `npx wrangler secret put <NAME> -c .copies/<name>/wrangler.jsonc`.
 | Name | For | Set with |
 |---|---|---|
 | `RESEND_API_KEY` | Emailing the daily brief through Resend (task 7). Read only when sending is on. | `npx wrangler secret put RESEND_API_KEY` (the owner, in their own Cloudflare account) |
+| `CAMPAIGN_RESEND_API_KEY` | Sending campaign emails through Resend. A key with Sending access, limited to the campaign subdomain. Separate from `RESEND_API_KEY`. Read only when campaign sending is on. | `npx wrangler secret put CAMPAIGN_RESEND_API_KEY -c .copies/<copy>/wrangler.jsonc` (docs/CAMPAIGNS.md, step 3) |
+| `CAMPAIGN_WEBHOOK_SECRET` | The signing secret (`whsec_…`) of the Resend webhook that posts delivery results to `/hooks/resend` (decision 0053). Optional: without it, sent emails stay "Sent". The endpoint answers 503 until it is set. | `npx wrangler secret put CAMPAIGN_WEBHOOK_SECRET -c .copies/<copy>/wrangler.jsonc` (docs/CAMPAIGNS.md, step 7) |
 | `ACCESS_CLIENT_ID` | The Client ID of the Access for SaaS (OIDC) application for `/mcp` (decision 0006; docs/ACCESS-SETUP.md, step 1) | `npx wrangler secret put ACCESS_CLIENT_ID` |
 | `ACCESS_CLIENT_SECRET` | That application's Client secret | `npx wrangler secret put ACCESS_CLIENT_SECRET` |
 | `ACCESS_TOKEN_URL` | That application's Token endpoint (https) | `npx wrangler secret put ACCESS_TOKEN_URL` |
@@ -59,6 +63,11 @@ Bindings (not secrets), in `wrangler.jsonc` with placeholder ids; each copy's ow
 Sending the brief needs all of these at once: `settings.brief_enabled` on (`update_settings`), a `brief_email` address in
 the settings, `BRIEF_SENDING=on`, `BRIEF_FROM` and `RESEND_API_KEY`. If any one is missing the brief is only composed and
 stored, and its `send_status` says which switch is off.
+
+Sending campaigns needs all of these at once: `settings.campaigns` on (`update_settings`), a postal address in the
+settings, `CAMPAIGN_SENDING=on`, `CAMPAIGN_FROM` and `CAMPAIGN_RESEND_API_KEY`, and an owner email for the reply-to
+address. `CAMPAIGN_WEBHOOK_SECRET` is optional. The Campaigns page names the first missing piece. Setup steps are in
+docs/CAMPAIGNS.md.
 
 ## Local development
 

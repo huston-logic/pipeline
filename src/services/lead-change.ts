@@ -55,19 +55,24 @@ const REACH_TYPES: readonly ActivityType[] = ["form", "email", "call", "meeting"
 /** An activity data value marked as a text, as the board's Text button logs it. */
 export const TEXT_DATA = JSON.stringify({ via: "text" });
 
-function isText(data: string | null): boolean {
-  if (data === null) return false;
+function viaOf(data: string | null): unknown {
+  if (data === null) return undefined;
   try {
     const value: unknown = JSON.parse(data);
-    return typeof value === "object" && value !== null && (value as { via?: unknown }).via === "text";
+    return typeof value === "object" && value !== null ? (value as { via?: unknown }).via : undefined;
   } catch {
-    return false;
+    return undefined;
   }
 }
 
-/** Whether the activity reached the person: a form, email, call or meeting, or a note that was a text. */
+/**
+ * Whether the activity reached the person: a form, email, call or meeting, or a note that was a text. A campaign email
+ * (`via: "campaign"`) is a record of a send, never reaching.
+ */
 export function isReach(type: ActivityType, data: string | null): boolean {
-  return REACH_TYPES.includes(type) || (type === "note" && isText(data));
+  const via = viaOf(data);
+  if (via === "campaign") return false;
+  return REACH_TYPES.includes(type) || (type === "note" && via === "text");
 }
 
 /** The auto-advance: a New lead reached by this activity becomes Contacted. Null when nothing moves. */

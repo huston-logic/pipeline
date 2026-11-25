@@ -445,8 +445,9 @@ async function engineDeals(db: Db, openOnly: boolean): Promise<EngineDeal[]> {
  * in step. activities.data is always a JSON object (a CHECK); the CASE still keeps json_extract away from anything
  * else, since one bad row would fail the whole query.
  */
-export const REACH_SQL = `(a.type IN ('form', 'email', 'call', 'meeting') OR (a.type = 'note' AND
-  CASE WHEN json_valid(a.data) THEN json_extract(a.data, '$.via') END = 'text'))`;
+export const REACH_SQL = `((a.type IN ('form', 'email', 'call', 'meeting') OR (a.type = 'note' AND
+  CASE WHEN json_valid(a.data) THEN json_extract(a.data, '$.via') END = 'text'))
+  AND COALESCE(CASE WHEN json_valid(a.data) THEN json_extract(a.data, '$.via') END, '') <> 'campaign')`;
 
 type LeadJoin = {
   id: string;
@@ -757,7 +758,8 @@ export async function previewRuleFor(db: Db, now: Date, request: PreviewRequest)
   const activities = await db
     .prepare(
       `SELECT deal_id, contact_id, type, occurred_at, data FROM activities
-       WHERE type IN (${PREVIEW_TYPES.map(() => "?").join(", ")}) AND occurred_at >= ?`,
+       WHERE type IN (${PREVIEW_TYPES.map(() => "?").join(", ")}) AND occurred_at >= ?
+         AND COALESCE(CASE WHEN json_valid(data) THEN json_extract(data, '$.via') END, '') <> 'campaign'`,
     )
     .bind(...PREVIEW_TYPES, lookback)
     .all<{ deal_id: string | null; contact_id: string | null; type: ActivityType; occurred_at: string; data: string | null }>();

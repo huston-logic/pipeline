@@ -8,11 +8,13 @@ import { notFoundPage, serverErrorPage } from "./board/pages/not-found.ts";
 import { handleBoardPost } from "./board/post.ts";
 import { matchBoardPage } from "./board/router.ts";
 import { THEME_PATH, themeStylesheet } from "./board/theme.ts";
-import { runScheduled } from "./cron.ts";
+import { CAMPAIGN_CRON, CAMPAIGN_JOBS, CRON_JOBS, runScheduled } from "./cron.ts";
 import { logAddressOf } from "./email/address.ts";
 import type { Env } from "./env.ts";
 import { apiMethodNotAllowed, handleApi, isApiPath, json } from "./http/api.ts";
 import { handleIntake } from "./http/intake.ts";
+import { handleResendWebhook } from "./http/resend-webhook.ts";
+import { handleUnsubscribe, UNSUBSCRIBE_PREFIX } from "./http/unsubscribe.ts";
 import { TIME_CSV_PATH, timeCsvResponse } from "./http/time-csv.ts";
 import { htmlResponse, textResponse } from "./http/respond.ts";
 import { MCP_ROUTE } from "./mcp/route.ts";
@@ -20,6 +22,7 @@ import { vapidKeys } from "./push/vapid.ts";
 import { withSecurityHeaders } from "./security.ts";
 
 const INTAKE_ROUTE = "/intake";
+const RESEND_WEBHOOK_ROUTE = "/hooks/resend";
 const SERVICE_WORKER_PATH = "/sw.js";
 
 // A last path segment with an extension (/board.css, /robots.txt) is a static file in out/.
@@ -65,6 +68,12 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
   const { pathname } = url;
   // /intake has its own secret instead of a sign-in, so it sits outside both sign-ins (decision 0012).
   if (pathname === INTAKE_ROUTE) return withSecurityHeaders(await handleIntake(request, env, new Date()));
+
+  // A campaign email's unsubscribe link is public: no sign-in in any mode, campaigns on or off (hard rule 3).
+  if (pathname.startsWith(UNSUBSCRIBE_PREFIX)) return handleUnsubscribe(request, env, new Date());
+
+  // Resend's delivery results: the Svix signature is the check, so no sign-in in any mode.
+  if (pathname === RESEND_WEBHOOK_ROUTE) return handleResendWebhook(request, env, new Date());
 
   if (mode.kind === "production" && isOAuthPath(pathname)) {
     // /mcp, /authorize, /callback, /token, /register and /.well-known/*: OAuth with Access as the upstream sign-in.
@@ -187,9 +196,10 @@ export default {
     return handleFetch(request, env, ctx);
   },
 
-  // The hourly Cron Trigger. Awaited (not waitUntil): the invocation lasts exactly as long as the run.
+  // The Cron Triggers: the campaign one runs only the campaign job, every other one (the hourly "0 * * * *") the rest.
+  // Awaited (not waitUntil): the invocation lasts exactly as long as the run.
   async scheduled(controller: ScheduledController, env: Env, _ctx: ExecutionContext): Promise<void> {
-    await runScheduled(env, new Date(controller.scheduledTime));
+    await runScheduled(env, new Date(controller.scheduledTime), controller.cron === CAMPAIGN_CRON ? CAMPAIGN_JOBS : CRON_JOBS);
   },
 
   // Email Routing hands mail for the log address here (decision 0031). Loaded only for an email, so the board never
