@@ -75,7 +75,10 @@ export async function moveTask(ctx: Ctx, id: string, direction: "up" | "down"): 
   const task = await taskById(ctx, id.trim());
   if (!task) throw new UserError(`No task "${id.trim()}". Use get_project to find the task's id.`);
   if (task.project_id == null) throw new UserError("Only a task on a project can be moved up or down. This task is not on a project.");
-  const siblings = await siblingTasks(ctx, task.project_id, task.parent_id ?? null);
+  // The page lists only open top-level tasks (done ones are in Done), so there a move skips done siblings.
+  const siblings = (await siblingTasks(ctx, task.project_id, task.parent_id ?? null)).filter(
+    (sibling) => task.parent_id != null || sibling.done_at === null || sibling.id === task.id,
+  );
   const at = siblings.findIndex((sibling) => sibling.id === task.id);
   const next = siblings[direction === "up" ? at - 1 : at + 1];
   if (at < 0 || next === undefined) {

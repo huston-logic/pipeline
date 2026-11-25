@@ -31,13 +31,12 @@ test("tasks nest to three levels, and a parent says how many of its sub-tasks ar
   const top = await add(db, "Build deck");
   const subs: string[] = [];
   for (const name of ["Footings", "Frame", "Boards", "Rails", "Stain"]) subs.push(await add(db, name, top));
-  const deep = await add(db, "Dig holes", subs[0] ?? "");
+  await add(db, "Dig holes", subs[0] ?? "");
   await completeTask(ctxFor(db, "complete_task"), subs[3] ?? "");
   await completeTask(ctxFor(db, "complete_task"), subs[4] ?? "");
   const { body } = await load(devEnv(db), PAGE);
   assert.match(body, /2 of 5 done/);
   assert.match(body, /<ul class="task-tree"[^]*Build deck[^]*<ul class="task-tree"[^]*Footings[^]*<ul class="task-tree"[^]*Dig holes/);
-  assert.ok(deep !== "");
   assert.match(body, /Rails[^]*Done/);
 });
 
@@ -85,6 +84,23 @@ test("Move up and Move down swap two siblings in one change; the ends have only 
   assert.equal(refused.res.status, 422);
   assert.match(refused.body, /already first/);
   assert.equal((await post(devEnv(db), `/tasks/${b}/move`, { dir: "sideways", return_to: PAGE })).res.status, 422);
+});
+
+test("a top-level move skips a hidden done sibling, so the visible order changes", async () => {
+  const db = await projectDb();
+  await add(db, "Alpha");
+  const gone = await add(db, "Gone");
+  const b = await add(db, "Bravo");
+  await completeTask(ctxFor(db, "complete_task"), gone);
+  const before = (await load(devEnv(db), PAGE)).body;
+  assert.ok(before.indexOf("Alpha") < before.indexOf("Bravo"));
+  const moved = await post(devEnv(db), `/tasks/${b}/move`, { dir: "up", return_to: PAGE });
+  assert.equal(moved.res.status, 303);
+  const open = (await load(devEnv(db), PAGE)).body;
+  const shown = section(open, "Open tasks</h2>", "Done</h2>");
+  assert.ok(shown.indexOf("Bravo") < shown.indexOf("Alpha"));
+  const again = await post(devEnv(db), `/tasks/${b}/move`, { dir: "up", return_to: PAGE });
+  assert.equal(again.res.status, 422);
 });
 
 test("a third-level task with tasks below says how many levels it hides", async () => {
