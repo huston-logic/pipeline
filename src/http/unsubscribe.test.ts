@@ -178,12 +178,57 @@ test("/unsubscribe/board.css serves the stylesheet from assets", async () => {
   assert.match(res.headers.get("Content-Security-Policy") ?? "", /default-src 'self'/);
 });
 
-test("POST is rate limited by address", async () => {
+const SECURITY = /default-src 'self'/;
+
+test("a known token over the limit still unsubscribes, and is never counted", async () => {
   const { env, db, limitKeys } = await setup({ allow: false });
-  const res = await call(env, `/unsubscribe/${TOKEN}`, form());
-  assert.equal(res.status, 429);
-  assert.deepEqual(limitKeys, ["unsubscribe:203.0.113.7"]);
+  const res = await call(env, `/unsubscribe/${TOKEN}`, form("List-Unsubscribe=One-Click"));
+  assert.equal(res.status, 200);
+  assert.equal(await count(db, "SELECT COUNT(*) AS n FROM email_suppressions"), 1);
+  assert.deepEqual(limitKeys, []);
+});
+
+test("a limiter that throws still unsubscribes, and an unknown token is then a plain 404", async () => {
+  const { env, db } = await setup();
+  env.INTAKE_RATE_LIMIT = {
+    async limit() {
+      throw new Error("limiter down");
+    },
+  };
+  assert.equal((await call(env, `/unsubscribe/${OTHER}`, form())).status, 404);
+  assert.equal((await call(env, `/unsubscribe/${TOKEN}`, form())).status, 200);
+  assert.equal(await count(db, "SELECT COUNT(*) AS n FROM email_suppressions"), 1);
+});
+
+test("an unknown or malformed token over the limit is 429, keyed by address, with security headers", async () => {
+  const { env, db, limitKeys } = await setup({ allow: false });
+  for (const path of [`/unsubscribe/${OTHER}`, "/unsubscribe/short"]) {
+    const res = await call(env, path, form());
+    assert.equal(res.status, 429);
+    assert.match(res.headers.get("Content-Security-Policy") ?? "", SECURITY);
+  }
+  assert.deepEqual(limitKeys, ["unsubscribe:203.0.113.7", "unsubscribe:203.0.113.7"]);
   assert.equal(await count(db, "SELECT COUNT(*) AS n FROM email_suppressions"), 0);
+  // A GET of an unknown token is not counted.
+  assert.equal((await call(env, `/unsubscribe/${OTHER}`)).status, 404);
+  assert.equal(limitKeys.length, 2);
+});
+
+test("each page has its own fixed title, the button is the board's, and 404 and 405 carry security headers", async () => {
+  const { env } = await setup();
+  const title = async (res: Response) => /<title>(.*)<\/title>/.exec(await res.text())?.[1];
+  const confirm = await call(env, `/unsubscribe/${TOKEN}`);
+  const confirmPage = await confirm.clone().text();
+  assert.match(confirmPage, /<button class="button" type="submit">Unsubscribe<\/button>/);
+  assert.equal(await title(confirm), "Unsubscribe");
+  assert.equal(await title(await call(env, `/unsubscribe/${TOKEN}`, form())), "You&#39;re unsubscribed");
+  assert.equal(await title(await call(env, "/unsubscribe/test")), "Test email link");
+  const missing = await call(env, `/unsubscribe/${OTHER}`);
+  assert.match(missing.headers.get("Content-Security-Policy") ?? "", SECURITY);
+  assert.equal(await title(missing), "Link not found");
+  const wrong = await call(env, `/unsubscribe/${TOKEN}`, { method: "PUT" });
+  assert.equal(wrong.status, 405);
+  assert.match(wrong.headers.get("Content-Security-Policy") ?? "", SECURITY);
 });
 
 test("without the rate limit binding a POST is allowed", async () => {

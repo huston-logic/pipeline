@@ -18,13 +18,14 @@ const TOKEN_SHAPE = /^[A-Za-z0-9_-]{43}$/;
 const BODY_MAX_BYTES = 1024;
 const ALLOW = "GET, HEAD, POST";
 
-function page(body: Html, status: number, method: string): Response {
+// Fixed titles: nothing from the database or the address goes in one.
+function page(title: string, body: Html, status: number, method: string): Response {
   const doc = html`<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Unsubscribe</title>
+<title>${title}</title>
 <meta name="description" content="Stop getting emails from this business.">
 <link rel="stylesheet" href="/unsubscribe/board.css">
 </head>
@@ -45,12 +46,25 @@ async function businessName(env: Env): Promise<string> {
 }
 
 const notWorking = (method: string): Response =>
-  page(html`<h1>This link doesn't work.</h1><p>Nothing changed.</p>`, 404, method);
+  page("Link not found", html`<h1>This link doesn't work.</h1><p>Nothing changed.</p>`, 404, method);
 
+/** Only guesses count: a real link is never limited (mail providers send many one-clicks from a few shared addresses). A limiter error counts as allowed. */
 async function allowed(request: Request, env: Env): Promise<boolean> {
   if (!env.INTAKE_RATE_LIMIT) return true;
   const key = `unsubscribe:${request.headers.get("CF-Connecting-IP") ?? "unknown"}`;
-  return (await env.INTAKE_RATE_LIMIT.limit({ key })).success;
+  try {
+    return (await env.INTAKE_RATE_LIMIT.limit({ key })).success;
+  } catch {
+    return true;
+  }
+}
+
+/** The 404 page for a token that is malformed or unknown; a POST of one is rate limited first. */
+async function noSuchLink(request: Request, env: Env): Promise<Response> {
+  if (request.method === "POST" && !(await allowed(request, env))) {
+    return textResponse("Too many requests. Wait a minute and try again.", 429, { "Retry-After": "60" });
+  }
+  return notWorking(request.method);
 }
 
 async function handle(request: Request, env: Env, now: Date, token: string): Promise<Response> {
@@ -58,28 +72,31 @@ async function handle(request: Request, env: Env, now: Date, token: string): Pro
   if (method !== "GET" && method !== "HEAD" && method !== "POST") {
     return textResponse("This address only answers GET, HEAD and POST requests.", 405, { Allow: ALLOW });
   }
-  if (token !== TEST_TOKEN && !TOKEN_SHAPE.test(token)) return notWorking(method);
+  if (token !== TEST_TOKEN && !TOKEN_SHAPE.test(token)) return noSuchLink(request, env);
 
-  if (method === "POST") {
-    if (!(await allowed(request, env))) return textResponse("Too many requests. Wait a minute and try again.", 429, { "Retry-After": "60" });
-    await readCappedBytes(request, BODY_MAX_BYTES);
-  }
+  if (method === "POST") await readCappedBytes(request, BODY_MAX_BYTES);
 
   if (token === TEST_TOKEN) {
-    return page(html`<h1>This link is from a test email.</h1><p>Nothing changed.</p>`, 200, method);
+    return page("Test email link", html`<h1>This link is from a test email.</h1><p>Nothing changed.</p>`, 200, method);
   }
 
   const recipient = await env.DB.prepare("SELECT * FROM campaign_recipients WHERE unsub_token = ?").bind(token).first<CampaignRecipientRow>();
-  if (recipient === null) return notWorking(method);
+  if (recipient === null) return noSuchLink(request, env);
   const business = await businessName(env);
 
   if (method === "POST") {
     await suppress(env.DB, now, recipient);
-    return page(html`<h1>You're unsubscribed.</h1><p>You won't get any more of these emails from ${business}.</p>`, 200, method);
+    return page(
+      "You're unsubscribed",
+      html`<h1>You're unsubscribed.</h1><p>You won't get any more of these emails from ${business}.</p>`,
+      200,
+      method,
+    );
   }
   return page(
+    "Unsubscribe",
     html`<h1>Stop getting emails from ${business}?</h1>
-<form method="post" action="${UNSUBSCRIBE_PREFIX}${token}"><button type="submit">Unsubscribe</button></form>`,
+<form method="post" action="${UNSUBSCRIBE_PREFIX}${token}"><button class="button" type="submit">Unsubscribe</button></form>`,
     200,
     method,
   );
