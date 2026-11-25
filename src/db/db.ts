@@ -81,6 +81,8 @@ export type SettingsRow = {
   campaign_daily_limit: number;
   /** 1: projects are on (migration 0020); 0, the default, makes every project path and tool refuse. */
   projects: Flag;
+  /** "chat" (the AI app asks for a yes, then apply_changes) or "board" (only the board approves; migration 0025). */
+  ai_approval: "chat" | "board";
 };
 
 export type StageRow = {

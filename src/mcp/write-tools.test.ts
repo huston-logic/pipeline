@@ -340,6 +340,7 @@ test("settings tools: get shows the owner emails, update changes the rest and re
     businessName: null,
     accentColor: null,
     aiEdits: "review_first",
+    approveIn: "chat",
     timeTracking: false,
     campaigns: false,
     projects: false,

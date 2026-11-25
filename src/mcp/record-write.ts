@@ -58,7 +58,7 @@ export async function recordWrite(deps: ToolDeps, action: RecordAction): Promise
     return answerApplied(deps.db, result.summary, answerData(result), []);
   }
   try {
-    return proposeResult(await proposeChanges(ctx, { actions: [action] }, options));
+    return proposeResult(await proposeChanges(ctx, { actions: [action] }, options), deps.origin);
   } catch (error) {
     throw ownMessage(error);
   }

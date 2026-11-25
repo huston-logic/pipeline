@@ -191,3 +191,11 @@ test("a proposal to complete a parent with subTasks shows every sub-task as done
   await applyChanges({ ...ctx, tool: "apply_changes" }, answer.id, { extraOwnerEmails: [] });
   assert.equal((await row(db, a))?.done_at !== null && (await db.prepare("SELECT done_at FROM tasks WHERE title = 'A1'").first<string>("done_at")) !== null, true);
 });
+
+test("while projects are off, completing a task asks nothing about sub-tasks", async () => {
+  const db = await setup();
+  const a = await top(db, "A");
+  await sub(db, a, "A1");
+  await db.prepare("UPDATE settings SET projects = 0").run();
+  assert.match((await completeTask(ctxFor(db, "complete_task"), a)).summary, /^Completed /);
+});

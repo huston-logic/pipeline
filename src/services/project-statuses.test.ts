@@ -16,6 +16,7 @@ import {
   updateProjectStatus,
 } from "./project-statuses.ts";
 import { addProject, updateProject } from "./projects.ts";
+import { addView } from "./views.ts";
 import { getSettings, PROJECTS_OFF, requireProjects, updateSettings } from "./settings.ts";
 import { undoChange } from "./undo.ts";
 
@@ -188,4 +189,38 @@ test("an archived status is never accepted on a project, and new projects take t
   const added = await addProject({ ...ctxFor(db), tool: "add_project" }, { contact, name: "Default one" });
   assert.equal((await db.prepare("SELECT status_key FROM projects WHERE id = ?").bind(added.projectId).first<string>("status_key")), "active");
   assert.match(await refusal(addProject({ ...ctxFor(db), tool: "add_project" }, { contact, name: "x", status: "kickoff" })), /no status "kickoff"/);
+});
+
+test("undo refuses when it would leave no live closed project status, and says what to do", async () => {
+  const db = await openTestDb();
+  await projectsOn(db);
+  const finished = await addProjectStatus(ctxFor(db), { label: "Finished", kind: "closed" });
+  await updateProjectStatus(ctxFor(db), "done", { kind: "open" });
+  assert.equal(
+    await refusal(undoChange(ctxFor(db), finished.changeId)),
+    "Undoing this would leave no live closed project status. Add one first.",
+  );
+  assert.equal((await projectStatusLabels(db)).get("finished"), "Finished");
+});
+
+test("undo of a status add allows it while a live open and closed one remain", async () => {
+  const db = await openTestDb();
+  await projectsOn(db);
+  const added = await addProjectStatus(ctxFor(db), { label: "Paused" });
+  await undoChange(ctxFor(db), added.changeId);
+  assert.equal((await projectStatusLabels(db)).has("paused"), false);
+});
+
+test("undo of a status add is refused while a saved projects view filters on it", async () => {
+  const db = await openTestDb();
+  await projectsOn(db);
+  const added = await addProjectStatus(ctxFor(db), { label: "Paused" });
+  await addView({ ...ctxFor(db), tool: "add_view" }, { name: "Paused ones", module: "projects", filters: { status: "paused" } });
+  assert.match(await refusal(undoChange(ctxFor(db), added.changeId)), /Paused ones/);
+});
+
+test("no live open status is a plain refusal, not an internal error", async () => {
+  const db = await openTestDb();
+  await db.prepare("UPDATE project_statuses SET archived = 1 WHERE kind = 'open'").run();
+  assert.match(await refusal(defaultProjectStatus(db)), /no live open project status/);
 });

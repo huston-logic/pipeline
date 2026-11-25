@@ -1,6 +1,7 @@
 // Today (/): the open to-dos as a list (decision 0047), the deals due, then the pipeline at a glance and the latest brief (style guide §5).
 import { type BriefItem, headerDate } from "../../brief/compose.ts";
 import { ownerTimezone } from "../../services/lookup.ts";
+import { countOpenProposals } from "../../services/proposals.ts";
 import {
   type BriefView,
   type DealItem,
@@ -155,11 +156,12 @@ export async function todayPage(ctx: PageContext): Promise<string> {
   const { db, now } = ctx;
   const tz = await ownerTimezone(db);
   const view = taskView(ctx.query);
-  const [summary, due, brief, tasks] = await Promise.all([
+  const [summary, due, brief, tasks, waiting] = await Promise.all([
     pipelineSummary(db, now, tz),
     whatsDue(db, now, tz),
     latestBrief(db),
     openTaskLists(db, now, tz, view, TASK_LIST_LIMIT),
+    countOpenProposals(db, now),
   ]);
   const date = localDate(now, tz);
   const note = viewNote(view);
@@ -174,6 +176,7 @@ export async function todayPage(ctx: PageContext): Promise<string> {
 <p class="page-date"><time datetime="${date}">${headerDate(date)}</time></p>
 </div>
 <p class="lede">${summaryLine(summary)}</p>
+${waiting === 0 ? "" : html`<p class="pending-note"><a class="button button-quiet" href="/pending">${count(waiting, "change")} from your AI app ${waiting === 1 ? "is" : "are"} waiting. Review ${waiting === 1 ? "it" : "them"}.</a></p>`}
 ${addButtons("today", ["deal", "lead", "import"])}
 <div class="today-columns">
 <div class="today-due">

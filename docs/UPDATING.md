@@ -321,6 +321,38 @@ or offer shows on the board, and the AI app's project tools answer that projects
 - After a deal is marked Won, the AI app asks the same question. It adds a project only after your yes.
 - The deal's open tasks move to the project only if you tick "Also move this deal's N open tasks to the project" (it is unticked by default).
 
+## Run 10: after you update
+
+Run 10 finishes projects: your own statuses, fields and views, internal projects, sub-tasks, task plans from the AI app,
+templates, and approving AI changes on the board (decisions 0056 to 0060). Do these in order, per copy. (A copy still on
+run 8 or earlier: do "Run 8" and "Run 9" first.)
+
+### 1. Update the copy
+
+```bash
+git switch main && git pull --ff-only
+npm run copies:update -- --copy <name> --dry-run
+npm run copies:update -- --copy <name>
+```
+
+Migrations 0021 to 0025 apply when wrangler asks you to confirm. Nothing else needs setting: no secret, no DNS record and
+no cron change.
+
+- 0021 rebuilds four tables (projects, activities, field_defs, views). It keeps every row and link.
+- 0023 updates the capture rulebook document only if it is still the original text. If you edited it, it is left alone.
+- 0025 adds the approval setting. It starts as In chat, so nothing changes until you choose.
+
+### 2. Check the project pages, if projects are on
+
+- `/projects` now shows Open projects by default, with each status beside it.
+- A project page shows its task tree.
+- `/templates` is empty until you add templates (the demo seed has two).
+
+### 3. Approve AI changes on the board, only if you want to
+
+Open Pending changes (under More) and choose "On the board only". Then the AI app can no longer apply a list, apply an
+import or undo a change. It shows a board link instead. Only the board can switch the setting back to "In chat".
+
 ## Before a release that has a new migration
 
 Migrations only go forward: there is no "undo" for a database change. Try a release on a copy's preview database

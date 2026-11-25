@@ -139,6 +139,8 @@ test("a project and a 100-task plan stay at most 40 D1 calls each way, apply as 
   assert.ok(applyCalls <= 40, `apply made ${applyCalls} D1 calls (${applyStatements} statements)`);
   const rows = async () => (await db.prepare("SELECT (SELECT count(*) FROM projects WHERE name = 'Harbor kitchen') AS p, (SELECT count(*) FROM tasks WHERE project_id IS NOT NULL AND title LIKE 'Step %') AS t").first<{ p: number; t: number }>()) ?? { p: -1, t: -1 };
   assert.deepEqual({ ...(await rows()) }, { p: 1, t: 100 });
+  const audit = await db.prepare("SELECT parts FROM audit_log WHERE id = ?").bind(result.changeId).first<{ parts: number }>();
+  assert.ok((audit?.parts ?? 0) > 0, "a 100-task plan applies as one bulk change");
   await undoChange({ db, now: NOW, actor: "owner", tool: "undo_change" }, result.changeId);
   assert.deepEqual({ ...(await rows()) }, { p: 0, t: 0 });
 });
@@ -185,5 +187,16 @@ test("a maximum-size list with every action on a different deal stays at most 40
         ? { action: "update_deal", deal: `Person${n}`, nextStep: "Send the quote" }
         : { action: "add_task", deal: `Person${n}`, title: "Send the quote" },
   );
+  assertAtMost(await measure(actions, more), 40);
+});
+
+test("24 other actions and update_template replacing 100 tasks stay at most 40 D1 calls each way", async () => {
+  const rows = PLAN_TASKS.map((item, i) => `('tt_${i + 1}', 'tp_big', NULL, ${i + 1}, '${item.title}', NULL, NULL)`).join(", ");
+  const more =
+    "UPDATE settings SET projects = 1; INSERT INTO project_templates (id, name) VALUES ('tp_big', 'Big kit'); " +
+    `INSERT INTO template_tasks (id, template_id, parent_id, position, title, due_days, work_type_id) VALUES ${rows}`;
+  const replacing = PLAN_TASKS.map((item) => ({ ...item, title: `New ${item.title}` }));
+  const actions: RecordAction[] = [...RAMBLE.slice(0, PROPOSAL_MAX_ACTIONS - 1), { action: "update_template", template: "Big kit", tasks: replacing }];
+  assert.equal(actions.length, PROPOSAL_MAX_ACTIONS);
   assertAtMost(await measure(actions, more), 40);
 });

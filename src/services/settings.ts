@@ -22,6 +22,17 @@ const AI_EDITS_STORED: Record<AiEditsChoice, AiEdits> = { review_first: "review"
 const AI_EDITS_CHOICE: Record<AiEdits, AiEditsChoice> = { review: "review_first", small: "apply_small" };
 const AI_EDITS_LABELS: Record<AiEdits, string> = { review: "Review first", small: "Apply small changes" };
 
+/** settings.ai_approval: where the owner approves what the AI app proposes ("chat" or "board"). */
+export type ApproveIn = SettingsRow["ai_approval"];
+
+/** "<origin>/pending", the board page where proposals wait; just "/pending" when the origin is unknown. */
+export const pendingUrl = (origin: string | undefined): string => `${origin ?? ""}/pending`;
+
+/** Where the owner approves AI changes: read by the proposal and apply tools. */
+export async function getApproveIn(db: Db): Promise<ApproveIn> {
+  return (await getSettingsRow(db)).ai_approval;
+}
+
 /** The answer every time tool and service gives while time tracking is off (decision 0049). */
 export const TIME_TRACKING_OFF = "Time tracking is off. The owner can turn it on (update_settings timeTracking true).";
 
@@ -63,6 +74,8 @@ export interface SettingsView {
   accentColor: string | null;
   /** How the AI app's record tools write: review_first (the default) or apply_small (decision 0045). */
   aiEdits: AiEditsChoice;
+  /** Where AI changes are approved: chat (the default) or board. */
+  approveIn: ApproveIn;
   /** Whether the time tools and pages are on (decision 0049); off by default. */
   timeTracking: boolean;
   /** Whether campaigns are on; off by default. */
@@ -93,6 +106,8 @@ export interface SettingsPatch {
   accentColor?: string | null;
   /** review_first or apply_small (decision 0045). */
   aiEdits?: AiEditsChoice;
+  /** chat or board. Only the owner (the board) may set chat again; the AI app may only set board. */
+  approveIn?: ApproveIn;
   /** true turns the time tools and pages on (decision 0049). */
   timeTracking?: boolean;
   /** true turns campaigns on. */
@@ -108,6 +123,8 @@ export interface SettingsPatch {
 export interface SettingsOptions {
   /** Owner emails from the OWNER_EMAILS var, on top of settings.owner_emails. */
   extraOwnerEmails?: readonly string[];
+  /** The request's origin, for the board address in the refusal to switch approval back to chat. */
+  origin?: string;
 }
 
 export async function getSettings(db: Db): Promise<SettingsView> {
@@ -123,6 +140,7 @@ export async function getSettings(db: Db): Promise<SettingsView> {
     businessName: row.business_name,
     accentColor: row.accent_color,
     aiEdits: AI_EDITS_CHOICE[row.ai_edits],
+    approveIn: row.ai_approval,
     timeTracking: row.time_tracking === 1,
     campaigns: row.campaigns === 1,
     projects: row.projects === 1,
@@ -253,9 +271,21 @@ export async function updateSettings(ctx: Ctx, patch: SettingsPatch, options: Se
   if (patch.aiEdits !== undefined) {
     const stored = AI_EDITS_STORED[patch.aiEdits];
     if (stored !== before.ai_edits) {
+      if (stored === "small" && ctx.actor === "ai" && before.ai_approval === "board") {
+        throw new UserError(
+          `Only the board can loosen this while AI changes are approved there. Switch approval back to chat on the board first: ${pendingUrl(options.origin)}.`,
+        );
+      }
       set.ai_edits = stored;
       parts.push(`AI edits: ${AI_EDITS_LABELS[stored]}`);
     }
+  }
+  if (patch.approveIn !== undefined && patch.approveIn !== before.ai_approval) {
+    if (patch.approveIn === "chat" && ctx.actor === "ai") {
+      throw new UserError(`Only the board can switch this back. Open ${pendingUrl(options.origin)}.`);
+    }
+    set.ai_approval = patch.approveIn;
+    parts.push(patch.approveIn === "board" ? "AI changes are approved on the board only" : "AI changes are approved in chat");
   }
   if (patch.timeTracking !== undefined && (patch.timeTracking ? 1 : 0) !== before.time_tracking) {
     set.time_tracking = patch.timeTracking ? 1 : 0;

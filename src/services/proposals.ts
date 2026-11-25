@@ -30,7 +30,7 @@ import {
 import { capitalize, rowLabel, short } from "./describe.ts";
 import { UserError } from "./errors.ts";
 import { ownerTimezone } from "./lookup.ts";
-import { ReadMemo } from "./memo.ts";
+import { ReadMemo, settingsRow } from "./memo.ts";
 import { PlanCollector } from "./plan.ts";
 import {
   type ActionResult,
@@ -56,12 +56,12 @@ export const PROPOSAL_TTL_MS = 2 * 60 * 60 * 1000;
 /** Applied and dropped proposals stay a day, so a second yes or the old id of a revised list still gets its answer. */
 const KEEP_CLOSED_MS = 24 * 60 * 60 * 1000;
 
-const AGAIN = "Propose the changes again and show the owner the new list.";
+export const AGAIN = "Propose the changes again and show the owner the new list.";
 
 const TOO_LONG = "This list is too long to keep. Send it as two lists.";
 
 export type ProposeAnswer =
-  | { kind: "proposal"; id: string; expiresAt: string; text: string; list: ProposalList }
+  | { kind: "proposal"; id: string; expiresAt: string; text: string; list: ProposalList; approveIn: "chat" | "board" }
   | { kind: "questions"; questions: string[] };
 
 type Deps = { extraOwnerEmails: string[] };
@@ -71,6 +71,29 @@ const timeOf = (at: string, tz: string) => formatLocal(at, tz).split(", ").at(-1
 
 async function getProposal(db: Db, id: string): Promise<ProposalRow | null> {
   return db.prepare("SELECT * FROM proposals WHERE id = ?").bind(id).first<ProposalRow>();
+}
+
+/** The open, unexpired lists waiting for the owner, newest first (the board's Pending changes page). */
+export async function listOpenProposals(db: Db, now: Date): Promise<ProposalRow[]> {
+  const { results } = await db
+    .prepare("SELECT * FROM proposals WHERE status = 'open' AND expires_at > ? ORDER BY created_at DESC, rowid DESC")
+    .bind(now.toISOString())
+    .all<ProposalRow>();
+  return results;
+}
+
+/** How many lists wait for the owner (Today's notice). */
+export async function countOpenProposals(db: Db, now: Date): Promise<number> {
+  return (await db.prepare("SELECT COUNT(*) AS n FROM proposals WHERE status = 'open' AND expires_at > ?").bind(now.toISOString()).first<number>("n")) ?? 0;
+}
+
+/** The owner turns a waiting list down: it is dropped (scratch space, not audited). Anything not open is refused plainly. */
+export async function discardProposal(db: Db, id: string, now: Date): Promise<void> {
+  const row = isProposalId(id) ? await getProposal(db, id) : null;
+  if (row === null) throw new UserError("That list isn't there any more. It may have expired.");
+  if (row.status === "applied") throw new UserError("That list was already approved, so it can't be discarded.");
+  if (row.status === "dropped" || row.expires_at <= now.toISOString()) throw new UserError("That list was already closed.");
+  await db.prepare("UPDATE proposals SET status = 'dropped' WHERE id = ? AND status = 'open'").bind(id).run();
 }
 
 /** The actions planned in order with a fresh collector; a service's refusal comes back as "Action N: ...". */
@@ -194,7 +217,7 @@ export async function proposeChanges(caller: Ctx, input: { actions: RecordAction
     if (isGuardFailure(error) && old !== null) await replaceable(db, old.id, now);
     throw error;
   }
-  return { kind: "proposal", id, expiresAt, text, list };
+  return { kind: "proposal", id, expiresAt, text, list, approveIn: (await settingsRow(ctx)).ai_approval };
 }
 
 function parseReads(json: string): Record<string, number | null> {
@@ -359,9 +382,11 @@ async function appliedAnswer(db: Db, row: ProposalRow): Promise<ApplyResult> {
  * caller, tool apply_changes), only while every row they write is as it was when the list was made. A second apply
  * writes nothing and answers the first change.
  */
-export async function applyChanges(caller: Ctx, id: string, deps: Deps): Promise<ApplyResult> {
+export async function applyChanges(caller: Ctx, id: string, deps: Deps & { refuseOnBoard?: string }): Promise<ApplyResult> {
   const ctx: Ctx = { ...caller, memo: new ReadMemo(caller.db) };
   const { db, now } = ctx;
+  // The AI app's apply: while the owner approves on the board it writes nothing (the refusal text comes from src/mcp).
+  if (deps.refuseOnBoard !== undefined && (await settingsRow(ctx)).ai_approval === "board") throw new UserError(deps.refuseOnBoard);
   const ref = id.trim();
   const row = isProposalId(ref) ? await getProposal(db, ref) : null;
   if (row === null) throw new UserError(`No proposal ${isProposalId(ref) ? ref : "by that id"}. Propose the changes again.`);

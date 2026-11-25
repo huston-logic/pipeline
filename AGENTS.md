@@ -41,7 +41,7 @@ hooks and the commands are in `CLAUDE.md`.
   read it); `lighthouserc.cjs` scores `lighthouseRoutes`, one of each kind of page, at most 22 (a test checks), 3 runs
   each; `npm run test:lighthouse` (`scripts/lighthouse.mjs`) collects again, at most twice, only the pages whose runs
   crashed (Chrome's `NO_NAVSTART`), then checks scores once. Every new page goes in `boardRoutes`; a new kind of page
-  also takes a `lighthouseRoutes` slot. The file also has the nav (`navItems`: Today, Pipeline, People, Brief, More; `moreItems`: Rules, Changes, Export, Import; `moreItemsFor(true)` adds Time while time tracking is on, decision 0051). Pages are
+  also takes a `lighthouseRoutes` slot. The file also has the nav (`navItems`: Today, Pipeline, People, Brief, More; `moreItems`: Rules, Changes, Pending changes, What it caught, Export, Import, Notifications, Email logging; `moreItemsFor` adds Time, Projects and Templates, and Campaigns while each is on, decisions 0051, 0053, 0055). Pages are
   GET and HEAD with `Cache-Control: no-store`; a page that finds no CSRF cookie sets one.
 - **Board edits** (decisions 0014, 0017): every board write path is in the route table in `src/board/actions.ts`; a
   POST to any other path is 405. `src/board/post.ts` checks, in order, the sign-in, the same origin, a form body
@@ -170,6 +170,11 @@ hooks and the commands are in `CLAUDE.md`.
   (`taskWithLinks`) is read in one batch. A plan refuses a write to a memo table. Name matching reads every ref in one
   batch (`matchAll`); the list reads the people, deals and tasks it names in one batch; a trial that fails is explained
   with at most two more trials, never a new plan.
+- **Board approval** (decision 0060): `settings.ai_approval` (`chat` default, `board`; migration 0025). `/pending`
+  (`src/board/pages/pending.ts`, `src/board/pending-actions.ts`) approves a proposal as the owner with the same
+  `applyChanges`, discards it, and holds the setting form. Under `board` the AI's `apply_changes`, `apply_import` and
+  `undo_change` refuse with a board link, and the AI may only tighten the setting or `aiEdits`, never loosen them. The
+  setting is read through the request memo (no extra D1 call).
 - **People and person status** (decisions 0022, 0023, 0040): every `contacts` row has a `person_status` (a
   `person_statuses` key: Lead, Contact, Partner and any the owner adds) and a `sub_status` (a `person_substatuses` key
   of that status, or null); there is no leads table. A lead is a person whose status is Lead, with no open deal.

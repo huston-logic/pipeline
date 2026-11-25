@@ -7,7 +7,8 @@
 // Every read is set-based (decision 0035): grouped by table, the ids passed through json_each, so an undo makes the
 // same number of reads for 2 rows as for 2,000. A change that had parts, or touched more than 50 rows, is undone
 // with a bulk change and described with counts.
-import type { AuditRow, ContactRow, Db, RuleType } from "../db/db.ts";
+import type { AuditRow, ContactRow, Db, ProjectStatusRow, RuleType } from "../db/db.ts";
+import { getSettings as getSettingsRow } from "../db/queries.ts";
 import { newId } from "../ids.ts";
 import { chunkBy, sqlBytes } from "./bulk.ts";
 import {
@@ -39,6 +40,7 @@ import { isUnqualified, type LeadStatus } from "./lead-status.ts";
 import { statusLabels } from "./status-labels.ts";
 import { parseStringArray, stageLabels } from "./lookup.ts";
 import { migratedPersonColumns } from "./person-move.ts";
+import { liveKindsGuard, missingKind } from "./project-statuses.ts";
 import { resumedParams } from "./rules.ts";
 
 type Entry = { table: ChangeTable; id: string; before: Row | null; after: Row | null };
@@ -121,7 +123,7 @@ const DEPENDENTS: Partial<Record<ChangeTable, Dependent[]>> = {
  * reuse the key and inherit the old values). `equals` absent means "any value at that path".
  */
 type JsonRef = {
-  table: "contacts" | "deals" | "rules" | "views";
+  table: "contacts" | "deals" | "projects" | "rules" | "views";
   column: string;
   path: string;
   /** The top-level key `path` reads, to check a snapshot row the same way in code. */
@@ -130,10 +132,12 @@ type JsonRef = {
   what: (labels: string, n: number) => string;
 };
 
+const FIELD_TABLES: Record<string, "contacts" | "deals" | "projects"> = { contact: "contacts", deal: "deals", project: "projects" };
+
 const JSON_DEPENDENTS: Partial<Record<ChangeTable, (row: Row) => JsonRef[]>> = {
   field_defs: (row) => [
     {
-      table: row.entity === "contact" ? "contacts" : "deals",
+      table: FIELD_TABLES[String(row.entity)] ?? "deals",
       column: "fields",
       path: `$."${String(row.key)}"`,
       key: String(row.key),
@@ -152,10 +156,11 @@ const JSON_DEPENDENTS: Partial<Record<ChangeTable, (row: Row) => JsonRef[]>> = {
     viewFilterRef("stage", row),
   ],
   person_statuses: (row) => [viewFilterRef("person_status", row)],
+  project_statuses: (row) => [viewFilterRef("status", row)],
 };
 
 /** Saved views whose filters name the stage or person status by its key (decision 0042). */
-function viewFilterRef(key: "stage" | "person_status", row: Row): JsonRef {
+function viewFilterRef(key: "stage" | "person_status" | "status", row: Row): JsonRef {
   return {
     table: "views",
     column: "filters",
@@ -690,8 +695,25 @@ export async function undoRemovals(db: Ctx["db"], changeId: string): Promise<Rem
   );
 }
 
-export async function undoChange(ctx: Ctx, changeId: string): Promise<ChangeResult> {
+const noKindMessage = (kind: string) => `Undoing this would leave no live ${kind} project status. Add one first.`;
+
+/** The project statuses as they would stand once these row changes are written. */
+async function statusesAfter(db: Db, changes: readonly RowChange[]): Promise<ProjectStatusRow[]> {
+  const rows = (await db.prepare("SELECT * FROM project_statuses").all<ProjectStatusRow>()).results;
+  const after = new Map(changes.filter((change) => change.table === "project_statuses").map((change) => [change.id, change.after]));
+  return rows.flatMap((row) => {
+    if (!after.has(row.key)) return [row];
+    const next = after.get(row.key);
+    return next === null || next === undefined ? [] : [next as unknown as ProjectStatusRow];
+  });
+}
+
+export async function undoChange(ctx: Ctx, changeId: string, options: { origin?: string } = {}): Promise<ChangeResult> {
   const { db } = ctx;
+  // While the owner approves AI changes on the board, the AI app can't undo anything: an undo would be a way round it.
+  if (ctx.actor === "ai" && (await getSettingsRow(db)).ai_approval === "board") {
+    throw new UserError(`The owner undoes changes on the board while AI changes are approved there: ${options.origin ?? ""}/changes.`);
+  }
   const id = changeId.trim();
   const original = await db.prepare("SELECT * FROM audit_log WHERE id = ?").bind(id).first<AuditRow>();
   if (!original) throw new UserError(`There's no change ${id}. Use recent_changes to find the change id.`);
@@ -737,9 +759,16 @@ export async function undoChange(ctx: Ctx, changeId: string): Promise<ChangeResu
     return { table: entry.table, id: entry.id, before: now, after: restored };
   });
 
+  const touchesStatuses = changes.some((change) => change.table === "project_statuses");
+  if (touchesStatuses) {
+    const missing = missingKind(await statusesAfter(db, changes));
+    if (missing !== null) throw new UserError(noKindMessage(missing));
+  }
+
   const big = original.parts > 0 || entries.length > BULK_ROWS;
   const undoId = newId("chg");
   const extra = [
+    ...(touchesStatuses ? [liveKindsGuard(db)] : []),
     db.prepare("INSERT INTO write_guard (ok) SELECT COUNT(*) = 1 FROM audit_log WHERE id = ? AND undone_at IS NULL").bind(id),
     db.prepare("UPDATE audit_log SET undone_at = ?, undone_by = ? WHERE id = ?").bind(ctx.now.toISOString(), undoId, id),
   ];
@@ -754,6 +783,10 @@ export async function undoChange(ctx: Ctx, changeId: string): Promise<ChangeResu
       bulk: big && entries.every((entry) => isBulkTable(entry.table)),
     });
   } catch (error) {
+    if (error instanceof StaleWriteError && touchesStatuses) {
+      const missing = missingKind(await statusesAfter(db, []));
+      if (missing !== null) throw new UserError(noKindMessage(missing), { cause: error });
+    }
     if (error instanceof StaleWriteError) {
       // Another undo of this change may have won the race: say so instead of blaming a later edit.
       const latest = await db.prepare("SELECT * FROM audit_log WHERE id = ?").bind(id).first<AuditRow>();

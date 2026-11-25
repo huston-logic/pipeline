@@ -136,6 +136,14 @@ test("projectsInView filters in SQL: status, open and closed, person, archived, 
   assert.equal(all.total, 4);
 });
 
+test("a stored person who is unknown or archived is left out of the filter, not an error", async () => {
+  const { db, fence, garden, office, retrofit, shed } = await setup();
+  const all = [fence, garden, office, retrofit, shed];
+  assert.deepEqual(ids((await projectsInView(db, { contact: "ct_nobody" }, { key: "name", dir: "asc" })).items), all);
+  await db.prepare("UPDATE contacts SET archived = 1 WHERE id = 'ct_seed01'").run();
+  assert.deepEqual(ids((await projectsInView(db, { contact: "ct_seed01" }, { key: "name", dir: "asc" })).items), all);
+});
+
 test("projectsInView sorts: target soonest first with none last, start, newest, and a direction", async () => {
   const { db, retrofit, garden, shed, office } = await setup();
   for (const [n, id] of [retrofit, garden, shed, office].entries()) {

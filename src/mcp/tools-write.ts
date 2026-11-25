@@ -766,6 +766,10 @@ export function registerWriteTools(server: McpServer, deps: ToolDeps): void {
           .enum(AI_EDITS_CHOICES)
           .optional()
           .describe("review_first (the default: record changes wait for the owner's yes) or apply_small (small changes apply at once)."),
+        approveIn: z
+          .enum(["chat", "board"])
+          .optional()
+          .describe("chat (the default: the owner says yes in chat) or board (the owner approves on the board only). Only the board can switch board back to chat."),
         timeTracking: z.boolean().optional().describe("true to turn on time tracking (the timer, time entries, work types and rates), false to turn it off."),
         campaigns: z.boolean().optional().describe("true to turn on campaigns (email to a list of people), false to turn them off."),
         projects: z.boolean().optional().describe("true to turn on projects (delivery work after a sale), false to turn them off."),
@@ -779,6 +783,7 @@ export function registerWriteTools(server: McpServer, deps: ToolDeps): void {
       async run(args, deps) {
         const result = await updateSettings(aiCtx(deps, "update_settings"), args, {
           extraOwnerEmails: parseOwnerEmailsVar(deps.ownerEmailsVar),
+          ...(deps.origin === undefined ? {} : { origin: deps.origin }),
         });
         return toolResult(result.summary, { changeId: result.changeId });
       },
@@ -798,7 +803,7 @@ export function registerWriteTools(server: McpServer, deps: ToolDeps): void {
         "add removes what it added. Refuses if the change was already undone or a record it touched changed since.",
       input: z.strictObject({ changeId: z.string().min(1).max(100).describe("The change id, chg_...") }),
       async run({ changeId }, deps) {
-        const result = await undoChange(aiCtx(deps, "undo_change"), changeId);
+        const result = await undoChange(aiCtx(deps, "undo_change"), changeId, deps.origin === undefined ? {} : { origin: deps.origin });
         return toolResult(result.summary, { changeId: result.changeId, undid: changeId.trim() });
       },
     },
