@@ -278,7 +278,7 @@ updates are delivery records.
 
 - Read: `list_campaigns` (status filter), `get_campaign` (content, status, counts, `review_url`),
   `preview_campaign_recipients` (the count, skipped by reason, the New-leads count, up to 25 people by id and label).
-- Write, saving at once (not proposals; decision 0045 lists them with settings): `add_campaign_draft` (name,
+- Write, saving at once (not proposals, like settings, because nothing sends): `add_campaign_draft` (name,
   recipients, subject, body, button, fallback, suggested send time) and `update_campaign_draft` (drafts only). Actor
   `ai`, audited, undoable. Every answer gives `review_url` (`<origin>/campaigns/<id>`).
 - No tool sends, schedules, approves, pauses, cancels or clears a suppression; a test fails if a tool name contains
