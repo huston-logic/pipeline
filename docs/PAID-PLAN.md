@@ -380,7 +380,7 @@ The sender (`runCampaigns`, `src/campaigns/send.ts`) runs on its own Cron Trigge
 | --- | --- | --- |
 | idle (campaigns off, or nothing to send) | 1 | 7, all reads, in one batch |
 | 100 emails: read, claim, resolve | 3 | 7 + 7 + 8 |
-| a resend of a batch in flight, then a new batch of 100 | 4 | 7 + 8 + 7 + 8 (the test holds every run to 12) |
+| a resend of a batch in flight, then a new batch of 100 | 5 | 7 + 1 (takes the batch over) + 8 + 7 + 8 (the test holds every run to 12) |
 
 - The 3 calls of a 100-email run: one batch of 7 reads (settings, batches in flight and their rows, the campaigns that
   could send, their emails, the in-flight batches' campaigns, the day's room); the claim, one atomic batch of 7 (skip the archived and the suppressed,

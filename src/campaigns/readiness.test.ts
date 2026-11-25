@@ -76,3 +76,15 @@ test("replyTo is the first stored owner email, else the first OWNER_EMAILS one, 
   assert.equal(replyTo(withEnv({ OWNER_EMAILS: "X@Example.com, y@example.com" }), { ...settings, owner_emails: "[]" }), "x@example.com");
   assert.equal(replyTo(withEnv({ OWNER_EMAILS: undefined }), { ...settings, owner_emails: "[]" }), null);
 });
+
+test("a reply-to that is not a plain address blocks with the reply-to sentence", async () => {
+  const settings = await readySettings();
+  for (const owner of ["not an address", "Me <me@example.com>", "me@example.com\r\nBcc: x@example.com", "x@localhost"]) {
+    assert.equal(
+      sendingBlocker(READY_ENV, { ...settings, owner_emails: JSON.stringify([owner]) }),
+      "Add an owner email to the settings so replies reach you.",
+      owner,
+    );
+  }
+  assert.equal(sendingBlocker({ ...READY_ENV, OWNER_EMAILS: "bad address" } as Env, { ...settings, owner_emails: "[]" }), "Add an owner email to the settings so replies reach you.");
+});

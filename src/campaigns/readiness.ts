@@ -37,6 +37,7 @@ export function sendingBlocker(env: CampaignEnv, settings: SettingsRow): string 
   if (env.CAMPAIGN_SENDING !== "on") return notSetUp("sending switch");
   if (!env.CAMPAIGN_RESEND_API_KEY) return notSetUp("Resend key");
   if (!env.CAMPAIGN_FROM || !wellFormedFrom(env.CAMPAIGN_FROM)) return notSetUp("from address");
-  if (replyTo(env, settings) === null) return "Add an owner email to the settings so replies reach you.";
+  const reply = replyTo(env, settings);
+  if (reply === null || !isPlainAddress(reply)) return "Add an owner email to the settings so replies reach you.";
   return null;
 }

@@ -149,23 +149,26 @@ function payload(sender: Sender, rows: CampaignRecipientRow[], campaign: Campaig
   });
 }
 
-/** The rows go back to the queue, only while the batch is still in_flight (so a run that lost a race writes nothing). */
+/**
+ * The rows go back to the queue, only while the batch is still in_flight and on its first attempt: once another run has
+ * taken it over to send it again, the first attempt may have been accepted, so its answer must not undo anything.
+ */
 const returnRows = (db: Db, batchId: string): D1PreparedStatement[] => [
   db
     .prepare(
       "UPDATE campaign_recipients SET status = 'queued', batch_id = NULL, claimed_at = NULL, version = version + 1 " +
-        "WHERE batch_id = ? AND status = 'sending' AND EXISTS (SELECT 1 FROM campaign_batches WHERE id = ? AND status = 'in_flight')",
+        "WHERE batch_id = ? AND status = 'sending' AND EXISTS (SELECT 1 FROM campaign_batches WHERE id = ? AND status = 'in_flight' AND attempts = 1)",
     )
     .bind(batchId, batchId),
 ];
 
-const closeBatch = (db: Db, batchId: string, status: "returned" | "uncertain", attempts: number, lastStatus: string) =>
+const closeBatch = (db: Db, batchId: string, status: "returned" | "uncertain", lastStatus: string, firstAttemptOnly = false) =>
   db
-    .prepare("UPDATE campaign_batches SET status = ?, attempts = ?, last_status = ? WHERE id = ? AND status = 'in_flight'")
-    .bind(status, attempts, lastStatus, batchId);
+    .prepare(`UPDATE campaign_batches SET status = ?, last_status = ? WHERE id = ? AND status = 'in_flight'${firstAttemptOnly ? " AND attempts = 1" : ""}`)
+    .bind(status, lastStatus, batchId);
 
 /** Rows `uncertain` (never sent again) and the batch with them, as statements. */
-function uncertainStatements(sender: Sender, batch: CampaignBatchRow, attempts: number, lastStatus: string): D1PreparedStatement[] {
+function uncertainStatements(sender: Sender, batch: CampaignBatchRow, lastStatus: string): D1PreparedStatement[] {
   const { db, now } = sender;
   return [
     db
@@ -174,20 +177,19 @@ function uncertainStatements(sender: Sender, batch: CampaignBatchRow, attempts: 
           "WHERE batch_id = ? AND status = 'sending' AND EXISTS (SELECT 1 FROM campaign_batches WHERE id = ? AND status = 'in_flight')",
       )
       .bind(batch.id, batch.id),
-    closeBatch(db, batch.id, "uncertain", attempts, lastStatus),
+    closeBatch(db, batch.id, "uncertain", lastStatus),
     completeIfDone(db, batch.campaign_id, now),
   ];
 }
 
-async function markUncertain(sender: Sender, batch: CampaignBatchRow, attempts: number, lastStatus: string): Promise<void> {
-  await sender.db.batch(uncertainStatements(sender, batch, attempts, lastStatus));
+async function markUncertain(sender: Sender, batch: CampaignBatchRow, lastStatus: string): Promise<void> {
+  await sender.db.batch(uncertainStatements(sender, batch, lastStatus));
   bump(sender.counts, "uncertain");
 }
 
 async function markSent(
   sender: Sender,
   batch: CampaignBatchRow,
-  attempts: number,
   rows: CampaignRecipientRow[],
   ids: string[],
   campaign: CampaignRow,
@@ -214,7 +216,7 @@ async function markSent(
             "FROM json_each(?) AS j WHERE campaign_recipients.id = json_extract(j.value, '$.id') AND campaign_recipients.batch_id = ? AND campaign_recipients.status = 'sending'",
         )
         .bind(at, sent, batch.id),
-      db.prepare("UPDATE campaign_batches SET status = 'done', attempts = ?, last_status = '200' WHERE id = ?").bind(attempts, batch.id),
+      db.prepare("UPDATE campaign_batches SET status = 'done', last_status = '200' WHERE id = ?").bind(batch.id),
       completeIfDone(db, campaign.id, now),
     ],
     bulk: rows.length > BULK_OVER,
@@ -244,27 +246,27 @@ async function deliver(
   const outcome: SendOutcome = await sendBatch(apiKey, payload(sender, rows, campaignRow(campaign), step), batch.id);
   switch (outcome.kind) {
     case "sent":
-      await markSent(sender, batch, attempts, rows, outcome.ids, campaignRow(campaign));
+      await markSent(sender, batch, rows, outcome.ids, campaignRow(campaign));
       return true;
     case "retry_later":
-      await db.prepare("UPDATE campaign_batches SET attempts = ?, last_status = ? WHERE id = ? AND status = 'in_flight'").bind(attempts, outcome.status, batch.id).run();
+      await db.prepare("UPDATE campaign_batches SET last_status = ? WHERE id = ? AND status = 'in_flight'").bind(outcome.status, batch.id).run();
       bump(sender.counts, "retry_later");
       return false;
     case "uncertain":
-      await markUncertain(sender, batch, attempts, outcome.status);
+      await markUncertain(sender, batch, outcome.status);
       return true;
     case "returned": {
       // "Nothing was sent" is only true of a first attempt. A resend may follow one that Resend accepted, and a refusal
       // before its idempotency lookup (a rotated key, a 429) says nothing about that: the rows must never be queued again.
       const first = attempts === 1;
       if (!first && !outcome.pause) {
-        await db.prepare("UPDATE campaign_batches SET attempts = ?, last_status = ? WHERE id = ? AND status = 'in_flight'").bind(attempts, outcome.status, batch.id).run();
+        await db.prepare("UPDATE campaign_batches SET last_status = ? WHERE id = ? AND status = 'in_flight'").bind(outcome.status, batch.id).run();
         bump(sender.counts, "retry_later");
         return false;
       }
       const settle = first
-        ? [...returnRows(db, batch.id), closeBatch(db, batch.id, "returned", attempts, outcome.status)]
-        : uncertainStatements(sender, batch, attempts, outcome.status);
+        ? [...returnRows(db, batch.id), closeBatch(db, batch.id, "returned", outcome.status, true)]
+        : uncertainStatements(sender, batch, outcome.status);
       bump(sender.counts, first ? "returned" : "uncertain");
       if (!outcome.pause || campaign.status !== "sending") {
         await db.batch(settle);
@@ -301,14 +303,20 @@ async function resolveInFlight(sender: Sender, loaded: Loaded): Promise<boolean>
     const step = loaded.steps.find((s) => s.campaign_id === batch.campaign_id);
     const attempts = batch.attempts + 1;
     if (Date.parse(batch.created_at) + UNCERTAIN_AFTER_MS < sender.now.getTime()) {
-      await markUncertain(sender, batch, batch.attempts, "over 20 hours");
+      await markUncertain(sender, batch, "over 20 hours");
       bump(sender.counts, "expired");
       continue;
     }
     if (rows.length === 0 || campaign === undefined || step === undefined) {
-      await markUncertain(sender, batch, batch.attempts, "no rows");
+      await markUncertain(sender, batch, "no rows");
       continue;
     }
+    // Take the batch over before sending it again: if another run already did, it is theirs this time.
+    const took = await sender.db
+      .prepare("UPDATE campaign_batches SET attempts = attempts + 1 WHERE id = ? AND attempts = ? AND status = 'in_flight'")
+      .bind(batch.id, batch.attempts)
+      .run();
+    if (!(took.meta.changes > 0)) continue;
     bump(sender.counts, "resent");
     if (!(await deliver(sender, batch, attempts, rows, campaign, step))) return false;
   }

@@ -526,3 +526,56 @@ test("a batch in flight is resent even when 51 other campaigns are sending", asy
   assert.deepEqual(await runCampaigns(w.env, at(15 * MINUTE)), { resent: 1, sent: 3 });
   assert.equal((await batchesOf(w.db, w.id))[0]?.status, "done");
 });
+
+test("a first attempt answered 429 after another run resent and was accepted leaves the rows sent, never queued", async (t) => {
+  const w = await world(t, 3);
+  const real = globalThis.fetch;
+  const gate: { open: () => void } = { open: () => {} };
+  const second = new Promise<void>((resolve) => (gate.open = resolve));
+  let requests = 0;
+  let runB: Promise<unknown> = Promise.resolve();
+  t.mock.method(globalThis, "fetch", async (url: string, init: RequestInit) => {
+    requests += 1;
+    if (requests === 1) {
+      // Run A's request. Run B loads the batch as in flight and sends it again; Resend accepts B's and answers A's 429.
+      runB = runCampaigns(w.env, at(MINUTE));
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      return new Response("{}", { status: 429 });
+    }
+    await second;
+    return real(url, init);
+  });
+  await runCampaigns(w.env, NOW);
+  // A has written its answer first; now B's 200 arrives.
+  assert.deepEqual(await statusCounts(w.db, w.id), { sending: 3 });
+  gate.open();
+  await runB;
+  assert.equal(requests, 2);
+  assert.deepEqual(await statusCounts(w.db, w.id), { sent: 3 });
+  const [batch] = await batchesOf(w.db, w.id);
+  assert.deepEqual([batch?.status, batch?.attempts], ["done", 2]);
+  assert.equal(await count(w.db, "SELECT id FROM campaign_batches"), 1);
+  assert.equal(await activitiesOf(w.db, w.id), 3);
+});
+
+test("a run that finds another run already took over a batch in flight skips it", async (t) => {
+  const w = await world(t, 3);
+  w.answer.fn = () => new Response("", { status: 503 });
+  await runCampaigns(w.env, NOW);
+  const calls = w.sent.length;
+  // Another run bumps the attempts after this one read them.
+  const real = w.db.batch.bind(w.db);
+  let bumped = false;
+  t.mock.method(w.db, "batch", (statements: D1PreparedStatement[]) => {
+    if (!bumped) {
+      bumped = true;
+      const result = real(statements);
+      w.db.exec("UPDATE campaign_batches SET attempts = attempts + 1");
+      return result;
+    }
+    return real(statements);
+  });
+  w.answer.fn = okAnswer;
+  assert.deepEqual(await runCampaigns(w.env, at(15 * MINUTE)), {});
+  assert.equal(w.sent.length, calls);
+});
