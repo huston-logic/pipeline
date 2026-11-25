@@ -77,8 +77,9 @@ const escapeLike = (text: string) => text.replace(/[\\%_]/g, (c) => `\\${c}`);
 const marks = (n: number) => Array.from({ length: n }, () => "?").join(", ");
 
 /** What counts as reaching the person: the isReach rule (lead-change.ts) in SQL. */
-const REACH = `(a.type IN ('form', 'email', 'call', 'meeting') OR
-  (a.type = 'note' AND CASE WHEN json_valid(a.data) THEN json_extract(a.data, '$.via') END = 'text'))`;
+const REACH = `((a.type IN ('form', 'email', 'call', 'meeting') OR
+  (a.type = 'note' AND CASE WHEN json_valid(a.data) THEN json_extract(a.data, '$.via') END = 'text'))
+  AND COALESCE(CASE WHEN json_valid(a.data) THEN json_extract(a.data, '$.via') END, '') <> 'campaign')`;
 
 /**
  * Each person's soonest open task with a due date, by its effective time: a task snoozed past now counts from the day
