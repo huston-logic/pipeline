@@ -118,6 +118,9 @@ test("the deal screen keeps its task boxes with a template, and the redirect aft
   const next = await load(env, won.location);
   assert.match(next.body, /Start from a template/);
   assert.match(next.body, /<div class="banner" role="status">/);
+  assert.match(next.body, /Choose a template, then press Show tasks to use it\./);
+  assert.match(next.body, /aria-describedby="template-hint"/);
+  assert.match(next.body, /<input type="hidden" name="change" value="chg_[a-z0-9]{12}">/);
   const open = await load(env, `${won.location}&template=${website}`);
   assert.match(open.body, new RegExp(`<input type="hidden" name="template" value="${website}">`));
   const { res } = await post(env, "/deals/dl_seed01/projects", { name: "Site", status: "active", template: website, move_tasks: "yes" });

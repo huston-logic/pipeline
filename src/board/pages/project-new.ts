@@ -33,7 +33,7 @@ export type NewProjectState = FormState & { move?: boolean; complete?: boolean; 
 
 /** The template choice for a screen: the one in a refused post's state, else the address's `template`. */
 const choiceFor = (ctx: PageContext, path: string, state?: NewProjectState) =>
-  templateChoice(ctx.db, path, state?.template ?? ctx.query.get("template"), ctx.timeTracking === true);
+  templateChoice(ctx.db, path, state?.template ?? ctx.query.get("template"), ctx.timeTracking === true, ctx.query.get("change"));
 
 const OUTSIDE_NAME_HINT = "The deal's title came from outside. Name the project in a few words.";
 

@@ -18,7 +18,9 @@ const NONE: TemplateChoice = { above: "", hiddenField: "" };
 const radio = (id: string, value: string, label: string, checked: boolean): Html =>
   html`<div class="check"><input id="${id}" name="template" type="radio" value="${value}"${checked ? " checked" : ""}><label for="${id}">${label}</label></div>`;
 
-export async function templateChoice(db: Db, path: string, asked: string | null, timeTracking: boolean): Promise<TemplateChoice> {
+const CHANGE_ID = /^chg_[a-z0-9]+$/;
+
+export async function templateChoice(db: Db, path: string, asked: string | null, timeTracking: boolean, change: string | null = null): Promise<TemplateChoice> {
   const live = await listTemplates(db);
   if (live.length === 0) return NONE;
   const picked = asked !== null && isTemplateId(asked) && live.some((item) => item.id === asked) ? await templateOrNull(db, asked) : null;
@@ -33,8 +35,9 @@ ${offsets ? html`<p class="field-hint">Starts today unless you set a start date.
 ${view.tasks.length === 0 ? empty("This template has no tasks.") : templateTaskList(view.id, view.tasks, { form: { csrf: "", here: path }, timeTracking, editable: false })}
 </section>`;
   const above = html`<form class="template-choice" method="get" action="${path}">
-<fieldset class="field">
+${change !== null && CHANGE_ID.test(change) ? hidden("change", change) : ""}<fieldset class="field" aria-describedby="template-hint">
 <legend>Start from a template</legend>
+<p class="field-hint" id="template-hint">Choose a template, then press Show tasks to use it.</p>
 ${radio("template-none", "", "None", view === null)}
 ${live.map((item) => radio(`template-${item.id}`, item.id, item.name, view?.id === item.id))}
 </fieldset>
