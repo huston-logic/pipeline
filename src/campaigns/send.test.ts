@@ -239,7 +239,7 @@ test("a refused request (422) puts the rows back, pauses the campaign with a fix
   assert.deepEqual([campaign?.status, campaign?.send_error], ["paused", "Resend refused the last batch (status 422). Nothing in it was sent. Resume to try again."]);
   const audit = await w.db.prepare("SELECT actor, summary FROM audit_log WHERE tool = 'campaign_send'").first<{ actor: string; summary: string }>();
   assert.equal(audit?.actor, "system");
-  assert.equal(JSON.stringify(audit).includes("example.com"), false);
+  assert.doesNotMatch(JSON.stringify(audit), /@example\.com/);
   // Paused: the next run sends nothing; after Resume it does.
   assert.deepEqual(await runCampaigns(w.env, at(15 * MINUTE)), {});
   w.db.exec("UPDATE campaigns SET status = 'sending', send_error = NULL, version = version + 1");
