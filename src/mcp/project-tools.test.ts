@@ -52,6 +52,8 @@ test("a project tool while projects are off says so", async () => {
   assert.match(await fails(c, "get_project", { project: "pj_x" }), /^Projects are off\./);
   assert.match(await fails(c, "update_project_status", { status: "done", label: "Finished" }), /^Projects are off\./);
   assert.match(await fails(c, "add_project", { contact: "ct_seed03", name: "x" }), /^Projects are off\./);
+  assert.match(await fails(c, "add_task", { project: "Retrofit", title: "x" }), /^Projects are off\./);
+  assert.match(await fails(c, "add_task", { project: "pj_none", title: "x" }), /^Projects are off\./);
 });
 
 test("update_project_status renames a status at once, as the AI, and undo takes it back", async () => {

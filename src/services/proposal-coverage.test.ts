@@ -45,7 +45,7 @@ const OPEN_TASK_ON_WON_DEAL = "INSERT INTO tasks (id, deal_id, contact_id, title
 const PROJECT_WITH_DATES =
   "UPDATE projects SET start_at = '2026-12-01T08:00:00.000Z', target_at = '2027-01-30T08:00:00.000Z', notes = 'Phase one.' WHERE id = 'pj_seed01'";
 
-type Variant ={ input: Record<string, unknown>; setup?: string };
+type Variant = { input: Record<string, unknown>; setup?: string };
 
 /** Each record action with each optional field set at least once, in inputs the service accepts. */
 const VARIANTS: Record<RecordActionName, Variant[]> = {

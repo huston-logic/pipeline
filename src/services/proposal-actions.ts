@@ -35,7 +35,9 @@ import { UserError } from "./errors.ts";
 import { contactRef, dealTitle, isTrusted, projectTitle, taskTitle } from "./labels.ts";
 import { addLead, qualifyLead, returnToLead } from "./leads.ts";
 import { type Match, MATCH_MAX, matchAll } from "./name-match.ts";
+import { readerOf, type Reader } from "./memo.ts";
 import { addProject, updateProject } from "./projects.ts";
+import { requireProjects } from "./settings.ts";
 import { addTask, completeTask, snoozeTask } from "./tasks.ts";
 import { addTimeEntry, updateTimeEntry } from "./time-entries.ts";
 import { startTimer, stopTimer } from "./timer.ts";
@@ -294,7 +296,11 @@ function projectQuestion(match: Match<ProjectRow>, ref: string): Found {
  * question; with any question, the caller stores nothing and answers every question at once. Every ref is read in one
  * D1 batch (matchAll).
  */
-export async function resolveActions(db: Db, actions: readonly RecordAction[]): Promise<{ actions: ResolvedAction[]; questions: string[] }> {
+export async function resolveActions(src: Reader, actions: readonly RecordAction[]): Promise<{ actions: ResolvedAction[]; questions: string[] }> {
+  const { db } = readerOf(src);
+  // Every project input refuses while projects are off, before any name is matched (the memo makes this read free).
+  const projectful = actions.some((action) => action.action === "add_project" || action.action === "update_project" || refsOf(action).some((ref) => ref.kind === "project"));
+  if (projectful) await requireProjects(src);
   const named = actions.map((action) => refsOf(action).filter((ref) => refNumber(ref.value) === null));
   const asked: Record<RefKind, string[]> = { contact: [], deal: [], task: [], project: [] };
   for (const ref of named.flat()) if (!asked[ref.kind].includes(ref.value)) asked[ref.kind].push(ref.value);

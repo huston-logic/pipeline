@@ -130,7 +130,7 @@ export async function proposeChanges(caller: Ctx, input: { actions: RecordAction
   }
   const checked = checkActions(input.actions);
   const old = input.replaces === undefined ? null : await replaceable(db, input.replaces.trim(), now);
-  const { actions, questions } = await resolveActions(db, checked);
+  const { actions, questions } = await resolveActions(ctx, checked);
   if (questions.length > 0) return { kind: "questions", questions };
   // Planned as asked (a stop ends now), kept with that end, so the apply plans the same span.
   const actionsJson = JSON.stringify(withStopTimes(actions, now));

@@ -119,6 +119,19 @@ test("a project for a person an earlier action adds is proposed", async () => {
   assert.match(lines(answer.text, "Add")[1] ?? "", /^- Project "Lee sign": person Lee Example; status Active/);
 });
 
+test("every project input refuses with PROJECTS_OFF while projects are off, before any name is matched", async () => {
+  const db = await setup();
+  db.exec("UPDATE settings SET projects = 0");
+  for (const action of [
+    { action: "add_task", project: "Retrofit", title: "A" },
+    { action: "add_task", project: "Nobody", title: "A" },
+    { action: "update_project", project: "pj_seed01", status: "done" },
+    { action: "add_project", contact: "Pat", name: "x" },
+  ] as RecordAction[]) {
+    await assert.rejects(proposeChanges(ctxFor(db), { actions: [action] }, DEPS), /^UserError: Projects are off\. The owner can turn them on \(update_settings projects true\)\.$/, JSON.stringify(action));
+  }
+});
+
 test("apply reports the deals it marked Won, and none for an ordinary list", async () => {
   const db = await setup();
   const won = await propose(db, [{ action: "update_deal", deal: "dl_seed05", status: "won" }]);
