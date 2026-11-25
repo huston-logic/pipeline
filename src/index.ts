@@ -13,6 +13,7 @@ import { logAddressOf } from "./email/address.ts";
 import type { Env } from "./env.ts";
 import { apiMethodNotAllowed, handleApi, isApiPath, json } from "./http/api.ts";
 import { handleIntake } from "./http/intake.ts";
+import { handleResendWebhook } from "./http/resend-webhook.ts";
 import { handleUnsubscribe, UNSUBSCRIBE_PREFIX } from "./http/unsubscribe.ts";
 import { TIME_CSV_PATH, timeCsvResponse } from "./http/time-csv.ts";
 import { htmlResponse, textResponse } from "./http/respond.ts";
@@ -21,6 +22,7 @@ import { vapidKeys } from "./push/vapid.ts";
 import { withSecurityHeaders } from "./security.ts";
 
 const INTAKE_ROUTE = "/intake";
+const RESEND_WEBHOOK_ROUTE = "/hooks/resend";
 const SERVICE_WORKER_PATH = "/sw.js";
 
 // A last path segment with an extension (/board.css, /robots.txt) is a static file in out/.
@@ -69,6 +71,9 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
 
   // A campaign email's unsubscribe link is public: no sign-in in any mode, campaigns on or off (hard rule 3).
   if (pathname.startsWith(UNSUBSCRIBE_PREFIX)) return handleUnsubscribe(request, env, new Date());
+
+  // Resend's delivery results: the Svix signature is the check, so no sign-in in any mode.
+  if (pathname === RESEND_WEBHOOK_ROUTE) return handleResendWebhook(request, env, new Date());
 
   if (mode.kind === "production" && isOAuthPath(pathname)) {
     // /mcp, /authorize, /callback, /token, /register and /.well-known/*: OAuth with Access as the upstream sign-in.
