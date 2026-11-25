@@ -291,3 +291,34 @@ server started with fake campaign switches (`CAMPAIGN_SENDING`, `CAMPAIGN_FROM`,
   `preview_campaign_recipients`.
 - Asserts: one person is skipped as `unsubscribed`, one is sendable, and no address is shown.
 - Test: `34. "Is anyone skipped because they unsubscribed?"`
+
+## The run 9 sentences (35 to 38)
+
+Run 9 added projects (decision 0055). Sentences 35 to 38 run in `tests/e2e/projects.test.ts`, over MCP against the real
+Worker and the fake seed, which has projects on with `pj_seed01` "Storage building B retrofit" (person `ct_seed07`,
+won deal `dl_seed07`) and `pj_seed02` (On hold). Record edits go through a proposal and `apply_changes`.
+
+## 35. Turn on projects.
+- Tools: `update_settings` (`projects: false`, then `true`), `list_projects`, `get_project`.
+- Asserts: with projects off the project tools refuse with "Projects are off."; turning them on answers a change id and
+  `list_projects` then lists the seeded projects.
+- Test: `35. "Turn on projects."`
+
+## 36. Mark the tank foundations deal won. Yes, start a project.
+- Tools: `update_deal` (`status: won`, proposed and applied), then `add_project` (`deal`, `moveOpenTasks: true`, proposed
+  and applied), `get_project`, `list_tasks`, `get_deal`.
+- Asserts: the apply answer has the "Ask the owner: start a project for" line and `startProject: { deal }`; the list names
+  the deal and the task it moves; afterwards the project has the deal's person and the deal, the open task sits on the
+  person with no deal, and the won deal reads exactly as it did before the project.
+- Test: `36. "Mark the tank foundations deal won." then "Yes, start a project."`
+
+## 37. Add a task to the retrofit project: order anchors, due Friday.
+- Tools: `add_task` (`project` by name, `title`, `dueAt`, proposed and applied), `list_tasks` (`project`).
+- Asserts: the list names the project; the task is listed under the project with the project's person and no deal.
+- Test: `37. "Add a task to the retrofit project: order anchors, due Friday."`
+
+## 38. How much time is on the retrofit project?
+- Tools: `get_project`, `add_time_entry` (`project`, proposed and applied).
+- Asserts: the seeded totals show minutes, billable minutes and an amount; one more billable hour at 95 an hour adds
+  exactly 60 minutes, 60 billable minutes and 9,500 cents.
+- Test: `38. "How much time is on the retrofit project?"`
