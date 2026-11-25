@@ -12,6 +12,8 @@ export interface ToolDeps {
   now: () => Date;
   /** The OWNER_EMAILS var ("a@example.com, b@example.com"): owner emails on top of settings.owner_emails. */
   ownerEmailsVar?: string;
+  /** The request's origin ("https://host"), so a tool can give the owner a full board address; absent in unit tests. */
+  origin?: string;
 }
 
 /** The ctx a write tool calls its service with: the AI app as the actor, the tool's name as the tool. */

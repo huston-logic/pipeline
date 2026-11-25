@@ -33,6 +33,9 @@ test("getSettings shows the settings with the owner emails as a list", async () 
     accentColor: null,
     aiEdits: "review_first",
     timeTracking: false,
+    campaigns: false,
+    postalAddress: null,
+    campaignDailyLimit: 90,
     lastBriefAt: null,
     lastBriefSentAt: null,
   });
@@ -62,6 +65,9 @@ test("updateSettings changes only what is given, in one audited change", async (
     accentColor: null,
     aiEdits: "review_first",
     timeTracking: false,
+    campaigns: false,
+    postalAddress: null,
+    campaignDailyLimit: 90,
     lastBriefAt: null,
     lastBriefSentAt: null,
   });

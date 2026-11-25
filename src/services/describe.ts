@@ -2,7 +2,7 @@
 import { formatLocal } from "../time.ts";
 import type { ChangeTable, Row } from "./change.ts";
 import { oneLine } from "./change.ts";
-import { activityText, isTrusted, pushLabel } from "./labels.ts";
+import { activityText, campaignLabel, isTrusted, pushLabel } from "./labels.ts";
 
 /** One line, at most `max` characters, with "…" when cut. */
 export function short(text: string, max = 80): string {
@@ -68,6 +68,12 @@ export function rowLabel(table: ChangeTable, row: Row): string {
       return `client rate ${id}`;
     case "time_entries":
       return `time entry ${id}`;
+    case "campaigns":
+      return campaignLabel(id);
+    case "campaign_steps":
+      return `campaign email ${id}`;
+    case "email_suppressions":
+      return `campaign email block ${id}`;
   }
 }
 

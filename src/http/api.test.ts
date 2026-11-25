@@ -10,7 +10,7 @@ import worker from "../index.ts";
 import { DEFAULT_TZ } from "../time.ts";
 import { handleApi } from "./api.ts";
 import { parseCsv } from "./csv.ts";
-import { EXPORT_ROWS_PER_CHUNK, EXPORT_TABLES } from "./export.ts";
+import { EXPORT_ROWS_PER_CHUNK, EXPORT_TABLES, exportSelect } from "./export.ts";
 
 const ctx = { waitUntil() {}, passThroughOnException() {}, props: {} } as unknown as ExecutionContext;
 // 21:00 on Nov 19 in Los Angeles is already Nov 20 in UTC, so file names must use the owner's date.
@@ -181,7 +181,7 @@ test("the JSON export streams table by table from one batch read, with the same 
   const body = JSON.parse(text) as { exportedAt: string; tables: Record<string, unknown[]> };
   assert.equal(body.exportedAt, EVENING.toISOString());
   for (const table of EXPORT_TABLES) {
-    const rows = (await db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()).results.map((row) => ({ ...row }));
+    const rows = (await db.prepare(exportSelect(table)).all()).results.map((row) => ({ ...row }));
     assert.deepEqual(body.tables[table], rows, table);
   }
   assert.match(text, /\n {6}\{"id":"ct_many000","name":"Person 0",/, "one row per line");
@@ -199,10 +199,14 @@ test("the JSON export holds every listed table, each row as stored, as a downloa
     "audit_log",
     "audit_parts",
     "briefs",
+    "campaign_recipients",
+    "campaign_steps",
+    "campaigns",
     "client_rates",
     "contacts",
     "deals",
     "email_log",
+    "email_suppressions",
     "field_defs",
     "person_statuses",
     "person_substatuses",
@@ -231,7 +235,7 @@ test("one table as CSV: header row, every row, CRLF, and a download named pipeli
     assert.equal(res.headers.get("Content-Disposition"), `attachment; filename="pipeline-${table}-2026-11-19.csv"`);
     const text = await res.text();
     const [header, ...records] = parseCsv(text);
-    const columns = (await db.prepare(`SELECT * FROM ${table} LIMIT 0`).raw({ columnNames: true }))[0];
+    const columns = (await db.prepare(exportSelect(table).replace(" ORDER BY rowid", " LIMIT 0")).raw({ columnNames: true }))[0];
     assert.deepEqual(header, columns, `${table}: header even when empty`);
     assert.equal(records.length, await count(db, table), table);
     if (records.length > 0) assert.ok(text.endsWith("\r\n"), table);

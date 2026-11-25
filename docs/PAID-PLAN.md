@@ -352,3 +352,23 @@ the same load, back to back; propose and apply by their D1 calls and CPU on the 
   `PROPOSAL_MAX_ACTIONS`. The owner checks it on the first real copy (docs/STATUS.md, "Needs Grant").
 - Today's CPU is now inside 10 ms on this copy because the sort, filter and cut to 50 moved into the database
   (decision 0047). The time pages and reads are all under 5 ms.
+
+## Run 8: campaigns (2026-11-24)
+
+The free plan allows 50 D1 queries per Worker invocation. Approving a campaign works the list out again and writes one
+row per person, so it must fit with the biggest list a campaign may have (`MAX_AUDIENCE` = 2,000 people). Counted on the
+fixture seed plus 2,000 people (some with no address, some suppressed) by `src/campaigns/freeze-d1.test.ts` (each
+`first`/`all`/`run`/`raw` and each `batch()` is one call, as in Run 6):
+
+| step | D1 calls | statements |
+| --- | --- | --- |
+| `resolveAudience` (the review page, the MCP preview): the people, then their suppressions | 2 | 2 |
+| `approveCampaign` of a 2,000-person status audience, in all | 6 | 8 in its one batch |
+
+- The 6 calls of an approve: the settings row, the campaign, its step, the people, the suppressions, and one batch. The
+  batch holds the campaign's guard and update, 4 recipient inserts (the 2,000 frozen rows as JSON in chunks of at most
+  `CHUNK_BYTES`, decision 0035), the audit row and the guard cleanup. The test holds approve to at most 12 calls and
+  every bound JSON to at most 90,000 bytes as a SQL literal.
+- Rough Node timing of `approveCampaign` for 2,000 people on the `node:sqlite` shim: about 35 ms, most of it the shim's
+  own SQL work. It is not the method of `scripts/cpu-check.ts`; the Worker CPU is not measured yet.
+- The sender's numbers come in a later task of run 8.

@@ -10,7 +10,7 @@ import { UserError } from "./errors.ts";
 import { addDeal } from "./add-deal.ts";
 import { updateContact } from "./contacts.ts";
 import { addTask } from "./tasks.ts";
-import { undoChange, undoRemovals } from "./undo.ts";
+import { CAMPAIGN_FINAL_TOOLS, undoChange, undoRemovals } from "./undo.ts";
 
 const CREATED = new Date("2026-11-16T18:00:00.000Z");
 const NOW = new Date("2026-11-19T18:00:00.000Z");
@@ -230,4 +230,36 @@ test("undo that reopens a deal for a contact who was never a lead still works (i
   const lost = await updateDeal(ctxAt(db, NOW, "update_deal"), dealId, { status: "lost" });
   await undoChange(undoCtx(db), lost.changeId);
   assert.equal((await deal(db, dealId))?.status, "open");
+});
+
+test("undo refuses every change a campaign's sending steps or an unsubscribe made, each with its own message (campaigns design, Undo)", async () => {
+  assert.deepEqual(
+    [...CAMPAIGN_FINAL_TOOLS],
+    [
+      "campaign_approve",
+      "campaign_schedule",
+      "campaign_send",
+      "campaign_pause",
+      "campaign_resume",
+      "campaign_cancel",
+      "campaign_test",
+      "unsubscribe",
+      "campaign_webhook",
+    ],
+  );
+  const db = await openTestDb();
+  for (const tool of CAMPAIGN_FINAL_TOOLS) {
+    const id = `chg_final_${tool}`;
+    await db
+      .prepare(
+        "INSERT INTO audit_log (id, at, actor, tool, target_table, target_id, before_json, after_json, summary) VALUES (?, ?, 'system', ?, 'campaigns', 'cp_fake', '{}', '{}', 'Fake (change x)')",
+      )
+      .bind(id, NOW.toISOString(), tool)
+      .run();
+    const expected =
+      tool === "unsubscribe"
+        ? `Can't undo ${id}. An unsubscribe can't be undone.`
+        : `Can't undo ${id}. A campaign's sending steps can't be undone. Use Pause or Cancel on its page.`;
+    assert.equal(await refusal(undoChange(undoCtx(db), id)), expected, tool);
+  }
 });

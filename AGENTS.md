@@ -108,7 +108,7 @@ hooks and the commands are in `CLAUDE.md`.
 - **MCP** (decision 0004): `src/index.ts` loads `src/mcp/handler.ts` with a dynamic `import()` (so the board and its
   unit tests never load the SDK); the handler serves an MCP SDK v2 server (`@modelcontextprotocol/server`) built
   fresh per request by `createMcpServer` (`server.ts`); stateless, no Durable Object. Tools live in `tools-read.ts`,
-  `tools-write.ts` and `tools-import.ts` and are registered through `tool.ts`, which parses arguments with the tool's zod schema and
+  `tools-write.ts`, `tools-import.ts`, `tools-views.ts`, `tools-proposals.ts`, `tools-time.ts` and `tools-campaigns.ts` and are registered through `tool.ts`, which parses arguments with the tool's zod schema and
   answers through `format.ts` (`toolResult`: a one-line headline, a blank line, pretty JSON; `toolError`). Tools call
   the services only. Headlines, change summaries and error messages never contain outside text: services name records
   through `src/services/labels.ts` (outside values become ids such as "contact ct_…"), and read items list their
@@ -248,6 +248,17 @@ hooks and the commands are in `CLAUDE.md`.
   before the static-file branch) is one row per client and work type through the `csv.ts` formula guard, names as
   they are; a bad month is a plain 400. Time is in More only while time tracking is on (`PageFrame.timeTracking`), and
   `/export` lists the three time CSVs only then.
+- **Campaigns** (decision 0053): off until `settings.campaigns`; while off, no Campaigns item in More, every `/campaigns*`
+  path is a 404 and the campaign tools refuse (`CAMPAIGNS_OFF`). `src/campaigns/` holds `drafts.ts`, `body.ts`,
+  `render.ts`, `first-name.ts`, `audience.ts`, `freeze.ts` and `readiness.ts` (later `send.ts`, `resend.ts`,
+  `suppressions.ts`, `svix.ts`). Tables `campaigns`, `campaign_steps` and `email_suppressions` are change tables;
+  `campaign_recipients` and `campaign_batches` are delivery records, written beside an audited change and never undone
+  (ruling 1). The recipient list is frozen at approve, one row per person per step, and the approve form's fingerprint
+  must still match (else a 422). No MCP tool sends, schedules, approves, pauses, cancels or clears a suppression;
+  `undo_change` refuses the sending tools in `CAMPAIGN_FINAL_TOOLS`. A campaign email is an `email` activity with data
+  `via: "campaign"`, and no read counts it as reaching anyone. `/unsubscribe/*` and `/hooks/resend` are answered in
+  `src/index.ts` before the board and are not board routes; the token or the Svix signature is the check. The
+  unsubscribe token is never shown, logged, exported or sent to MCP.
 - **Sign-in:** `src/auth/dev.ts` until task 10. `AUTH_MODE=dev` works only with `ENVIRONMENT=development` on a
   loopback host; anywhere else every route answers 500. Without `AUTH_MODE`, `/mcp` answers 401.
 - **Types:** `src/env.ts` is the `Env` type the code uses. `src/worker-configuration.d.ts` holds the Workers runtime

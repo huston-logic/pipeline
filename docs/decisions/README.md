@@ -63,3 +63,4 @@ Add a line here for every new decision (`npm run check:process` fails on a decis
 - [0050](0050-timer-on-the-board.md) The timer on the board: Same services give one audit row and undo per tap; a bar on every page shows a running timer.
 - [0051](0051-time-pages.md) Time pages, hand entry and the time CSV: A week suits "what did I do" and a month suits billing, so the CSV is monthly.
 - [0052](0052-fast-checks-and-change-aware-audits.md) Fast commit check, one e2e Worker and change-aware audits: the slow parts were setup, not testing; the full suite still runs before every push, in CI and on main.
+- [0053](0053-campaigns.md) Campaigns, step 1: Only the board sends, every email can be unsubscribed from, and a frozen list with one row per person means no one gets an email twice.

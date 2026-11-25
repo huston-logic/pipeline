@@ -4,6 +4,7 @@
 import { McpServer } from "@modelcontextprotocol/server";
 import { SERVER_INSTRUCTIONS } from "./instructions.ts";
 import type { ToolDeps } from "./tool.ts";
+import { registerCampaignTools } from "./tools-campaigns.ts";
 import { registerImportTools } from "./tools-import.ts";
 import { registerProposalTools } from "./tools-proposals.ts";
 import { registerReadTools } from "./tools-read.ts";
@@ -21,5 +22,6 @@ export function createMcpServer(deps: ToolDeps): McpServer {
   registerViewTools(server, deps);
   registerProposalTools(server, deps);
   registerTimeTools(server, deps);
+  registerCampaignTools(server, deps);
   return server;
 }

@@ -32,6 +32,11 @@ export const TABLE_NAMES = [
   "work_types",
   "client_rates",
   "time_entries",
+  "campaigns",
+  "campaign_steps",
+  "campaign_batches",
+  "campaign_recipients",
+  "email_suppressions",
 ] as const;
 
 export type TableName = (typeof TABLE_NAMES)[number];
@@ -64,6 +69,12 @@ export type SettingsRow = {
   ai_edits: "review" | "small";
   /** 1: the time tools and pages are on (migration 0018, decision 0049); 0, the default, refuses them. */
   time_tracking: Flag;
+  /** 1: campaigns are on (migration 0019); 0, the default, makes every campaign path and tool refuse. */
+  campaigns: Flag;
+  /** Printed in every campaign email, 1 to 300 characters; null until the owner adds it. */
+  postal_address: string | null;
+  /** Emails a day the campaign cron may send, 1 to 5,000 (default 90). */
+  campaign_daily_limit: number;
 };
 
 export type StageRow = {
@@ -420,6 +431,116 @@ export type TimeEntryRow = {
   version: number;
   created_at: string;
   updated_at: string;
+};
+
+export type CampaignStatus = "draft" | "scheduled" | "sending" | "paused" | "sent" | "cancelled";
+
+/** A campaign: one email to an audience (migration 0019). */
+export type CampaignRow = {
+  /** "cp_..." */
+  id: string;
+  name: string;
+  status: CampaignStatus;
+  /** JSON: {"kind":"status","status":key}, {"kind":"view","view":"vw_..."} or {"kind":"people","people":["ct_...", ...]}. */
+  audience: string;
+  first_name_fallback: string;
+  /** The AI's suggestion; never acted on. */
+  suggested_send_at: string | null;
+  send_after: string | null;
+  approved_at: string | null;
+  /** The board's origin when it was approved, for the links in the emails. */
+  base_url: string | null;
+  /** A fixed phrase, or null. */
+  send_error: string | null;
+  completed_at: string | null;
+  archived: Flag;
+  version: number;
+  created_at: string;
+  updated_at: string;
+};
+
+/** One email of a campaign; step 1 has exactly one. */
+export type CampaignStepRow = {
+  /** "cs_..." */
+  id: string;
+  campaign_id: string;
+  position: number;
+  subject: string;
+  body: string;
+  /** Both or neither of the button's label and address (https only). */
+  button_label: string | null;
+  button_url: string | null;
+  delay_days: number | null;
+  stop_when: string | null;
+  version: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CampaignRecipientStatus =
+  | "skipped"
+  | "queued"
+  | "sending"
+  | "sent"
+  | "delivered"
+  | "bounced"
+  | "complained"
+  | "failed"
+  | "uncertain"
+  | "cancelled";
+
+export type CampaignSkipReason = "no_email" | "bad_email" | "unsubscribed" | "bounced" | "complained" | "archived";
+
+/** One person's place in a step's frozen list. A delivery record: never audited as a change, never exported with its token. */
+export type CampaignRecipientRow = {
+  /** "rc_..." */
+  id: string;
+  campaign_id: string;
+  step_id: string;
+  contact_id: string;
+  /** Lowercased and frozen when the list was made. */
+  email: string;
+  first_name: string | null;
+  status: CampaignRecipientStatus;
+  skip_reason: CampaignSkipReason | null;
+  /** Never shown, logged or exported; null on a skipped row. */
+  unsub_token: string | null;
+  batch_id: string | null;
+  claimed_at: string | null;
+  resend_id: string | null;
+  sent_at: string | null;
+  delivered_at: string | null;
+  bounced_at: string | null;
+  complained_at: string | null;
+  unsubscribed_at: string | null;
+  version: number;
+};
+
+/** One sending attempt or test send; its id is the Idempotency-Key. */
+export type CampaignBatchRow = {
+  /** "cb_..." */
+  id: string;
+  campaign_id: string;
+  kind: "send" | "test";
+  status: "in_flight" | "done" | "returned" | "uncertain";
+  created_at: string;
+  attempts: number;
+  /** An HTTP status or a fixed phrase. */
+  last_status: string | null;
+};
+
+/** An address campaigns never send to (migration 0019); the live ones (cleared_at null) are unique per address. */
+export type EmailSuppressionRow = {
+  /** "su_..." */
+  id: string;
+  /** Lowercased. */
+  email: string;
+  reason: "unsubscribed" | "bounced" | "complained";
+  contact_id: string | null;
+  campaign_id: string | null;
+  created_at: string;
+  cleared_at: string | null;
+  version: number;
 };
 
 /** One piece of a big change's snapshot (migration 0009): the same shape as before_json/after_json, for some rows. */

@@ -44,7 +44,11 @@ type Entry = { table: ChangeTable; id: string; before: Row | null; after: Row | 
 /** An undo of a change that touched more than this many rows is written as a bulk change (decision 0035). */
 const BULK_ROWS = 50;
 
-type Dependent = { table: ChangeTable; column: string; one: string; many: string };
+/** Campaign delivery records are written next to an audited change, never undone, so they are not change tables. */
+type Dependent = { table: ChangeTable | "campaign_recipients" | "campaign_batches"; column: string; one: string; many: string };
+
+const CAMPAIGN_RECIPIENT = { table: "campaign_recipients", one: "campaign recipient", many: "campaign recipients" } as const;
+const EMAIL_BLOCK = { table: "email_suppressions", one: "campaign email block", many: "campaign email blocks" } as const;
 
 /** Rows that point at a row of each table, so deleting it would break them. ON DELETE SET NULL links are left out. */
 const TIME_ENTRY = { table: "time_entries", one: "time entry", many: "time entries" } as const;
@@ -57,7 +61,16 @@ const DEPENDENTS: Partial<Record<ChangeTable, Dependent[]>> = {
     { table: "rule_firings", column: "contact_id", one: "rule firing", many: "rule firings" },
     { ...TIME_ENTRY, column: "contact_id" },
     { table: "client_rates", column: "contact_id", one: "client rate", many: "client rates" },
+    { ...CAMPAIGN_RECIPIENT, column: "contact_id" },
+    { ...EMAIL_BLOCK, column: "contact_id" },
   ],
+  // Delivery records and address blocks of a campaign (migration 0019).
+  campaigns: [
+    { ...CAMPAIGN_RECIPIENT, column: "campaign_id" },
+    { table: "campaign_batches", column: "campaign_id", one: "sending attempt", many: "sending attempts" },
+    { ...EMAIL_BLOCK, column: "campaign_id" },
+  ],
+  campaign_steps: [{ ...CAMPAIGN_RECIPIENT, column: "step_id" }],
   deals: [
     { table: "activities", column: "deal_id", one: "activity", many: "activities" },
     { table: "tasks", column: "deal_id", one: "task", many: "tasks" },
@@ -217,6 +230,30 @@ const sameRow = (current: Row | null, expected: Row | null) =>
 
 const dependsMessage = (changeId: string, what: string) =>
   `Can't undo ${changeId}: other records now depend on it (${what}). Change those first, or leave it.`;
+
+/**
+ * The tools whose changes can never be undone: a campaign's sending steps (an email that went out can't be taken back;
+ * Pause or Cancel stops the rest) and an unsubscribe or delivery result (the person asked, or the mail system said so).
+ */
+export const CAMPAIGN_FINAL_TOOLS = [
+  "campaign_approve",
+  "campaign_schedule",
+  "campaign_send",
+  "campaign_pause",
+  "campaign_resume",
+  "campaign_cancel",
+  "campaign_test",
+  "unsubscribe",
+  "campaign_webhook",
+] as const;
+
+const finalMessage = (changeId: string, tool: string) =>
+  `Can't undo ${changeId}. ` +
+  (tool === "unsubscribe"
+    ? "An unsubscribe can't be undone."
+    : "A campaign's sending steps can't be undone. Use Pause or Cancel on its page.");
+
+const isFinalTool = (tool: string) => (CAMPAIGN_FINAL_TOOLS as readonly string[]).includes(tool);
 
 const alreadyUndone = (changeId: string, audit: AuditRow) =>
   `${changeId} was already undone (by ${audit.undone_by ?? "an earlier undo"}). Nothing to do.`;
@@ -433,7 +470,7 @@ async function dependents(ctx: Ctx, changeId: string, entries: Entry[]): Promise
     for (const dep of DEPENDENTS[entry.table] ?? []) {
       if (dep.table === "rule_firings") continue;
       for (const row of found.get(pointerKey(dep))?.get(String(pkValue)) ?? []) {
-        const key = rowKey(dep.table, String(row.id));
+        const key = `${dep.table}:${String(row.id)}`;
         if (removed.has(key)) continue;
         // A row the same undo puts back to a `before` that doesn't point here (a stopped timer's link to its note).
         const before = restored.get(key);
@@ -582,6 +619,9 @@ const NOUNS: Record<ChangeTable, [string, string]> = {
   work_types: ["work type", "work types"],
   client_rates: ["client rate", "client rates"],
   time_entries: ["time entry", "time entries"],
+  campaigns: ["campaign", "campaigns"],
+  campaign_steps: ["campaign email", "campaign emails"],
+  email_suppressions: ["campaign email block", "campaign email blocks"],
 };
 
 /** "2,000 contacts and 3 fields": the entries counted by table, in the order the tables first appear. */
@@ -633,6 +673,7 @@ export async function undoChange(ctx: Ctx, changeId: string): Promise<ChangeResu
   const original = await db.prepare("SELECT * FROM audit_log WHERE id = ?").bind(id).first<AuditRow>();
   if (!original) throw new UserError(`There's no change ${id}. Use recent_changes to find the change id.`);
   if (original.undo_of !== null) throw new UserError("Undo entries can't be undone; make the change again instead.");
+  if (isFinalTool(original.tool)) throw new UserError(finalMessage(id, original.tool));
   if (original.undone_at !== null) throw new UserError(alreadyUndone(id, original));
   if (!isChangeTable(original.target_table)) throw new Error(`Change ${id} targets an unknown table.`);
 

@@ -45,6 +45,9 @@ const PRIMARY_KEYS = {
   work_types: "id",
   client_rates: "id",
   time_entries: "id",
+  campaigns: "id",
+  campaign_steps: "id",
+  email_suppressions: "id",
 } as const satisfies Partial<Record<TableName, string>>;
 
 export type ChangeTable = keyof typeof PRIMARY_KEYS;
@@ -117,6 +120,9 @@ const ROW_NOUNS: Record<ChangeTable, string> = {
   work_types: "Work type",
   client_rates: "Client rate",
   time_entries: "Time entry",
+  campaigns: "Campaign",
+  campaign_steps: "Campaign email",
+  email_suppressions: "Campaign email block",
 };
 
 export const rowKey = (table: ChangeTable, id: string) => `${table}:${id}`;
@@ -321,6 +327,9 @@ const BULK_ORDER: readonly ChangeTable[] = [
   "client_rates",
   // After the tasks and activities an entry points at.
   "time_entries",
+  "campaigns",
+  "campaign_steps",
+  "email_suppressions",
   "rules",
   "rulebook",
   "push_subscriptions",

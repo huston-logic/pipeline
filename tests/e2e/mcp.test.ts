@@ -22,6 +22,7 @@ after(async () => {
 test("lists the tools over Streamable HTTP, with the server instructions", async () => {
   const { tools } = await client.listTools();
   assert.deepEqual(tools.map((t) => t.name).sort(), [
+    "add_campaign_draft",
     "add_contact",
     "add_deal",
     "add_field",
@@ -39,10 +40,12 @@ test("lists the tools over Streamable HTTP, with the server instructions", async
     "archive_stage",
     "archive_view",
     "complete_task",
+    "get_campaign",
     "get_deal",
     "get_rulebook",
     "get_settings",
     "import_rows",
+    "list_campaigns",
     "list_deals",
     "list_fields",
     "list_leads",
@@ -56,6 +59,7 @@ test("lists the tools over Streamable HTTP, with the server instructions", async
     "log_activity",
     "pause_rule",
     "pipeline_summary",
+    "preview_campaign_recipients",
     "preview_rule",
     "propose_changes",
     "qualify_lead",
@@ -68,6 +72,7 @@ test("lists the tools over Streamable HTTP, with the server instructions", async
     "start_timer",
     "stop_timer",
     "undo_change",
+    "update_campaign_draft",
     "update_contact",
     "update_deal",
     "update_field",

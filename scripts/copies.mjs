@@ -10,7 +10,7 @@ import { dirname, join, relative, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { pathToFileURL } from "node:url";
 import { toCsv } from "../src/http/csv.ts";
-import { EXPORT_TABLES, safeFileName } from "../src/http/export.ts";
+import { EXPORT_HIDDEN_COLUMNS, EXPORT_TABLES, exportSelect, safeFileName } from "../src/http/export.ts";
 import { sqlLiteral } from "../src/import/sql.ts";
 import { DEFAULT_TZ, localDate } from "../src/time.ts";
 import { parseFlags, UsageError } from "./cli-args.mjs";
@@ -710,12 +710,15 @@ export async function exportData(options, deps) {
   const columns = {};
   for (const table of EXPORT_TABLES) {
     // Table names come only from EXPORT_TABLES, never from input.
-    const rows = query(runner, target, `SELECT * FROM ${table} ORDER BY rowid`);
+    const rows = query(runner, target, exportSelect(table));
     tables[table] = rows;
+    const hidden = EXPORT_HIDDEN_COLUMNS[table] ?? [];
     columns[table] =
       rows.length > 0
         ? [...new Set(rows.flatMap((row) => Object.keys(row)))]
-        : query(runner, target, `PRAGMA table_info(${table})`).map((column) => String(column.name));
+        : query(runner, target, `PRAGMA table_info(${table})`)
+            .map((column) => String(column.name))
+            .filter((name) => !hidden.includes(name));
   }
   const at = now();
   const timezone = typeof tables.settings?.[0]?.timezone === "string" ? tables.settings[0].timezone : DEFAULT_TZ;
