@@ -1,7 +1,7 @@
 Pipeline engine: build spec v1
 Approved Nov 18, 2026; board changed by the run 2 brief the same day (decision 0014); leads, the monthly report, email logging and phone notifications added by the run 4 brief on Nov 20 (decision 0022); campaigns added by the run 8 brief on Nov 24 (decision 0053). Product reasons live in the Huston Logic project doc `product-direction.md`. This file is what to build.
 What it is
-A small sales follow-up system for a small-business owner who does their own selling. The owner runs it by talking to whichever AI app they use (Claude, ChatGPT, others) through one MCP endpoint. It keeps contacts, deals and notes, says who needs a follow-up, fires the owner's own rules on a schedule, and sends a daily brief. The owner shapes it by talking: stages, fields, rules, voice. Every client gets their own copy in their own Cloudflare account, and every copy runs identical code.
+A small sales follow-up system for a small-business owner who does their own selling. The owner runs it by talking to whichever AI app they use (Claude, ChatGPT, others) through one MCP endpoint. It keeps contacts, deals and notes, says who needs a follow-up, fires the owner's own rules on a schedule, and sends a daily brief. The owner shapes it by talking: stages, fields, rules, voice. Every client gets their own copy, hosted in the repo owner's Cloudflare account (decision 0054), and every copy runs identical code.
 Non-negotiables
 
 1. Identical code for every copy. Per-copy differences live only in that copy's database (stages, fields, rules, rulebook, settings) or in its Cloudflare bindings and secrets. Nothing client-specific ever goes in the repo. The repo is public: no real names, emails or lead data anywhere. Tests and seed data use obviously fake people.
@@ -131,7 +131,7 @@ Auth
 
 Many copies: install and update
 
-* `docs/INSTALL.md` plus a provisioning script run through npm, used with the client's own wrangler login. It:
+* `docs/INSTALL.md` plus a provisioning script run through npm, used with the repo owner's own wrangler login (decision 0054; before it, 0007 assumed the client's account). It:
    * creates the production and preview D1 databases
    * applies migrations
    * prompts for secrets

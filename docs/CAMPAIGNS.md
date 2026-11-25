@@ -1,6 +1,6 @@
 # Campaign emails: setup (per copy)
 
-This is for the owner of one copy of the pipeline, in the client's own accounts. It turns on sending campaign emails
+This is for the owner of one copy of the pipeline, in the hosting account and the owner's Resend account. It turns on sending campaign emails
 from the board (decision 0053). Every step is separate. Nothing sends until all the steps are done and you tap Approve
 on the board.
 
@@ -24,16 +24,19 @@ dashboard shows and note any difference.
 ## Before you start
 
 - The copy runs code that has campaigns. Run `npm run copies:update -- --copy <copy>` first (docs/UPDATING.md).
-- The domain you send from is on Cloudflare, in the same account as the copy's Worker.
+- The sending subdomain is on the client's own domain. Its DNS is added by the client (or by you, if they ask you to),
+  wherever that DNS is hosted. The copy's own address is on the hosting domain, in the hosting account.
 - You can open a terminal in the repo folder. Commands below run there, with your own wrangler login.
 
-## 1. A Resend account in the client's name
+## 1. Your Resend account
 
-Resend is the service that sends the email. Use an account in the client's own name, not yours.
+Resend is the service that sends the email. Use your one Resend account for every client. Do not make a new one per
+client.
 
-1. Go to resend.com and select **Sign up**. Use the client's own email address.
+1. Sign in to resend.com. If you have no account yet, select **Sign up** once, with your own business email address.
 2. Check the plan limits at resend.com/pricing, because they can change. As of 2026-11-24: the Free plan allows 100
-   emails a day and 3,000 a month. Pro costs $20 a month and allows 50,000 a month with no daily limit.
+   emails a day and 3,000 a month. Pro costs $20 a month and allows 50,000 a month with no daily limit. Pro allows 10 sending domains; each client's
+   sending subdomain is one of them. An add-on gives more (check resend.com/pricing).
 3. Keep the campaign daily limit (step 5) under the plan's daily limit. The daily brief also uses Resend.
 
 ## 2. A sending subdomain
@@ -42,22 +45,23 @@ Use a subdomain, such as `news.example.com`. Complaints and bounces from campaig
 reputation, not your main mailbox.
 
 1. In Resend, open **Domains** and select **Add domain**.
-2. Enter the subdomain, `news.<your domain>`, and select **Add**.
+2. Enter the subdomain, `news.<the client's domain>`, and select **Add**.
 3. Resend shows DNS records: an SPF TXT record, a DKIM TXT record, and an MX or TXT record for the return path. Copy
    each one exactly, the name and the value.
-4. In Cloudflare, open your domain, then **DNS** > **Records**. Add each record exactly as Resend shows it.
-5. Set each record to **DNS only** (grey cloud). Do not use **Proxied** (orange cloud).
-6. Back in Resend, select **Verify** on the domain. It can take from 15 minutes to 72 hours. Come back later if it
-   fails.
-7. If your domain has no DMARC record, add one. Resend's DMARC page in its docs explains the record. **(check in the
-   dashboard)**
+4. Send those records to the client. They add each one exactly, the name and the value, in their domain's DNS,
+   wherever that DNS is hosted. If that DNS is on Cloudflare, set each record to **DNS only** (grey cloud). Do not use
+   **Proxied** (orange cloud).
+5. Once they have added them, select **Verify** on the domain in Resend. It can take from 15 minutes to 72 hours.
+   Come back later if it fails.
+6. If the client's domain has no DMARC record, add one (or ask the client to). Resend's DMARC page in its docs explains
+   the record. **(check in the dashboard)**
 
 ## 3. An API key that can only send from the subdomain
 
 A DNS record is public, so this key is a secret. Never paste it into chat, a document or a file.
 
 1. In Resend, open **API Keys** and select **Create API key**.
-2. Name it, for example `pipeline campaigns`.
+2. Name it with the copy's name, for example `<copy> campaigns`.
 3. Set **Permission** to **Sending access**, and **Domain** to the subdomain from step 2 (not all domains).
 4. Create the key. Copy it now. Resend shows it once.
 5. In the terminal, run:

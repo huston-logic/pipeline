@@ -4,8 +4,9 @@ Once this is set up, an email you send to a lead or contact shows up on their ti
 address in Bcc (decision 0031). Only mail you send from one of the copy's owner emails, that passes Cloudflare's
 authentication checks, is logged; everything else sent to the address is dropped without an answer.
 
-This is done once per copy, by the owner, in the client's Cloudflare account. It touches DNS, so it is a STOP item:
-nothing in this repo does it for you. `example.com` below stands for the copy's own domain.
+This is done once per copy, by the owner, in the hosting account (decision 0054). The log subdomain is on the hosting
+domain, not the client's own domain. It touches DNS, so it is a STOP item: nothing in this repo does it for you.
+`example.com` below stands for the hosting domain.
 
 Steps marked **(check in the dashboard)** were not confirmed in Cloudflare's docs when this was written
 (2026-11-20); follow what the dashboard shows and note any difference here.
@@ -13,7 +14,8 @@ Steps marked **(check in the dashboard)** were not confirmed in Cloudflare's doc
 ## Before you start
 
 - The copy runs the code with email logging: run `npm run copies:update` first (docs/UPDATING.md).
-- The domain is on Cloudflare, in the same account as the copy's Worker.
+- The hosting domain is on Cloudflare, in the same account as the copy's Worker. The client's own domain is not in
+  that account, so it is not used here.
 - Your sending address is one of the copy's owner emails (the ones that can sign in to the board).
 - Your sending address's domain has a DMARC record (a TXT record at `_dmarc.<your domain>`). Mail whose domain has
   none gets `dmarc=none` from Cloudflare and is dropped by design (decision 0031, Ruling 3). A strict policy,
