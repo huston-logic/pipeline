@@ -8,6 +8,7 @@ import { addField, fieldOverview, updateField } from "./fields.ts";
 import { getProject, listProjects } from "./project-read.ts";
 import { addProject, updateProject } from "./projects.ts";
 import { proposeChanges } from "./proposals.ts";
+import { undoChange } from "./undo.ts";
 
 const NOW = new Date("2026-11-19T18:00:00.000Z");
 const ctxFor = (db: Db, tool = "add_project"): Ctx => ({ db, now: NOW, actor: "owner", tool });
@@ -95,4 +96,15 @@ test("the export carries the fields column in JSON and CSV", async () => {
   const csv = await exportTableCsv(db, "projects");
   assert.match(csv.split("\r\n")[0] ?? "", /(^|,)fields(,|$)/);
   assert.match(csv, /"\{""budget"":900\}"/);
+});
+
+test("undo of adding a project field is refused while a project holds a value, and allowed when none does", async () => {
+  const db = await openTestDb();
+  await db.prepare("UPDATE settings SET projects = 1").run();
+  const budget = await addField(ctxFor(db, "add_field"), { entity: "project", label: "Budget", type: "number" });
+  const phase = await addField(ctxFor(db, "add_field"), { entity: "project", label: "Phase", type: "text" });
+  await addProject(ctxFor(db), { name: "Office move", fields: { budget: 900 } });
+  await assert.rejects(undoChange(ctxFor(db, "undo_change"), budget.changeId), /Budget is set on/);
+  await undoChange(ctxFor(db, "undo_change"), phase.changeId);
+  assert.deepEqual(await fieldOverview(db, { entity: "project" }).then((fields) => fields.map((f) => f.key)), ["budget"]);
 });

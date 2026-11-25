@@ -42,8 +42,28 @@ export async function isClosedStatus(src: Reader, key: string): Promise<boolean>
 /** The status a new project starts in: the first live open one. */
 export async function defaultProjectStatus(src: Reader): Promise<ProjectStatusRow> {
   const first = (await projectStatusRows(src)).find((row) => row.kind === "open");
-  if (!first) throw new Error("There is no live open project status.");
+  if (!first) throw new UserError("There is no live open project status. Add one first with add_project_status.");
   return first;
+}
+
+/** What a batch that writes project statuses must leave: at least one live open and one live closed status. */
+export function missingKind(rows: readonly ProjectStatusRow[]): Kind | null {
+  const live = rows.filter((row) => row.archived === 0);
+  return (["open", "closed"] as const).find((kind) => !live.some((row) => row.kind === kind)) ?? null;
+}
+
+/** A write_guard statement, run after the status writes, that fails the batch if no live open or no live closed status is left. */
+export function liveKindsGuard(db: Db): D1PreparedStatement {
+  return withGuardReason(
+    db
+      .prepare(
+        "INSERT INTO write_guard (ok) SELECT " +
+          "(SELECT COUNT(*) FROM project_statuses WHERE kind = 'open' AND archived = 0) > 0 AND " +
+          "(SELECT COUNT(*) FROM project_statuses WHERE kind = 'closed' AND archived = 0) > 0",
+      ),
+    "projects need a live open and a live closed status",
+    [],
+  );
 }
 
 function cleanLabel(label: string | undefined): string {
@@ -117,6 +137,7 @@ export async function addProjectStatus(ctx: Ctx, input: ProjectStatusInput): Pro
     target: { table: "project_statuses", id: key },
     summary: `Added project status "${label}" (key ${key}, ${kind}) at position ${index + 1} of ${live.length + 1}`,
     changes: [{ table: "project_statuses", id: key, before: null, after: added }, ...renumber(ordered, ctx.now)],
+    extra: [liveKindsGuard(ctx.db)],
   });
   return { ...result, key };
 }
@@ -160,7 +181,7 @@ export async function updateProjectStatus(ctx: Ctx, ref: string, patch: ProjectS
   const summary = renamed
     ? `Renamed project status "${status.label}" to "${edited.label}"${rest === "" ? "" : `; ${rest}`}`
     : `Updated project status "${status.label}": ${rest}`;
-  const result = await commitChange(ctx, { target: { table: "project_statuses", id: status.key }, summary, changes });
+  const result = await commitChange(ctx, { target: { table: "project_statuses", id: status.key }, summary, changes, extra: [liveKindsGuard(ctx.db)] });
   return { ...result, key: status.key };
 }
 
@@ -183,7 +204,7 @@ export async function archiveProjectStatus(ctx: Ctx, ref: string): Promise<Chang
       target: { table: "project_statuses", id: status.key },
       summary: `Archived project status ${status.label}`,
       changes: renumber(ordered, ctx.now, edited),
-      extra: [noProjectHas(ctx.db, status.key)],
+      extra: [noProjectHas(ctx.db, status.key), liveKindsGuard(ctx.db)],
     });
     return { ...result, key: status.key };
   } catch (error) {
