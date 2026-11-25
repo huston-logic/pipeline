@@ -435,3 +435,35 @@ test("the undo confirm page says what it removes in words that fit one record or
   assert.equal(ask.res.status, 200);
   assert.match(ask.body, /<p class="lede">It removes 1 task\. This can't be reversed\.<\/p>/);
 });
+
+test("Done on a task with open sub-tasks asks first; Complete them too and Only this task each finish in one change", async () => {
+  const db = await seededDb();
+  db.exec(
+    "UPDATE settings SET projects = 1; " +
+      "INSERT INTO projects (id, name, contact_id, status_key) VALUES ('pj_b2', 'Retrofit', 'ct_seed01', 'active'); " +
+      "INSERT INTO tasks (id, contact_id, project_id, position, title) VALUES ('tk_par1', 'ct_seed01', 'pj_b2', 1, 'Parent one'), ('tk_par2', 'ct_seed01', 'pj_b2', 2, 'Parent two'); " +
+      "INSERT INTO tasks (id, contact_id, project_id, parent_id, position, title) VALUES ('tk_kid1', 'ct_seed01', 'pj_b2', 'tk_par1', 1, 'Kid one'), ('tk_kid2', 'ct_seed01', 'pj_b2', 'tk_par2', 1, 'Kid two')",
+  );
+  const env = devEnv(db);
+  const before = await auditCount(db);
+  const ask = await post(env, "/tasks/tk_par1/complete", { return_to: "/" });
+  assert.equal(ask.res.status, 200);
+  assert.equal(await auditCount(db), before);
+  assert.match(ask.body, /<h1>Complete its sub-tasks too\?<\/h1>/);
+  assert.match(ask.body, /1 open sub-task/);
+  assert.match(ask.body, /name="subtasks" value="complete"/);
+  assert.match(ask.body, /Complete them too<\/button>/);
+  assert.match(ask.body, /name="subtasks" value="leave"/);
+  assert.match(ask.body, /Only this task<\/button>/);
+  assert.match(ask.body, /<a class="confirm-cancel" href="\/">Cancel<\/a>/);
+  assert.match(ask.body, /name="csrf"/);
+  const both = await post(env, "/tasks/tk_par1/complete", { return_to: "/", subtasks: "complete" });
+  assert.equal(both.res.status, 303);
+  await assertOneChange(db, before, both.location, "complete_task");
+  assert.ok((await task(db, "tk_par1"))?.done_at);
+  assert.ok((await task(db, "tk_kid1"))?.done_at);
+  const only = await post(env, "/tasks/tk_par2/complete", { return_to: "/", subtasks: "leave" });
+  assert.equal(only.res.status, 303);
+  assert.ok((await task(db, "tk_par2"))?.done_at);
+  assert.equal((await task(db, "tk_kid2"))?.done_at, null);
+});

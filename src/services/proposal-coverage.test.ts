@@ -95,7 +95,11 @@ const VARIANTS: Record<RecordActionName, Variant[]> = {
     { input: { project: "pj_seed01", title: "Order anchors", dueAt: "2026-11-21" } },
     { input: { parent: "tk_proj", title: "Check the anchors", dueAt: "2026-11-22" }, setup: ENTRY_ON_PROJECT },
   ],
-  complete_task: [{ input: { task: "tk_seed01" } }],
+  complete_task: [
+    { input: { task: "tk_seed01" } },
+    { input: { task: "tk_proj", subTasks: "complete" }, setup: `${ENTRY_ON_PROJECT}; INSERT INTO tasks (id, contact_id, project_id, parent_id, position, title) VALUES ('tk_kid', 'ct_seed01', 'pj_seed01', 'tk_proj', 1, 'Check anchors')` },
+    { input: { task: "tk_proj", subTasks: "leave" }, setup: `${ENTRY_ON_PROJECT}; INSERT INTO tasks (id, contact_id, project_id, parent_id, position, title) VALUES ('tk_kid', 'ct_seed01', 'pj_seed01', 'tk_proj', 1, 'Check anchors')` },
+  ],
   snooze_task: [{ input: { task: "tk_seed02", until: "2026-11-22" } }],
   start_timer: [
     { input: { deal: "dl_seed01", workType: "Design" } },

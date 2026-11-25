@@ -23,7 +23,7 @@ const existing = (ref: string | undefined) => ref === undefined || !ref.trim().s
  * proposed under both settings.
  */
 export function isSmallAction(action: RecordAction): boolean {
-  if (action.action === "complete_task") return true;
+  if (action.action === "complete_task") return action.subTasks !== "complete";
   if (action.action === "start_timer") return existing(action.deal) && existing(action.contact) && existing(action.task) && existing(action.project);
   if (action.action === "stop_timer") return action.nextStepDate === undefined;
   if (action.action !== "log_activity") return false;

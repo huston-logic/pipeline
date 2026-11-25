@@ -181,7 +181,10 @@ export const addTaskInput = z.strictObject({
   dueAt: when("When it is due").optional(),
 });
 
-export const completeTaskInput = z.strictObject({ task: taskRef() });
+export const completeTaskInput = z.strictObject({
+  task: taskRef(),
+  subTasks: z.enum(["complete", "leave"]).optional().describe('Needed when the task has open sub-tasks: "complete" finishes them too, "leave" keeps them open.'),
+});
 
 export const snoozeTaskInput = z.strictObject({
   task: taskRef(),

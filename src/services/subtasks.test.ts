@@ -67,7 +67,7 @@ test("a parent must be an open task on a live project, and the project and perso
   await assert.rejects(addTask(ctxFor(db), { parent: a, dealId: "dl_seed07", title: "x" }), /not both/);
   await assert.rejects(addTask(ctxFor(db), { parent: a, contactId: "ct_seed07", title: "x" }), /belongs to/);
   assert.equal((await addTask(ctxFor(db), { parent: a, project: "Retrofit", title: "ok" })).taskId.startsWith("tk_"), true);
-  await completeTask(ctxFor(db, "complete_task"), a);
+  await completeTask(ctxFor(db, "complete_task"), a, { subTasks: "leave" });
   await assert.rejects(addTask(ctxFor(db), { parent: a, title: "x" }), /is already done/);
   const b = await top(db, "B");
   db.exec("UPDATE projects SET archived = 1 WHERE id = 'pj_a'");
@@ -144,4 +144,50 @@ test("two add_task actions under one parent in a proposal get positions 1 and 2"
   await applyChanges({ ...ctx, tool: "apply_changes" }, answer.id, { extraOwnerEmails: [] });
   const made = (await db.prepare("SELECT title, parent_id, position FROM tasks WHERE title IN ('First', 'Second', 'Top level') ORDER BY title").all<{ title: string; parent_id: string | null; position: number }>()).results;
   assert.deepEqual(made.map((t) => [t.title, t.parent_id === a, t.position]), [["First", true, 1], ["Second", true, 2], ["Top level", false, 2]]);
+});
+
+test("completing a parent with open sub-tasks asks first; complete finishes them all in one change and one undo; leave finishes only the task", async () => {
+  const db = await setup();
+  const a = await top(db, "A");
+  const a1 = await sub(db, a, "A1");
+  const a11 = await sub(db, a1, "A11");
+  const a2 = await sub(db, a, "A2");
+  await completeTask(ctxFor(db, "complete_task"), a2);
+  await assert.rejects(
+    completeTask(ctxFor(db, "complete_task"), a),
+    /^UserError: Task "A" for "Retrofit" \(Pat Example\) has 2 open sub-tasks\. Send subTasks "complete" to finish them too, or "leave" to keep them open\.$/,
+  );
+  const left = await completeTask(ctxFor(db, "complete_task"), a, { subTasks: "leave" });
+  assert.equal((await row(db, a))?.done_at !== null, true);
+  assert.equal((await row(db, a1))?.done_at, null);
+  await undoChange(ctxFor(db, "undo_change"), left.changeId);
+  const all = await completeTask(ctxFor(db, "complete_task"), a, { subTasks: "complete" });
+  assert.match(all.summary, /^Completed task "A" for "Retrofit" \(Pat Example\) and 2 sub-tasks \(change /);
+  assert.deepEqual(await Promise.all([a, a1, a11].map(async (id) => (await row(db, id))?.done_at === NOW.toISOString())), [true, true, true]);
+  await undoChange(ctxFor(db, "undo_change"), all.changeId);
+  assert.deepEqual(await Promise.all([a, a1, a11].map(async (id) => (await row(db, id))?.done_at)), [null, null, null]);
+});
+
+test("one open sub-task reads in the singular; a task with none needs no subTasks", async () => {
+  const db = await setup();
+  const a = await top(db, "A");
+  await sub(db, a, "A1");
+  await assert.rejects(completeTask(ctxFor(db, "complete_task"), a), /has 1 open sub-task\. Send/);
+  assert.match((await completeTask(ctxFor(db, "complete_task"), a, { subTasks: "complete" })).summary, /and 1 sub-task \(change/);
+  const b = await top(db, "B");
+  assert.match((await completeTask(ctxFor(db, "complete_task"), b, { subTasks: "complete" })).summary, /^Completed task "B" for "Retrofit" \(Pat Example\) \(change/);
+});
+
+test("a proposal to complete a parent with subTasks shows every sub-task as done", async () => {
+  const db = await setup();
+  const a = await top(db, "A");
+  await sub(db, a, "A1");
+  const ctx = { ...ctxFor(db, "propose_changes"), actor: "ai" as const };
+  const answer = await proposeChanges(ctx, { actions: [{ action: "complete_task", task: a, subTasks: "complete" }] }, { extraOwnerEmails: [] });
+  assert.equal(answer.kind, "proposal");
+  if (answer.kind !== "proposal") return;
+  assert.match(answer.text, /Task "A1"/);
+  assert.match(answer.text, /done/);
+  await applyChanges({ ...ctx, tool: "apply_changes" }, answer.id, { extraOwnerEmails: [] });
+  assert.equal((await row(db, a))?.done_at !== null && (await db.prepare("SELECT done_at FROM tasks WHERE title = 'A1'").first<string>("done_at")) !== null, true);
 });

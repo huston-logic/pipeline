@@ -9,7 +9,7 @@ import { clean, whenOrNull } from "./input.ts";
 import { contactName, dealLabel, projectLabel } from "./labels.ts";
 import { findSubject, nextPosition, ownerTimezone, projectById, type Source, taskWithLinks } from "./lookup.ts";
 import { projectSubject } from "./project-links.ts";
-import { parentLinks } from "./subtasks.ts";
+import { descendants, parentLinks } from "./subtasks.ts";
 
 export interface TaskInput {
   /** Deal id, title or contact name. */
@@ -95,17 +95,32 @@ async function findTask(src: Source, ref: string): Promise<{ task: TaskRow; desc
   return { task: found.task, described: `${taskName(found.task)}${forText(forWhomOf(found.deal, found.contact, project))}` };
 }
 
-export async function completeTask(ctx: Ctx, ref: string): Promise<ChangeResult & { taskId: string }> {
+const subTaskCount = (n: number) => `${n} sub-task${n === 1 ? "" : "s"}`;
+
+/** Marks a task done. With open sub-tasks the caller must say `subTasks`: "complete" finishes them in the same change. */
+export async function completeTask(
+  ctx: Ctx,
+  ref: string,
+  options: { subTasks?: "complete" | "leave" | undefined } = {},
+): Promise<ChangeResult & { taskId: string }> {
   const { task: before, described } = await findTask(ctx, ref);
   if (before.done_at !== null) {
     const tz = await ownerTimezone(ctx);
     throw new UserError(`${capitalize(taskName(before))} is already done (${formatLocal(before.done_at, tz)}). Nothing to do.`);
   }
-  const after = updatedRow(before, { done_at: ctx.now.toISOString() }, ctx.now);
+  const open = (await descendants(ctx, before.id)).filter((kid) => kid.done_at === null);
+  if (open.length > 0 && options.subTasks === undefined) {
+    throw new UserError(
+      `${capitalize(described)} has ${open.length} open ${open.length === 1 ? "sub-task" : "sub-tasks"}. Send subTasks "complete" to finish them too, or "leave" to keep them open.`,
+    );
+  }
+  const finishing = options.subTasks === "complete" ? open : [];
+  const doneAt = ctx.now.toISOString();
+  const withKids = finishing.length === 0 ? "" : ` and ${subTaskCount(finishing.length)}`;
   const result = await commitChange(ctx, {
     target: { table: "tasks", id: before.id },
-    summary: `Completed ${described}`,
-    changes: [{ table: "tasks", id: before.id, before, after }],
+    summary: `Completed ${described}${withKids}`,
+    changes: [before, ...finishing].map((row) => ({ table: "tasks" as const, id: row.id, before: row, after: updatedRow(row, { done_at: doneAt }, ctx.now) })),
   });
   return { ...result, taskId: before.id };
 }

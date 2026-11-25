@@ -391,7 +391,7 @@ export async function runAction(ctx: Ctx, action: ResolvedAction, _deps: { extra
       return addTask(ctx, { dealId: deal, contactId: contact, ...rest });
     }
     case "complete_task":
-      return completeTask(ctx, action.task);
+      return completeTask(ctx, action.task, { subTasks: action.subTasks });
     case "snooze_task":
       return snoozeTask(ctx, action.task, action.until);
     case "start_timer":

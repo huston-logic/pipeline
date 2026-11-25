@@ -216,6 +216,7 @@ export function registerWriteTools(server: McpServer, deps: ToolDeps): void {
       kind: "write",
       description:
         "Marks a task done. Find the task id with whats_due or get_deal. Undo it with undo_change. " +
+        'A task with open sub-tasks needs subTasks: "complete" (finish them too, proposed first) or "leave". ' +
         PROPOSES,
       input: completeTaskInput,
       run: (args, deps) => recordWrite(deps, { action: "complete_task", ...args }),
