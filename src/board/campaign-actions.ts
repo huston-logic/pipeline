@@ -64,7 +64,9 @@ const FIELD_WORDS: [RegExp, string][] = [
 /** Marks the field a refusal is about, or returns it as a message for the top of the form. */
 function refuseOnField(collected: Collected, error: unknown): string[] {
   const message = refusal(error, "campaign");
-  const field = FIELD_WORDS.find(([words]) => words.test(message))?.[1];
+  const field = /both a label and an address/i.test(message)
+    ? (collected.shown.get("button_label")?.value.trim() === "" ? "button_label" : "button_url")
+    : FIELD_WORDS.find(([words]) => words.test(message))?.[1];
   if (field === undefined) return [message];
   fieldError(collected, field, message);
   return [];
@@ -151,7 +153,13 @@ async function addPeople(ctx: ActionContext, id: string): Promise<ActionResult> 
 async function removePerson(ctx: ActionContext, id: string): Promise<ActionResult> {
   const picked = await pickedOf(ctx.db, id);
   if (picked === null) return notFound(ctx);
-  return savePeople(ctx, id, picked.filter((person) => person !== (ctx.form.get("person") ?? "").trim()));
+  const person = (ctx.form.get("person") ?? "").trim();
+  if (!picked.includes(person)) {
+    const q = searchOf(ctx);
+    const path = campaignPeoplePath(id);
+    return redirect(q === "" ? path : `${path}?${new URLSearchParams({ q }).toString()}`);
+  }
+  return savePeople(ctx, id, picked.filter((one) => one !== person));
 }
 
 export const CAMPAIGN_ROUTES: Route[] = [

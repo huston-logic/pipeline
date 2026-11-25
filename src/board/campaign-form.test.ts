@@ -33,7 +33,7 @@ async function draft(db: SqliteD1, recipients: Parameters<typeof addCampaignDraf
 
 const campaignOf = (db: SqliteD1, id: string) => db.prepare("SELECT * FROM campaigns WHERE id = ?").bind(id).first<CampaignRow>();
 const stepOf = (db: SqliteD1, id: string) => db.prepare("SELECT * FROM campaign_steps WHERE campaign_id = ?").bind(id).first<CampaignStepRow>();
-const pickedOf = async (db: SqliteD1, id: string): Promise<string[]> =>
+const pickedIds = async (db: SqliteD1, id: string): Promise<string[]> =>
   (JSON.parse((await campaignOf(db, id))?.audience ?? "{}") as { people?: string[] }).people ?? [];
 
 test("/campaigns/new is in boardRoutes", () => {
@@ -175,7 +175,25 @@ test("a service refusal lands on its field: a button with no address", async () 
   assert.equal(res.status, 422);
   assert.match(body, /A button needs both a label and an address, or neither\./);
   assert.match(body, /value="RSVP"/);
-  assert.match(body, /href="#campaign-button_label"/);
+  assert.match(body, /href="#campaign-button_url"/);
+  assert.match(body, /Both or neither: a button needs its text and its link\./);
+});
+
+test("Remove of a blank or unlisted person goes back to the picker and writes nothing", async () => {
+  const db = await campaignsDb();
+  const env = devEnv(db);
+  const id = await draft(db, { kind: "people", people: ["ct_amy"] });
+  const page = await load(env, `/campaigns/${id}/people`);
+  assert.match(page.body, /<button class="button" type="submit">Search<\/button>/);
+  assert.doesNotMatch(page.body, /aria-label="Find people"/);
+  const before = await auditCount(db);
+  for (const person of ["", "ct_zed"]) {
+    const { res, location } = await post(env, `/campaigns/${id}/people/remove`, { person, q: "ze" }, { cookie: page.cookie, token: page.token });
+    assert.equal(res.status, 303);
+    assert.equal(location, `/campaigns/${id}/people?q=ze`);
+  }
+  assert.equal(await auditCount(db), before);
+  assert.deepEqual(await pickedIds(db, id), ["ct_amy"]);
 });
 
 test("Edit shows the stored values and sends only what changed", async () => {
@@ -303,7 +321,7 @@ test("Add selected adds the ticked people in order, once each, and keeps the sea
   const { res, location } = await post(env, `/campaigns/${id}/people/add`, fields, { cookie: page.cookie, token: page.token });
   assert.equal(res.status, 303);
   assert.match(location, new RegExp(`^/campaigns/${id}/people\\?q=example&change=chg_[a-z0-9]{12}$`));
-  assert.deepEqual(await pickedOf(db, id), ["ct_amy", "ct_zed", "ct_seed01"]);
+  assert.deepEqual(await pickedIds(db, id), ["ct_amy", "ct_zed", "ct_seed01"]);
   assert.equal(await auditCount(db), before + 1);
   const audit = await auditOf(db, changeIdOf(location));
   assert.equal(audit?.actor, "owner");
@@ -339,7 +357,7 @@ test("adding past 500 people is refused plainly", async () => {
   const { res, body } = await post(env, `/campaigns/${id}/people/add`, { person: "ct_zed" }, { cookie: page.cookie, token: page.token });
   assert.equal(res.status, 422);
   assert.match(body, /at most 500 people/);
-  assert.equal((await pickedOf(db, id)).length, 500);
+  assert.equal((await pickedIds(db, id)).length, 500);
   assert.equal(await auditCount(db), before);
 });
 
@@ -355,6 +373,6 @@ test("Remove takes one person off the list, each with its own plain form", async
   const { res, location } = await post(env, `/campaigns/${id}/people/remove`, fields, { cookie: page.cookie, token: page.token });
   assert.equal(res.status, 303);
   assert.match(location, new RegExp(`^/campaigns/${id}/people\\?change=chg_`));
-  assert.deepEqual(await pickedOf(db, id), ["ct_zed"]);
+  assert.deepEqual(await pickedIds(db, id), ["ct_zed"]);
   assert.equal((await auditOf(db, changeIdOf(location)))?.tool, "update_campaign_draft");
 });

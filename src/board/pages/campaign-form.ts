@@ -74,7 +74,11 @@ export async function campaignSpecs(db: Db, stored?: string): Promise<Spec[]> {
       maxlength: 40,
       hint: "For an invite: a button such as “RSVP” and the page it opens. Leave both empty for no button.",
     }),
-    line("button_url", "Button link", "text", "contact", { prop: "buttonUrl", maxlength: 2000 }),
+    line("button_url", "Button link", "text", "contact", {
+      prop: "buttonUrl",
+      maxlength: 2000,
+      hint: "Both or neither: a button needs its text and its link.",
+    }),
   ];
 }
 

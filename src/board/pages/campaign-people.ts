@@ -29,13 +29,13 @@ const nameOf = (person: PickPerson): Html => labelled(person.name, isOutside(per
 const callOf = (person: PickPerson | undefined, id: string) => (person === undefined || isOutside(person) ? id : person.name);
 
 function searchForm(path: string, query: string): Html {
-  return html`<form class="search" action="${path}" method="get" role="search" aria-label="Find people">
+  return html`<form class="search" action="${path}" method="get" role="search" aria-label="Search people">
 <div class="field field-grow">
 <label for="people-q">Find people</label>
 <p id="people-q-hint" class="field-hint">Name, email or company</p>
 <input id="people-q" type="search" name="q" value="${query}" aria-describedby="people-q-hint" maxlength="${QUERY_MAX}" autocomplete="off" enterkeyhint="search">
 </div>
-<button class="button" type="submit">Find people</button>
+<button class="button" type="submit">Search</button>
 </form>`;
 }
 
