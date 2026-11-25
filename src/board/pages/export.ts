@@ -13,6 +13,8 @@ const TABLE_LABELS: Record<ExportTable, string> = {
   time_entries: "Time entries",
   work_types: "Work types",
   client_rates: "Client rates",
+  project_statuses: "Project statuses",
+  projects: "Projects",
   campaigns: "Campaigns",
   campaign_steps: "Campaign emails",
   campaign_recipients: "Campaign recipients",
@@ -38,11 +40,16 @@ const TIME_TABLES: readonly ExportTable[] = ["time_entries", "work_types", "clie
 /** The campaign tables are listed only while campaigns are on; the full JSON export holds them always. */
 const CAMPAIGN_TABLES: readonly ExportTable[] = ["campaigns", "campaign_steps", "campaign_recipients", "email_suppressions"];
 
+/** The project tables are listed only while projects are on; the full JSON export holds them always. */
+const PROJECT_TABLES: readonly ExportTable[] = ["project_statuses", "projects"];
+
 export async function exportPage(ctx: PageContext): Promise<string> {
   const settings = await getSettings(ctx.db);
   const timeOn = settings.time_tracking === 1;
   const campaignsOn = settings.campaigns === 1;
-  const shown = (table: ExportTable) => (timeOn || !TIME_TABLES.includes(table)) && (campaignsOn || !CAMPAIGN_TABLES.includes(table));
+  const projectsOn = settings.projects === 1;
+  const shown = (table: ExportTable) =>
+    (timeOn || !TIME_TABLES.includes(table)) && (campaignsOn || !CAMPAIGN_TABLES.includes(table)) && (projectsOn || !PROJECT_TABLES.includes(table));
   const links = EXPORT_TABLES.filter(shown).map(
     (table) =>
       html`<li><a class="download-row" href="/api/export/${table}.csv" download>${icon("export")}<span class="download-label">${TABLE_LABELS[table]}</span> <span class="download-file">${table}.csv</span></a></li>`,
