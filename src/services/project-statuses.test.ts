@@ -5,6 +5,7 @@ import { openTestDb } from "../db/sqlite-d1.ts";
 import type { Ctx } from "./change.ts";
 import { UserError } from "./errors.ts";
 import { projectStatusRows, ReadMemo } from "./memo.ts";
+import { racing } from "../../tests/helpers/race-db.ts";
 import { addContact } from "./add-contact.ts";
 import {
   addProjectStatus,
@@ -158,6 +159,17 @@ test("archive refuses while an unarchived project has the status, with the count
   assert.equal((await projectStatusLabels(db)).get("waiting"), "Waiting");
   assert.match(await refusal(updateProjectStatus(ctxFor(db), "waiting", { label: "x" })), /archived/);
   assert.match(await refusal(addProjectStatus(ctxFor(db), { label: "waiting" })), /already a project status called Waiting/);
+});
+
+test("archive refuses plainly, and writes nothing, when a project takes the status at the same moment", async () => {
+  const db = await openTestDb();
+  await projectsOn(db);
+  await addProjectStatus(ctxFor(db), { label: "Waiting" });
+  const rival = racing(db, async () => {
+    await personProject(db, "waiting");
+  });
+  assert.match(await refusal(archiveProjectStatus(ctxFor(rival), "waiting")), /^1 project has Waiting\. Move it first with update_project/);
+  assert.equal(await db.prepare("SELECT archived FROM project_statuses WHERE key = 'waiting'").first<number>("archived"), 0);
 });
 
 test("an archived status is never accepted on a project, and new projects take the first live open status", async () => {

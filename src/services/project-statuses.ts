@@ -2,8 +2,8 @@
 // them by talking. A status's key is the slug of its first label and never changes. Configuration, so each call
 // writes at once as one audited change that undo reverses. Positions are renumbered 1..n inside the change that moves
 // a status: live ones first, archived ones after.
-import type { ProjectStatusRow } from "../db/db.ts";
-import { type ChangeResult, commitChange, type Ctx, type RowChange, updatedRow } from "./change.ts";
+import type { Db, ProjectStatusRow } from "../db/db.ts";
+import { type ChangeResult, commitChange, type Ctx, type RowChange, StaleWriteError, updatedRow, withGuardReason } from "./change.ts";
 import { UserError } from "./errors.ts";
 import { clean } from "./input.ts";
 import { projectStatusRows, type Reader } from "./memo.ts";
@@ -174,20 +174,39 @@ export async function archiveProjectStatus(ctx: Ctx, ref: string): Promise<Chang
   const status = pick(all, ref);
   const live = all.filter((row) => row.archived === 0);
   lastOfKind(live, status, `archive ${status.label}`);
-  const n = (await ctx.db.prepare("SELECT COUNT(*) AS n FROM projects WHERE status_key = ? AND archived = 0").bind(status.key).first<number>("n")) ?? 0;
-  if (n > 0) {
-    const one = n === 1;
-    throw new UserError(
-      `${n} project${one ? " has" : "s have"} ${status.label}. Move ${one ? "it" : "them"} first with update_project, then archive the status.`,
-    );
-  }
+  await refuseWhileInUse(ctx, status);
   const stay = live.filter((row) => row.key !== status.key);
   const ordered = [...stay, ...all.filter((row) => row.archived === 1), status];
   const edited = new Map([[status.key, { archived: 1 as const }]]);
-  const result = await commitChange(ctx, {
-    target: { table: "project_statuses", id: status.key },
-    summary: `Archived project status ${status.label}`,
-    changes: renumber(ordered, ctx.now, edited),
-  });
-  return { ...result, key: status.key };
+  try {
+    const result = await commitChange(ctx, {
+      target: { table: "project_statuses", id: status.key },
+      summary: `Archived project status ${status.label}`,
+      changes: renumber(ordered, ctx.now, edited),
+      extra: [noProjectHas(ctx.db, status.key)],
+    });
+    return { ...result, key: status.key };
+  } catch (error) {
+    // The guard that tripped may be the in-use one (a project moved here since the read): then say so.
+    if (error instanceof StaleWriteError) await refuseWhileInUse(ctx, status);
+    throw error;
+  }
+}
+
+/** A write_guard statement that fails the batch while an unarchived project has the status. */
+function noProjectHas(db: Db, key: string): D1PreparedStatement {
+  return withGuardReason(
+    db.prepare("INSERT INTO write_guard (ok) SELECT COUNT(*) = 0 FROM projects WHERE status_key = ? AND archived = 0").bind(key),
+    "a project status in use can't be archived",
+    [key],
+  );
+}
+
+async function refuseWhileInUse(ctx: Ctx, status: ProjectStatusRow): Promise<void> {
+  const n = (await ctx.db.prepare("SELECT COUNT(*) AS n FROM projects WHERE status_key = ? AND archived = 0").bind(status.key).first<number>("n")) ?? 0;
+  if (n === 0) return;
+  const one = n === 1;
+  throw new UserError(
+    `${n} project${one ? " has" : "s have"} ${status.label}. Move ${one ? "it" : "them"} first with update_project, then archive the status.`,
+  );
 }
