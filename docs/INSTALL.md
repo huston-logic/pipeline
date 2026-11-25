@@ -61,8 +61,7 @@ npm run copies:provision -- --copy <name>
 
 It asks for:
 
-- **the account**: it lists the accounts your login can use; type the number of the hosting account. The prompt still
-  asks "Which account is the client's?": that wording is old, and the answer is the hosting account;
+- **the account**: it lists the accounts your login can use; type the number of the hosting account;
 - **owner email(s)**: who may sign in, comma-separated;
 - **the Access team domain** and **AUD tag** from step 3. The team domain is the host only, for example
   `<team>.cloudflareaccess.com`, with no `https://` and no `/` at the end (with them, it asks again). The AUD tag is

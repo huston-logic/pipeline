@@ -77,7 +77,7 @@ function harness(t, fakeOptions = {}, answers = []) {
 
 const commands = (calls) => calls.map((call) => call.cmd);
 
-test("provision runs the exact commands, in order, all in the client's account", async (t) => {
+test("provision runs the exact commands, in order, all in the hosting account", async (t) => {
   const h = harness(t, {}, ["y", "y", "y", "s", "y", "y"]);
   const code = await provision(parseArgs(["provision", "--copy", "acme", ...ANSWERS]), h.deps);
   assert.equal(code, 0);
@@ -313,7 +313,7 @@ test("update: whoami, one build, then migrations and deploy per copy; a copy the
   assert.deepEqual(h.calls[2].env, { CLOUDFLARE_ACCOUNT_ID: STUB_ACCOUNT_ID });
   assert.deepEqual(h.lines, [
     "acme: updated",
-    `beta: FAILED: This wrangler login isn't a member of account ${OTHER_ACCOUNT}. Ask the client to invite your Cloudflare user to their account (docs/INSTALL.md, step 2), accept the invitation, then try again.`,
+    `beta: FAILED: This wrangler login isn't a member of account ${OTHER_ACCOUNT}. Run "npx wrangler login" as the login that owns the hosting account (docs/INSTALL.md, step 2), then try again.`,
     "gamma: updated",
     "2 of 3 copies updated.",
   ]);
