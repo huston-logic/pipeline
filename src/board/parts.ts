@@ -27,6 +27,8 @@ export function contactLink(id: string, name: string, outside: boolean): Html {
   return html`<a href="${contactHref(id)}">Contact ${id}</a> ${outsideLabel()} <span class="outside-value">${name}</span>`;
 }
 
+export const projectHref = (id: string) => `/projects/${encodeURIComponent(id)}`;
+
 const ADD = {
   deal: { path: "/deals/new", label: "Add a deal" },
   lead: { path: "/leads/new", label: "Add a lead" },

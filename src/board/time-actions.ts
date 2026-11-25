@@ -4,7 +4,7 @@
 // tracking is off every path here is a 404. A refused form is drawn again (422) with the values kept.
 import { getSettings } from "../db/queries.ts";
 import { localDate } from "../time.ts";
-import { isContactId, isDealId, isTaskId } from "../ids.ts";
+import { isContactId, isDealId, isProjectId, isTaskId } from "../ids.ts";
 import { UserError } from "../services/errors.ts";
 import { addTimeEntry, runningTimer, type TimeEntryInput, type TimeEntryPatch, updateTimeEntry } from "../services/time-entries.ts";
 import { ownerTimezone } from "../services/lookup.ts";
@@ -24,13 +24,15 @@ const localDateOf = (iso: string, tz: string): string => localDate(new Date(iso)
 
 const trackingOn = async (ctx: ActionContext): Promise<boolean> => (await getSettings(ctx.db)).time_tracking === 1;
 
-type Ref = { contact?: string; deal?: string; task?: string };
+type Ref = { contact?: string; deal?: string; task?: string; project?: string };
 
 /** The one subject a Start form names, or null when its id can't be a record's. */
 function subjectOf(form: URLSearchParams): Ref | null {
   const contact = form.get("contact") ?? "";
   const deal = form.get("deal") ?? "";
   const task = form.get("task") ?? "";
+  const project = form.get("project") ?? "";
+  if (project !== "") return isProjectId(project) ? { project } : null;
   if (deal !== "") return isDealId(deal) ? { deal } : null;
   if (task !== "") return isTaskId(task) ? { task } : null;
   if (contact !== "") return isContactId(contact) ? { contact } : null;

@@ -5,7 +5,7 @@ import { type Html, html } from "./html.ts";
 
 export const START_PATH = "/timer/start";
 
-export type TimerSubject = { kind: "contact" | "deal" | "task"; id: string };
+export type TimerSubject = { kind: "contact" | "deal" | "task" | "project"; id: string };
 
 /** The button, or nothing. `name` is the record's safe name, read out after the button for a screen reader. */
 export function startTimerForm(subject: TimerSubject, form: FormContext, name?: string): Html | "" {

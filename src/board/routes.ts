@@ -85,6 +85,7 @@ export const boardRoutes: string[] = [
   "/time/new",
   "/time/te_seed01/edit",
   "/projects",
+  "/projects/pj_seed01",
   "/campaigns",
   "/campaigns/settings",
   "/campaigns/new",

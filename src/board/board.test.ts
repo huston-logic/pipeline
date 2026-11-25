@@ -82,6 +82,10 @@ test("every board route answers 200 with the seed: one <h1>, landmarks, a unique
   addStandInViews(db);
   addStandInTime(db);
   addStandInCampaigns(db);
+  // The demo seed's project (boardRoutes) is stood in for by one fake row on a fixture person.
+  db.exec("UPDATE settings SET projects = 1");
+  db.exec(`INSERT INTO projects (id, name, contact_id, status_key, created_at, updated_at)
+    VALUES ('pj_seed01', 'Storage building B', 'ct_seed01', 'active', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')`);
   const titles = new Set<string>();
   const descriptions = new Set<string>();
   for (const path of boardRoutes) {

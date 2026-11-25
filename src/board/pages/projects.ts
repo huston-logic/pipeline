@@ -7,7 +7,7 @@ import { formatLocal } from "../../time.ts";
 import type { PageContext } from "../context.ts";
 import { type Html, html } from "../html.ts";
 import { renderPage } from "../layout.ts";
-import { contactLink, empty, outsideLabel, pairs, tag, when } from "../parts.ts";
+import { contactLink, empty, outsideLabel, pairs, projectHref, tag, when } from "../parts.ts";
 import { dataTable, type Layout, layoutDescription, layoutSwitch, layoutTitle, pickLayout, type TableColumn, withParams } from "../table.ts";
 import { countLine } from "../view-parts.ts";
 
@@ -26,8 +26,6 @@ const LEDE = "To start a project, open the person's page or a won deal.";
 const statusOf = (query: URLSearchParams): StatusChoice => STATUS_CHOICES.find((s) => s === query.get("status")) ?? "active";
 const sortOf = (query: URLSearchParams): ProjectSort => SORTS.find((s) => s === query.get("sort")) ?? "target";
 
-export const projectHref = (id: string) => `${PROJECTS_PATH}/${encodeURIComponent(id)}`;
-
 /** A link to the project page. Its text is the name only when the name did not come from outside. */
 function projectLink(project: ProjectItem): Html {
   if (!project.untrusted_fields.includes("name")) return html`<a href="${projectHref(project.id)}">${project.name}</a>`;
@@ -35,7 +33,7 @@ function projectLink(project: ProjectItem): Html {
 }
 
 /** A stored midnight as the day only: "Sat Dec 5". */
-const dateOr = (iso: string | null, tz: string): Html | string =>
+export const dateOr = (iso: string | null, tz: string): Html | string =>
   iso === null ? "Not set" : when(iso, formatLocal(iso, tz).replace(/,\s\d{1,2}:\d{2}\s[AP]M$/, ""));
 
 const statusText = (project: ProjectItem): string => (project.archived ? `${project.statusLabel}, archived` : project.statusLabel);

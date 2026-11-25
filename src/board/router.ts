@@ -9,7 +9,7 @@ import { herePath, type PageContext } from "./context.ts";
 import { lookOf } from "./layout.ts";
 import { briefPage } from "./pages/brief.ts";
 import { changesPage } from "./pages/changes.ts";
-import { isCampaignId, isContactId, isDealId, isImportId, isTimeEntryId } from "../ids.ts";
+import { isCampaignId, isContactId, isDealId, isImportId, isProjectId, isTimeEntryId } from "../ids.ts";
 import { companiesPage } from "./pages/companies.ts";
 import { contactPage } from "./pages/contact.ts";
 import { contactEditPage } from "./pages/contact-edit.ts";
@@ -45,6 +45,7 @@ import { campaignReviewPage } from "./pages/campaign-review.ts";
 import type { CampaignEnv } from "../campaigns/readiness.ts";
 import { campaignSettingsPage } from "./pages/campaign-settings.ts";
 import { PROJECTS_PATH, projectsPage } from "./pages/projects.ts";
+import { projectPage } from "./pages/project.ts";
 import { timerState } from "./timer-bar.ts";
 
 export type PageResult = { status: 200 | 404; body: string };
@@ -109,6 +110,7 @@ const RECORD_PATHS: { path: RegExp; isId: (id: string) => boolean; page: RecordP
   { path: /^\/contacts\/([^/]+)\/campaign-emails\/allow$/, isId: isContactId, page: (ctx, id) => campaignAllowPage(ctx, id) },
   { path: /^\/contacts\/([^/]+)\/qualify$/, isId: isContactId, page: (ctx, id) => qualifyPage(ctx, id) },
   { path: /^\/time\/([^/]+)\/edit$/, isId: isTimeEntryId, page: (ctx, id) => timeEditPage(ctx, id) },
+  { path: /^\/projects\/([^/]+)$/, isId: isProjectId, page: (ctx, id) => projectPage(ctx, id) },
   { path: /^\/campaigns\/([^/]+)$/, isId: isCampaignId, page: (ctx, id) => campaignReviewPage(ctx, id) },
   { path: /^\/campaigns\/([^/]+)\/edit$/, isId: isCampaignId, page: (ctx, id) => campaignEditPage(ctx, id) },
   { path: /^\/campaigns\/([^/]+)\/people$/, isId: isCampaignId, page: (ctx, id) => campaignPeoplePage(ctx, id) },
