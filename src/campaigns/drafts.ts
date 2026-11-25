@@ -38,7 +38,8 @@ export interface CampaignDraftInput {
 type DraftResult = ChangeResult & { campaignId: string };
 
 const LIMITS = { name: 100, subject: 150, body: 20_000, fallback: 40, buttonLabel: 40, buttonUrl: 2000, people: 500 };
-const ONE_LINE = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u;
+// Control characters and line or paragraph separators only: emoji joiners and variation selectors (\p{Cf}) are fine.
+const ONE_LINE = /[\p{Cc}\p{Zl}\p{Zp}]/u;
 
 function checkText(value: string | undefined, what: string, max: number, options: { oneLine?: boolean } = {}): string {
   const text = (value ?? "").trim();

@@ -4,6 +4,7 @@ import { timeDb } from "../../tests/helpers/time-seed.ts";
 import type { CampaignRow, CampaignStepRow, Db } from "../db/db.ts";
 import type { SqliteD1 } from "../db/sqlite-d1.ts";
 import type { Ctx } from "../services/change.ts";
+import { CAMPAIGNS_OFF } from "../services/settings.ts";
 import { undoChange } from "../services/undo.ts";
 import { addCampaignDraft, archiveCampaign, duplicateCampaign, updateCampaignDraft } from "./drafts.ts";
 
@@ -61,10 +62,19 @@ test("add writes the campaign and step 1 in one change", async () => {
   assert.equal(audits, 1);
 });
 
-test("add and update refuse while campaigns are off", async () => {
+test("every draft function refuses while campaigns are off", async () => {
   const db = await timeDb(NOW);
-  assert.match(await refusal(addCampaignDraft(ctxFor(db), BASE)), /^Campaigns are off\./);
-  assert.match(await refusal(duplicateCampaign(ctxFor(db), "cp_x")), /^Campaigns are off\./);
+  assert.equal(await refusal(addCampaignDraft(ctxFor(db), BASE)), CAMPAIGNS_OFF);
+  assert.equal(await refusal(updateCampaignDraft(ctxFor(db), "cp_x", { subject: "x" })), CAMPAIGNS_OFF);
+  assert.equal(await refusal(duplicateCampaign(ctxFor(db), "cp_x")), CAMPAIGNS_OFF);
+  assert.equal(await refusal(archiveCampaign(ctxFor(db), "cp_x")), CAMPAIGNS_OFF);
+});
+
+test("a subject may hold emoji with joiners and variation selectors", async () => {
+  const db = await campaignsOnDb();
+  const subject = "Open house \u{1F3E1} this Friday \u{1F469}‍\u{1F4BB}";
+  const added = await addCampaignDraft(ctxFor(db), { ...BASE, subject });
+  assert.equal((await steps(db, added.campaignId))[0]?.subject, subject);
 });
 
 test("add needs a name, recipients, subject and body, in plain words", async () => {
