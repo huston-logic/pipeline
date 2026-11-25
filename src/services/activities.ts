@@ -1,6 +1,6 @@
 // log_activity. Owner and AI entries never carry untrusted_text: that column is only for text from outside. Reaching a
 // New lead makes them Contacted in the same change (decision 0022).
-import type { ActivityRow, ActivityType, ContactRow, DealRow } from "../db/db.ts";
+import type { ActivityRow, ActivityType, ContactRow, DealRow, ProjectRow } from "../db/db.ts";
 import { newId } from "../ids.ts";
 import { parseWhen } from "../time.ts";
 import { type ChangeResult, commitChange, type Ctx, type RowChange, updatedRow } from "./change.ts";
@@ -43,10 +43,11 @@ export async function activityEffects(
   src: Source,
   activity: ActivityRow,
   deal: DealRow | null,
-  contact: ContactRow,
+  contact: ContactRow | null,
   now: Date,
 ): Promise<{ changes: RowChange[]; contacted: ContactRow | null }> {
   const changes: RowChange[] = [];
+  if (contact === null) return { changes, contacted: null };
   // A project's note is delivery work: it never resets a sale's quiet clock (decision 0055).
   const touched = deal ? [deal] : activity.project_id ? [] : await openDealsOf(src, contact.id);
   for (const row of touched) {
@@ -82,7 +83,7 @@ export async function logActivity(ctx: Ctx, input: ActivityInput): Promise<Chang
   if (occurred.getTime() > ctx.now.getTime()) {
     throw new UserError("An activity can't be in the future. Log it once it happens, or use add_task to plan it.");
   }
-  const { deal, contact, project } =
+  const { deal, contact, project }: { deal: DealRow | null; contact: ContactRow | null; project: ProjectRow | null } =
     input.project === undefined
       ? { ...(await findSubject(ctx, input)), project: null }
       : { deal: null, ...(await projectSubject(ctx, input.project, input)) };
@@ -91,7 +92,7 @@ export async function logActivity(ctx: Ctx, input: ActivityInput): Promise<Chang
   const activity: ActivityRow = {
     id: newId("ac"),
     deal_id: deal?.id ?? null,
-    contact_id: contact.id,
+    contact_id: contact?.id ?? null,
     project_id: project?.id ?? null,
     type: input.type,
     summary: text,
@@ -106,10 +107,14 @@ export async function logActivity(ctx: Ctx, input: ActivityInput): Promise<Chang
   const changes: RowChange[] = [{ table: "activities", id: activity.id, before: null, after: activity }, ...effects.changes];
   const { contacted } = effects;
 
-  const where = project ? `on ${projectLabel(project, contact)}` : deal ? `on ${dealLabel(deal, contact)}` : `with ${contactName(contact)}`;
+  const where = project
+    ? `on ${projectLabel(project, contact)}`
+    : deal && contact
+      ? `on ${dealLabel(deal, contact)}`
+      : `with ${contact ? contactName(contact) : "no one"}`;
   const summary =
     `Logged ${withArticle(input.type)} ${where}: ${short(text)}` +
-    (contacted === null ? "" : `; ${contactName(contact)} is now ${(await statusLabels(ctx)).lead("contacted")}`);
+    (contacted === null || contact === null ? "" : `; ${contactName(contact)} is now ${(await statusLabels(ctx)).lead("contacted")}`);
   const result = await commitChange(ctx, { target: { table: "activities", id: activity.id }, summary, changes });
   return { ...result, activityId: activity.id };
 }

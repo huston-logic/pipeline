@@ -246,7 +246,8 @@ export function registerWriteTools(server: McpServer, deps: ToolDeps): void {
       kind: "write",
       description:
         "Adds a project: delivery work after a sale, for a person, optionally from a won deal (then the person is the " +
-        "deal's). Making one never changes the deal. Never add one without the owner's yes. Refused while projects are off. " +
+        "deal's). Leave out contact and deal for an internal project. Making one never changes the deal. " +
+        "Never add one without the owner's yes. Refused while projects are off. " +
         PROPOSES,
       input: addProjectInput,
       run: (args, deps) => recordWrite(deps, { action: "add_project", ...args }),

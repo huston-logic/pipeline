@@ -33,7 +33,8 @@ export const dateOr = (iso: string | null, tz: string): Html | string =>
   iso === null ? "Not set" : when(iso, formatLocal(iso, tz).replace(/,\s\d{1,2}:\d{2}\s[AP]M$/, ""));
 
 const statusText = (project: ProjectItem): string => (project.archived ? `${project.statusLabel}, archived` : project.statusLabel);
-const personOf = (project: ProjectItem): Html => contactLink(project.contactId, project.contactName, project.untrusted_fields.includes("contactName"));
+const personOf = (project: ProjectItem): Html | string =>
+  project.contactId === null || project.contactName === null ? "Internal" : contactLink(project.contactId, project.contactName, project.untrusted_fields.includes("contactName"));
 
 function card(project: ProjectItem, tz: string): Html {
   return html`<li class="card">

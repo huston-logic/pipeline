@@ -34,8 +34,9 @@ export interface ProjectItem {
   name: string;
   status: string;
   statusLabel: string;
-  contactId: string;
-  contactName: string;
+  /** Null for an internal project, with no person. */
+  contactId: string | null;
+  contactName: string | null;
   dealId: string | null;
   dealTitle: string | null;
   startAt: string | null;
@@ -82,9 +83,9 @@ type ProjectJoin = {
   name: string;
   untrusted_fields: string;
   status_key: string;
-  contact_id: string;
-  contact_name: string;
-  contact_untrusted: string;
+  contact_id: string | null;
+  contact_name: string | null;
+  contact_untrusted: string | null;
   deal_id: string | null;
   deal_title: string | null;
   deal_untrusted: string | null;
@@ -111,7 +112,7 @@ async function selectProjects(db: Db, clauses: string[], params: unknown[], orde
            d.untrusted_fields AS deal_untrusted,
            (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.done_at IS NULL) AS open_tasks,
            COUNT(*) OVER () AS total
-         FROM projects p JOIN contacts c ON c.id = p.contact_id LEFT JOIN deals d ON d.id = p.deal_id
+         FROM projects p LEFT JOIN contacts c ON c.id = p.contact_id LEFT JOIN deals d ON d.id = p.deal_id
          ${where} ORDER BY ${order} LIMIT ?`,
       )
       .bind(...params, limit)
@@ -136,7 +137,7 @@ function toItem(row: ProjectJoin, labels: Map<string, string>): ProjectItem {
     openTasks: row.open_tasks,
     untrusted_fields: [
       ...(outside(row.untrusted_fields, "name") ? (["name"] as const) : []),
-      ...(outside(row.contact_untrusted, "name") ? (["contactName"] as const) : []),
+      ...(row.contact_name !== null && outside(row.contact_untrusted, "name") ? (["contactName"] as const) : []),
       ...(row.deal_title !== null && outside(row.deal_untrusted, "title") ? (["dealTitle"] as const) : []),
     ],
   };

@@ -348,11 +348,11 @@ const TASK_ORDER: Record<TaskSort, string> = {
   subject: "c.name IS NULL, lower(c.name), t.due_at, t.created_at, t.id",
 };
 
-/** A standalone task has no deal and no person (a task on a deal always has the deal's person). */
+/** A standalone task has no deal, no person and no project (a task on a deal always has the deal's person; one on an internal project has the project). */
 const TASK_FILTER: Record<TaskShow, string> = {
   all: "",
-  linked: " AND (t.deal_id IS NOT NULL OR t.contact_id IS NOT NULL)",
-  standalone: " AND t.deal_id IS NULL AND t.contact_id IS NULL",
+  linked: " AND (t.deal_id IS NOT NULL OR t.contact_id IS NOT NULL OR t.project_id IS NOT NULL)",
+  standalone: " AND t.deal_id IS NULL AND t.contact_id IS NULL AND t.project_id IS NULL",
 };
 
 export interface OpenTaskLists {
@@ -405,7 +405,7 @@ export async function listTaskItems(db: Db, filter: TaskListFilter, tz: string):
   }
   const clauses = [filter.status === "done" ? "t.done_at IS NOT NULL" : "t.done_at IS NULL"];
   const params: unknown[] = [];
-  if (filter.standalone === true) clauses.push("t.deal_id IS NULL AND t.contact_id IS NULL");
+  if (filter.standalone === true) clauses.push("t.deal_id IS NULL AND t.contact_id IS NULL AND t.project_id IS NULL");
   if (filter.contact !== undefined) {
     clauses.push("(t.contact_id = ? OR d.contact_id = ?)");
     const id = (await findContact(db, filter.contact)).id;

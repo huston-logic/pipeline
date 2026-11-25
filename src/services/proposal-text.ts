@@ -314,16 +314,17 @@ function addedFields(names: Names, table: "contacts" | "deals", id: string, row:
 async function projectRecord(names: Names, row: Row, withPerson: boolean): Promise<string> {
   const project = row as unknown as ProjectRow;
   const word = isTrusted(project, "name") ? `Project ${projectTitle(project)}` : `Project ${project.id}`;
-  const owner = withPerson ? await planned<ContactRow>(names, "contacts", project.contact_id) : null;
+  const owner = withPerson && project.contact_id !== null ? await planned<ContactRow>(names, "contacts", project.contact_id) : null;
   return owner ? `${word} (${contactName(owner)})` : word;
 }
 
 /** What an added project sets: its person, the deal it comes from, status, dates and notes. */
 async function addedProjectFields(names: Names, id: string, row: Row): Promise<Item["fields"]> {
   show(names, "projects", id, ["name", "contact_id", "deal_id", "status_key", "start_at", "target_at", "notes", "fields", "archived"]);
-  const owner = await planned<ContactRow>(names, "contacts", String(row.contact_id));
+  const contactId = (row.contact_id as string | null) ?? null;
+  const owner = contactId === null ? null : await planned<ContactRow>(names, "contacts", contactId);
   const deal = await planned<DealRow>(names, "deals", (row.deal_id as string | null) ?? null);
-  const out: Item["fields"] = [{ field: "person", to: owner ? contactName(owner) : String(row.contact_id) }];
+  const out: Item["fields"] = [{ field: "person", to: contactId === null ? "Internal" : owner ? contactName(owner) : contactId }];
   if (deal) out.push({ field: "from deal", to: dealTitle(deal) });
   out.push(
     { field: "status", to: cell(names, "projects", row, "status_key", row.status_key) },

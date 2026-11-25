@@ -53,7 +53,7 @@ function projectSection(project: ProjectDetail, statuses: { key: string; label: 
     html`<div class="card">
 ${pairs([
   { name: "Status", value: project.statusLabel },
-  { name: "Person", value: contactLink(project.contactId, project.contactName, outside.has("contactName")) },
+  { name: "Person", value: project.contactId === null || project.contactName === null ? "Internal" : contactLink(project.contactId, project.contactName, outside.has("contactName")) },
   project.dealId !== null && project.dealTitle !== null && { name: "From deal", value: dealLink(project.dealId, project.dealTitle, outside.has("dealTitle")) },
   { name: "Start", value: dateOr(project.startAt, tz) },
   { name: "Target", value: dateOr(project.targetAt, tz) },

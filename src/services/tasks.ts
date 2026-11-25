@@ -23,7 +23,7 @@ export interface TaskInput {
 
 /** Who a task is for, as summaries name them: a project and its person, a deal and its person, a person, or null for a task of no one's. */
 function forWhomOf(deal: DealRow | null, contact: ContactRow | null, project: ProjectRow | null = null): string | null {
-  if (project && contact) return projectLabel(project, contact);
+  if (project) return projectLabel(project, contact);
   if (deal && contact) return dealLabel(deal, contact);
   return contact ? contactName(contact) : null;
 }

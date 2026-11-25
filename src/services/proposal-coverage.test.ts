@@ -134,6 +134,9 @@ const VARIANTS: Record<RecordActionName, Variant[]> = {
     },
     { input: { contact: "ct_seed03", name: "Garden path" } },
     { input: { deal: "dl_seed07" } },
+    { input: { name: "Office move" } },
+    { input: { deal: "dl_seed07", name: "Salon launch", completeOpenTasks: true }, setup: OPEN_TASK_ON_WON_DEAL },
+    { input: { deal: "dl_seed07", name: "Salon launch", moveOpenTasks: true, completeOpenTasks: true }, setup: OPEN_TASK_ON_WON_DEAL },
   ],
   update_project: [
     { input: { project: "Retrofit", name: "Retrofit phase 2", status: "done", startAt: "2026-12-02", targetAt: "2027-02-01", notes: "Anchors ordered." } },

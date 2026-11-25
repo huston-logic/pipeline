@@ -28,7 +28,7 @@ const projectStatusInput = (what: string) => shortText(`${what}: its key or labe
 
 export const addProjectInput = z.strictObject({
   name: shortText("The project's name, on one line. The default is the deal's title when it is the owner's own.").optional(),
-  contact: contactRef("The project's person: their id (ct_...) or exact name. Needed unless deal is given.").optional(),
+  contact: contactRef("The project's person: their id (ct_...) or exact name. Leave out contact and deal for an internal project.").optional(),
   deal: dealRef("The won deal it comes from: its id (dl_...) or exact title. Its person is the project's person.").optional(),
   status: projectStatusInput("The status. The default is active").optional(),
   startAt: when("When the project starts").optional(),
@@ -38,6 +38,10 @@ export const addProjectInput = z.strictObject({
     .boolean()
     .optional()
     .describe("With deal: true also moves the deal's open tasks onto the project. The default is false."),
+  completeOpenTasks: z
+    .boolean()
+    .optional()
+    .describe("With deal: true marks the deal's open tasks done; they stay on the deal. Wins over moveOpenTasks. The default is false."),
 });
 
 export const updateProjectInput = z.strictObject({

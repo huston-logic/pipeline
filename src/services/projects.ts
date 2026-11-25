@@ -1,6 +1,7 @@
-// add_project and update_project (decision 0055). A project is delivery work after a sale: a person, an optional won
-// deal it came from, a status, dates and notes. Making one never changes its deal; the deal's open tasks move only
-// when asked (moveOpenTasks), in the same change.
+// add_project and update_project (decision 0055). A project is delivery work after a sale: an optional person (none for
+// an internal project), an optional won deal it came from, a status, dates and notes. Making one never changes its
+// deal; the deal's open tasks move (moveOpenTasks) or are completed (completeOpenTasks) only when asked, in the same
+// change.
 import type { ContactRow, ProjectRow, ProjectStatusRow } from "../db/db.ts";
 import { newId } from "../ids.ts";
 import { formatLocal } from "../time.ts";
@@ -17,7 +18,7 @@ import { requireProjects } from "./settings.ts";
 export interface ProjectInput {
   /** At most 200 characters on one line; defaults to the deal's title when that is the owner's. */
   name?: string;
-  /** Contact id or exact name. */
+  /** Contact id or exact name; leave out with the deal for an internal project. */
   contact?: string;
   /** A won deal's id, title or contact name. */
   deal?: string;
@@ -28,6 +29,8 @@ export interface ProjectInput {
   notes?: string;
   /** Moves every open task of the deal onto the project; needs a deal. */
   moveOpenTasks?: boolean;
+  /** Marks every open task of the deal done, leaving them on the deal; needs a deal, and wins over moveOpenTasks. */
+  completeOpenTasks?: boolean;
 }
 
 export interface ProjectPatch {
@@ -86,17 +89,17 @@ function checkDates(startAt: string | null, targetAt: string | null): void {
   }
 }
 
-export async function addProject(ctx: Ctx, input: ProjectInput): Promise<ChangeResult & { projectId: string; contactId: string }> {
+export async function addProject(ctx: Ctx, input: ProjectInput): Promise<ChangeResult & { projectId: string; contactId?: string }> {
   await requireProjects(ctx);
   const tz = await ownerTimezone(ctx);
   const { deal, contact } = await findSubject(ctx, { dealId: input.deal, contactId: input.contact }, { optional: true });
-  if (contact === null) throw new UserError("A project needs a person: give contact, or a won deal.");
-  if (contact.archived === 1) throw new UserError(`${capitalize(contactName(contact))} is archived, so no project can be added for them.`);
+  if (contact !== null && contact.archived === 1) throw new UserError(`${capitalize(contactName(contact))} is archived, so no project can be added for them.`);
   if (deal && deal.status !== "won") {
     throw new UserError(`A project comes from a won deal. Mark ${dealTitle(deal)} Won first, or leave the deal out.`);
   }
-  if (deal && deal.archived === 1) throw new UserError(`${capitalize(dealLabel(deal, contact))} is archived, so a project can't come from it.`);
+  if (deal && contact && deal.archived === 1) throw new UserError(`${capitalize(dealLabel(deal, contact))} is archived, so a project can't come from it.`);
   if (input.moveOpenTasks === true && !deal) throw new UserError("moveOpenTasks needs a deal: give the won deal whose open tasks should move.");
+  if (input.completeOpenTasks === true && !deal) throw new UserError("completeOpenTasks needs a deal: give the won deal whose open tasks should be completed.");
 
   const given = clean(input.name);
   if (given === null && deal && !isTrusted(deal, "title")) {
@@ -112,7 +115,7 @@ export async function addProject(ctx: Ctx, input: ProjectInput): Promise<ChangeR
   const project: ProjectRow = {
     id: newId("pj"),
     name,
-    contact_id: contact.id,
+    contact_id: contact?.id ?? null,
     deal_id: deal?.id ?? null,
     status_key: status.key,
     start_at: startAt,
@@ -126,25 +129,28 @@ export async function addProject(ctx: Ctx, input: ProjectInput): Promise<ChangeR
     updated_at: now,
   };
   const changes: RowChange[] = [{ table: "projects", id: project.id, before: null, after: project }];
-  const moved = deal && input.moveOpenTasks === true ? await openTasksOfDeal(ctx, deal.id) : [];
-  for (const task of moved) {
-    const after = updatedRow(task, { project_id: project.id, deal_id: null, contact_id: contact.id }, ctx.now);
-    changes.push({ table: "tasks", id: task.id, before: task, after });
+  const complete = input.completeOpenTasks === true;
+  const open = deal && (complete || input.moveOpenTasks === true) ? await openTasksOfDeal(ctx, deal.id) : [];
+  for (const task of open) {
+    const set = complete ? { done_at: ctx.now.toISOString() } : { project_id: project.id, deal_id: null, contact_id: contact?.id ?? null };
+    changes.push({ table: "tasks", id: task.id, before: task, after: updatedRow(task, set, ctx.now) });
   }
   const from = deal ? `, from ${dealTitle(deal)}` : "";
-  const movedText = moved.length === 0 ? "" : ` (moved ${moved.length} open task${moved.length === 1 ? "" : "s"})`;
+  const taskWord = `${open.length} open task${open.length === 1 ? "" : "s"}`;
+  const movedText = open.length === 0 ? "" : ` (${complete ? "completed" : "moved"} ${taskWord})`;
+  const forText = contact === null ? "" : ` for ${contactName(contact)}`;
   const result = await commitChange(ctx, {
     target: { table: "projects", id: project.id },
-    summary: `Added project ${projectTitle(project)} for ${contactName(contact)}${from}${movedText}`,
+    summary: `Added project ${projectTitle(project)}${forText}${from}${movedText}`,
     changes,
   });
-  return { ...result, projectId: project.id, contactId: contact.id };
+  return { ...result, projectId: project.id, ...(contact === null ? {} : { contactId: contact.id }) };
 }
 
 export async function updateProject(ctx: Ctx, ref: string, patch: ProjectPatch): Promise<ChangeResult & { projectId: string }> {
   const before = await findProject(ctx, ref);
   const contact: ContactRow | null = before.contact_id === null ? null : await contactById(ctx, before.contact_id);
-  if (!contact) throw new Error(`Project ${before.id} points at a missing contact.`);
+  if (before.contact_id !== null && !contact) throw new Error(`Project ${before.id} points at a missing contact.`);
   const tz = await ownerTimezone(ctx);
   const set: Partial<ProjectRow> = {};
   const parts: string[] = [];
@@ -194,7 +200,7 @@ export async function updateProject(ctx: Ctx, ref: string, patch: ProjectPatch):
   const after = updatedRow(before, set, ctx.now);
   const result = await commitChange(ctx, {
     target: { table: "projects", id: before.id },
-    summary: `Updated project ${projectTitle(before)} (${contactName(contact)}): ${parts.join(", ")}`,
+    summary: `Updated project ${projectLabel(before, contact)}: ${parts.join(", ")}`,
     changes: [{ table: "projects", id: before.id, before, after }],
   });
   return { ...result, projectId: before.id };

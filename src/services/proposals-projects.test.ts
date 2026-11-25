@@ -53,6 +53,14 @@ test("add_project lists its person, deal, status, dates and notes, and every col
   assert.deepEqual(lines(answer.text, "Tasks"), ['- Task "Hang the sign": for "Salon booking site" (Alex Sample) -> project "Salon launch" (Alex Sample)']);
 });
 
+test("an internal project lists its person as Internal, and completed tasks show as done", async () => {
+  const db = await setup("INSERT INTO tasks (id, deal_id, contact_id, title) VALUES ('tk_w1', 'dl_seed07', 'ct_seed07', 'Hang the sign')");
+  const internal = await propose(db, [{ action: "add_project", name: "Office move" }]);
+  assert.deepEqual(lines(internal.text, "Add"), ['- Project "Office move": person Internal; status Active; start (none); target (none)']);
+  const completed = await propose(db, [{ action: "add_project", deal: "dl_seed07", name: "Salon launch", completeOpenTasks: true }]);
+  assert.deepEqual(lines(completed.text, "Tasks"), ['- Task "Hang the sign": done (none) -> now']);
+});
+
 test("an added project with no deal, dates or notes shows only what is set", async () => {
   const db = await setup();
   const answer = await propose(db, [{ action: "add_project", contact: "Pat", name: "Fence repair" }]);

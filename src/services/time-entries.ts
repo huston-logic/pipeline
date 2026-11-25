@@ -86,7 +86,7 @@ export interface TimeLinks {
 
 /** Who an entry is for, as summaries name them: a project and its person, a deal and its person, a person, or null for no one. */
 export function forWho(deal: DealRow | null, contact: ContactRow | null, project: ProjectRow | null = null): string | null {
-  if (project && contact) return projectLabel(project, contact);
+  if (project) return projectLabel(project, contact);
   if (deal && contact) return dealLabel(deal, contact);
   return contact ? contactName(contact) : null;
 }
@@ -124,8 +124,9 @@ export async function resolveLinks(
     }
     // A task of a project, given alone, puts the entry on that project.
     const project = await projectById(src, taskProject);
-    const owner = project === null || project.contact_id === null ? null : await contactById(src, project.contact_id);
-    if (project === null || owner === null) throw new Error(`Task ${task.id} points at a missing project.`);
+    if (project === null) throw new Error(`Task ${task.id} points at a missing project.`);
+    const owner = project.contact_id === null ? null : await contactById(src, project.contact_id);
+    if (project.contact_id !== null && owner === null) throw new Error(`Project ${project.id} points at a missing contact.`);
     await checkGiven(src, { project, contact: owner }, named);
     return { contact: owner, deal: null, task, project };
   }
@@ -281,8 +282,9 @@ async function otherRunning(src: Source, id: string): Promise<TimeEntryRow | nul
  */
 async function keepsProject(src: Source, before: TimeEntryRow, patch: TimeEntryPatch): Promise<void> {
   const project = before.project_id == null ? null : await projectById(src, before.project_id);
-  const owner = project === null || project.contact_id === null ? null : await contactById(src, project.contact_id);
-  if (project === null || owner === null) return;
+  if (project === null) return;
+  const owner = project.contact_id === null ? null : await contactById(src, project.contact_id);
+  if (project.contact_id !== null && owner === null) return;
   const label = projectLabel(project, owner);
   if (typeof patch.deal === "string" || typeof patch.contact === "string") {
     throw new UserError(
