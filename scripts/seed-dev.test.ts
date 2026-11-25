@@ -60,7 +60,8 @@ test("15 to 20 made-up contacts at 8 to 12 companies, several with two or three 
   assert.ok(contacts.length >= 15 && contacts.length <= 20, `${contacts.length} contacts`);
   assert.equal(contacts[0]?.id, "ct_seed01");
   for (const contact of contacts) {
-    assert.match(contact.email ?? "", /@example\.(com|org|net)$/, contact.name);
+    // Only the campaign seed's skipped person (ct_seed19) has no address.
+    if (contact.email !== null || contact.id !== "ct_seed19") assert.match(contact.email ?? "", /@example\.(com|org|net)$/, contact.name);
     assert.match(contact.phone ?? "", /^555-01\d\d$/, contact.name);
   }
   const companies = new Map<string, number>();

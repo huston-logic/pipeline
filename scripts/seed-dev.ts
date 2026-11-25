@@ -263,6 +263,8 @@ export function devSeed(now: Date, tz: string): DevSeed {
       version: 3,
     }),
   );
+  // Someone with no email address: a campaign skips them (no_email).
+  contacts.push(contact(19, "Tessa Wynn", "", null, "trade show", day(-20, "10:00"), { email: null }));
 
   /** A contact id: a number is a ct_seedNN person, a string is the id itself (a lead). */
   const cid = (contact: number | string) => (typeof contact === "string" ? contact : `ct_seed${n2(contact)}`);
@@ -977,7 +979,7 @@ export function devSeed(now: Date, tz: string): DevSeed {
     created_at: created,
     updated_at: created,
   });
-  const reached = ["ct_seed04", "ct_seed05", "ct_seed07", "ct_seed08", "ct_seed12"];
+  const reached = ["ct_seed04", "ct_seed05", "ct_seed07", "ct_seed08", "ct_seed19"];
   const campaigns: Row[] = [
     campaignRow(1, "Spring open house", { kind: "status", status: "partner" }, day(-1, "10:00"), { suggested_send_at: day(3, "09:00") }),
     campaignRow(2, "November newsletter", { kind: "people", people: reached }, day(-10, "09:00"), {
@@ -1033,8 +1035,8 @@ export function devSeed(now: Date, tz: string): DevSeed {
     recipientOf(2, "ct_seed05", "delivered", { sent_at: sentOn, delivered_at: day(-7, "10:31") }),
     recipientOf(3, "ct_seed07", "bounced", { sent_at: sentOn, bounced_at: day(-7, "10:32") }),
     recipientOf(4, "ct_seed08", "delivered", { sent_at: sentOn, delivered_at: day(-7, "10:31"), unsubscribed_at: day(-5, "09:00") }),
-    // Skipped when the list was frozen: she had no address then.
-    recipientOf(5, "ct_seed12", "skipped", { email: "", skip_reason: "no_email", unsub_token: null }),
+    // Skipped: this person has no email address.
+    recipientOf(5, "ct_seed19", "skipped", { email: "", skip_reason: "no_email", unsub_token: null }),
   ];
   const emailSuppressions: Row[] = [
     {

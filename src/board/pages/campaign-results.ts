@@ -67,6 +67,9 @@ async function countsOf(db: Db, campaignId: string): Promise<{ all: number; by: 
   return { all: found?.total ?? 0, by: new Map(KINDS.map((kind) => [kind.key, found?.[kind.key] ?? 0])) };
 }
 
+/** An empty cell: a dash for the eye, "none" for a screen reader. */
+const none = html`<span aria-hidden="true">&mdash;</span><span class="visually-hidden">none</span>`;
+
 const latest = (line: Line): string | null =>
   [line.claimed_at, line.sent_at, line.delivered_at, line.bounced_at, line.complained_at, line.unsubscribed_at].filter((at): at is string => at !== null).sort().at(-1) ?? null;
 
@@ -78,7 +81,7 @@ const statusWords = (line: Line): string => {
 function filterLinks(path: string, query: URLSearchParams, shown: Kind | null, counts: { all: number; by: Map<string, number> }): Html {
   const item = (key: string | null, label: string, n: number) =>
     html`<li><a href="${withParams(path, query, { status: key })}"${(shown?.key ?? null) === key ? html` aria-current="page"` : ""}>${label} (${n})</a></li>\n`;
-  return html`<ul class="view-switch" aria-label="Show">
+  return html`<ul class="view-switch" aria-label="Show people by result">
 ${item(null, "All", counts.all)}${KINDS.filter((kind) => (counts.by.get(kind.key) ?? 0) > 0).map((kind) => item(kind.key, kind.label, counts.by.get(kind.key) ?? 0))}</ul>`;
 }
 
@@ -123,11 +126,11 @@ export async function campaignResultsPage(ctx: PageContext, campaign: CampaignRo
         cell: (line: Line) => personLink(line.contact_id, contactName({ id: line.contact_id, name: line.contact_name, untrusted_fields: line.untrusted_fields })),
       },
       { key: "status", header: "Status", cell: (line) => statusWords(line) },
-      { key: "when", header: "When", cell: (line) => (latest(line) === null ? "" : when(latest(line) ?? "", formatLocal(latest(line) ?? "", tz))) },
+      { key: "when", header: "When", cell: (line) => (latest(line) === null ? none : when(latest(line) ?? "", formatLocal(latest(line) ?? "", tz))) },
       {
         key: "reason",
         header: "Reason",
-        cell: (line) => (line.skip_reason === null ? "" : (SKIP_HEADINGS.find(([reason]) => reason === line.skip_reason)?.[1] ?? "")),
+        cell: (line) => (line.skip_reason === null ? none : (SKIP_HEADINGS.find(([reason]) => reason === line.skip_reason)?.[1] ?? "")),
       },
     ],
     rows: lines.results,

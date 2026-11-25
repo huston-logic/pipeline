@@ -97,7 +97,7 @@ test("a sent campaign shows its status, the counts without zeros and the per-per
   assert.doesNotMatch(body, /Delivered, bounced and spam results arrive/);
   assert.match(body, /<table class="data-table">[\s\S]*<caption class="visually-hidden">[^<]*<\/caption>/);
   assert.match(body, /<th scope="row"><a href="\/contacts\/ct_amy">Amy Example<\/a><\/th>/);
-  assert.match(body, /<th scope="row"><a href="\/contacts\/ct_eve">Eve Example<\/a><\/th>\s*<td>Skipped<\/td>\s*<td>[^<]*<\/td>\s*<td>No email address<\/td>/);
+  assert.match(body, /<th scope="row"><a href="\/contacts\/ct_eve">Eve Example<\/a><\/th>\s*<td>Skipped<\/td>\s*<td><span aria-hidden="true">&mdash;<\/span><span class="visually-hidden">none<\/span><\/td>\s*<td>No email address<\/td>/);
   assert.match(body, /Amy Example<\/a><\/th>\s*<td>Delivered<\/td>/);
   assert.match(body, /Dee Example<\/a><\/th>\s*<td>Delivered, unsubscribed<\/td>/);
   assert.match(body, /Cy Example<\/a><\/th>\s*<td>Marked as spam<\/td>/);

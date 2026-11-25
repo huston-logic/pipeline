@@ -23,13 +23,14 @@ export async function liveUnsubscribes(db: Ctx["db"], contact: Pick<ContactRow, 
 export async function clearSuppression(ctx: Ctx, contactId: string): Promise<ChangeResult> {
   await requireCampaigns(ctx);
   const contact = await ctx.db.prepare("SELECT * FROM contacts WHERE id = ?").bind(contactId).first<ContactRow>();
-  if (contact === null) throw new UserError(`There's no contact ${contactId}. Use list_contacts to find the person.`);
+  if (contact === null) throw new UserError(`There's no person ${contactId}.`);
   const unsubscribes = await liveUnsubscribes(ctx.db, contact);
   if (unsubscribes.length === 0) throw new UserError(`${contactName(contact)} has no unsubscribe to clear.`);
   const rows = await ctx.db
     .prepare("SELECT * FROM email_suppressions WHERE id IN (SELECT value FROM json_each(?)) AND cleared_at IS NULL")
     .bind(JSON.stringify(unsubscribes.map((row) => row.id)))
     .all<EmailSuppressionRow>();
+  if (rows.results.length === 0) throw new UserError(`${contactName(contact)} has no unsubscribe to clear.`);
   const changes: RowChange[] = rows.results.map((row) => ({
     table: "email_suppressions",
     id: row.id,
