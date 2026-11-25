@@ -115,7 +115,7 @@ async function checkAudience(db: Db, input: unknown): Promise<string> {
   throw new UserError("Recipients are a status, view or people: { kind: status, status }, { kind: view, view } or { kind: people, people }.");
 }
 
-async function load(db: Db, id: string): Promise<{ campaign: CampaignRow; step: CampaignStepRow }> {
+export async function loadCampaign(db: Db, id: string): Promise<{ campaign: CampaignRow; step: CampaignStepRow }> {
   const campaign = await db.prepare("SELECT * FROM campaigns WHERE id = ?").bind(id).first<CampaignRow>();
   const step = campaign
     ? await db.prepare("SELECT * FROM campaign_steps WHERE campaign_id = ? AND position = 1").bind(id).first<CampaignStepRow>()
@@ -187,7 +187,7 @@ export async function addCampaignDraft(ctx: Ctx, input: CampaignDraftInput): Pro
 
 export async function updateCampaignDraft(ctx: Ctx, id: string, input: CampaignDraftInput): Promise<DraftResult> {
   await requireCampaigns(ctx);
-  const { campaign, step } = await load(ctx.db, id);
+  const { campaign, step } = await loadCampaign(ctx.db, id);
   requireDraft(campaign, "edited");
   const set: Partial<CampaignRow> = {};
   const stepSet: Partial<CampaignStepRow> = {};
@@ -262,7 +262,7 @@ export async function updateCampaignDraft(ctx: Ctx, id: string, input: CampaignD
 /** A new draft with another campaign's audience, content and fallback; any status, even archived. */
 export async function duplicateCampaign(ctx: Ctx, id: string): Promise<DraftResult> {
   await requireCampaigns(ctx);
-  const { campaign, step } = await load(ctx.db, id);
+  const { campaign, step } = await loadCampaign(ctx.db, id);
   const suffix = " (copy)";
   const name = `${[...campaign.name].slice(0, LIMITS.name - suffix.length).join("")}${suffix}`;
   const rows = newRows(
@@ -280,7 +280,7 @@ export async function duplicateCampaign(ctx: Ctx, id: string): Promise<DraftResu
 
 export async function archiveCampaign(ctx: Ctx, id: string): Promise<DraftResult> {
   await requireCampaigns(ctx);
-  const { campaign } = await load(ctx.db, id);
+  const { campaign } = await loadCampaign(ctx.db, id);
   if (campaign.status === "draft" && campaign.archived === 1) throw new UserError(`${capital(campaignLabel(id))} is already archived. Nothing to do.`);
   requireDraft(campaign, "archived");
   const result = await commitChange(ctx, {

@@ -44,7 +44,11 @@ type Entry = { table: ChangeTable; id: string; before: Row | null; after: Row | 
 /** An undo of a change that touched more than this many rows is written as a bulk change (decision 0035). */
 const BULK_ROWS = 50;
 
-type Dependent = { table: ChangeTable; column: string; one: string; many: string };
+/** Campaign delivery records are written next to an audited change, never undone, so they are not change tables. */
+type Dependent = { table: ChangeTable | "campaign_recipients" | "campaign_batches"; column: string; one: string; many: string };
+
+const CAMPAIGN_RECIPIENT = { table: "campaign_recipients", one: "campaign recipient", many: "campaign recipients" } as const;
+const EMAIL_BLOCK = { table: "email_suppressions", one: "campaign email block", many: "campaign email blocks" } as const;
 
 /** Rows that point at a row of each table, so deleting it would break them. ON DELETE SET NULL links are left out. */
 const TIME_ENTRY = { table: "time_entries", one: "time entry", many: "time entries" } as const;
@@ -57,7 +61,16 @@ const DEPENDENTS: Partial<Record<ChangeTable, Dependent[]>> = {
     { table: "rule_firings", column: "contact_id", one: "rule firing", many: "rule firings" },
     { ...TIME_ENTRY, column: "contact_id" },
     { table: "client_rates", column: "contact_id", one: "client rate", many: "client rates" },
+    { ...CAMPAIGN_RECIPIENT, column: "contact_id" },
+    { ...EMAIL_BLOCK, column: "contact_id" },
   ],
+  // Delivery records and address blocks of a campaign (migration 0019).
+  campaigns: [
+    { ...CAMPAIGN_RECIPIENT, column: "campaign_id" },
+    { table: "campaign_batches", column: "campaign_id", one: "sending attempt", many: "sending attempts" },
+    { ...EMAIL_BLOCK, column: "campaign_id" },
+  ],
+  campaign_steps: [{ ...CAMPAIGN_RECIPIENT, column: "step_id" }],
   deals: [
     { table: "activities", column: "deal_id", one: "activity", many: "activities" },
     { table: "tasks", column: "deal_id", one: "task", many: "tasks" },
@@ -457,7 +470,7 @@ async function dependents(ctx: Ctx, changeId: string, entries: Entry[]): Promise
     for (const dep of DEPENDENTS[entry.table] ?? []) {
       if (dep.table === "rule_firings") continue;
       for (const row of found.get(pointerKey(dep))?.get(String(pkValue)) ?? []) {
-        const key = rowKey(dep.table, String(row.id));
+        const key = `${dep.table}:${String(row.id)}`;
         if (removed.has(key)) continue;
         // A row the same undo puts back to a `before` that doesn't point here (a stopped timer's link to its note).
         const before = restored.get(key);

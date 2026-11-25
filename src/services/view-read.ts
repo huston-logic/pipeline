@@ -83,15 +83,11 @@ const PEOPLE_ORDER: Record<PeopleSort, (dir: "ASC" | "DESC") => string> = {
 
 const sqlDir = (sort: ViewSort) => (sort.dir === "desc" ? "DESC" : "ASC");
 
-/** The people a people view shows: everyone not archived who matches its filters. */
-export async function peopleInView(
-  db: Db,
-  now: Date,
-  tz: string,
-  filters: ViewFilters,
-  sort: ViewSort,
-  limit?: number,
-): Promise<ViewList<PersonViewItem>> {
+/**
+ * The WHERE condition of a people view over `contacts c`: everyone not archived who matches the filters, with the
+ * values for its `?`s. Shared by the view's list and by a campaign's audience, which reads it uncapped.
+ */
+export function peopleWhere(filters: ViewFilters): { sql: string; params: unknown[] } {
   const where: Where = { clauses: ["c.archived = 0"], params: [] };
   if (filters.person_status !== undefined) {
     where.clauses.push("c.person_status = ?");
@@ -104,6 +100,19 @@ export async function peopleInView(
   sourceMatch(where, "c.source", filters.source);
   fieldMatch(where, "c.fields", filters.fields);
   textMatch(where, ["c.name", "c.email", "c.phone", "c.business"], filters.q);
+  return { sql: whereSql(where), params: where.params };
+}
+
+/** The people a people view shows: everyone not archived who matches its filters. */
+export async function peopleInView(
+  db: Db,
+  now: Date,
+  tz: string,
+  filters: ViewFilters,
+  sort: ViewSort,
+  limit?: number,
+): Promise<ViewList<PersonViewItem>> {
+  const where = peopleWhere(filters);
   const order = (Object.hasOwn(PEOPLE_ORDER, sort.key) ? PEOPLE_ORDER[sort.key as PeopleSort] : PEOPLE_ORDER.name)(sqlDir(sort));
   const nowIso = now.toISOString();
   const found = await db
@@ -116,7 +125,7 @@ export async function peopleInView(
        ), ${NEXT_TASK_CTE}
        SELECT c.*, l.at AS last_activity_at, n.at AS next_task_at, COUNT(*) OVER () AS total
        FROM contacts c LEFT JOIN last_seen l ON l.contact_id = c.id LEFT JOIN next_task n ON n.contact_id = c.id
-       WHERE ${whereSql(where)}
+       WHERE ${where.sql}
        ORDER BY ${order}, c.name COLLATE NOCASE, c.id
        LIMIT ?`,
     )

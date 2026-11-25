@@ -91,6 +91,7 @@ test("add needs a name, recipients, subject and body, in plain words", async () 
   assert.match(await refusal(add({ body: "x".repeat(20001) })), /body can be at most 20000 characters/);
   assert.match(await refusal(add({ firstNameFallback: "x".repeat(41) })), /fallback can be at most 40 characters/);
   assert.match(await refusal(add({ firstNameFallback: " " })), /fallback/);
+  assert.match(await refusal(add({ firstNameFallback: "friend\nof ours" })), /first-name fallback must be one line/);
   const ok = await add({ firstNameFallback: "friend" });
   assert.equal((await campaign(db, ok.campaignId))?.first_name_fallback, "friend");
 });

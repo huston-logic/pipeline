@@ -7,6 +7,9 @@ import { parseStringArray } from "../services/lookup.ts";
 const ADDRESS = /^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$/;
 const NAMED = /^([^<>"\r\n]+) <([^<>"\s]+)>$/;
 
+/** A plain address (no name part) of at most 254 characters: what a campaign will send to. */
+export const isPlainAddress = (address: string): boolean => address.length <= 254 && ADDRESS.test(address);
+
 /** A plain address or `Name <address>` on one line; the name has no `<>"` characters. */
 function wellFormedFrom(from: string): boolean {
   if (from.length > 254 || /[\r\n]/.test(from)) return false;
