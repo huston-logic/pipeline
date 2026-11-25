@@ -72,6 +72,12 @@ test("the default is the active projects, soonest target first with none last, a
   assert.doesNotMatch(body, /Garden|Old fence|Gone shed/);
 });
 
+test("card titles are h2, so no heading level is skipped under the h1", async () => {
+  const { body } = await load(devEnv(await projectsDb()), "/projects");
+  assert.match(body, /<h2 class="card-title">/);
+  assert.doesNotMatch(body, /<h3/);
+});
+
 test("status picks which projects show; archived lists archived ones of every status; unknown is active", async () => {
   const env = devEnv(await projectsDb());
   const at = async (query: string) => (await load(env, `/projects${query}`)).body;

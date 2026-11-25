@@ -60,7 +60,7 @@ ${pairs([
   project.notes !== null && project.notes !== "" && { name: "Notes", value: project.notes },
 ])}
 ${project.archived ? html`<p class="note">This project is archived.</p>` : ""}
-<p class="card-actions"><a href="${projectEditPath(project.id)}">Edit</a></p>
+<p class="card-actions"><a href="${projectEditPath(project.id)}">Edit project</a></p>
 ${statusForm(project.id, statuses, form, project.status)}
 ${archiveForm(project, form)}
 </div>`,

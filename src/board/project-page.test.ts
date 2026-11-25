@@ -49,7 +49,7 @@ test("the page has the Project card first, then Open tasks, Done and Notes", asy
   assert.match(body, /Permit pending\./);
   assert.match(body, /<a href="\/contacts\/ct_seed01">Pat Example<\/a>/);
   assert.match(body, /Sat Dec 5/);
-  assert.match(body, /<a href="\/projects\/pj_retro\/edit">Edit<\/a>/);
+  assert.match(body, /<a href="\/projects\/pj_retro\/edit">Edit project<\/a>/);
   assert.match(body, /Order anchors/);
   assert.match(body, /action="\/tasks\/[^"]*\/complete"/);
   assert.match(body, /action="\/projects\/pj_retro\/tasks"/);

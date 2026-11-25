@@ -38,7 +38,7 @@ const personOf = (project: ProjectItem): Html => contactLink(project.contactId, 
 function card(project: ProjectItem, tz: string): Html {
   return html`<li class="card">
 <div class="card-head">
-<h3 class="card-title">${itemLink(project)}</h3>
+<h2 class="card-title">${itemLink(project)}</h2>
 ${tag(statusText(project))}
 </div>
 ${pairs([
