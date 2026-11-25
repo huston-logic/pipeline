@@ -64,6 +64,12 @@ const projectsOn = async (ctx: ActionContext): Promise<boolean> => (await getSet
 
 type FormInput = { name?: string; status?: string; startAt?: string; targetAt?: string; notes?: string; fields?: Record<string, string | number> };
 
+/** The template the form carries (its hidden field), or none. */
+const templateOf = (ctx: ActionContext): { template?: string } => {
+  const asked = (ctx.form.get("template") ?? "").trim();
+  return asked === "" ? {} : { template: asked };
+};
+
 /** The new-project form's specs: the live statuses and the live custom project fields. */
 const specsOf = async (ctx: ActionContext) =>
   projectSpecs(await projectStatusRows(ctx.db), { defs: await projectFieldDefs(ctx.db) });
@@ -73,10 +79,10 @@ async function addInternal(ctx: ActionContext): Promise<ActionResult> {
   if (!(await projectsOn(ctx))) return notFound(ctx);
   const collected = collectNew(await specsOf(ctx), ctx.form);
   const refused = async (extra: string[] = []) =>
-    page(422, (await newInternalProjectPage(formContext(ctx, newInternalProjectPath), stateOf(collected, extra))) ?? "");
+    page(422, (await newInternalProjectPage(formContext(ctx, newInternalProjectPath), { ...stateOf(collected, extra), ...templateOf(ctx) })) ?? "");
   if (collected.errors.length > 0) return refused();
   try {
-    const result = await addProject(asOwner(ctx, "add_project"), collected.input as FormInput);
+    const result = await addProject(asOwner(ctx, "add_project"), { ...(collected.input as FormInput), ...templateOf(ctx) });
     return redirect(withChange(projectHref(result.projectId), result.changeId));
   } catch (error) {
     return refused([refusal(error, "project")]);
@@ -90,10 +96,10 @@ async function addOfContact(ctx: ActionContext, id: string): Promise<ActionResul
   if (contact === null || contact.archived === 1) return notFound(ctx);
   const collected = collectNew(await specsOf(ctx), ctx.form);
   const refused = async (extra: string[] = []) =>
-    page(422, (await newProjectOfContactPage(formContext(ctx, newProjectOfContactPath(id)), id, stateOf(collected, extra))) ?? "");
+    page(422, (await newProjectOfContactPage(formContext(ctx, newProjectOfContactPath(id)), id, { ...stateOf(collected, extra), ...templateOf(ctx) })) ?? "");
   if (collected.errors.length > 0) return refused();
   try {
-    const result = await addProject(asOwner(ctx, "add_project"), { ...(collected.input as FormInput), contact: contact.id });
+    const result = await addProject(asOwner(ctx, "add_project"), { ...(collected.input as FormInput), contact: contact.id, ...templateOf(ctx) });
     return redirect(withChange(projectHref(result.projectId), result.changeId));
   } catch (error) {
     return refused([refusal(error, "project")]);
@@ -109,11 +115,11 @@ async function addOfDeal(ctx: ActionContext, id: string): Promise<ActionResult> 
   const complete = ctx.form.get(COMPLETE_TASKS) === "yes";
   const collected = collectNew(await specsOf(ctx), ctx.form);
   const refused = async (extra: string[] = []) =>
-    page(422, (await newProjectOfDealPage(formContext(ctx, newProjectOfDealPath(id)), id, { ...stateOf(collected, extra), move, complete })) ?? "");
+    page(422, (await newProjectOfDealPage(formContext(ctx, newProjectOfDealPath(id)), id, { ...stateOf(collected, extra), move, complete, ...templateOf(ctx) })) ?? "");
   if (collected.errors.length > 0) return refused();
   try {
     const tasks = complete ? { completeOpenTasks: true } : move ? { moveOpenTasks: true } : {};
-    const result = await addProject(asOwner(ctx, "add_project"), { ...(collected.input as FormInput), deal: deal.id, ...tasks });
+    const result = await addProject(asOwner(ctx, "add_project"), { ...(collected.input as FormInput), deal: deal.id, ...tasks, ...templateOf(ctx) });
     return redirect(withChange(projectHref(result.projectId), result.changeId));
   } catch (error) {
     return refused([refusal(error, "project")]);

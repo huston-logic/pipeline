@@ -25,10 +25,15 @@ import {
   projectSpecs,
 } from "../project-form.ts";
 import type { Shown } from "../record-form.ts";
+import { templateChoice } from "../template-choice.ts";
 import { type FormState, recordFormPage } from "./record-page.ts";
 
 /** A refused form's state, with whether the move and complete boxes were ticked. */
-export type NewProjectState = FormState & { move?: boolean; complete?: boolean };
+export type NewProjectState = FormState & { move?: boolean; complete?: boolean; template?: string };
+
+/** The template choice for a screen: the one in a refused post's state, else the address's `template`. */
+const choiceFor = (ctx: PageContext, path: string, state?: NewProjectState) =>
+  templateChoice(ctx.db, path, state?.template ?? ctx.query.get("template"), ctx.timeTracking === true);
 
 const OUTSIDE_NAME_HINT = "The deal's title came from outside. Name the project in a few words.";
 
@@ -48,7 +53,9 @@ export async function newProjectOfContactPage(ctx: PageContext, id: string, stat
   if (contact === null || contact.archived === 1) return null;
   const who = contactName(contact);
   const back = contactHref(contact.id);
+  const choice = await choiceFor(ctx, newProjectOfContactPath(contact.id), state);
   return recordFormPage(ctx, {
+    above: choice.above,
     title: `New project for ${who}`,
     description: `Start a project for ${who}: a name, a status, a start and target date, and notes.`,
     heading: `New project for ${who}`,
@@ -59,7 +66,7 @@ export async function newProjectOfContactPage(ctx: PageContext, id: string, stat
     cancel: back,
     submit: "Add the project",
     prefix: PROJECT_PREFIX,
-    groups: [{ specs: projectSpecs(await projectStatusRows(ctx.db), { defs: await projectFieldDefs(ctx.db) }) }],
+    groups: [{ specs: projectSpecs(await projectStatusRows(ctx.db), { defs: await projectFieldDefs(ctx.db) }), before: choice.hiddenField }],
     shown: state?.shown ?? firstShown(""),
     errors: state?.errors ?? [],
   });
@@ -68,7 +75,9 @@ export async function newProjectOfContactPage(ctx: PageContext, id: string, stat
 /** /projects/new: an internal project, with no person and no deal. */
 export async function newInternalProjectPage(ctx: PageContext, state?: NewProjectState): Promise<string | null> {
   if ((await getSettings(ctx.db)).projects !== 1) return null;
+  const choice = await choiceFor(ctx, newInternalProjectPath, state);
   return recordFormPage(ctx, {
+    above: choice.above,
     title: "Start a project",
     description: "Start a project of your own: a name, a status, a start and target date, and notes.",
     heading: "Start a project",
@@ -79,7 +88,7 @@ export async function newInternalProjectPage(ctx: PageContext, state?: NewProjec
     cancel: PROJECTS_PATH,
     submit: "Add the project",
     prefix: PROJECT_PREFIX,
-    groups: [{ specs: projectSpecs(await projectStatusRows(ctx.db), { defs: await projectFieldDefs(ctx.db) }) }],
+    groups: [{ specs: projectSpecs(await projectStatusRows(ctx.db), { defs: await projectFieldDefs(ctx.db) }), before: choice.hiddenField }],
     shown: state?.shown ?? firstShown(""),
     errors: state?.errors ?? [],
   });
@@ -124,7 +133,9 @@ ${checkbox({
 </fieldset>`;
   const words = dealWords(deal);
   const back = dealHref(deal.id);
+  const choice = await choiceFor(ctx, newProjectOfDealPath(deal.id), state);
   return recordFormPage(ctx, {
+    above: choice.above,
     title: `New project from ${words}`,
     description: `Start a project from a won deal: a name, a status, a start and target date, and notes.`,
     heading: `New project from ${words}`,
@@ -135,7 +146,7 @@ ${checkbox({
     cancel: back,
     submit: "Add the project",
     prefix: PROJECT_PREFIX,
-    groups: [{ specs: projectSpecs(await projectStatusRows(ctx.db), { defs: await projectFieldDefs(ctx.db), ...(trusted ? {} : { nameHint: OUTSIDE_NAME_HINT }) }), after: box }],
+    groups: [{ specs: projectSpecs(await projectStatusRows(ctx.db), { defs: await projectFieldDefs(ctx.db), ...(trusted ? {} : { nameHint: OUTSIDE_NAME_HINT }) }), before: choice.hiddenField, after: box }],
     shown: state?.shown ?? firstShown(trusted ? deal.title : ""),
     errors: state?.errors ?? [],
   });

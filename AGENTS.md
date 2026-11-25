@@ -285,6 +285,13 @@ hooks and the commands are in `CLAUDE.md`.
   `add_task_plan` (`src/services/task-plan.ts`, in `RECORD_ACTIONS`) is one action holding at most 100 tasks in a proposal,
   a flat list whose `under` is the 1-based number of an earlier item; `dueDays` needs the project's start date;
   `proposals-d1.test.ts` holds a 100-task plan to the 40-call ceiling.
+- **Templates** (decision 0059, migration 0024): `project_templates` (`tp_`) and `template_tasks` (`tt_`) are change
+  tables (`src/services/templates.ts`, `template-read.ts`, `template-copy.ts`); `add_project {template}` copies the live
+  tree and keeps no link to the project (editing a template never changes a project). `add_template`,
+  `update_template` and `save_project_as_template` are in `RECORD_ACTIONS`; a task whose title came from outside is left
+  out of a saved template. Board routes `/templates*` (`src/board/pages/templates.ts`, `template.ts`, `template-tree.ts`)
+  are 404 while projects are off; the Start a project screens take `template=<tp id>` from a GET form
+  (`src/board/template-choice.ts`) and carry it as a hidden field.
 - **Sign-in:** `src/auth/dev.ts` until task 10. `AUTH_MODE=dev` works only with `ENVIRONMENT=development` on a
   loopback host; anywhere else every route answers 500. Without `AUTH_MODE`, `/mcp` answers 401.
 - **Types:** `src/env.ts` is the `Env` type the code uses. `src/worker-configuration.d.ts` holds the Workers runtime

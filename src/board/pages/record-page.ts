@@ -27,11 +27,13 @@ export type RecordPageOptions = {
   prefix: string;
   /** One card per group; a group with a heading is its own section. `before` and `after` sit in the card around the
    * fields (a checkbox such as "Create a deal"). */
-  groups: { heading?: string; id?: string; specs: Spec[]; before?: Html; after?: Html }[];
+  groups: { heading?: string; id?: string; specs: Spec[]; before?: Html | ""; after?: Html }[];
   shown: Map<string, Shown>;
   errors: FormError[];
   /** More markup after the form, outside it (Archive on the time form: its own form). */
   below?: Html;
+  /** More markup between the intro and the form, outside it (the template choice on Start a project: its own GET form). */
+  above?: Html | "";
 };
 
 export function recordFormPage(ctx: PageContext, options: RecordPageOptions): string {
@@ -53,7 +55,7 @@ ${group.after ?? ""}</div>`;
 <p class="lede">${options.lede}</p>
 ${formErrorSummary(options.errors, specs, options.prefix)}
 ${anyOutside(options.shown) ? outsideNote() : ""}
-${postForm(
+${options.above ?? ""}${postForm(
   "record-form",
   options.action,
   { csrf: ctx.csrf, here: options.cancel },
