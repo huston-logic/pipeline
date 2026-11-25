@@ -124,6 +124,26 @@ test("update_time_entry sets a project, and null clears it but keeps the person"
   await assert.rejects(updateTimeEntry(ctxFor(db), added.entryId, { project: "Retrofit", deal: "dl_seed01" }), /not both/);
 });
 
+test("an edit never moves an entry off its project; project null does", async () => {
+  const { db, retrofit } = await setup();
+  const own = await addTask(ctxFor(db), { project: "Retrofit", title: "Order anchors" });
+  const plain = await addTask(ctxFor(db), { contactId: "ct_seed01", title: "Call Pat" });
+  const other = await addTask(ctxFor(db), { project: "Garden", title: "Plant ferns" });
+  const added = await addTimeEntry(ctxFor(db), { task: own.taskId, startedAt: "2026-11-19T07:30", minutes: 30 });
+  const edit = (patch: Parameters<typeof updateTimeEntry>[2]) => updateTimeEntry(ctxFor(db, "update_time_entry"), added.entryId, patch);
+
+  await assert.rejects(edit({ deal: "dl_seed01" }), /is on project "Retrofit" \(Pat Example\)\. Give project null \(and task null\)/);
+  await assert.rejects(edit({ contact: "ct_seed03" }), /is on project "Retrofit" \(Pat Example\)\. Give project null/);
+  await assert.rejects(edit({ task: plain.taskId }), /Task "Call Pat" isn't on project "Retrofit" \(Pat Example\)\. Give a task of the project, or project null/);
+  await assert.rejects(edit({ task: other.taskId }), /isn't on project "Retrofit"/);
+  await edit({ task: own.taskId, notes: "same task" });
+  assert.equal((await entry(db, added.entryId))?.project_id, retrofit);
+
+  await edit({ project: null, task: null, deal: "dl_seed01" });
+  const row = await entry(db, added.entryId);
+  assert.deepEqual([row?.project_id, row?.deal_id, row?.task_id], [null, "dl_seed01", null]);
+});
+
 test("a stopped project timer logs its note and next step on the project", async () => {
   const { db, retrofit } = await setup();
   const started = await startTimer(ctxFor(db, "start_timer"), { project: "Retrofit", workType: "Design" });

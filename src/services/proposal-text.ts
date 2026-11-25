@@ -125,8 +125,6 @@ async function planned<T>(names: Names, table: Named, id: string | null): Promis
   return readerOf(names.src).db.prepare(`SELECT * FROM ${table} WHERE id = ?`).bind(id).first<T>();
 }
 
-
-
 type Named = "contacts" | "deals" | "tasks" | "projects";
 
 /** At most this many ids in one IN list (D1 takes 100 bound parameters a statement). */

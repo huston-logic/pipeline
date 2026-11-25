@@ -275,6 +275,30 @@ async function otherRunning(src: Source, id: string): Promise<TimeEntryRow | nul
   return running !== null && running.id !== id ? running : null;
 }
 
+/**
+ * An edit never moves an entry off its project by itself: a deal or person, or a task that isn't the project's, is
+ * refused with the way out (project null).
+ */
+async function keepsProject(src: Source, before: TimeEntryRow, patch: TimeEntryPatch): Promise<void> {
+  const project = before.project_id == null ? null : await projectById(src, before.project_id);
+  const owner = project === null ? null : await contactById(src, project.contact_id);
+  if (project === null || owner === null) return;
+  const label = projectLabel(project, owner);
+  if (typeof patch.deal === "string" || typeof patch.contact === "string") {
+    throw new UserError(
+      `${capitalize(rowLabel("time_entries", before))} is on project ${label}. Give project null (and task null) to put it on a deal or another person.`,
+    );
+  }
+  if (typeof patch.task === "string") {
+    const task = await findTask(src, patch.task);
+    if (task.project_id !== project.id) {
+      throw new UserError(
+        `${capitalize(rowLabel("tasks", task))} isn't on project ${label}. Give a task of the project, or project null to take the entry off it.`,
+      );
+    }
+  }
+}
+
 const ANOTHER_RUNNING = "Another timer is running. Stop it first, or leave this one archived.";
 
 export async function updateTimeEntry(ctx: Ctx, ref: string, patch: TimeEntryPatch): Promise<ChangeResult & { entryId: string }> {
@@ -308,6 +332,7 @@ export async function updateTimeEntry(ctx: Ctx, ref: string, patch: TimeEntryPat
   let contactId = before.contact_id;
   if (linked) {
     if (patch.project === null) await requireProjects(ctx);
+    if (before.project_id != null && patch.project === undefined) await keepsProject(ctx, before, patch);
     const fromTask = typeof patch.task === "string" && patch.contact === undefined && patch.deal === undefined && patch.project === undefined;
     // The entry stays on its project unless the edit clears it or gives a deal; a new project brings its own person.
     const project = patch.project !== undefined ? patch.project : typeof patch.deal === "string" ? undefined : (before.project_id ?? undefined);
