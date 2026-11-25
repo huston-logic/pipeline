@@ -58,6 +58,7 @@ const WRITE_TOOLS = [
   "add_stage",
   "add_sub_status",
   "add_task",
+  "add_task_plan",
   "add_time_entry",
   "add_view",
   "add_work_type",

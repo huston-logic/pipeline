@@ -20,6 +20,8 @@ export interface Item {
   record: string;
   id: string;
   fields: { field: string; from?: string; to: string }[];
+  /** Lines under the item's own, already indented (a task plan's tasks). */
+  lines?: string[];
 }
 
 export interface ProposalList {
@@ -41,7 +43,8 @@ const GROUPS: [keyof ProposalList, string][] = [
 const fieldText = ({ field, from, to }: Item["fields"][number]) =>
   field === "" ? to : from === undefined ? `${field} ${to}` : `${field} ${from} -> ${to}`;
 
-const itemLine = (item: Item) => `- ${item.record}${item.fields.length > 0 ? `: ${item.fields.map(fieldText).join("; ")}` : ""}`;
+const itemLine = (item: Item) =>
+  [`- ${item.record}${item.fields.length > 0 ? `: ${item.fields.map(fieldText).join("; ")}` : ""}`, ...(item.lines ?? [])].join("\n");
 
 export function renderProposal(list: ProposalList, meta: { id: string; expiresLocal: string }): string {
   const lines = [`Proposal ${meta.id} (expires ${meta.expiresLocal}). Nothing has changed yet.`, ""];
@@ -370,6 +373,38 @@ async function taskItem(names: Names, id: string, before: Row | null, after: Row
   };
 }
 
+/**
+ * A task plan (add_task_plan) as one item: "Add 3 tasks to project "Retrofit"", then a line per task in tree order, two
+ * spaces deeper for each level, with its due date when set. A plan put under an existing task says so.
+ */
+async function planItem(names: Names, rows: readonly Row[]): Promise<Pick<Item, "record" | "fields" | "lines">> {
+  const first = rows[0] as Row;
+  const project = await planned<ProjectRow>(names, "projects", String(first.project_id));
+  const inPlan = new Set(rows.map((row) => String(row.id)));
+  const kids = new Map<string | null, Row[]>();
+  for (const row of rows) {
+    const parent = typeof row.parent_id === "string" && inPlan.has(row.parent_id) ? row.parent_id : null;
+    kids.set(parent, [...(kids.get(parent) ?? []), row]);
+    show(names, "tasks", String(row.id), ["title", "deal_id", "contact_id", "project_id", "parent_id", "position", "due_at", ...(row.source === "owner" ? ["source"] : [])]);
+  }
+  const lines: string[] = [];
+  const walk = (parent: string | null, depth: number) => {
+    const siblings = [...(kids.get(parent) ?? [])].sort((a, b) => Number(a.position ?? 0) - Number(b.position ?? 0));
+    for (const row of siblings) {
+      const due = row.due_at === null || row.due_at === undefined ? "" : ` (due ${shown(names, "tasks", "due_at", row.due_at)})`;
+      lines.push(`${"  ".repeat(depth + 1)}- ${taskTitle(row as unknown as { id: string; title: string })}${due}`);
+      walk(String(row.id), depth + 1);
+    }
+  };
+  walk(null, 0);
+  const top = typeof first.parent_id === "string" && !inPlan.has(first.parent_id) ? await planned<TaskRow>(names, "tasks", first.parent_id) : null;
+  return {
+    record: `Add ${rows.length} ${rows.length === 1 ? "task" : "tasks"} to ${project ? projectWord(project) : `project ${String(first.project_id)}`}`,
+    fields: top ? [{ field: "under", to: `task ${taskTitle(top)}` }] : [],
+    lines,
+  };
+}
+
 /** A work type's name, archived ones too (work types are configuration: a plan never writes them). */
 async function workTypeName(names: Names, id: unknown): Promise<string | null> {
   if (typeof id !== "string") return null;
@@ -485,7 +520,17 @@ export async function shownList(src: Reader, input: ChangeInput, tz: string, now
   };
   const notes = new Set(input.changes.flatMap((change) => (change.table === "activities" && change.before === null && change.after !== null ? [change.id] : [])));
   const list: ProposalList = { add: [], update: [], tasks: [], notes: [], time: [] };
-  for (const { table, id, before, after } of input.changes) {
+  const plans = new Map<string, { item: Item; rows: Row[] }>();
+  for (const { table, id, before, after, group } of input.changes) {
+    if (table === "tasks" && before === null && after !== null && group !== undefined) {
+      const plan = plans.get(group) ?? { item: { record: "", id, fields: [] }, rows: [] };
+      if (plan.rows.length === 0) {
+        plans.set(group, plan);
+        list.tasks.push(plan.item);
+      }
+      plan.rows.push(after);
+      continue;
+    }
     if (after === null) {
       if (before !== null) list.update.push({ record: capitalize(rowLabel(table, before)), id, fields: [{ field: "", to: "removed" }] });
       continue;
@@ -528,6 +573,7 @@ export async function shownList(src: Reader, input: ChangeInput, tz: string, now
     const fields = before === null ? [] : await updatedFields(names, table, id, before, after);
     if (before === null || fields.length > 0) list.update.push({ record: capitalize(rowLabel(table, before ?? after)), id, fields });
   }
+  for (const { item, rows } of plans.values()) Object.assign(item, await planItem(names, rows));
   const unshown = input.changes.flatMap(({ table, id, before, after }) => {
     if (after === null) return [];
     const shows = names.shows.get(rowKey(table, id));

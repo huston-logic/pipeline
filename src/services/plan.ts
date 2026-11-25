@@ -9,7 +9,7 @@ import type { ChangeInput, ChangeResult, ChangeTable, Ctx, Row, RowChange } from
 import { guardIds, oneLine, rowKey } from "./change.ts";
 import { MEMO_TABLES } from "./memo.ts";
 
-type Entry = { table: ChangeTable; id: string; before: Row | null; after: Row | null };
+type Entry = { table: ChangeTable; id: string; before: Row | null; after: Row | null; group?: string };
 
 export class PlanCollector {
   /** The one change id the apply will use, chg_... */
@@ -87,7 +87,7 @@ export class PlanCollector {
     this.#writtenBy.set(key, [...(this.#writtenBy.get(key) ?? []), this.#action]);
     const seen = this.#rows.get(key);
     if (seen === undefined) {
-      this.#rows.set(key, { table: change.table, id: change.id, before: change.before, after: change.after });
+      this.#rows.set(key, { table: change.table, id: change.id, before: change.before, after: change.after, ...(change.group === undefined ? {} : { group: change.group }) });
       if (change.before === null) this.#addedBy.set(change.id, this.#action);
       return;
     }
@@ -154,7 +154,7 @@ export class PlanCollector {
 
   /** One ChangeInput: each row once, earliest `before`, latest `after`, version = before.version + 1; extras in order. */
   build(target: { table: ChangeTable; id: string }, summary: string): ChangeInput {
-    const changes = [...this.#rows.values()].map(({ table, id, before, after }) => ({ table, id, before, after }));
+    const changes = [...this.#rows.values()].map(({ table, id, before, after, group }) => ({ table, id, before, after, ...(group === undefined ? {} : { group }) }));
     return { target, summary, changes, leading: [...this.#leading], extra: [...this.#extra] };
   }
 

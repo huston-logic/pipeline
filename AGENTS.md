@@ -281,7 +281,10 @@ hooks and the commands are in `CLAUDE.md`.
   text. A project never changes its deal. Sub-tasks (decision 0057, migration 0022): `tasks.parent_id` and `position`
   (siblings: same project and parent); rules in `src/services/subtasks.ts` (`add_task` `parent` is a task id, never
   `@n`; `complete_task` `subTasks`; `moveTask`, board only, no MCP tool). The board's tree shows three levels
-  (`src/board/project-tree.ts`) and reads at most 500 tasks.
+  (`src/board/project-tree.ts`) and reads at most 500 tasks. Task plans (decision 0058, migration 0023):
+  `add_task_plan` (`src/services/task-plan.ts`, in `RECORD_ACTIONS`) is one action holding at most 100 tasks in a proposal,
+  a flat list whose `under` is the 1-based number of an earlier item; `dueDays` needs the project's start date;
+  `proposals-d1.test.ts` holds a 100-task plan to the 40-call ceiling.
 - **Sign-in:** `src/auth/dev.ts` until task 10. `AUTH_MODE=dev` works only with `ENVIRONMENT=development` on a
   loopback host; anywhere else every route answers 500. Without `AUTH_MODE`, `/mcp` answers 401.
 - **Types:** `src/env.ts` is the `Env` type the code uses. `src/worker-configuration.d.ts` holds the Workers runtime

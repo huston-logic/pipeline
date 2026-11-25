@@ -11,6 +11,7 @@ import {
   addLeadInput,
   addProjectInput,
   addTaskInput,
+  addTaskPlanInput,
   completeTaskInput,
   logActivityInput,
   qualifyLeadInput,
@@ -38,6 +39,7 @@ import { type Match, MATCH_MAX, matchAll } from "./name-match.ts";
 import { readerOf, type Reader } from "./memo.ts";
 import { addProject, updateProject } from "./projects.ts";
 import { requireProjects } from "./settings.ts";
+import { addTaskPlan } from "./task-plan.ts";
 import { addTask, completeTask, snoozeTask } from "./tasks.ts";
 import { addTimeEntry, updateTimeEntry } from "./time-entries.ts";
 import { startTimer, stopTimer } from "./timer.ts";
@@ -61,6 +63,7 @@ export const RECORD_ACTIONS = [
   "update_time_entry",
   "add_project",
   "update_project",
+  "add_task_plan",
 ] as const;
 
 export type RecordActionName = (typeof RECORD_ACTIONS)[number];
@@ -87,6 +90,7 @@ const ACTION_SCHEMAS = {
   update_time_entry: updateTimeEntryInput.extend({ action: named("update_time_entry") }),
   add_project: addProjectInput.extend({ action: named("add_project") }),
   update_project: updateProjectInput.extend({ action: named("update_project") }),
+  add_task_plan: addTaskPlanInput.extend({ action: named("add_task_plan") }),
 } as const satisfies Record<RecordActionName, z.ZodObject>;
 
 /** One action: a record tool's input plus `action`, the tool's name (a discriminated union on it). */
@@ -108,6 +112,7 @@ export const recordActionSchema = z.discriminatedUnion("action", [
   ACTION_SCHEMAS.update_time_entry,
   ACTION_SCHEMAS.add_project,
   ACTION_SCHEMAS.update_project,
+  ACTION_SCHEMAS.add_task_plan,
 ]);
 
 export type RecordAction = z.output<typeof recordActionSchema>;
@@ -163,6 +168,8 @@ const REF_FIELDS: Record<RecordActionName, RefSpec[]> = {
     { field: "deal", kind: "deal", subject: false },
   ],
   update_project: [{ field: "project", kind: "project", subject: false }],
+  // A plan may be for a project an earlier action adds.
+  add_task_plan: [{ field: "project", kind: "project", subject: true }],
 };
 
 /** What an action adds (or, for qualify_lead's person, names) that a later "@n" could point at. */
@@ -411,6 +418,10 @@ export async function runAction(ctx: Ctx, action: ResolvedAction, _deps: { extra
     case "update_project": {
       const { project, ...patch } = omitAction(action);
       return updateProject(ctx, project, patch);
+    }
+    case "add_task_plan": {
+      const { taskIds, ...result } = await addTaskPlan(ctx, omitAction(action));
+      return { ...result, taskId: taskIds[0] ?? "" };
     }
   }
 }

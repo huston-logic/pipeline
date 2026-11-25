@@ -9,7 +9,8 @@ import { createTestDb } from "../db/sqlite-d1.ts";
 import { DEFAULT_TZ } from "../time.ts";
 import type { Ctx } from "./change.ts";
 import type { RecordAction } from "./proposal-actions.ts";
-import { applyChanges, PROPOSAL_MAX_ACTIONS, proposeChanges } from "./proposals.ts";
+import { undoChange } from "./undo.ts";
+import { applyChanges,PROPOSAL_MAX_ACTIONS, proposeChanges } from "./proposals.ts";
 
 const NOW = new Date("2026-11-19T18:00:00.000Z");
 const DEPS = { extraOwnerEmails: [] };
@@ -107,6 +108,39 @@ test("a maximum-size list of projects, with tasks, notes and time on them, stays
   assert.equal(PROJECT_LIST.length, PROPOSAL_MAX_ACTIONS);
   const more = "UPDATE settings SET projects = 1; INSERT INTO projects (id, name, contact_id, status_key) VALUES ('pj_seed01', 'Retrofit', 'ct_seed01', 'active')";
   assertAtMost(await measure(PROJECT_LIST, more), 40);
+});
+
+/** 100 tasks in tens: a top task, two under it, one of those with three under it (three deep), some with dueDays. */
+const PLAN_TASKS = Array.from({ length: 100 }, (_, i) => {
+  const base = i - (i % 10);
+  const r = i % 10;
+  const under = r === 0 ? undefined : r <= 2 ? base + 1 : r <= 5 ? base + 2 : base + 1;
+  return { title: `Step ${i + 1}`, ...(under === undefined ? {} : { under }), ...(i % 2 === 0 ? { dueDays: i } : {}) };
+});
+
+const statementsOf = (log: readonly string[]): number => log.reduce((sum, sql) => sum + (/^batch\((\d+)\)$/.exec(sql)?.[1] ? Number(/\d+/.exec(sql)?.[0]) : 1), 0);
+
+test("a project and a 100-task plan stay at most 40 D1 calls each way, apply as one bulk change and undo as one", async () => {
+  const actions: RecordAction[] = [
+    { action: "add_project", contact: "Pat", name: "Harbor kitchen", startAt: "2026-12-01" },
+    { action: "add_task_plan", project: "@1", tasks: PLAN_TASKS },
+  ];
+  const db = await seeded("UPDATE settings SET projects = 1");
+  const answer = await proposeChanges(ctxFor(db, "propose_changes"), { actions }, DEPS);
+  assert.equal(answer.kind, "proposal", JSON.stringify(answer));
+  const proposeCalls = db.calls;
+  const proposeStatements = statementsOf(db.log);
+  db.reset();
+  const result = await applyChanges(ctxFor(db, "apply_changes"), answer.kind === "proposal" ? answer.id : "", DEPS);
+  assert.equal(result.applied, 2);
+  const applyCalls = db.calls;
+  const applyStatements = statementsOf(db.log);
+  assert.ok(proposeCalls <= 40, `propose made ${proposeCalls} D1 calls (${proposeStatements} statements)`);
+  assert.ok(applyCalls <= 40, `apply made ${applyCalls} D1 calls (${applyStatements} statements)`);
+  const rows = async () => (await db.prepare("SELECT (SELECT count(*) FROM projects WHERE name = 'Harbor kitchen') AS p, (SELECT count(*) FROM tasks WHERE project_id IS NOT NULL AND title LIKE 'Step %') AS t").first<{ p: number; t: number }>()) ?? { p: -1, t: -1 };
+  assert.deepEqual({ ...(await rows()) }, { p: 1, t: 100 });
+  await undoChange({ db, now: NOW, actor: "owner", tool: "undo_change" }, result.changeId);
+  assert.deepEqual({ ...(await rows()) }, { p: 0, t: 0 });
 });
 
 test("a one-action proposal makes at most 12 D1 calls to propose and 12 to apply", async () => {

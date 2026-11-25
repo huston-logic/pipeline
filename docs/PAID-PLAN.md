@@ -400,3 +400,22 @@ The sender (`runCampaigns`, `src/campaigns/send.ts`) runs on its own Cron Trigge
   Worker's CPU for a send is not measured (`scripts/cpu-check.ts` does not cover it); the HTTPS request to Resend is
   network time, not CPU. Whoever deploys the first copy with campaigns on should read the invocation's CPU in the
   Cloudflare dashboard once.
+
+## Run 10: task plans (2026-11-25)
+
+Method: `src/services/proposals-d1.test.ts` on the fixture seed with `tests/helpers/counting-db.ts` (each
+`first`/`all`/`run`/`raw` and each `batch()` is one call, as in Run 6; statements are the sum of every batch's size plus
+one per other call). The list is `add_project` (with a start date) and one `add_task_plan` of 100 tasks, some three
+levels deep and half with `dueDays` (decision 0058). The same test checks that apply writes the 101 rows as one bulk
+change and one undo removes them all.
+
+| step | D1 calls | statements |
+| --- | --- | --- |
+| `propose_changes`, project and 100-task plan | 7 | 25 |
+| `apply_changes` of that list | 6 | 18 |
+
+- **Workers Paid (1,000 queries per invocation, the hosting plan, decision 0054):** far inside it, counted per call or
+  per statement.
+- **Free plan (50), for reference:** inside it counted per call (7 and 6). Counted per statement it is 25 and 18, also
+  inside, though a plan this size is bulk (over 50 rows), so its rows go as JSON parameters, not one statement each.
+- Our own ceiling of 40 calls each way stays and the test asserts it.

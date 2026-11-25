@@ -182,6 +182,12 @@ test("apply equals running the actions one by one", async () => {
     ],
     [{ action: "add_project", deal: "dl_seed07", name: "Salon launch", moveOpenTasks: true }],
     [{ action: "update_project", project: "pj_seed01", status: "done", targetAt: "2026-12-04", archived: true }],
+    // Task plans (decision 0057): a plan on a project the list adds, and a plan under an existing task.
+    [
+      { action: "add_project", name: "Office move", startAt: "2026-12-07" },
+      { action: "add_task_plan", project: "@1", tasks: [{ title: "Pack", dueDays: 2 }, { title: "Boxes", under: 1 }, { title: "Truck", due: "2026-12-12" }] },
+    ],
+    [{ action: "add_task_plan", project: "pj_seed01", under: "tk_pj1", tasks: [{ title: "Measure" }, { title: "Photos", under: 1 }, { title: "Quote" }] }],
   ];
   for (const actions of scenarios) {
     const one = await setup();
@@ -192,7 +198,8 @@ test("apply equals running the actions one by one", async () => {
       db.exec(`UPDATE settings SET time_tracking = 1, projects = 1; ${WORK_TYPES_SQL}`);
       db.exec(
         "INSERT INTO projects (id, name, contact_id, status_key, created_at, updated_at) VALUES ('pj_seed01', 'Retrofit', 'ct_seed01', 'active', '2026-11-01T00:00:00.000Z', '2026-11-01T00:00:00.000Z'); " +
-          "INSERT INTO tasks (id, deal_id, contact_id, title, created_at, updated_at) VALUES ('tk_won1', 'dl_seed07', 'ct_seed07', 'Hang the sign', '2026-11-01T00:00:00.000Z', '2026-11-01T00:00:00.000Z')",
+          "INSERT INTO tasks (id, deal_id, contact_id, title, created_at, updated_at) VALUES ('tk_won1', 'dl_seed07', 'ct_seed07', 'Hang the sign', '2026-11-01T00:00:00.000Z', '2026-11-01T00:00:00.000Z'); " +
+          "INSERT INTO tasks (id, contact_id, project_id, position, title, created_at, updated_at) VALUES ('tk_pj1', 'ct_seed01', 'pj_seed01', 1, 'Order anchors', '2026-11-01T00:00:00.000Z', '2026-11-01T00:00:00.000Z')",
       );
       if (actions.some((action) => action.action === "stop_timer")) db.exec(RUNNING_ON_PAT);
     }

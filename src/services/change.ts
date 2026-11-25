@@ -68,6 +68,8 @@ export interface RowChange {
   id: string;
   before: Row | null;
   after: Row | null;
+  /** Rows of one list item share a group (a task plan's tasks), so a proposal's list can show them as one item. Never written. */
+  group?: string;
 }
 
 export interface ChangeResult {

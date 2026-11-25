@@ -68,3 +68,4 @@ Add a line here for every new decision (`npm run check:process` fails on a decis
 - [0055](0055-projects.md) Projects: delivery after the sale, kept apart from selling; a project is its own record, so a won deal stays won. (partly replaced by 0056)
 - [0056](0056-projects-shaped.md) Projects, shaped by the owner: statuses with open or closed kinds, custom fields and saved views on projects, internal projects with no person, and the Won flow into Start a project.
 - [0057](0057-subtasks.md) Sub-tasks on projects: a sub-task is an ordinary task with a parent and a position, completing a parent asks about its open sub-tasks, and the board shows three levels.
+- [0058](0058-task-plans.md) Task plans: `add_task_plan` adds a whole project's tasks as one flat list with `under` numbers, at most 100 tasks a proposal, `dueDays` from the project start, and the capture rulebook updated only when unchanged.
