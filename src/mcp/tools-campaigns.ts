@@ -5,7 +5,7 @@
 import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import { parseAudience, resolveAudience } from "../campaigns/audience.ts";
-import { addCampaignDraft, type CampaignDraftInput, loadCampaign, updateCampaignDraft } from "../campaigns/drafts.ts";
+import { addCampaignDraft, loadCampaign, updateCampaignDraft } from "../campaigns/drafts.ts";
 import type { CampaignRow, Db } from "../db/db.ts";
 import { settingsRow } from "../services/memo.ts";
 import { requireCampaigns } from "../services/settings.ts";
@@ -43,11 +43,6 @@ const draftFields = {
   suggestedSendAt: shortText("When you suggest it goes out, in the owner's timezone, in the future (YYYY-MM-DDTHH:mm). Only a suggestion: the owner picks the time."),
 };
 
-const toDraftInput = (args: Record<string, unknown>): CampaignDraftInput => {
-  const { recipients, ...rest } = args;
-  return { ...rest, ...(recipients === undefined ? {} : { recipients: recipients as CampaignDraftInput["recipients"] }) };
-};
-
 async function recipientCounts(db: Db, ids: string[]): Promise<Map<string, { recipients: Record<string, number>; skipped_by_reason: Record<string, number> }>> {
   const counts = new Map<string, { recipients: Record<string, number>; skipped_by_reason: Record<string, number> }>();
   if (ids.length === 0) return counts;
@@ -61,7 +56,7 @@ async function recipientCounts(db: Db, ids: string[]): Promise<Map<string, { rec
   for (const row of rows.results) {
     const entry = counts.get(row.campaign_id) ?? { recipients: {}, skipped_by_reason: {} };
     entry.recipients[row.status] = (entry.recipients[row.status] ?? 0) + row.n;
-    if (row.skip_reason !== null) entry.skipped_by_reason[row.skip_reason] = row.n;
+    if (row.skip_reason !== null) entry.skipped_by_reason[row.skip_reason] = (entry.skipped_by_reason[row.skip_reason] ?? 0) + row.n;
     counts.set(row.campaign_id, entry);
   }
   return counts;
@@ -208,7 +203,7 @@ export function registerCampaignTools(server: McpServer, deps: ToolDeps): void {
         suggestedSendAt: draftFields.suggestedSendAt.optional(),
       }),
       async run(args, deps) {
-        const result = await addCampaignDraft(aiCtx(deps, "add_campaign_draft"), toDraftInput(args));
+        const result = await addCampaignDraft(aiCtx(deps, "add_campaign_draft"), args);
         return toolResult(result.summary, { changeId: result.changeId, campaignId: result.campaignId, review_url: reviewUrl(deps, result.campaignId) });
       },
     },
@@ -237,7 +232,7 @@ export function registerCampaignTools(server: McpServer, deps: ToolDeps): void {
         suggestedSendAt: orNull(draftFields.suggestedSendAt).optional(),
       }),
       async run({ id, ...patch }, deps) {
-        const result = await updateCampaignDraft(aiCtx(deps, "update_campaign_draft"), id, toDraftInput(patch));
+        const result = await updateCampaignDraft(aiCtx(deps, "update_campaign_draft"), id, patch);
         return toolResult(result.summary, { changeId: result.changeId, campaignId: result.campaignId, review_url: reviewUrl(deps, result.campaignId) });
       },
     },

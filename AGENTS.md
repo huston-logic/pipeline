@@ -108,7 +108,7 @@ hooks and the commands are in `CLAUDE.md`.
 - **MCP** (decision 0004): `src/index.ts` loads `src/mcp/handler.ts` with a dynamic `import()` (so the board and its
   unit tests never load the SDK); the handler serves an MCP SDK v2 server (`@modelcontextprotocol/server`) built
   fresh per request by `createMcpServer` (`server.ts`); stateless, no Durable Object. Tools live in `tools-read.ts`,
-  `tools-write.ts` and `tools-import.ts` and are registered through `tool.ts`, which parses arguments with the tool's zod schema and
+  `tools-write.ts`, `tools-import.ts`, `tools-views.ts`, `tools-proposals.ts`, `tools-time.ts` and `tools-campaigns.ts` and are registered through `tool.ts`, which parses arguments with the tool's zod schema and
   answers through `format.ts` (`toolResult`: a one-line headline, a blank line, pretty JSON; `toolError`). Tools call
   the services only. Headlines, change summaries and error messages never contain outside text: services name records
   through `src/services/labels.ts` (outside values become ids such as "contact ct_…"), and read items list their

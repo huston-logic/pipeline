@@ -105,6 +105,15 @@ test("button uses the accent, with a text line; none when the step has none", ()
   assert.ok(!none.text.includes("Book a call"));
 });
 
+test("a button whose address isn't https is left out, even written straight into the row", () => {
+  for (const button_url of ["HTTPS://example.com/x", "javascript:alert(1)", "https://user:pw@example.com/"]) {
+    const out = renderEmail(step({ button_url }), { firstName: null, token: "t" }, frame);
+    assert.ok(!out.html.includes("Book a call"), button_url);
+    assert.ok(!out.html.includes(button_url), button_url);
+    assert.ok(!out.text.includes("Book a call"), button_url);
+  }
+});
+
 test("text part: paragraphs, text (url) and bare urls", () => {
   const out = renderEmail(step(), { firstName: "Ana", token: "t" }, frame);
   assert.ok(out.text.includes("Hi Ana,\nSee https://example.com/a.\n\nSecond Ana page (https://example.com/b?x=1&y=2)\n\n"));

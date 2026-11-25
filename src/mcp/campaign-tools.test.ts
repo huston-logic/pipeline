@@ -36,6 +36,7 @@ test("no campaign tool is named for sending, scheduling, approving or stopping",
   const { tools } = await c.listTools();
   const names = tools.map((t) => t.name).filter((name) => name.includes("campaign"));
   assert.deepEqual(names.sort(), ["add_campaign_draft", "get_campaign", "list_campaigns", "preview_campaign_recipients", "update_campaign_draft"]);
+  for (const name of names) assert.doesNotMatch(name, /send|schedule|approve|unsubscribe|pause|resume|cancel/, name);
   for (const tool of tools) assert.doesNotMatch(tool.name, /send|schedule|approve|unsubscribe|pause_campaign|cancel/, tool.name);
   assert.deepEqual(
     tools.filter((t) => t.annotations?.readOnlyHint === true && t.name.includes("campaign")).map((t) => t.name).sort(),
@@ -114,6 +115,9 @@ test("get_campaign and list_campaigns give the draft with local times and no add
   const items = (listed.data as { campaigns: { id: string; review_url: string }[] }).campaigns;
   assert.deepEqual(items.map((i) => i.id), [added.campaignId]);
   assert.equal((await ok(c, "list_campaigns", { status: "sent" })).headline, "No campaigns.");
+  const drafts = await ok(c, "list_campaigns", { status: "draft" });
+  assert.equal(drafts.headline, "1 campaign.");
+  assert.deepEqual((drafts.data as { campaigns: { id: string }[] }).campaigns.map((i) => i.id), [added.campaignId]);
 
   // An approved campaign shows counts by recipient status and skip reason.
   db.exec(
@@ -121,15 +125,18 @@ test("get_campaign and list_campaigns give the draft with local times and no add
      INSERT INTO campaign_recipients (id, campaign_id, step_id, contact_id, email, first_name, status, skip_reason, unsub_token)
        SELECT 'rc_1', '${added.campaignId}', s.id, 'ct_p1', 'ana@example.com', 'Ana', 'queued', NULL, 'tok1' FROM campaign_steps s WHERE s.campaign_id = '${added.campaignId}';
      INSERT INTO campaign_recipients (id, campaign_id, step_id, contact_id, email, first_name, status, skip_reason, unsub_token)
-       SELECT 'rc_2', '${added.campaignId}', s.id, 'ct_p3', '', NULL, 'skipped', 'no_email', NULL FROM campaign_steps s WHERE s.campaign_id = '${added.campaignId}';`,
+       SELECT 'rc_2', '${added.campaignId}', s.id, 'ct_p3', '', NULL, 'skipped', 'no_email', NULL FROM campaign_steps s WHERE s.campaign_id = '${added.campaignId}';
+     INSERT INTO campaign_recipients (id, campaign_id, step_id, contact_id, email, first_name, status, skip_reason, unsub_token)
+       SELECT 'rc_3', '${added.campaignId}', s.id, 'ct_p2', '', NULL, 'cancelled', 'no_email', NULL FROM campaign_steps s WHERE s.campaign_id = '${added.campaignId}';`,
   );
   const sending = await ok(c, "get_campaign", { id: added.campaignId });
   const counts = sending.data as { recipients: Record<string, number>; skipped_by_reason: Record<string, number> };
-  assert.deepEqual(counts.recipients, { queued: 1, skipped: 1 });
-  assert.deepEqual(counts.skipped_by_reason, { no_email: 1 });
+  assert.deepEqual(counts.recipients, { queued: 1, skipped: 1, cancelled: 1 });
+  // The same reason under two statuses adds up.
+  assert.deepEqual(counts.skipped_by_reason, { no_email: 2 });
   assert.doesNotMatch(sending.text, /tok1|@example\.com/);
   const row = ((await ok(c, "list_campaigns")).data as { campaigns: { recipients: Record<string, number>; approved_at_local: string }[] }).campaigns[0];
-  assert.deepEqual(row?.recipients, { queued: 1, skipped: 1 });
+  assert.deepEqual(row?.recipients, { queued: 1, skipped: 1, cancelled: 1 });
   assert.equal(row?.approved_at_local, "Thu Nov 19, 9:00 AM");
   assert.match(await fails(c, "get_campaign", { id: "cp_zzzzzzzzzzzz" }), /There's no campaign/);
 });

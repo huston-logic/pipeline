@@ -45,6 +45,22 @@ test("every skip reason, with the order archived, no_email, bad_email, then supp
   assert.equal(got.skipped.find((m) => m.contactId === "ct_g1")?.email, "gus@example.com");
 });
 
+test("an unsubscribe or complaint follows the person to a new address; a bounce stays with the old one", async () => {
+  const db = await withPeople([
+    person("ct_u1", "Una Example", "new-una@example.com"),
+    person("ct_c1", "Cal Example", "new-cal@example.com"),
+    person("ct_b1", "Bea Example", "new-bea@example.com"),
+    `INSERT INTO email_suppressions (id, email, reason, contact_id) VALUES
+       ('su_u', 'old-una@example.com', 'unsubscribed', 'ct_u1'),
+       ('su_c', 'old-cal@example.com', 'complained', 'ct_c1'),
+       ('su_b', 'old-bea@example.com', 'bounced', 'ct_b1');`,
+    `INSERT INTO email_suppressions (id, email, reason, contact_id, cleared_at) VALUES ('su_x', 'x@example.com', 'unsubscribed', 'ct_b1', '2026-11-01T00:00:00.000Z');`,
+  ]);
+  const got = await resolveAudience(db, NOW, partners);
+  assert.deepEqual(got.sendable.map((m) => m.contactId), ["ct_b1"]);
+  assert.deepEqual(got.skipped.map((m) => `${m.contactId}:${m.reason}`), ["ct_c1:complained", "ct_u1:unsubscribed"]);
+});
+
 test("two sendable people with the same cleaned address are refused", async () => {
   const db = await withPeople([
     person("ct_a1", "Ann Example", "same@example.com"),

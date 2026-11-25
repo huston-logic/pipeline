@@ -4,7 +4,7 @@ import { html } from "../board/html.ts";
 import type { Html } from "../board/html.ts";
 import type { CampaignStepRow } from "../db/db.ts";
 import { isUsableAccent } from "../services/accent.ts";
-import { parseBody } from "./body.ts";
+import { isHttpsUrl, parseBody } from "./body.ts";
 import type { Inline } from "./body.ts";
 
 /** Mirrors of `--ink`, `--ink-2`, `--line` and `--silver` in public/board.css (a test keeps them in step). */
@@ -32,7 +32,8 @@ export function renderEmail(
   const unsubscribe = `${frame.baseUrl.replace(/\/$/, "")}/unsubscribe/${r.token}`;
   const accent = isUsableAccent(frame.accent) ? frame.accent : DEFAULT_ACCENT;
   const blocks = parseBody(step.body);
-  const hasButton = step.button_label !== null && step.button_url !== null;
+  // The database only checks the start of the address, case-insensitively; the email is the last place to be sure.
+  const hasButton = step.button_label !== null && step.button_url !== null && isHttpsUrl(step.button_url);
 
   const inlineHtml = (part: Inline): Html =>
     part.kind === "text"
