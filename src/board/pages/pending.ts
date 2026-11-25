@@ -10,7 +10,7 @@ import type { PageContext } from "../context.ts";
 import { type FormContext, postForm } from "../forms.ts";
 import { type Html, html } from "../html.ts";
 import { renderPage } from "../layout.ts";
-import { empty, when } from "../parts.ts";
+import { count, empty, when } from "../parts.ts";
 
 export const PENDING_PATH = "/pending";
 export const pendingAction = (id: string, verb: "approve" | "discard") => `${PENDING_PATH}/${encodeURIComponent(id)}/${verb}`;
@@ -18,16 +18,38 @@ export const APPROVAL_PATH = "/pending/approval";
 
 const timeOnly = (iso: string, tz: string) => formatLocal(iso, tz).split(", ").at(-1) ?? iso;
 
-function proposalCard(row: ProposalRow, form: FormContext, tz: string): Html {
-  const at = timeOnly(row.created_at, tz);
+/** How many actions the list holds, from the stored JSON array; 0 when it can't be read. */
+function actionCount(row: ProposalRow): number {
+  try {
+    const actions: unknown = JSON.parse(row.actions);
+    return Array.isArray(actions) ? actions.length : 0;
+  } catch {
+    return 0;
+  }
+}
+
+/** "3:40 PM, 4 changes" for each list, with " (2)" and so on added when two lists would read the same. */
+function listNames(rows: ProposalRow[], tz: string): string[] {
+  const seen = new Map<string, number>();
+  return rows.map((row) => {
+    const base = `${timeOnly(row.created_at, tz)}, ${count(actionCount(row), "change")}`;
+    const n = (seen.get(base) ?? 0) + 1;
+    seen.set(base, n);
+    return n === 1 ? base : `${base} (${n})`;
+  });
+}
+
+function proposalCard(row: ProposalRow, name: string, form: FormContext, tz: string): Html {
   const lines = row.text.split("\n").filter((line) => line.trim() !== "");
-  return html`<li class="card">
+  return html`<li class="card" aria-labelledby="list-${row.id}">
+<h2 id="list-${row.id}">List from ${name}</h2>
 <p class="panel-note">Made ${when(row.created_at, formatLocal(row.created_at, tz))}. Expires ${when(row.expires_at, formatLocal(row.expires_at, tz))}.</p>
 <ul class="rows">${lines.map((line) => html`<li>${line}</li>`)}</ul>
 <div class="confirm-actions">
-${postForm("row-form", pendingAction(row.id, "approve"), form, html`<button class="button" type="submit">Approve<span class="visually-hidden"> the list from ${at}</span></button>`)}
-${postForm("row-form", pendingAction(row.id, "discard"), form, html`<button class="button button-quiet" type="submit">Discard<span class="visually-hidden"> the list from ${at}</span></button>`)}
+${postForm("row-form", pendingAction(row.id, "approve"), form, html`<button class="button" type="submit">Approve<span class="visually-hidden"> the list from ${name}</span></button>`)}
+${postForm("row-form", pendingAction(row.id, "discard"), form, html`<button class="button button-quiet" type="submit" aria-describedby="discard-${row.id}">Discard<span class="visually-hidden"> the list from ${name}</span></button>`)}
 </div>
+<p class="field-hint" id="discard-${row.id}">Discard throws this list away. It can't be undone, but your AI app can suggest it again.</p>
 </li>`;
 }
 
@@ -39,6 +61,7 @@ export async function pendingPage(ctx: PageContext): Promise<string> {
   const [rows, tz, settings] = await Promise.all([listOpenProposals(ctx.db, ctx.now), ownerTimezone(ctx.db), getSettings(ctx.db)]);
   const form: FormContext = { csrf: ctx.csrf, here: PENDING_PATH };
   const board = settings.ai_approval === "board";
+  const names = listNames(rows, tz);
   return renderPage({
     title: "Pending changes",
     description: "Changes your AI app proposed that wait for your yes: approve or discard each list, and choose where AI changes are approved.",
@@ -46,9 +69,8 @@ export async function pendingPage(ctx: PageContext): Promise<string> {
     frame: ctx,
     body: html`<h1>Pending changes</h1>
 <p class="lede">Lists of changes from your AI app. Nothing in a list is saved until you approve it.</p>
-${rows.length === 0 ? empty("Nothing is waiting for you.") : html`<ul class="cards">${rows.map((row) => proposalCard(row, form, tz))}</ul>`}
-<section class="section" aria-labelledby="approval-heading">
-<h2 id="approval-heading">Where AI changes are approved</h2>
+${rows.length === 0 ? empty("Nothing is waiting for you.") : html`<ul class="cards">${rows.map((row, i) => proposalCard(row, names[i] ?? "", form, tz))}</ul>`}
+<section class="section">
 ${postForm(
   "approval-form",
   APPROVAL_PATH,

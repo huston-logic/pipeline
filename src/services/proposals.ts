@@ -82,6 +82,11 @@ export async function listOpenProposals(db: Db, now: Date): Promise<ProposalRow[
   return results;
 }
 
+/** How many lists wait for the owner (Today's notice). */
+export async function countOpenProposals(db: Db, now: Date): Promise<number> {
+  return (await db.prepare("SELECT COUNT(*) AS n FROM proposals WHERE status = 'open' AND expires_at > ?").bind(now.toISOString()).first<number>("n")) ?? 0;
+}
+
 /** The owner turns a waiting list down: it is dropped (scratch space, not audited). Anything not open is refused plainly. */
 export async function discardProposal(db: Db, id: string, now: Date): Promise<void> {
   const row = isProposalId(id) ? await getProposal(db, id) : null;

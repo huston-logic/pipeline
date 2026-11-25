@@ -19,7 +19,8 @@ async function approve(ctx: ActionContext, id: string): Promise<ActionResult> {
   if (!isProposalId(id)) return notFound(ctx);
   try {
     const result = await applyChanges(asOwner(ctx, "apply_changes"), id, { extraOwnerEmails: parseOwnerEmailsVar(ctx.env.OWNER_EMAILS) });
-    return redirect(withChange(PENDING_PATH, result.changeId));
+    // An already-applied list answers its first change: nothing was written now, so no banner for it.
+    return redirect(result.applied === 0 ? PENDING_PATH : withChange(PENDING_PATH, result.changeId));
   } catch (error) {
     return refused(ctx, "The list wasn't approved", error);
   }

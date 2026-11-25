@@ -32,8 +32,41 @@ test("the page lists only open, unexpired lists, with named buttons", async () =
   assert.match(body, new RegExp(`action="/pending/${open}/discard"`));
   assert.doesNotMatch(body, new RegExp(dropped));
   assert.doesNotMatch(body, new RegExp(old));
-  assert.match(body, /Approve<span class="visually-hidden"> the list from \d{1,2}:\d{2} [AP]M<\/span>/);
+  assert.match(body, /<h2 id="list-pr_[a-z0-9]+">List from \d{1,2}:\d{2} [AP]M, 1 change<\/h2>/);
+  assert.match(body, /Approve<span class="visually-hidden"> the list from \d{1,2}:\d{2} [AP]M, 1 change<\/span>/);
+  assert.match(body, /aria-describedby="discard-pr_[a-z0-9]+">Discard/);
+  assert.match(body, /Discard throws this list away\. It can't be undone, but your AI app can suggest it again\./);
   assert.match(body, /Pat/);
+});
+
+test("two lists made in the same minute get different button names", async () => {
+  const db = await seededDb();
+  await propose(db, TASK);
+  await propose(db, TASK);
+  const { body } = await load(devEnv(db), "/pending");
+  assert.match(body, /Approve<span class="visually-hidden"> the list from [^<]*, 1 change<\/span>/);
+  assert.match(body, /Approve<span class="visually-hidden"> the list from [^<]*, 1 change \(2\)<\/span>/);
+});
+
+test("an expired list can't be approved or discarded, and an applied one's second Approve shows no old banner", async () => {
+  const db = await seededDb();
+  const old = await propose(db, TASK, new Date(Date.now() - 3 * 60 * 60 * 1000));
+  const before = await auditCount(db);
+  const approved = await post(devEnv(db), `/pending/${old}/approve`, {});
+  assert.equal(approved.res.status, 422);
+  assert.match(approved.body, /expired/);
+  assert.equal(await auditCount(db), before);
+  const discarded = await post(devEnv(db), `/pending/${old}/discard`, {});
+  assert.equal(discarded.res.status, 422);
+  assert.equal(await status(db, old), "open");
+
+  const id = await propose(db, TASK);
+  await post(devEnv(db), `/pending/${id}/approve`, {});
+  const written = await auditCount(db);
+  const again = await post(devEnv(db), `/pending/${id}/approve`, {});
+  assert.equal(again.res.status, 303);
+  assert.equal(again.location, "/pending");
+  assert.equal(await auditCount(db), written);
 });
 
 test("with nothing waiting the page says so, and shows the approval setting", async () => {
@@ -111,6 +144,6 @@ test("Today shows the notice only while a list waits, and More lists Pending cha
   assert.doesNotMatch((await load(env, "/")).body, /from your AI app/);
   await propose(db, TASK);
   const today = (await load(env, "/")).body;
-  assert.match(today, /<a href="\/pending">1 change from your AI app is waiting\. Review it\.<\/a>/);
+  assert.match(today, /<a class="button button-quiet" href="\/pending">1 change from your AI app is waiting\. Review it\.<\/a>/);
   assert.match((await load(env, "/more")).body, /href="\/pending"[^]*Pending changes/);
 });
