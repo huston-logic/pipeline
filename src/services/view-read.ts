@@ -248,12 +248,15 @@ export async function dealsInView(
  */
 export async function projectsInView(db: Db, filters: ViewFilters, sort: ViewSort, limit?: number): Promise<ViewList<ProjectItem>> {
   const key: ProjectSort = Object.hasOwn(VIEW_SORTS.projects, sort.key) ? (sort.key as ProjectsSort) : "target";
+  // A stored person who is gone or archived since is left out of the filter rather than failing the page.
+  const person =
+    filters.contact === undefined ? null : await db.prepare("SELECT id FROM contacts WHERE id = ? AND archived = 0").bind(filters.contact).first<string>("id");
   const list = await listProjects(db, {
     sort: key,
     dir: sort.dir,
     limit: limitOf(limit),
     ...(filters.status === undefined ? {} : { status: filters.status }),
-    ...(filters.contact === undefined ? {} : { contact: filters.contact }),
+    ...(person === null ? {} : { contact: person }),
     ...(filters.archived === true ? { archivedOnly: true } : {}),
     ...(filters.fields === undefined ? {} : { fields: filters.fields }),
   });

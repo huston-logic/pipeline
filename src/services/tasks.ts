@@ -8,6 +8,7 @@ import { UserError } from "./errors.ts";
 import { clean, whenOrNull } from "./input.ts";
 import { contactName, dealLabel, projectLabel } from "./labels.ts";
 import { findSubject, nextPosition, ownerTimezone, projectById, type Source, taskWithLinks } from "./lookup.ts";
+import { settingsRow } from "./memo.ts";
 import { projectSubject } from "./project-links.ts";
 import { descendants, parentLinks } from "./subtasks.ts";
 
@@ -108,7 +109,9 @@ export async function completeTask(
     const tz = await ownerTimezone(ctx);
     throw new UserError(`${capitalize(taskName(before))} is already done (${formatLocal(before.done_at, tz)}). Nothing to do.`);
   }
-  const open = (await descendants(ctx, before.id)).filter((kid) => kid.done_at === null);
+  // Sub-tasks belong to projects: while they are off a task has none to ask about.
+  const kids = (await settingsRow(ctx)).projects === 1 ? await descendants(ctx, before.id) : [];
+  const open = kids.filter((kid) => kid.done_at === null);
   if (open.length > 0 && options.subTasks === undefined) {
     throw new UserError(
       `${capitalize(described)} has ${open.length} open ${open.length === 1 ? "sub-task" : "sub-tasks"}. Send subTasks "complete" to finish them too, or "leave" to keep them open.`,
