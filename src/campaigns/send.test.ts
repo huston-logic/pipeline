@@ -462,3 +462,67 @@ test("nothing in the log or the database holds the API key or a response body", 
   assert.equal(dump.includes("re_test_key"), false);
   assert.equal(dump.includes("secret detail"), false);
 });
+
+test("a refusal of a RESEND never re-queues: 503 then 401 makes the rows uncertain, pauses, and sends nothing new", async (t) => {
+  const w = await world(t, 3);
+  w.answer.fn = () => new Response("", { status: 503 });
+  await runCampaigns(w.env, NOW);
+  w.answer.fn = () => new Response("{}", { status: 401 });
+  assert.deepEqual(await runCampaigns(w.env, at(15 * MINUTE)), { resent: 1, uncertain: 1, paused: 1 });
+  assert.deepEqual(await statusCounts(w.db, w.id), { uncertain: 3 });
+  assert.equal((await batchesOf(w.db, w.id))[0]?.status, "uncertain");
+  const campaign = await campaignOf(w.db, w.id);
+  assert.equal(campaign?.status, "paused");
+  assert.match(campaign?.send_error ?? "", /\(status 401\)\. It may have been sent/);
+  w.db.exec("UPDATE campaigns SET status = 'sending', send_error = NULL, version = version + 1");
+  w.answer.fn = okAnswer;
+  await runCampaigns(w.env, at(30 * MINUTE));
+  assert.equal(w.sent.length, 2);
+  assert.equal(new Set(w.sent.map((s) => s.headers["Idempotency-Key"])).size, 1);
+  assert.equal(await count(w.db, "SELECT id FROM campaign_batches"), 1);
+  assert.equal(await activitiesOf(w.db, w.id), 0);
+});
+
+test("503 then 429 on the resend stays in flight, and after 20 hours becomes uncertain", async (t) => {
+  const w = await world(t, 3);
+  w.answer.fn = () => new Response("", { status: 503 });
+  await runCampaigns(w.env, NOW);
+  w.answer.fn = () => new Response("{}", { status: 429 });
+  assert.deepEqual(await runCampaigns(w.env, at(15 * MINUTE)), { resent: 1, retry_later: 1 });
+  const [batch] = await batchesOf(w.db, w.id);
+  assert.deepEqual([batch?.status, batch?.last_status, batch?.attempts], ["in_flight", "429", 2]);
+  assert.deepEqual(await statusCounts(w.db, w.id), { sending: 3 });
+  assert.equal((await campaignOf(w.db, w.id))?.status, "sending");
+  assert.deepEqual(await runCampaigns(w.env, at(21 * 3_600_000)), { expired: 1, uncertain: 1 });
+  assert.deepEqual(await statusCounts(w.db, w.id), { uncertain: 3 });
+  assert.equal(await count(w.db, "SELECT id FROM campaign_batches"), 1);
+});
+
+test("the first attempt's 422 still re-queues and pauses", async (t) => {
+  const w = await world(t, 2);
+  w.answer.fn = () => new Response("{}", { status: 422 });
+  await runCampaigns(w.env, NOW);
+  assert.deepEqual(await statusCounts(w.db, w.id), { queued: 2 });
+  assert.equal((await campaignOf(w.db, w.id))?.status, "paused");
+});
+
+test("two concurrent runs never claim more than the day's limit", async (t) => {
+  const w = await world(t, 20, { limit: 5 });
+  await Promise.all([runCampaigns(w.env, NOW), runCampaigns(w.env, NOW), runCampaigns(w.env, NOW)]);
+  assert.equal(await count(w.db, "SELECT id FROM campaign_recipients WHERE claimed_at IS NOT NULL"), 5);
+  assert.equal(w.sent.reduce((n, s) => n + s.emails.length, 0), 5);
+  assert.equal(await count(w.db, "SELECT id FROM campaign_batches WHERE status = 'in_flight'"), 0);
+  assert.equal(await count(w.db, "SELECT id FROM campaign_batches"), 1);
+});
+
+test("a batch in flight is resent even when 51 other campaigns are sending", async (t) => {
+  const w = await world(t, 3);
+  w.answer.fn = () => new Response("", { status: 503 });
+  await runCampaigns(w.env, NOW);
+  w.db.exec(`WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 51)
+    INSERT INTO campaigns (id, name, status, audience, approved_at, base_url)
+    SELECT 'cp_x' || i, 'Other ' || i, 'sending', '{"kind":"people","people":[]}', '2026-01-01T00:00:00.000Z', '${BASE_URL}' FROM n;`);
+  w.answer.fn = okAnswer;
+  assert.deepEqual(await runCampaigns(w.env, at(15 * MINUTE)), { resent: 1, sent: 3 });
+  assert.equal((await batchesOf(w.db, w.id))[0]?.status, "done");
+});

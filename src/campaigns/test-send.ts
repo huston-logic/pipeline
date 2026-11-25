@@ -6,19 +6,13 @@ import { DEFAULT_NAME } from "../board/layout.ts";
 import type { CampaignRow, CampaignStepRow, Db, SettingsRow } from "../db/db.ts";
 import { newId } from "../ids.ts";
 import { type CampaignEnv, replyTo, sendingBlocker } from "./readiness.ts";
+import { utcDay } from "./send.ts";
 import { renderEmail } from "./render.ts";
 import { type ResendEmail, type SendOutcome, sendOne } from "./resend.ts";
 
-const DAY_MS = 86_400_000;
 const MAX_TESTS_PER_DAY = 10;
 
 export type TestSendResult = { ok: true } | { ok: false; message: string };
-
-/** The UTC day `now` falls in (Resend counts UTC days), as the two ISO strings the counts compare to. */
-function utcDay(now: Date): [start: string, end: string] {
-  const start = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
-  return [new Date(start).toISOString(), new Date(start + DAY_MS).toISOString()];
-}
 
 async function usedToday(db: Db, now: Date): Promise<{ tests: number; claimed: number }> {
   const [start, end] = utcDay(now);

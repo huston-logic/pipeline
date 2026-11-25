@@ -378,12 +378,12 @@ The sender (`runCampaigns`, `src/campaigns/send.ts`) runs on its own Cron Trigge
 
 | run | D1 calls | statements |
 | --- | --- | --- |
-| idle (campaigns off, or nothing to send) | 1 | 6, all reads, in one batch |
-| 100 emails: read, claim, resolve | 3 | 6 + 7 + 8 |
-| a resend of a batch in flight, then a new batch of 100 | 4 | 6 + 8 + 7 + 8 (the test holds every run to 12) |
+| idle (campaigns off, or nothing to send) | 1 | 7, all reads, in one batch |
+| 100 emails: read, claim, resolve | 3 | 7 + 7 + 8 |
+| a resend of a batch in flight, then a new batch of 100 | 4 | 7 + 8 + 7 + 8 (the test holds every run to 12) |
 
-- The 3 calls of a 100-email run: one batch of 6 reads (settings, batches in flight and their rows, the campaigns that
-  could send, their emails, the day's room); the claim, one atomic batch of 7 (skip the archived and the suppressed,
+- The 3 calls of a 100-email run: one batch of 7 reads (settings, batches in flight and their rows, the campaigns that
+  could send, their emails, the in-flight batches' campaigns, the day's room); the claim, one atomic batch of 7 (skip the archived and the suppressed,
   make the batch, claim up to 100 rows, close the campaign if nothing is left, read the batch and its rows back); and the
   resolve, one audited change of 8 (the batch guard, 100 activity inserts as one bulk statement, the rows `sent` with
   their Resend ids as one JSON parameter, the batch `done`, the campaign closed if nothing is left, the audit row). A
