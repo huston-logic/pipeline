@@ -127,6 +127,15 @@ export async function openDealsOf(src: Source, contactId: string): Promise<DealR
   return withPlanned(src, "deals", found.results, isOpenDealOf(contactId));
 }
 
+const isOpenTaskOf = (dealId: string) => (row: Row) => row.deal_id === dealId && row.done_at === null;
+
+/** A deal's tasks that are not done (snoozed ones too), oldest first, as the plan leaves them. */
+export async function openTasksOfDeal(src: Source, dealId: string): Promise<TaskRow[]> {
+  const { db } = sourceOf(src);
+  const found = await db.prepare("SELECT * FROM tasks WHERE deal_id = ? AND done_at IS NULL ORDER BY created_at, id").bind(dealId).all<TaskRow>();
+  return withPlanned(src, "tasks", found.results, isOpenTaskOf(dealId));
+}
+
 /** The contact using this email (ignoring case, archived ones too), as the plan leaves them. */
 export async function contactByEmail(src: Source, email: string): Promise<ContactRow | null> {
   const { db } = sourceOf(src);
