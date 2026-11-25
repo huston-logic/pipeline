@@ -67,3 +67,4 @@ Add a line here for every new decision (`npm run check:process` fails on a decis
 - [0054](0054-managed-hosting.md) Managed hosting: every copy lives in Huston Logic's Cloudflare account, because owners want it handled and one paid account costs about the same however many copies it holds; offboarding moves a copy to the client's own accounts.
 - [0055](0055-projects.md) Projects: delivery after the sale, kept apart from selling; a project is its own record, so a won deal stays won. (partly replaced by 0056)
 - [0056](0056-projects-shaped.md) Projects, shaped by the owner: statuses with open or closed kinds, custom fields and saved views on projects, internal projects with no person, and the Won flow into Start a project.
+- [0057](0057-subtasks.md) Sub-tasks on projects: a sub-task is an ordinary task with a parent and a position, completing a parent asks about its open sub-tasks, and the board shows three levels.

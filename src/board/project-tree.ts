@@ -4,7 +4,7 @@ import type { TaskNode } from "../services/project-read.ts";
 import { formatLocal } from "../time.ts";
 import { type FormContext, postForm } from "./forms.ts";
 import { type Html, html } from "./html.ts";
-import { labelled, tag, when } from "./parts.ts";
+import { count, labelled, tag, when } from "./parts.ts";
 import { specFields } from "./record-fields.ts";
 import { taskActions, taskName, taskSpecs } from "./task-forms.ts";
 
@@ -35,8 +35,11 @@ function subTaskForm(node: TaskNode, form: FormContext): Html {
     "inline-form",
     subTaskAction(node.id),
     form,
-    html`${specFields(taskSpecs(), new Map(), `subtask-${node.id}`)}
-<button class="button button-small" type="submit">Add the sub-task${hiddenName(taskName(node))}</button>`,
+    html`<fieldset class="field field-when">
+<legend>Add a sub-task</legend>
+${specFields(taskSpecs(), new Map(), `subtask-${node.id}`)}
+<button class="button button-small" type="submit">Add the sub-task${hiddenName(taskName(node))}</button>
+</fieldset>`,
     { novalidate: true },
   );
 }
@@ -48,7 +51,7 @@ function changeControls(node: TaskNode, level: number, first: boolean, last: boo
   return html`<details class="task-more">
 <summary>Change${hiddenName(taskName(node))}</summary>
 ${move}
-${level < MAX_LEVEL ? html`<p class="field-hint">Add a sub-task</p>\n${add}` : ""}
+${add}
 </details>`;
 }
 
@@ -67,7 +70,7 @@ function row(node: TaskNode, level: number, first: boolean, last: boolean, now: 
         ? html`Due ${when(node.dueAt, node.dueAtLocal)}`
         : "No due date"
   }${total > 0 ? html` · ${node.subTasks.done} of ${total} done` : ""}</p>
-${level === MAX_LEVEL && deeper > 0 ? html`<p class="field-hint">Has ${deeper} more levels below. Your AI app can show them.</p>` : ""}
+${level === MAX_LEVEL && deeper > 0 ? html`<p class="field-hint">Has ${count(deeper, "more level")} below. Your AI app can show them.</p>` : ""}
 ${done ? "" : taskActions(node, form)}
 ${done ? "" : changeControls(node, level, first, last, form)}
 </div>

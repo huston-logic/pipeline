@@ -450,7 +450,7 @@ test("Done on a task with open sub-tasks asks first; Complete them too and Only 
   assert.equal(ask.res.status, 200);
   assert.equal(await auditCount(db), before);
   assert.match(ask.body, /<h1>Complete its sub-tasks too\?<\/h1>/);
-  assert.match(ask.body, /1 open sub-task/);
+  assert.match(ask.body, /Parent one has 1 open sub-task\./);
   assert.match(ask.body, /name="subtasks" value="complete"/);
   assert.match(ask.body, /Complete them too<\/button>/);
   assert.match(ask.body, /name="subtasks" value="leave"/);

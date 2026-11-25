@@ -304,7 +304,7 @@ export function registerReadTools(server: McpServer, deps: ToolDeps): void {
       title: "Get a project",
       kind: "read",
       description:
-        "One project: status, person, deal, dates, notes, open and done tasks, the latest notes and calls, and its time " +
+        "One project: status, person, deal, dates, notes, its tasks (taskTree: nested sub-tasks, up to 500 tasks), the latest notes and calls, and its time " +
         "totals. Refused while projects are off.",
       input: z.strictObject({ project: shortText("The project: its id (pj_...) or exact name.") }),
       async run({ project }, { db, now }) {

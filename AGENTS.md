@@ -278,7 +278,10 @@ hooks and the commands are in `CLAUDE.md`.
   (`listProjects`, `getProject`). `add_project` and `update_project` are in `RECORD_ACTIONS` (proposed, never small);
   `@n` may name a project an earlier `add_project` adds. After an applied Won, the answer asks the owner whether to start
   a project (`src/services/won-offers.ts`, `src/mcp/start-project.ts`), built from the rows written, never the action
-  text. A project never changes its deal.
+  text. A project never changes its deal. Sub-tasks (decision 0057, migration 0022): `tasks.parent_id` and `position`
+  (siblings: same project and parent); rules in `src/services/subtasks.ts` (`add_task` `parent` is a task id, never
+  `@n`; `complete_task` `subTasks`; `moveTask`, board only, no MCP tool). The board's tree shows three levels
+  (`src/board/project-tree.ts`) and reads at most 500 tasks.
 - **Sign-in:** `src/auth/dev.ts` until task 10. `AUTH_MODE=dev` works only with `ENVIRONMENT=development` on a
   loopback host; anywhere else every route answers 500. Without `AUTH_MODE`, `/mcp` answers 401.
 - **Types:** `src/env.ts` is the `Env` type the code uses. `src/worker-configuration.d.ts` holds the Workers runtime

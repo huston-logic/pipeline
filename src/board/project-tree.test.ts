@@ -49,6 +49,7 @@ test("Add a sub-task is offered under levels 1 and 2 only, and calls add_task wi
   assert.match(body, new RegExp(`action="/tasks/${one}/subtasks"`));
   assert.match(body, new RegExp(`action="/tasks/${two}/subtasks"`));
   assert.doesNotMatch(body, new RegExp(`/tasks/${three}/subtasks`));
+  assert.match(body, /<fieldset class="field field-when">\s*<legend>Add a sub-task<\/legend>/);
   const added = await post(devEnv(db), `/tasks/${two}/subtasks`, { title: "Another", return_to: PAGE });
   assert.equal(added.res.status, 303);
   assert.match(added.location, /^\/projects\/pj_retro\?change=chg_[a-z0-9]{12}$/);
@@ -113,6 +114,12 @@ test("a third-level task with tasks below says how many levels it hides", async 
   const { body } = await load(devEnv(db), PAGE);
   assert.match(body, /Has 2 more levels below\. Your AI app can show them\./);
   assert.doesNotMatch(body, />L4</);
+  const single = await projectDb();
+  const s1 = await add(single, "S1");
+  const s2 = await add(single, "S2", s1);
+  const s3 = await add(single, "S3", s2);
+  await add(single, "S4", s3);
+  assert.match((await load(devEnv(single), PAGE)).body, /Has 1 more level below\./);
   const flat = await projectDb();
   await add(flat, "Only");
   assert.doesNotMatch((await load(devEnv(flat), PAGE)).body, /more levels below/);
