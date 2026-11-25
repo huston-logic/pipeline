@@ -41,6 +41,10 @@ export interface DevSeed {
   workTypes: Row[];
   clientRates: Row[];
   timeEntries: Row[];
+  /** Projects (decision 0055): two, a note on the first and two finished time entries on it. Their tasks are in `tasks`. */
+  projects: Row[];
+  projectActivities: Row[];
+  projectTimeEntries: Row[];
   /** Campaigns (decision 0053): a draft to Partners, a sent one with every kind of result, a draft to people picked by hand. */
   campaigns: Row[];
   campaignSteps: Row[];
@@ -495,6 +499,17 @@ export function devSeed(now: Date, tz: string): DevSeed {
     // Standalone to-dos (decision 0046): on no person or deal, one with a due date and one without.
     task(14, {}, "Renew the van insurance", day(3, "09:00"), day(-1, "08:30"), { contact_id: null }),
     task(15, {}, "Order business cards", null, day(-2, "13:45"), { contact_id: null }),
+    // Projects (decision 0055): the won storage building B deal's open work moved onto its project, so the tasks sit on the
+    // person (deal_id null) and carry the project. A done task and one for the project that is on hold.
+    task(16, { contact: 7 }, "Order the anchor bolts for building B", day(3, "09:00"), day(-4, "10:00"), { project_id: "pj_seed01" }),
+    task(17, { contact: 7 }, "Book the city inspection for building B", day(10, "09:00"), day(-4, "10:05"), { project_id: "pj_seed01" }),
+    task(18, { contact: 7 }, "Confirm the crew start date with Luis", day(-3, "09:00"), day(-4, "10:10"), {
+      project_id: "pj_seed01",
+      done_at: day(-3, "11:00"),
+      version: 2,
+      updated_at: day(-3, "11:00"),
+    }),
+    task(19, { contact: 3 }, "Ask the co-op board when the balcony work can resume", day(14, "09:00"), day(-5, "09:00"), { project_id: "pj_seed02" }),
   ];
 
   const rules: Row[] = [
@@ -944,6 +959,73 @@ export function devSeed(now: Date, tz: string): DevSeed {
     updated_at: fixedEnd,
   });
 
+  // Projects (decision 0055). pj_seed01 started from the won storage building B deal (Luis) and is Active, with a note and
+  // two finished time entries (one billable); pj_seed02 was made by hand for Priya and is On hold. Its time entries and note
+  // are kept apart from the lists above, whose counts the time pages' and the lists' tests rely on.
+  const project = (n: number, name: string, contact: string, deal: string | null, status: string, startAt: string | null, targetAt: string | null, created: string, notes: string | null): Row => ({
+    id: `pj_seed${n2(n)}`,
+    name,
+    contact_id: contact,
+    deal_id: deal,
+    status_key: status,
+    start_at: startAt,
+    target_at: targetAt,
+    notes,
+    archived: 0,
+    untrusted_fields: "[]",
+    version: 1,
+    created_at: created,
+    updated_at: created,
+  });
+  const projects: Row[] = [
+    project(1, "Storage building B retrofit", "ct_seed07", "dl_seed07", "active", day(-4, "00:00"), day(42, "00:00"), day(-4, "10:00"), "Permit is approved. Crew starts after the bolts arrive."),
+    project(2, "Cedar Row balcony repair", "ct_seed03", null, "on_hold", day(-5, "00:00"), day(60, "00:00"), day(-5, "09:00"), "Waiting on the co-op board's budget vote."),
+  ];
+  const projectActivities: Row[] = [
+    {
+      id: "ac_seedpj01",
+      deal_id: null,
+      contact_id: "ct_seed07",
+      type: "note",
+      summary: "Walked the building B plan with Luis; the anchor bolts are the long-lead item.",
+      untrusted_text: null,
+      data: null,
+      occurred_at: day(-3, "13:00"),
+      actor: "owner",
+      version: 1,
+      created_at: day(-3, "13:00"),
+      project_id: "pj_seed01",
+    },
+  ];
+  const projectTime = (n: number, offset: number, from: string, minutes: number, billable: boolean, notes: string): Row => {
+    const started = day(offset, from);
+    const ended = new Date(new Date(started).getTime() + minutes * 60_000).toISOString();
+    return {
+      id: `te_seed${n2(n)}`,
+      contact_id: "ct_seed07",
+      deal_id: "dl_seed07",
+      task_id: null,
+      project_id: "pj_seed01",
+      started_at: started,
+      ended_at: ended,
+      minutes,
+      work_type_id: billable ? "wt_seed01" : "wt_seed02",
+      billable: billable ? 1 : 0,
+      rate: billable ? 95 : null,
+      notes,
+      activity_id: null,
+      archived: 0,
+      untrusted_fields: "[]",
+      version: 1,
+      created_at: ended,
+      updated_at: ended,
+    };
+  };
+  const projectTimeEntries: Row[] = [
+    projectTime(11, -3, "10:00", 120, true, "Marked up the building B bolt layout."),
+    projectTime(12, -2, "15:00", 30, false, "Called the city about the inspection."),
+  ];
+
   // Campaigns (decision 0053). cp_seed01 is a draft to Partners; cp_seed02 went out a week ago and shows delivered emails, a
   // bounce and an unsubscribe (each with its block) and a skipped person; cp_seed03 is a draft to two people picked by hand.
   // The tokens are fake. The sent campaign's approval and its blocks are audited as the real ones are, so they can't be undone.
@@ -1114,6 +1196,9 @@ export function devSeed(now: Date, tz: string): DevSeed {
     workTypes,
     clientRates,
     timeEntries,
+    projects,
+    projectActivities,
+    projectTimeEntries,
     campaigns,
     campaignSteps,
     campaignRecipients,
@@ -1132,6 +1217,9 @@ export function buildDevSeed(now: Date, tz: string): string {
     ...seed.contacts.map((row) => insert("contacts", row)),
     ...seed.deals.map((row) => insert("deals", row)),
     ...seed.activities.map((row) => insert("activities", row)),
+    // Projects come before the rows that point at them (tasks, their note, their time).
+    "UPDATE settings SET projects = 1 WHERE id = 1;",
+    ...seed.projects.map((row) => insert("projects", row)),
     ...seed.tasks.map((row) => insert("tasks", row)),
     ...seed.rules.map((row) => insert("rules", row)),
     ...seed.briefs.map((row) => insert("briefs", row)),
@@ -1144,6 +1232,8 @@ export function buildDevSeed(now: Date, tz: string): string {
     ...seed.workTypes.map((row) => insert("work_types", row)),
     ...seed.clientRates.map((row) => insert("client_rates", row)),
     ...seed.timeEntries.map((row) => insert("time_entries", row)),
+    ...seed.projectActivities.map((row) => insert("activities", row)),
+    ...seed.projectTimeEntries.map((row) => insert("time_entries", row)),
     ...seed.campaigns.map((row) => insert("campaigns", row)),
     ...seed.campaignSteps.map((row) => insert("campaign_steps", row)),
     ...seed.campaignRecipients.map((row) => insert("campaign_recipients", row)),

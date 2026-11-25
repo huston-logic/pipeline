@@ -44,6 +44,9 @@ export const isTimeEntryId = (id: string): boolean => /^te_[a-z0-9]{1,32}$/.test
 /** The same check for an activity id ("ac_" ...), used by the done page's Ask Claude prompt (decision 0050). */
 export const isActivityId = (id: string): boolean => /^ac_[a-z0-9]{1,32}$/.test(id);
 
+/** The same check for a project id ("pj_" ...), used by the board's project page and posts (decision 0055). */
+export const isProjectId = (id: string): boolean => /^pj_[a-z0-9]{1,32}$/.test(id);
+
 /** The same check for a campaign id ("cp_" ...), used by the board's campaign pages (decision 0053). */
 export const isCampaignId = (id: string): boolean => /^cp_[a-z0-9]{1,32}$/.test(id);
 

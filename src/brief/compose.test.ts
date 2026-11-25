@@ -242,3 +242,13 @@ test("without a lastMonth, or with an empty one, the brief is exactly the same a
   assert.deepEqual(composeBrief({ ...empty(), lastMonth: null }), plain);
   assert.deepEqual(composeBrief({ ...empty(), lastMonth: report({ empty: true, lines: [], bySource: [] }) }), plain);
 });
+
+test("a project task names its project after the person, and an outside project name makes the item untrusted" , () => {
+  const task = { id: "tk_p", title: "Order anchors", dueAt: null, dealTitle: null, contactName: "Pat Example", projectName: "Retrofit", untrusted_fields: [] as string[] };
+  const brief = composeBrief({ ...empty(), tasks: { overdue: [], today: [task, { ...task, id: "tk_q", contactName: null, untrusted_fields: ["projectName"] }] } });
+  assert.deepEqual(brief.items.map((i) => i.line), ["- Order anchors (Pat Example, project \"Retrofit\")", "- Order anchors (project \"Retrofit\")"]);
+  assert.deepEqual(brief.items.map((i) => i.untrusted), [false, true]);
+  assert.equal(brief.lines.at(-1), "- [from outside] Order anchors (project \"Retrofit\")");
+  const off = composeBrief({ ...empty(), tasks: { overdue: [], today: [{ ...task, projectName: null }] } });
+  assert.equal(off.items[0]?.line, "- Order anchors (Pat Example)");
+});

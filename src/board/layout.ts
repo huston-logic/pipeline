@@ -44,7 +44,7 @@ function appTags(look: Look): Html {
 }
 
 /** What the router hands every signed-in page's frame: the owner's look and the change banner (decision 0017). */
-export type PageFrame = { look: Look; banner?: Html | ""; /** The running timer, for the Stop bar (decision 0050). */ timer?: TimerInfo | null; /** Time tracking is on, so More lists Time (decision 0051). */ timeTracking?: boolean; /** Campaigns are on, so More lists Campaigns (decision 0053). */ campaigns?: boolean };
+export type PageFrame = { look: Look; banner?: Html | ""; /** The running timer, for the Stop bar (decision 0050). */ timer?: TimerInfo | null; /** Time tracking is on, so More lists Time (decision 0051). */ timeTracking?: boolean; /** Campaigns are on, so More lists Campaigns (decision 0053). */ campaigns?: boolean; /** Projects are on, so More lists Projects (decision 0055). */ projects?: boolean };
 
 export type PageOptions = {
   /** The page's own title; the layout adds " · <business name>". */
@@ -73,7 +73,8 @@ function sectionOf(path: string): string | null {
   if (path.startsWith("/deals/")) return "/pipeline";
   const people = ["/companies", "/leads", "/people"];
   if (path.startsWith("/contacts/") || people.includes(path) || path.startsWith("/leads/")) return "/contacts";
-  if (moreItemsFor({ timeTracking: true, campaigns: true }).some((item) => item.href === path) || path.startsWith("/time/") || path.startsWith("/campaigns/")) {
+  const inMore = ["/time/", "/campaigns/", "/projects/"].some((prefix) => path.startsWith(prefix));
+  if (moreItemsFor({ timeTracking: true, campaigns: true, projects: true }).some((item) => item.href === path) || inMore) {
     return "/more";
   }
   return null;
@@ -92,7 +93,7 @@ function link(item: NavItem, current: string | undefined): Html {
   return html`<a href="${item.href}"${state}>${icon(item.icon)}<span class="nav-label">${item.label}</span>${hint}</a>`;
 }
 
-function nav(current: string | undefined, on: { timeTracking: boolean; campaigns: boolean }): Html {
+function nav(current: string | undefined, on: { timeTracking: boolean; campaigns: boolean; projects: boolean }): Html {
   const items = navItems.map((item) =>
     item.href === "/more"
       ? html`<li class="nav-more">${link(item, current)}
@@ -139,7 +140,7 @@ ${frame ? html`<link rel="stylesheet" href="/theme.css">\n${appTags(frame.look)}
 <div class="app">
 <header class="app-header">
 <a class="brand" href="/"><span class="brand-mark" aria-hidden="true">${initial(name)}</span><span class="brand-name">${name}</span></a>
-${nav(current, { timeTracking: frame?.timeTracking === true, campaigns: frame?.campaigns === true })}
+${nav(current, { timeTracking: frame?.timeTracking === true, campaigns: frame?.campaigns === true, projects: frame?.projects === true })}
 </header>
 <div class="app-body">
 ${frame?.timer ? timerBar(frame.timer) : ""}<main id="main">

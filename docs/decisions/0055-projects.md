@@ -68,6 +68,8 @@ Calls made while building
 - While projects are off, any project input or project action in a proposal is refused with `PROJECTS_OFF`, before
   names are matched.
 - The Won question is built from the rows the change wrote, never from the action text.
+- Under Apply small changes, a call or note logged on an existing project applies at once, like one on an existing
+  person or deal; one on a project an earlier action adds is proposed.
 
 ## Why
 

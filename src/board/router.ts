@@ -9,7 +9,7 @@ import { herePath, type PageContext } from "./context.ts";
 import { lookOf } from "./layout.ts";
 import { briefPage } from "./pages/brief.ts";
 import { changesPage } from "./pages/changes.ts";
-import { isCampaignId, isContactId, isDealId, isImportId, isTimeEntryId } from "../ids.ts";
+import { isCampaignId, isContactId, isDealId, isImportId, isProjectId, isTimeEntryId } from "../ids.ts";
 import { companiesPage } from "./pages/companies.ts";
 import { contactPage } from "./pages/contact.ts";
 import { contactEditPage } from "./pages/contact-edit.ts";
@@ -44,6 +44,10 @@ import { campaignPeoplePage } from "./pages/campaign-people.ts";
 import { campaignReviewPage } from "./pages/campaign-review.ts";
 import type { CampaignEnv } from "../campaigns/readiness.ts";
 import { campaignSettingsPage } from "./pages/campaign-settings.ts";
+import { PROJECTS_PATH, projectsPage } from "./pages/projects.ts";
+import { projectPage } from "./pages/project.ts";
+import { projectEditPage } from "./pages/project-edit.ts";
+import { newProjectOfContactPage, newProjectOfDealPage } from "./pages/project-new.ts";
 import { timerState } from "./timer-bar.ts";
 
 export type PageResult = { status: 200 | 404; body: string };
@@ -89,6 +93,7 @@ const PAGES = new Map<string, Page>([
   [TIMER_DONE_PATH, (ctx) => timerDonePage(ctx)],
   [TIME_PATH, (ctx) => timePage(ctx)],
   [TIME_NEW_PATH, (ctx) => timeNewPage(ctx)],
+  [PROJECTS_PATH, (ctx) => projectsPage(ctx)],
   [CAMPAIGNS_PATH, (ctx) => campaignsPage(ctx)],
   [CAMPAIGN_SETTINGS_PATH, (ctx) => campaignSettingsPage(ctx)],
   [CAMPAIGNS_NEW_PATH, (ctx) => campaignNewPage(ctx)],
@@ -107,6 +112,10 @@ const RECORD_PATHS: { path: RegExp; isId: (id: string) => boolean; page: RecordP
   { path: /^\/contacts\/([^/]+)\/campaign-emails\/allow$/, isId: isContactId, page: (ctx, id) => campaignAllowPage(ctx, id) },
   { path: /^\/contacts\/([^/]+)\/qualify$/, isId: isContactId, page: (ctx, id) => qualifyPage(ctx, id) },
   { path: /^\/time\/([^/]+)\/edit$/, isId: isTimeEntryId, page: (ctx, id) => timeEditPage(ctx, id) },
+  { path: /^\/projects\/([^/]+)$/, isId: isProjectId, page: (ctx, id) => projectPage(ctx, id) },
+  { path: /^\/projects\/([^/]+)\/edit$/, isId: isProjectId, page: (ctx, id) => projectEditPage(ctx, id) },
+  { path: /^\/contacts\/([^/]+)\/projects\/new$/, isId: isContactId, page: (ctx, id) => newProjectOfContactPage(ctx, id) },
+  { path: /^\/deals\/([^/]+)\/projects\/new$/, isId: isDealId, page: (ctx, id) => newProjectOfDealPage(ctx, id) },
   { path: /^\/campaigns\/([^/]+)$/, isId: isCampaignId, page: (ctx, id) => campaignReviewPage(ctx, id) },
   { path: /^\/campaigns\/([^/]+)\/edit$/, isId: isCampaignId, page: (ctx, id) => campaignEditPage(ctx, id) },
   { path: /^\/campaigns\/([^/]+)\/people$/, isId: isCampaignId, page: (ctx, id) => campaignPeoplePage(ctx, id) },
@@ -130,6 +139,7 @@ async function contextFor({ db, now, url, csrf, campaignEnv }: Omit<PageRequest,
     banner: await changeBanner(db, url.searchParams, { csrf, here }),
     timeTracking: settings.time_tracking === 1,
     campaigns: settings.campaigns === 1,
+    projects: settings.projects === 1,
     origin: url.origin,
     ...(campaignEnv === undefined ? {} : { campaignEnv }),
     ...(await timerState(db, now, settings)),

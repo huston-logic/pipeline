@@ -3,15 +3,15 @@
 // tool calls, as the owner under that tool's name, and answers 303 back with ?change=. A refused post draws its form
 // again (422) with the values kept and the errors. The lead routes (decision 0028) are in lead-actions.ts.
 import type { ActivityType, FieldDefRow } from "../db/db.ts";
-import { getContact, getDeal, getTask, listFieldDefs } from "../db/queries.ts";
-import { isContactId, isDealId, isTaskId } from "../ids.ts";
+import { getContact, getDeal, getSettings, getTask, listFieldDefs } from "../db/queries.ts";
+import { isContactId, isDealId, isProjectId, isTaskId } from "../ids.ts";
 import { logActivity } from "../services/activities.ts";
 import { addContact, type NewContactInput } from "../services/add-contact.ts";
 import { addDeal, type DealInput } from "../services/add-deal.ts";
 import { type ContactPatch, updateContact } from "../services/contacts.ts";
 import { type DealPatch, updateDeal } from "../services/deals.ts";
 import { DuplicateLeadError } from "../services/leads.ts";
-import { ownerTimezone } from "../services/lookup.ts";
+import { ownerTimezone, projectById } from "../services/lookup.ts";
 import { CONTACT } from "../services/person-move.ts";
 import { listPersonStatuses } from "../services/person-status.ts";
 import { addTask, completeTask, snoozeTask } from "../services/tasks.ts";
@@ -147,16 +147,20 @@ async function editDeal(ctx: ActionContext, id: string): Promise<ActionResult> {
   }
 }
 
-/** The deal or contact a task or log post is about, or null when there is none with that id. */
+/** The deal, contact or project a task or log post is about, or null when there is none with that id (or projects are off). */
 async function subjectOf(ctx: ActionContext, kind: Subject["kind"], id: string): Promise<Subject | null> {
   if (kind === "deal") return isDealId(id) && (await getDeal(ctx.db, id)) !== null ? { kind, id } : null;
+  if (kind === "project") {
+    return isProjectId(id) && (await getSettings(ctx.db)).projects === 1 && (await projectById(ctx.db, id)) !== null ? { kind, id } : null;
+  }
   return isContactId(id) && (await getContact(ctx.db, id)) !== null ? { kind, id } : null;
 }
 
-const subjectRefs = (subject: Subject) => (subject.kind === "deal" ? { dealId: subject.id } : { contactId: subject.id });
+const subjectRefs = (subject: Subject) =>
+  subject.kind === "deal" ? { dealId: subject.id } : subject.kind === "project" ? { project: subject.id } : { contactId: subject.id };
 
-/** POST /deals/<id>/tasks and /contacts/<id>/tasks: add_task. */
-const addTaskTo = (kind: Subject["kind"]) =>
+/** POST /deals/<id>/tasks, /contacts/<id>/tasks and /projects/<id>/tasks: add_task. */
+export const addTaskTo = (kind: Subject["kind"]) =>
   async function addTaskRoute(ctx: ActionContext, id: string): Promise<ActionResult> {
     const subject = await subjectOf(ctx, kind, id);
     if (subject === null) return notFound(ctx);
@@ -197,7 +201,7 @@ async function quickAdd(ctx: ActionContext): Promise<ActionResult> {
  * POST /deals/<id>/log and /contacts/<id>/log: log_activity. Task R5's one-tap logging posts here too; its Text button
  * sends via=text, passed on only when it is exactly that, so the note counts as reaching a lead (decision 0022).
  */
-const logOn = (kind: Subject["kind"]) =>
+export const logOn = (kind: Subject["kind"]) =>
   async function logRoute(ctx: ActionContext, id: string): Promise<ActionResult> {
     const subject = await subjectOf(ctx, kind, id);
     if (subject === null) return notFound(ctx);

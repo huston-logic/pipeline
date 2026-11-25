@@ -120,6 +120,12 @@ export async function getTask(db: Db, id: string): Promise<TaskRow | null> {
   return db.prepare("SELECT * FROM tasks WHERE id = ?").bind(id).first<TaskRow>();
 }
 
+/** When a project's done tasks were done, by task id (the project page's Done list shows the date). */
+export async function projectDoneTimes(db: Db, projectId: string): Promise<Map<string, string>> {
+  const rows = await db.prepare("SELECT id, done_at FROM tasks WHERE project_id = ? AND done_at IS NOT NULL").bind(projectId).all<{ id: string; done_at: string }>();
+  return new Map(rows.results.map((row) => [row.id, row.done_at]));
+}
+
 export type DealFilter = {
   stage?: string;
   status?: DealStatus;

@@ -6,7 +6,7 @@ import { formatLocal } from "../time.ts";
 import type { FormContext } from "./forms.ts";
 import { type Html, html } from "./html.ts";
 import { taskActions } from "./task-forms.ts";
-import { dealLink, labelled, OUTSIDE_LABEL, outsideLabel, type Pair, pairs, tag, when } from "./parts.ts";
+import { dealLink, labelled, OUTSIDE_LABEL, outsideLabel, type Pair, pairs, projectLink, tag, when } from "./parts.ts";
 
 export const STATUS: Record<DealStatus, string> = { open: "Open", won: "Won", lost: "Lost", not_now: "Not now" };
 
@@ -49,6 +49,9 @@ ${snoozed !== null ? tag("Snoozed") : ""}
 ${pairs([
   { name: "Due", value: task.dueAt !== null && task.dueAtLocal !== null ? when(task.dueAt, task.dueAtLocal) : "No due date" },
   snoozed !== null && { name: "Snoozed until", value: when(snoozed, formatLocal(snoozed, tz)) },
+  showDeal &&
+    task.projectId !== null &&
+    task.projectName !== null && { name: "Project", value: projectLink(task.projectId, task.projectName, outside.includes("projectName")) },
   showDeal &&
     task.dealId !== null &&
     task.dealTitle !== null && { name: "Deal", value: dealLink(task.dealId, task.dealTitle, outside.includes("dealTitle")) },

@@ -30,6 +30,7 @@ export type IconName =
   | "notifications"
   | "email"
   | "time"
+  | "projects"
   | "campaigns";
 
 /** `hint` is read out after the label but not shown, where the label alone says too little ("More" alone fails
@@ -83,6 +84,11 @@ export const boardRoutes: string[] = [
   "/time?week=2026-11-16",
   "/time/new",
   "/time/te_seed01/edit",
+  "/projects",
+  "/projects/pj_seed01",
+  "/projects/pj_seed01/edit",
+  "/contacts/ct_seed07/projects/new",
+  "/deals/dl_seed07/projects/new",
   "/campaigns",
   "/campaigns/settings",
   "/campaigns/new",
@@ -165,6 +171,14 @@ export const timeItem: NavItem = {
   description: "The week's time entries and totals, adding time by hand, and the month's CSV.",
 };
 
+/** Projects, under More only while projects are on (decision 0055). */
+export const projectsItem: NavItem = {
+  href: "/projects",
+  label: "Projects",
+  icon: "projects",
+  description: "Delivery work after a sale: each project's tasks, notes and time.",
+};
+
 /** Campaigns, under More only while campaigns are on (decision 0053). */
 export const campaignsItem: NavItem = {
   href: "/campaigns",
@@ -173,9 +187,9 @@ export const campaignsItem: NavItem = {
   description: "Email newsletters and invites: drafts, review, sending and results.",
 };
 
-/** The More items for this copy: Time, then Campaigns, sit after "What it caught" when each is on. */
-export function moreItemsFor(on: { timeTracking: boolean; campaigns: boolean }): NavItem[] {
-  const extra = [...(on.timeTracking ? [timeItem] : []), ...(on.campaigns ? [campaignsItem] : [])];
+/** The More items for this copy: Time, Projects, then Campaigns, sit after "What it caught" when each is on. */
+export function moreItemsFor(on: { timeTracking: boolean; campaigns: boolean; projects?: boolean }): NavItem[] {
+  const extra = [...(on.timeTracking ? [timeItem] : []), ...(on.projects === true ? [projectsItem] : []), ...(on.campaigns ? [campaignsItem] : [])];
   if (extra.length === 0) return moreItems;
   const at = moreItems.findIndex((item) => item.href === "/report") + 1;
   return [...moreItems.slice(0, at), ...extra, ...moreItems.slice(at)];

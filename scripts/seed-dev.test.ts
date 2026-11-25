@@ -147,8 +147,9 @@ test("activities are in the past, cover every type, and the deals' dates follow 
     for (const a of own) assert.equal(a.contact_id, deal.contact_id, `${a.id}: the deal's contact`);
   }
   // A note on a contact alone counts for their open deals, so the seed only has one from before their deal existed.
-  // A campaign's email is not a reach (ruling 8), so it may be later.
-  for (const note of activities.filter((a) => a.deal_id === null && !(a.data ?? "").includes('"via":"campaign"'))) {
+  // A campaign's email is not a reach (ruling 8), so it may be later. A project's note belongs to the project, not to the
+  // person's open deals (decision 0055).
+  for (const note of activities.filter((a) => a.deal_id === null && a.project_id === null && !(a.data ?? "").includes('"via":"campaign"'))) {
     for (const deal of deals.filter((d) => d.contact_id === note.contact_id)) {
       assert.ok(note.occurred_at < deal.created_at, `${note.id} predates ${deal.id}`);
     }
@@ -460,4 +461,24 @@ test("publicRoutes: the unsubscribe page's token belongs to a delivered recipien
     .bind(token ?? "")
     .first<{ status: string; campaign_id: string }>();
   assert.deepEqual([row?.status, row?.campaign_id], ["delivered", "cp_seed02"]);
+});
+
+test("projects (decision 0055): on, one from the won storage building B deal and one by hand, on hold", async () => {
+  const db = await seeded();
+  assert.equal(await db.prepare("SELECT projects AS n FROM settings").first("n"), 1);
+  const projects = await rows<{ id: string; name: string; contact_id: string; deal_id: string | null; status_key: string; start_at: string | null; target_at: string | null }>(db, "SELECT * FROM projects ORDER BY id");
+  assert.deepEqual(projects.map((p) => [p.id, p.name, p.contact_id, p.deal_id, p.status_key]), [
+    ["pj_seed01", "Storage building B retrofit", "ct_seed07", "dl_seed07", "active"],
+    ["pj_seed02", "Cedar Row balcony repair", "ct_seed03", null, "on_hold"],
+  ]);
+  const [first] = projects;
+  assert.ok((first?.start_at ?? "9") < NOW.toISOString() && (first?.target_at ?? "") > addDays(localDate(NOW, DEFAULT_TZ), 35), "started a few days ago, due in about six weeks");
+  assert.ok(projects.every((p) => p.target_at !== null));
+  const tasks = await rows<{ project_id: string; done_at: string | null; deal_id: string | null }>(db, "SELECT project_id, done_at, deal_id FROM tasks WHERE project_id IS NOT NULL");
+  assert.deepEqual(tasks.filter((t) => t.project_id === "pj_seed01").map((t) => t.done_at !== null).sort(), [false, false, true]);
+  assert.equal(tasks.filter((t) => t.project_id === "pj_seed02" && t.done_at === null).length, 1);
+  assert.ok(tasks.every((t) => t.deal_id === null), "project tasks sit on the person");
+  assert.equal(await db.prepare("SELECT COUNT(*) AS n FROM activities WHERE project_id = 'pj_seed01'").first("n"), 1);
+  const time = await rows<{ billable: number }>(db, "SELECT billable FROM time_entries WHERE project_id = 'pj_seed01' AND ended_at IS NOT NULL ORDER BY id");
+  assert.deepEqual(time.map((t) => t.billable), [1, 0]);
 });

@@ -8,7 +8,8 @@ import type { PageContext } from "../context.ts";
 import type { FormContext } from "../forms.ts";
 import { renderPage } from "../layout.ts";
 import { moveForm, safeDealName } from "../move.ts";
-import { contactHref, empty, formatNumber, labelled, type Pair, pairs, section, tag, when } from "../parts.ts";
+import { contactHref, empty, formatNumber, labelled, type Pair, pairs, projectLink, section, tag, when } from "../parts.ts";
+import { newProjectOfDealPath } from "../project-form.ts";
 import { logForm } from "../log-form.ts";
 import { askSection } from "../ask-claude.ts";
 import { backToLeadsForm, offersBackToLeads } from "../lead-forms.ts";
@@ -71,6 +72,37 @@ ${backToLeads ? html`<div class="card-return">${backToLeadsForm(deal.id, form)}<
   );
 }
 
+/** Only a won deal that is not archived can start a project (decision 0055); the new-project page is a 404 otherwise. */
+const canStartProject = (brief: DealBrief): boolean => brief.deal.status === "won" && !brief.deal.archived;
+
+function startOffer(brief: DealBrief): Html | "" {
+  if (brief.projects === undefined || brief.projects.length > 0 || !canStartProject(brief)) return "";
+  return section(
+    "start-project-heading",
+    "Start a project?",
+    html`<p>This deal is won. Start a project to track the work.</p>
+<p class="section-action"><a href="${newProjectOfDealPath(brief.deal.id)}">Start a project</a></p>`,
+  );
+}
+
+function projectsSection(brief: DealBrief): Html | "" {
+  const { projects } = brief;
+  if (projects === undefined || projects.length === 0) return "";
+  return section(
+    "projects-heading",
+    "Projects",
+    html`<ul class="cards cards-single">${projects.map(
+      (project) => html`<li class="card">
+<div class="card-head">
+<h3 class="card-title">${projectLink(project.id, project.name, project.untrusted_fields.includes("name"))}</h3>
+${tag(project.statusLabel)}
+</div>
+</li>`,
+    )}</ul>
+${canStartProject(brief) ? html`<p class="section-action"><a href="${newProjectOfDealPath(brief.deal.id)}">Start another project</a></p>` : ""}`,
+  );
+}
+
 function nextSection(brief: DealBrief): Html {
   const edit = html`<p class="card-actions"><a href="${dealEditPath(brief.deal.id)}">${brief.next.step === null && brief.next.at === null ? "Set a next step" : "Change the next step"}</a></p>`;
   const { next, deal } = brief;
@@ -123,6 +155,7 @@ function hasOutsideText(brief: DealBrief): boolean {
   return (
     brief.deal.untrusted_fields.length > 0 ||
     brief.contact.untrusted_fields.length > 0 ||
+    (brief.projects ?? []).some((project) => project.untrusted_fields.length > 0) ||
     brief.openTasks.some((task) => task.untrusted_fields.length > 0) ||
     brief.timeline.some((item) => item.untrusted_text !== null || item.untrusted_fields.length > 0)
   );
@@ -157,8 +190,10 @@ ${note}
 <div>
 ${contactSection(brief, labelsFor("contact"), ctx, subject)}
 ${dealSection(brief, labelsFor("deal"), tz, await listStages(db), ctx, await offersBackToLeads(db, brief.deal))}
+${projectsSection(brief)}
 </div>
 <div>
+${startOffer(brief)}
 ${nextSection(brief)}
 ${askSection(brief.deal.id)}
 ${tasksSection(brief, now, tz, ctx, subject)}

@@ -5,7 +5,7 @@ import { isTrusted } from "../services/labels.ts";
 import { type FormContext, postForm } from "./forms.ts";
 import { type Html, html } from "./html.ts";
 import { field } from "./inputs.ts";
-import { contactHref, dealHref } from "./parts.ts";
+import { contactHref, dealHref, projectHref } from "./parts.ts";
 import { line, type Shown, type Spec } from "./record-form.ts";
 import { fieldId, formErrorSummary, specFields } from "./record-fields.ts";
 import type { FormState } from "./pages/record-page.ts";
@@ -67,9 +67,10 @@ ${snoozeForms(task, form)}
 </div>`;
 }
 
-export type Subject = { kind: "deal" | "contact"; id: string };
+export type Subject = { kind: "deal" | "contact" | "project"; id: string };
 
-export const subjectHref = (subject: Subject): string => (subject.kind === "deal" ? dealHref(subject.id) : contactHref(subject.id));
+export const subjectHref = (subject: Subject): string =>
+  subject.kind === "deal" ? dealHref(subject.id) : subject.kind === "project" ? projectHref(subject.id) : contactHref(subject.id);
 export const addTaskAction = (subject: Subject): string => `${subjectHref(subject)}/tasks`;
 
 export const taskSpecs = (): Spec[] => [

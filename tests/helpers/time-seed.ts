@@ -21,10 +21,11 @@ export const countOf = async (db: SqliteD1, table: string): Promise<number> =>
 
 /**
  * Stand-ins for the demo seed's time pages (scripts/seed-dev.ts, decision 0050) on a fixture-seeded database, so a unit
- * test can open every path in boardRoutes: time tracking on, and the finished entry te_seed01. No timer runs.
+ * test can open every path in boardRoutes: time tracking on, and the finished entry te_seed01. No timer runs. Projects
+ * are on too (decision 0055), so /projects answers; it lists none.
  */
 export function addStandInTime(db: SqliteD1): void {
-  db.exec(`UPDATE settings SET time_tracking = 1, campaigns = 1, postal_address = '100 Example Street, Springfield';
+  db.exec(`UPDATE settings SET time_tracking = 1, campaigns = 1, projects = 1, postal_address = '100 Example Street, Springfield';
     INSERT INTO time_entries (id, contact_id, deal_id, started_at, ended_at, minutes, billable, notes)
     VALUES ('te_seed01', 'ct_seed01', 'dl_seed01', '2026-01-01T10:00:00.000Z', '2026-01-01T11:00:00.000Z', 60, 0, 'Walked through the plan.')`);
 }

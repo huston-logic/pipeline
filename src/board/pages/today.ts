@@ -18,7 +18,7 @@ import { type Html, html } from "../html.ts";
 import type { PageContext } from "../context.ts";
 import { renderPage } from "../layout.ts";
 import type { FormContext } from "../forms.ts";
-import { count, dealLink, formatNumber, empty, labelled, addButtons, pairs, section, tag, when } from "../parts.ts";
+import { count, dealLink, formatNumber, empty, labelled, addButtons, pairs, projectLink, section, tag, when } from "../parts.ts";
 import { isStandalone, TASK_SHOWS, TASK_SORTS, type TaskShow, type TaskSort, type TaskView, taskView } from "../task-list.ts";
 import { quickAddForm, taskActions } from "../task-forms.ts";
 import { briefDate, briefLine, sendStatusText } from "./brief.ts";
@@ -40,6 +40,8 @@ ${overdue ? tag("Overdue", true) : ""}
 </div>
 ${pairs([
   task.dueAt !== null && task.dueAtLocal !== null && { name: "Due", value: when(task.dueAt, task.dueAtLocal) },
+  task.projectId !== null &&
+    task.projectName !== null && { name: "Project", value: projectLink(task.projectId, task.projectName, has(outside, "projectName")) },
   task.dealId !== null &&
     task.dealTitle !== null && { name: "Deal", value: dealLink(task.dealId, task.dealTitle, has(outside, "dealTitle")) },
   task.dealId === null &&
