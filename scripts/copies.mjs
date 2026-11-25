@@ -595,6 +595,23 @@ export async function provision(options, deps) {
 
 // ------------------------------------------------------------------------------------------------------------- update
 
+/**
+ * Makes a copy's config `triggers` equal the template's, so a cron added in a later version reaches copies made before
+ * it. Only that key is rewritten; the file's leading comment lines and every other value stay. Returns whether it
+ * differed (and, unless `write` is false, rewrote the file).
+ */
+function syncTriggers(configPath, templateText, write) {
+  const text = readFileSync(configPath, "utf8");
+  const config = parseJsonc(text);
+  const wanted = parseJsonc(templateText).triggers;
+  if (JSON.stringify(config.triggers) === JSON.stringify(wanted)) return false;
+  if (write) {
+    const header = text.split("\n").filter((line, i, lines) => line.startsWith("//") && lines.slice(0, i).every((l) => l.startsWith("//")));
+    writeFileSync(configPath, `${header.map((line) => `${line}\n`).join("")}${JSON.stringify({ ...config, triggers: wanted }, null, 2)}\n`);
+  }
+  return true;
+}
+
 export async function update(options, deps) {
   const { copiesDir, root = ROOT } = deps;
   const names = options.copy ? [options.copy] : listCopies(copiesDir);
@@ -608,6 +625,7 @@ export async function update(options, deps) {
     return { name, state, cfg: relative(root, config), accountId: configAccount ?? state.accountId, configAccount };
   });
   const dryRun = Boolean(options.dryRun);
+  const templateText = () => deps.template ?? readFileSync(TEMPLATE, "utf8");
   const show = (cmd) => deps.log(`  $ ${formatCommand(cmd)}`);
   const build = ["npm", "run", "build"];
   const deploy = (copy) => ["wrangler", "deploy", "-c", copy.cfg];
@@ -618,6 +636,9 @@ export async function update(options, deps) {
     show(build);
     for (const copy of copies) {
       deps.log(`- ${copy.name} (account ${copy.accountId}; stops here if the login isn't a member)`);
+      if (copy.configAccount !== undefined && syncTriggers(copyPaths(copiesDir, copy.name).config, templateText(), false)) {
+        deps.log("  would update the cron triggers from the template");
+      }
       show(applyMigrations(copy.cfg));
       deps.log("  $ " + formatCommand(listMigrations(copy.cfg)) + "   (stops here if any migration is still pending)");
       show(deploy(copy));
@@ -642,6 +663,7 @@ export async function update(options, deps) {
     } else if (!accounts.has(copy.accountId)) {
       failure = notMember(copy.accountId);
     } else {
+      if (syncTriggers(copyPaths(copiesDir, copy.name).config, templateText(), true)) deps.log(`- ${copy.name}: cron triggers updated from the template`);
       const applied = deps.run(applyMigrations(copy.cfg), { env, capture: false });
       const listed = applied.status === 0 ? deps.run(listMigrations(copy.cfg), { env, capture: true }) : null;
       if (applied.status !== 0) failure = `migrations failed (exit ${applied.status}); not deployed`;

@@ -338,6 +338,55 @@ test("update: failed migrations skip that copy's deploy and the run goes on; --c
   await assert.rejects(update(parseArgs(["update", "--copy", "nope"]), h.deps), /no copy "nope"/);
 });
 
+/** Rewrites a provisioned copy's config as an older version made it: one cron, plus a var the owner set by hand. */
+function makeOld(h, name) {
+  const path = copyPaths(h.copiesDir, name).config;
+  const text = readFileSync(path, "utf8");
+  const config = JSON.parse(text.replace(/^\/\/.*\n/gm, ""));
+  config.triggers = { crons: ["0 * * * *"] };
+  config.vars = { ...config.vars, CAMPAIGN_FROM: "News <news@mail.example.com>" };
+  const header = text.match(/^(\/\/.*\n)+/)?.[0] ?? "";
+  writeFileSync(path, `${header}${JSON.stringify(config, null, 2)}\n`);
+  return { path, header };
+}
+
+test("update brings an older copy's cron triggers in step with the template and keeps its other values", async (t) => {
+  const h = harness(t);
+  await provisioned(h, "acme");
+  const { path, header } = makeOld(h, "acme");
+  h.lines.length = 0;
+  assert.equal(await update(parseArgs(["update"]), h.deps), 0);
+  const after = readFileSync(path, "utf8");
+  assert.ok(after.startsWith(header));
+  const config = JSON.parse(after.replace(/^\/\/.*\n/gm, ""));
+  assert.deepEqual(config.triggers.crons, ["0 * * * *", "5,20,35,50 * * * *"]);
+  assert.equal(config.vars.CAMPAIGN_FROM, "News <news@mail.example.com>");
+  assert.equal(config.account_id, STUB_ACCOUNT_ID);
+  assert.deepEqual(h.lines.slice(0, 2), ["- acme: cron triggers updated from the template", "acme: updated"]);
+});
+
+test("an update dry run says it would update the cron triggers and writes nothing", async (t) => {
+  const h = harness(t);
+  await provisioned(h, "acme");
+  const { path } = makeOld(h, "acme");
+  const before = readFileSync(path, "utf8");
+  h.lines.length = 0;
+  assert.equal(await update(parseArgs(["update", "--dry-run"]), h.deps), 0);
+  assert.equal(readFileSync(path, "utf8"), before);
+  assert.ok(h.lines.includes("  would update the cron triggers from the template"));
+});
+
+test("a config already in step is not rewritten and says nothing", async (t) => {
+  const h = harness(t);
+  await provisioned(h, "acme");
+  const path = copyPaths(h.copiesDir, "acme").config;
+  const before = readFileSync(path, "utf8");
+  h.lines.length = 0;
+  await update(parseArgs(["update"]), h.deps);
+  assert.equal(readFileSync(path, "utf8"), before);
+  assert.deepEqual(h.lines, ["acme: updated", "1 of 1 copy updated."]);
+});
+
 test("update stops before building when wrangler isn't logged in, and when the build fails", async (t) => {
   const h = harness(t);
   await provisioned(h, "acme");

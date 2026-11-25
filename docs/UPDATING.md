@@ -243,7 +243,53 @@ with far higher limits. A list of 25 changes (the most one list holds) makes abo
 50 if each batch counts as one. Whether Cloudflare counts each statement inside a batch is still unknown (docs/PAID-PLAN.md, "Run 6"). If a
 long list fails, send it as two shorter ones, or move the copy to Workers Paid.
 
-## Before a release that has a new migration
+## Run 8: after you update
+
+Run 8 adds email campaigns: a newsletter or an event invite sent to a group of people, from the client's own email
+account. Campaigns are off until you turn them on. Nothing sends until the sending switches are set for that copy and
+you tap Approve (or Schedule) on the board. Setup for one copy is in docs/CAMPAIGNS.md, steps 1 to 8. Do these in
+order, per copy.
+
+### 1. Update the copy
+
+```bash
+git switch main && git pull --ff-only
+npm run copies:update -- --copy <name> --dry-run
+npm run copies:update -- --copy <name>
+```
+
+Migration 0019 applies when wrangler asks you to confirm. It adds tables and a setting and keeps every row. The update
+does not send anything.
+
+The update copies the new cron triggers into each copy's config for you (you'll see a line saying so).
+
+### 2. Check the brief email
+
+The brief's Resend call now sends a User-Agent header. If the daily brief email never arrived before, this may fix it.
+Check that the next brief reaches the inbox.
+
+### 3. Reconnect nothing
+
+No reconnect is needed. The AI app sees five new campaign tools next time it connects: `add_campaign_draft`,
+`update_campaign_draft`, `get_campaign`, `list_campaigns` and `preview_campaign_recipients`. They only draft. They
+cannot send, schedule, approve, pause or cancel.
+
+### 4. Turn campaigns on, only if the client wants them
+
+Follow docs/CAMPAIGNS.md, steps 1 to 8: the Resend account and sending subdomain, the key, the from address and the
+sending switch, the postal address, the Access bypass, the optional delivery results, then the go-live check with
+your own address.
+
+### 5. Sentences to say to the AI app
+
+Say these one at a time. Each one makes a draft or answers a question. Only the board sends.
+
+- **Turn campaigns on.** "Turn on campaigns." This only shows the Campaigns page. It sends nothing.
+- **Draft a newsletter.** "Set up a newsletter to my Partners about the open house, with a button to RSVP." The AI app
+  drafts it and gives you the review link.
+- **Ask who would get it.** "Who would get it?" It lists the people the draft would reach.
+- **Send it.** "Send it." The AI app says only you can send it, on the board, and gives you the link.
+
 
 Migrations only go forward: there is no "undo" for a database change. Try a release on a copy's preview database
 first:
