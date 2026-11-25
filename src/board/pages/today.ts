@@ -42,6 +42,7 @@ ${pairs([
   task.dueAt !== null && task.dueAtLocal !== null && { name: "Due", value: when(task.dueAt, task.dueAtLocal) },
   task.projectId !== null &&
     task.projectName !== null && { name: "Project", value: projectLink(task.projectId, task.projectName, has(outside, "projectName")) },
+  task.parentId !== null && { name: "Under", value: task.parentTitle ?? "a task" },
   task.dealId !== null &&
     task.dealTitle !== null && { name: "Deal", value: dealLink(task.dealId, task.dealTitle, has(outside, "dealTitle")) },
   task.dealId === null &&

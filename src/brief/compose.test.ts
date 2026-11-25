@@ -252,3 +252,17 @@ test("a project task names its project after the person, and an outside project 
   const off = composeBrief({ ...empty(), tasks: { overdue: [], today: [{ ...task, projectName: null }] } });
   assert.equal(off.items[0]?.line, "- Order anchors (Pat Example)");
 });
+
+test("a sub-task reads 'title, under parent, project'; an outside parent is 'a task' and an outside project its safe label", () => {
+  const sub = { id: "tk_s", title: "Pick supplier", dueAt: null, dealTitle: null, contactName: "Pat Example", projectId: "pj_1", projectName: "Retrofit", parentId: "tk_p", parentTitle: "Order anchors", untrusted_fields: [] as string[] };
+  const brief = composeBrief({
+    ...empty(),
+    tasks: { overdue: [], today: [sub, { ...sub, id: "tk_t", parentTitle: null }, { ...sub, id: "tk_u", untrusted_fields: ["projectName"] }] },
+  });
+  assert.deepEqual(brief.items.map((i) => i.line), [
+    "- Pick supplier, under Order anchors, Retrofit",
+    "- Pick supplier, under a task, Retrofit",
+    "- Pick supplier, under Order anchors, project pj_1",
+  ]);
+  assert.deepEqual(brief.items.map((i) => i.untrusted), [false, false, false]);
+});

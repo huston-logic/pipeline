@@ -4,6 +4,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { auditCount, auditOf, changeIdOf, devEnv, h1Count, load, post, seededDb } from "../../tests/helpers/board.ts";
 import type { TaskRow } from "../db/db.ts";
+import { addProject } from "../services/projects.ts";
+import { addTask } from "../services/tasks.ts";
 import { DEFAULT_TZ, zonedToUtc } from "../time.ts";
 
 const taskByTitle = async (db: Awaited<ReturnType<typeof seededDb>>, title: string) =>
@@ -144,4 +146,20 @@ test("Done in a non-default view comes back to that same address", async () => {
   const page = await load(env, "/?sort=newest");
   const { location } = await post(env, "/tasks/tk_seed02/complete", { return_to: "/?sort=newest" }, { cookie: page.cookie, token: page.token });
   assert.match(location, /^\/\?sort=newest&change=chg_/);
+});
+
+test("a sub-task on Today says what it is under; an outside parent title is 'a task'", async () => {
+  const db = await seededDb();
+  await db.prepare("UPDATE settings SET projects = 1").run();
+  const ctx = (tool: string) => ({ db, now: new Date(), actor: "owner" as const, tool });
+  const project = await addProject(ctx("add_project"), { contact: "ct_seed01", name: "Retrofit" });
+  const parent = await addTask(ctx("add_task"), { project: project.projectId, title: "Order anchors" });
+  await addTask(ctx("add_task"), { parent: parent.taskId, title: "Pick supplier" });
+  const env = devEnv(db);
+  const shown = (await load(env, "/")).body;
+  assert.match(shown, /Pick supplier[\s\S]*?<dt>Under<\/dt>\s*<dd>Order anchors<\/dd>/);
+  await db.prepare("UPDATE tasks SET untrusted_fields = '[\"title\"]' WHERE id = ?").bind(parent.taskId).run();
+  const outside = (await load(env, "/")).body;
+  assert.match(outside, /Pick supplier[\s\S]*?<dt>Under<\/dt>\s*<dd>a task<\/dd>/);
+  assert.doesNotMatch(outside.slice(outside.indexOf("Pick supplier")), /Under<\/dt>\s*<dd>Order anchors/);
 });
