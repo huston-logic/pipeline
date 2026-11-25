@@ -10,7 +10,6 @@ import { UserError } from "../services/errors.ts";
 import { type ActionResult, type RecordAction, runAction } from "../services/proposal-actions.ts";
 import { proposeChanges } from "../services/proposals.ts";
 import { getAiEdits } from "../services/settings.ts";
-import { wonDealsOfChange } from "../services/won-offers.ts";
 import { answerApplied } from "./start-project.ts";
 import { aiCtx, type ToolDeps } from "./tool.ts";
 import { proposeResult } from "./tools-proposals.ts";
@@ -55,9 +54,8 @@ export async function recordWrite(deps: ToolDeps, action: RecordAction): Promise
   const options = { extraOwnerEmails: parseOwnerEmailsVar(deps.ownerEmailsVar) };
   if (isSmallAction(action) && (await getAiEdits(deps.db)) === "small") {
     const result = await runAction(ctx, action, options);
-    // Only a deal edit can mark a deal Won; the Won question (decision 0055) reads what the change did.
-    const won = action.action === "update_deal" ? await wonDealsOfChange(deps.db, result.changeId) : [];
-    return answerApplied(deps.db, result.summary, answerData(result), won);
+    // No small action can mark a deal Won, so there is no Won question to ask here.
+    return answerApplied(deps.db, result.summary, answerData(result), []);
   }
   try {
     return proposeResult(await proposeChanges(ctx, { actions: [action] }, options));

@@ -470,13 +470,13 @@ export async function getDealBrief(db: Db, dealRef: string, tz: string, now: Dat
   const row = { ...stageRow, contact_name: contact.name, contact_untrusted: contact.untrusted_fields };
   const timeline = await rows<ActivityRow>(
     db,
-    `SELECT * FROM activities WHERE deal_id = ? OR (deal_id IS NULL AND contact_id = ?)
+    `SELECT * FROM activities WHERE deal_id = ? OR (deal_id IS NULL AND contact_id = ? AND project_id IS NULL)
      ORDER BY occurred_at DESC, rowid DESC LIMIT 50`,
     [row.id, row.contact_id],
   );
   const tasks = await rows<TaskJoin>(
     db,
-    `${TASK_SELECT} WHERE t.done_at IS NULL AND (t.deal_id = ? OR (t.deal_id IS NULL AND t.contact_id = ?))
+    `${TASK_SELECT} WHERE t.done_at IS NULL AND (t.deal_id = ? OR (t.deal_id IS NULL AND t.contact_id = ? AND t.project_id IS NULL))
      ORDER BY t.due_at IS NULL, t.due_at, t.created_at, t.id`,
     [row.id, row.contact_id],
   );

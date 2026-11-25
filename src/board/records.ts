@@ -36,9 +36,9 @@ export function customRows(fields: Record<string, unknown>, labels: Map<string, 
 
 /**
  * A task as a card. `showDeal` adds a link to its deal, for pages that list more than one deal's tasks; `form` adds
- * Done and Snooze.
+ * Done and Snooze. A task on a project always names it, except on the project's own page (`onProjectPage`).
  */
-export function taskCard(task: TaskItem, now: Date, tz: string, showDeal = false, form?: FormContext): Html {
+export function taskCard(task: TaskItem, now: Date, tz: string, showDeal = false, form?: FormContext, onProjectPage = false): Html {
   const snoozed = task.snoozedUntil !== null && task.snoozedUntil > now.toISOString() ? task.snoozedUntil : null;
   const outside = task.untrusted_fields;
   return html`<li class="card">
@@ -49,7 +49,7 @@ ${snoozed !== null ? tag("Snoozed") : ""}
 ${pairs([
   { name: "Due", value: task.dueAt !== null && task.dueAtLocal !== null ? when(task.dueAt, task.dueAtLocal) : "No due date" },
   snoozed !== null && { name: "Snoozed until", value: when(snoozed, formatLocal(snoozed, tz)) },
-  showDeal &&
+  !onProjectPage &&
     task.projectId !== null &&
     task.projectName !== null && { name: "Project", value: projectLink(task.projectId, task.projectName, outside.includes("projectName")) },
   showDeal &&

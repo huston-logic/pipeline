@@ -7,6 +7,7 @@ import type { ActivityRow, Db, TaskRow, TimeEntryRow } from "../db/db.ts";
 import { logActivity } from "./activities.ts";
 import type { Ctx } from "./change.ts";
 import { addProject } from "./projects.ts";
+import { contactDetail, getDealBrief } from "./read.ts";
 import { addTask, completeTask, snoozeTask } from "./tasks.ts";
 import { addTimeEntry, updateTimeEntry } from "./time-entries.ts";
 import { startTimer, stopTimer } from "./timer.ts";
@@ -154,6 +155,59 @@ test("a stopped project timer logs its note and next step on the project", async
   const next = await task(db, String(stopped.taskId));
   assert.deepEqual([next?.project_id, next?.contact_id, next?.deal_id], [retrofit, "ct_seed01", null]);
   assert.equal((await entry(db, started.entryId))?.project_id, retrofit);
+});
+
+const OLD = "2026-11-01T00:00:00.000Z";
+
+/** Pat's deals all last heard from long ago, so a touch would show. */
+async function quietDeals(db: Db): Promise<number> {
+  await db.prepare("UPDATE deals SET last_activity_at = ? WHERE contact_id = 'ct_seed01'").bind(OLD).run();
+  const open = await db.prepare("SELECT COUNT(*) AS n FROM deals WHERE contact_id = 'ct_seed01' AND status = 'open' AND archived = 0").first<{ n: number }>();
+  return open?.n ?? 0;
+}
+const lastContacts = async (db: Db) =>
+  (await db.prepare("SELECT last_activity_at AS at FROM deals WHERE contact_id = 'ct_seed01'").all<{ at: string }>()).results.map((row) => row.at);
+
+test("a note on a project touches no deal: an open deal of the same person keeps its last contact", async () => {
+  const { db } = await setup();
+  const open = await quietDeals(db);
+  assert.ok(open > 0, "Pat has an open deal to protect");
+  await logActivity(ctxFor(db, "log_activity"), { project: "Retrofit", type: "note", summary: "Anchors ordered." });
+  assert.ok((await lastContacts(db)).every((at) => at === OLD));
+  await logActivity(ctxFor(db, "log_activity"), { contactId: "ct_seed01", type: "note", summary: "A plain note on Pat." });
+  assert.ok((await lastContacts(db)).some((at) => at !== OLD), "a note on the person still counts");
+});
+
+test("the note a project timer leaves when it stops touches no deal either", async () => {
+  const { db } = await setup();
+  await quietDeals(db);
+  await startTimer(ctxFor(db, "start_timer"), { project: "Retrofit", workType: "Design" });
+  await stopTimer({ ...ctxFor(db, "stop_timer"), now: new Date(NOW.getTime() + 90 * 60_000) }, { notes: "Measured the beams." });
+  assert.ok((await lastContacts(db)).every((at) => at === OLD));
+});
+
+test("moved project tasks and notes stay off the deal's page and brief, and on the person's, labelled", async () => {
+  const db = await timeDb(NOW);
+  await db.prepare("UPDATE settings SET projects = 1").run();
+  const deal = await db.prepare("SELECT id, title, contact_id FROM deals WHERE contact_id = 'ct_seed01' AND status = 'open' LIMIT 1").first<{ id: string; title: string; contact_id: string }>();
+  assert.ok(deal);
+  const own =await addTask(ctxFor(db), { dealId: deal.id, title: "Sales follow-up on the deal" });
+  await db.prepare("UPDATE deals SET status = 'won' WHERE id = ?").bind(deal.id).run();
+  const project = await addProject(ctxFor(db, "add_project"), { deal: deal.id, name: "Delivery", moveOpenTasks: true });
+  const mine = await addTask(ctxFor(db), { project: project.projectId, title: "Order anchors" });
+  await logActivity(ctxFor(db, "log_activity"), { project: project.projectId, type: "note", summary: "Anchors ordered." });
+  assert.equal((await task(db, own.taskId))?.project_id, project.projectId, "the deal's own task moved");
+
+  const brief = await getDealBrief(db, deal.id, "America/Los_Angeles", NOW);
+  assert.ok(!brief.openTasks.some((t) => t.id === mine.taskId || t.id === own.taskId), "no project task on the deal's brief");
+  assert.ok(!brief.timeline.some((a) => a.summary.includes("Anchors ordered")), "no project note on the deal's brief");
+
+  const person = await contactDetail(db, deal.contact_id, "America/Los_Angeles", NOW);
+  assert.ok(person);
+  const items = person.openTasks.filter((t) => t.id === mine.taskId || t.id === own.taskId);
+  assert.equal(items.length, 2, "the person still sees them");
+  assert.ok(items.every((t) => t.projectId === project.projectId && t.projectName === "Delivery"));
+  assert.ok(person.timeline.some((a) => a.summary.includes("Anchors ordered")));
 });
 
 test("any project input is PROJECTS_OFF while projects are off", async () => {

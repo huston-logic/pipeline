@@ -481,4 +481,5 @@ test("projects (decision 0055): on, one from the won storage building B deal and
   assert.equal(await db.prepare("SELECT COUNT(*) AS n FROM activities WHERE project_id = 'pj_seed01'").first("n"), 1);
   const time = await rows<{ billable: number }>(db, "SELECT billable FROM time_entries WHERE project_id = 'pj_seed01' AND ended_at IS NOT NULL ORDER BY id");
   assert.deepEqual(time.map((t) => t.billable), [1, 0]);
+  assert.equal(await db.prepare("SELECT COUNT(*) AS n FROM time_entries WHERE project_id IS NOT NULL AND deal_id IS NOT NULL").first("n"), 0, "project time sits on the person, never on a deal");
 });

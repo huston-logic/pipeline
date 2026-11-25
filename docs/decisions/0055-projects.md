@@ -64,7 +64,7 @@ Calls made while building
 - A task given with a project must be that project's.
 - `update_time_entry` never moves an entry off its project implicitly. A deal, contact or another task given for a
   project entry is refused unless `project` null is given.
-- A note on a project counts like a note on its person: it updates the open deals' last contact, as before.
+- A note on a project touches no deal: an open deal of the same person keeps its last contact, so delivery work never hides a quiet sale.
 - While projects are off, any project input or project action in a proposal is refused with `PROJECTS_OFF`, before
   names are matched.
 - The Won question is built from the rows the change wrote, never from the action text.

@@ -19,7 +19,7 @@ const SORTS = ["target", "name", "newest"] as const satisfies readonly ProjectSo
 
 const SORT_LABELS: Record<ProjectSort, string> = { target: "Target date", name: "Name", newest: "Newest first" };
 const SORT_NOTE: Record<ProjectSort, string> = { target: "", name: "by name", newest: "newest first" };
-const EXTRA_LABELS = { archived: "Archived", all: "All" } as const;
+const EXTRA_LABELS = { archived: "Archived", all: "All statuses" } as const;
 
 const LEDE = "To start a project, open the person's page or a won deal.";
 

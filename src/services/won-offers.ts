@@ -2,7 +2,7 @@
 // ask the owner whether to start a project, with the exact call to make on a yes. Names come through labels.ts, so no
 // outside text is in the line.
 import type { Db } from "../db/db.ts";
-import { type RowChange, readSnapshot } from "./change.ts";
+import type { RowChange } from "./change.ts";
 import { dealLabel } from "./labels.ts";
 import { settingsRow } from "./memo.ts";
 
@@ -16,20 +16,6 @@ export function wonDealIds(changes: readonly Pick<RowChange, "table" | "id" | "b
   return changes.flatMap((change) =>
     change.table === "deals" && change.before !== null && change.before.status !== "won" && change.after?.status === "won" ? [change.id] : [],
   );
-}
-
-/** The deals a stored change moved to won, from its audit snapshot. */
-export async function wonDealsOfChange(db: Db, changeId: string): Promise<string[]> {
-  const audit = await db
-    .prepare("SELECT id, before_json, after_json, parts FROM audit_log WHERE id = ?")
-    .bind(changeId)
-    .first<{ id: string; before_json: string; after_json: string; parts: number }>();
-  if (audit === null) return [];
-  const { before, after } = await readSnapshot(db, audit);
-  return Object.entries(after).flatMap(([key, row]) => {
-    const [table = "", id = ""] = key.split(/:(.*)/s);
-    return table === "deals" && before[key] != null && before[key]?.status !== "won" && row?.status === "won" ? [id] : [];
-  });
 }
 
 const placeholders = (ids: readonly string[]) => ids.map(() => "?").join(", ");
