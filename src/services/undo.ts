@@ -22,6 +22,7 @@ import {
   isForeignKeyFailure,
   isRunningTimerFailure,
   isSuppressionEmailFailure,
+  isTemplateNameFailure,
   isWorkTypeNameFailure,
   primaryKey,
   readSnapshot,
@@ -768,6 +769,9 @@ export async function undoChange(ctx: Ctx, changeId: string): Promise<ChangeResu
     }
     if (isWorkTypeNameFailure(error) || isClientRatePairFailure(error)) {
       throw new UserError(`Can't undo ${id}: a work type or client rate it would put back has been set again since. Change that one first, or leave the change.`, { cause: error });
+    }
+    if (isTemplateNameFailure(error)) {
+      throw new UserError(`Can't undo ${id}: a template it would restore has the same name now. Rename that one first, or leave the change.`, { cause: error });
     }
     throw error;
   }

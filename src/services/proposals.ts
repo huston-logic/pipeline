@@ -22,10 +22,9 @@ import {
   isForeignKeyFailure,
   isGuardFailure,
   isRunningTimerFailure,
+  needsBulk,
   primaryKey,
   type Row,
-  type RowChange,
-  rowKey,
   StaleWriteError,
 } from "./change.ts";
 import { capitalize, rowLabel, short } from "./describe.ts";
@@ -56,9 +55,6 @@ export const PROPOSAL_TTL_MS = 2 * 60 * 60 * 1000;
 
 /** Applied and dropped proposals stay a day, so a second yes or the old id of a revised list still gets its answer. */
 const KEEP_CLOSED_MS = 24 * 60 * 60 * 1000;
-
-/** A change touching more rows than this is written as a bulk change (decision 0035). */
-const BULK_ROWS = 50;
 
 const AGAIN = "Propose the changes again and show the owner the new list.";
 
@@ -275,16 +271,6 @@ function appliedChange(db: Db, plan: PlanCollector, id: string, ids: ReadonlyMap
     ],
     extra: [...(built.extra ?? []), db.prepare("UPDATE proposals SET status = 'applied', change_id = ? WHERE id = ?").bind(plan.changeId, id)],
   };
-}
-
-/**
- * Bulk when the change has more than BULK_ROWS rows, or when its snapshot (before_json or after_json, each one bound
- * parameter of the audit row) would be over CHUNK_BYTES, measured as bulk.ts measures (decision 0035).
- */
-function needsBulk(changes: readonly RowChange[]): boolean {
-  if (changes.length > BULK_ROWS) return true;
-  const snapshot = (side: "before" | "after") => JSON.stringify(Object.fromEntries(changes.map((change) => [rowKey(change.table, change.id), change[side]])));
-  return sqlBytes(snapshot("before")) > CHUNK_BYTES || sqlBytes(snapshot("after")) > CHUNK_BYTES;
 }
 
 /**

@@ -258,7 +258,9 @@ export const isRunningTimerFailure = (error: unknown) =>
 
 /** A second live work type with the same name, or a second live client rate for one work type and person. */
 export const isWorkTypeNameFailure = (error: unknown) => /UNIQUE constraint failed: index 'work_types_name'/.test(errorText(error));
-export const isClientRatePairFailure = (error: unknown) =>
+/** A second live template with the same name (ignoring case). */
+export const isTemplateNameFailure = (error: unknown) => /UNIQUE constraint failed: index 'project_templates_name'/.test(errorText(error));
+export const isClientRatePairFailure =(error: unknown) =>
   /UNIQUE constraint failed: client_rates\.work_type_id, client_rates\.contact_id/.test(errorText(error));
 
 /** A second live block on one address (an undo of clearing a block, after a newer block was made). */
@@ -354,7 +356,20 @@ const BULK_ORDER: readonly ChangeTable[] = [
   "views",
 ];
 
-export const isBulkTable = (table: ChangeTable) => BULK_ORDER.includes(table);
+/** A change touching more rows than this is written as a bulk change (decision 0035). */
+const BULK_ROWS = 50;
+
+/**
+ * Bulk when the change has more than BULK_ROWS rows, or when its snapshot (before_json or after_json, each one bound
+ * parameter of the audit row) would be over CHUNK_BYTES, measured as bulk.ts measures (decision 0035).
+ */
+export function needsBulk(changes: readonly RowChange[]): boolean {
+  if (changes.length > BULK_ROWS) return true;
+  const snapshot = (side: "before" | "after") => JSON.stringify(Object.fromEntries(changes.map((change) => [rowKey(change.table, change.id), change[side]])));
+  return sqlBytes(snapshot("before")) > CHUNK_BYTES || sqlBytes(snapshot("after")) > CHUNK_BYTES;
+}
+
+export const isBulkTable =(table: ChangeTable) => BULK_ORDER.includes(table);
 
 /** Rows of one table written by one statement shape: an insert or an update of the same columns. */
 type BulkGroup = { table: ChangeTable; columns: string[]; rows: Row[] };

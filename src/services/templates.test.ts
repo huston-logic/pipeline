@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Db, TemplateTaskRow } from "../db/db.ts";
 import { openTestDb } from "../db/sqlite-d1.ts";
+import { racing } from "../../tests/helpers/race-db.ts";
 import type { Ctx } from "./change.ts";
 import { startTimer } from "./timer.ts";
 import { undoChange } from "./undo.ts";
@@ -239,4 +240,49 @@ test("a timer started on a task defaults to the task's work type, unless one is 
   const given = await startTimer(ctxFor(db, "start_timer"), { task: "tk_wt", workType: "Build" });
   const build = await db.prepare("SELECT work_type_id FROM time_entries WHERE id = ?").bind(given.entryId).first<string>("work_type_id");
   assert.notEqual(build, design.workTypeId);
+});
+
+test("undo of an archive or rename is refused plainly when a live template has the name now", async () => {
+  const db = await setup();
+  const first = await addTemplate(ctxFor(db), { name: "Launch" });
+  const archived = await updateTemplate(ctxFor(db), first.templateId, { archived: true });
+  await addTemplate(ctxFor(db), { name: "launch" });
+  await assert.rejects(undoChange(ctxFor(db, "undo_change"), archived.changeId), /a template it would restore has the same name now\. Rename that one first/);
+
+  const other = await addTemplate(ctxFor(db), { name: "Audit" });
+  const renamed = await updateTemplate(ctxFor(db), other.templateId, { name: "Review" });
+  await addTemplate(ctxFor(db), { name: "audit" });
+  await assert.rejects(undoChange(ctxFor(db, "undo_change"), renamed.changeId), /a template it would restore has the same name now/);
+});
+
+test("a lost race on the live name is the same refusal as the name check", async () => {
+  const db = await setup();
+  const rival = () => addTemplate(ctxFor(db), { name: "Launch" });
+  await assert.rejects(addTemplate(ctxFor(racing(db, rival)), { name: "launch" }), /already a template called "launch"/);
+
+  const mine = await addTemplate(ctxFor(db), { name: "Audit" });
+  const rival2 = () => addTemplate(ctxFor(db), { name: "Review" });
+  await assert.rejects(updateTemplate(ctxFor(racing(db, rival2)), mine.templateId, { name: "review" }), /already a template called "review"/);
+});
+
+test("a 100-task template of long titles is one bulk change that undoes whole", async () => {
+  const db = await setup();
+  const tasks = Array.from({ length: 100 }, (_, i) => ({ title: `${i}`.padEnd(200, "x"), dueDays: 5 }));
+  const made = await addTemplate(ctxFor(db), { name: "Big", tasks });
+  assert.ok(((await db.prepare("SELECT parts FROM audit_log WHERE id = ?").bind(made.changeId).first<number>("parts")) ?? 0) > 0);
+  const copy = await duplicateTemplate(ctxFor(db), "Big");
+  assert.equal(copy.taskIds.length, 100);
+  const archived = await archiveTemplateTask(ctxFor(db), made.taskIds[0] ?? "");
+  assert.equal(archived.archivedIds.length, 1);
+  await undoChange(ctxFor(db, "undo_change"), copy.changeId);
+  assert.equal(await db.prepare("SELECT count(*) AS n FROM template_tasks").first<number>("n"), 100);
+});
+
+test("a work type named by many tasks is looked up once", async () => {
+  const db = await setup({ time: true });
+  await addWorkType(ctxFor(db, "add_work_type"), { name: "Design" });
+  let reads = 0;
+  const counting = { ...db, prepare: (sql: string) => { if (sql.includes("work_types")) reads++; return db.prepare(sql); }, batch: db.batch.bind(db) } as Db;
+  await addTemplate(ctxFor(counting), { name: "T", tasks: Array.from({ length: 30 }, (_, i) => ({ title: `t${i}`, workType: "Design" })) });
+  assert.ok(reads < 10, `work_types read ${reads} times`);
 });

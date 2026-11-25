@@ -4,7 +4,7 @@
 // TEMPLATE_TASKS_MAX live tasks.
 import type { ProjectTemplateRow, TemplateTaskRow } from "../db/db.ts";
 import { newId } from "../ids.ts";
-import { type ChangeResult, commitChange, type Ctx, type RowChange, updatedRow } from "./change.ts";
+import { type ChangeInput, type ChangeResult, commitChange, type Ctx, isTemplateNameFailure, needsBulk, type RowChange, updatedRow } from "./change.ts";
 import { rowLabel, short } from "./describe.ts";
 import { UserError } from "./errors.ts";
 import { clean } from "./input.ts";
@@ -102,6 +102,19 @@ async function liveTask(src: Source, id: string): Promise<{ task: TemplateTaskRo
   return { task, template };
 }
 
+/**
+ * commitChange, as a bulk change when it is big (100 tasks of long titles would near D1's statement limit), and a lost
+ * race on the live name is explained as the name check explains it.
+ */
+async function commitTemplate(ctx: Ctx, input: ChangeInput, name?: string, except?: string): Promise<ChangeResult> {
+  try {
+    return await commitChange(ctx, { ...input, bulk: needsBulk(input.changes) });
+  } catch (error) {
+    if (name !== undefined && isTemplateNameFailure(error)) await checkNameFree(ctx, name, except);
+    throw error;
+  }
+}
+
 const stamps = (ctx: Ctx) => ({ version: 1, created_at: ctx.now.toISOString(), updated_at: ctx.now.toISOString() });
 
 export async function addTemplate(
@@ -116,11 +129,19 @@ export async function addTemplate(
   checkTree(items);
   await checkNameFree(ctx, name);
   const resolved: { title: string; dueDays: number | null; workType: string | null }[] = [];
+  // Each distinct work type reference is looked up once.
+  const known = new Map<string, string>();
   for (const [i, item] of items.entries()) {
+    let workType: string | null = null;
+    if (item.workType !== undefined) {
+      const key = item.workType.trim().toLowerCase();
+      workType = known.get(key) ?? (await workTypeId(ctx, item.workType));
+      known.set(key, workType);
+    }
     resolved.push({
       title: clean(item.title) === null ? fail(`Task ${i + 1} needs a title. Say in a few words what to do.`) : checkText(item.title, "task title"),
       dueDays: item.dueDays === undefined ? null : checkDueDays(item.dueDays),
-      workType: item.workType === undefined ? null : await workTypeId(ctx, item.workType),
+      workType,
     });
   }
   const template: ProjectTemplateRow = { id: newId("tp"), name, description, archived: 0, untrusted_fields: "[]", ...stamps(ctx) };
@@ -145,14 +166,14 @@ export async function addTemplate(
   });
   const group = `template:${template.id}`;
   const count = rows.length;
-  const result = await commitChange(ctx, {
+  const result = await commitTemplate(ctx, {
     target: { table: "project_templates", id: template.id },
     summary: `Added ${templateText(template)}${count === 0 ? "" : ` with ${count} ${count === 1 ? "task" : "tasks"}`}`,
     changes: [
       { table: "project_templates", id: template.id, before: null, after: template, group },
       ...rows.map((row) => ({ table: "template_tasks" as const, id: row.id, before: null, after: row, group })),
     ],
-  });
+  }, name);
   return { ...result, templateId: template.id, taskIds: ids };
 }
 
@@ -201,11 +222,11 @@ export async function updateTemplate(
   if (parts.length === 0) throw new UserError(`Nothing to change on ${templateText(before)}: every value you gave is already set.`);
   if (set.name !== undefined || restoring) await checkNameFree(ctx, set.name ?? before.name, before.id);
   const after = updatedRow(before, set, ctx.now);
-  const result = await commitChange(ctx, {
+  const result = await commitTemplate(ctx, {
     target: { table: "project_templates", id: before.id },
     summary: `Updated ${templateText(after)}: ${parts.join(", ")}`,
     changes: [{ table: "project_templates", id: before.id, before, after }],
-  });
+  }, after.name, before.id);
   return { ...result, templateId: before.id };
 }
 
@@ -238,7 +259,7 @@ export async function addTemplateTask(
     archived: 0,
     ...stamps(ctx),
   };
-  const result = await commitChange(ctx, {
+  const result = await commitTemplate(ctx, {
     target: { table: "template_tasks", id: row.id },
     summary: `Added ${taskText(row)} to ${templateText(template)}`,
     changes: [{ table: "template_tasks", id: row.id, before: null, after: row }],
@@ -277,7 +298,7 @@ export async function updateTemplateTask(
   }
   if (parts.length === 0) throw new UserError(`Nothing to change on ${taskText(before)}: every value you gave is already set.`);
   const after = updatedRow(before, set, ctx.now);
-  const result = await commitChange(ctx, {
+  const result = await commitTemplate(ctx, {
     target: { table: "template_tasks", id: before.id },
     summary: `Updated ${taskText(after)} in ${templateText(template)}: ${parts.join(", ")}`,
     changes: [{ table: "template_tasks", id: before.id, before, after }],
@@ -320,7 +341,7 @@ export async function moveTemplateTask(ctx: Ctx, id: string, direction: Template
     changes.unshift(edit(task, { parent_id: parent.parent_id, position: parent.position + 1 }));
     summary = `Moved ${taskText(task)} out from under ${taskText(parent)}`;
   }
-  const result = await commitChange(ctx, { target: { table: "template_tasks", id: task.id }, summary, changes });
+  const result = await commitTemplate(ctx, { target: { table: "template_tasks", id: task.id }, summary, changes });
   return { ...result, taskId: task.id };
 }
 
@@ -333,7 +354,7 @@ export async function archiveTemplateTask(ctx: Ctx, id: string): Promise<ChangeR
   for (const t of tasks) if (t.parent_id !== null && doomed.has(t.parent_id)) doomed.add(t.id);
   const rows = tasks.filter((t) => doomed.has(t.id));
   const extra = rows.length - 1;
-  const result = await commitChange(ctx, {
+  const result = await commitTemplate(ctx, {
     target: { table: "template_tasks", id: task.id },
     summary: `Archived ${taskText(task)}${extra > 0 ? ` and ${extra} ${extra === 1 ? "task" : "tasks"} under it` : ""} from ${templateText(template)}`,
     changes: rows.map((row) => ({ table: "template_tasks" as const, id: row.id, before: row, after: updatedRow(row, { archived: 1 }, ctx.now) })),
@@ -361,14 +382,14 @@ export async function duplicateTemplate(
     ...stamps(ctx),
   }));
   const group = `template:${template.id}`;
-  const result = await commitChange(ctx, {
+  const result = await commitTemplate(ctx, {
     target: { table: "project_templates", id: template.id },
     summary: `Copied ${templateText(source)} as ${templateText(template)} with ${rows.length} ${rows.length === 1 ? "task" : "tasks"}`,
     changes: [
       { table: "project_templates", id: template.id, before: null, after: template, group },
       ...rows.map((row) => ({ table: "template_tasks" as const, id: row.id, before: null, after: row, group })),
     ],
-  });
+  }, copyName);
   return { ...result, templateId: template.id, taskIds: rows.map((row) => row.id) };
 }
 
