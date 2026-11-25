@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
 import { test } from "node:test";
+import { clearSuppression } from "../campaigns/suppressions.ts";
 import { verifySvix } from "../campaigns/svix.ts";
 import { createTestDb, type SqliteD1 } from "../db/sqlite-d1.ts";
 import type { Env } from "../env.ts";
@@ -172,6 +173,60 @@ test("a complaint on an already bounced row blocks the address when no block sta
   await post(env, event("email.complained"));
   assert.equal((await recipient(db))?.status, "bounced");
   assert.equal(await count(db, "SELECT COUNT(*) AS n FROM email_suppressions WHERE reason = 'complained'"), 1);
+});
+
+const unsubscribed = (db: SqliteD1): void =>
+  db.exec(`UPDATE settings SET campaigns = 1; INSERT INTO email_suppressions (id, email, reason, contact_id) VALUES ('su_old1', 'pat@example.com', 'unsubscribed', 'ct_hook1')`);
+
+const clear = (db: SqliteD1) => clearSuppression({ db, now: NOW, actor: "owner", tool: "clear_suppression" }, "ct_hook1");
+
+test("a complaint after an unsubscribe upgrades the block, so the owner cannot clear it", async () => {
+  const { db, env } = await setup();
+  unsubscribed(db);
+  await post(env, event("email.complained"));
+  const live = await db.prepare("SELECT id, reason, version FROM email_suppressions WHERE cleared_at IS NULL").all<Record<string, string | number>>();
+  assert.deepEqual(live.results, [{ id: "su_old1", reason: "complained", version: 2 }]);
+  const audit = await db.prepare("SELECT actor, summary FROM audit_log WHERE tool = 'campaign_webhook'").all<{ actor: string; summary: string }>();
+  assert.equal(audit.results.length, 1);
+  assert.match(audit.results[0]?.summary ?? "", /^Stopped campaign emails to contact ct_hook1: they marked an email as spam \(change /);
+  await assert.rejects(clear(db), /no unsubscribe to clear/);
+  assert.equal(await count(db, "SELECT COUNT(*) AS n FROM email_suppressions WHERE cleared_at IS NULL"), 1);
+});
+
+test("a permanent bounce after an unsubscribe upgrades it the same way", async () => {
+  const { db, env } = await setup();
+  unsubscribed(db);
+  await post(env, event("email.bounced", { bounce: { type: "Permanent" } }));
+  assert.equal((await db.prepare("SELECT reason FROM email_suppressions").first<{ reason: string }>())?.reason, "bounced");
+  await assert.rejects(clear(db), /no unsubscribe to clear/);
+});
+
+test("a complaint after a bounce changes nothing", async () => {
+  const { db, env } = await setup();
+  await post(env, event("email.bounced", { bounce: { type: "Permanent" } }));
+  await post(env, event("email.complained"));
+  const live = await db.prepare("SELECT reason, version FROM email_suppressions").all<Record<string, string | number>>();
+  assert.deepEqual(live.results, [{ reason: "bounced", version: 1 }]);
+});
+
+test("an uncertain row with no resend id is found by the campaign tag and address", async () => {
+  const { db, env } = await setup(SECRET, "uncertain");
+  db.exec("UPDATE campaign_recipients SET resend_id = NULL");
+  const tagged = { tags: { campaign: "cp_hook1" }, to: ["Pat@Example.com"] };
+  assert.equal((await post(env, event("email.complained", tagged, "em_never_stored"))).status, 200);
+  assert.equal(await count(db, "SELECT COUNT(*) AS n FROM email_suppressions WHERE reason = 'complained'"), 1);
+  assert.equal((await recipient(db))?.status, "uncertain");
+});
+
+test("the list form of tags works, and a wrong campaign tag or a non-blocking event blocks nothing", async () => {
+  const { db, env } = await setup(SECRET, "uncertain");
+  db.exec("UPDATE campaign_recipients SET resend_id = NULL");
+  await post(env, event("email.complained", { tags: { campaign: "cp_other" }, to: ["pat@example.com"] }, "em_x"));
+  await post(env, event("email.delivered", { tags: { campaign: "cp_hook1" }, to: ["pat@example.com"] }, "em_x"));
+  await post(env, event("email.bounced", { bounce: { type: "Temporary" }, tags: { campaign: "cp_hook1" }, to: ["pat@example.com"] }, "em_x"));
+  assert.equal(await count(db, "SELECT COUNT(*) AS n FROM email_suppressions"), 0);
+  await post(env, event("email.bounced", { bounce: { type: "Permanent" }, tags: [{ name: "campaign", value: "cp_hook1" }], to: ["pat@example.com"] }, "em_x"));
+  assert.equal(await count(db, "SELECT COUNT(*) AS n FROM email_suppressions WHERE reason = 'bounced'"), 1);
 });
 
 test("the signature covers the raw bytes: a BOM or invalid UTF-8 verifies, then is a 400", async () => {

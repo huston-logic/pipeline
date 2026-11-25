@@ -14,7 +14,22 @@ interface ResendEvent {
   type: string;
   emailId: string;
   bounceType: string | null;
+  /** The campaign tag and first recipient address, for an email whose id was never stored. */
+  campaignId: string | null;
+  to: string | null;
 }
+
+// Resend shows tags as an object or as a list of {name, value}; read both.
+function campaignTag(tags: unknown): string | null {
+  const found = Array.isArray(tags)
+    ? tags.find((tag) => typeof tag === "object" && tag !== null && (tag as { name?: unknown }).name === "campaign")?.value
+    : typeof tags === "object" && tags !== null
+      ? (tags as { campaign?: unknown }).campaign
+      : null;
+  return typeof found === "string" ? found : null;
+}
+
+const NEEDS_BLOCK = new Set(["email.complained", "email.suppressed", "email.bounced"]);
 
 function parseEvent(body: string): ResendEvent | null {
   let value: unknown;
@@ -26,10 +41,17 @@ function parseEvent(body: string): ResendEvent | null {
   if (typeof value !== "object" || value === null) return null;
   const { type, data } = value as { type?: unknown; data?: unknown };
   if (typeof type !== "string" || typeof data !== "object" || data === null) return null;
-  const { email_id: emailId, bounce } = data as { email_id?: unknown; bounce?: unknown };
+  const { email_id: emailId, bounce, tags, to } = data as { email_id?: unknown; bounce?: unknown; tags?: unknown; to?: unknown };
   if (typeof emailId !== "string" || emailId === "") return null;
   const bounceType = typeof bounce === "object" && bounce !== null ? (bounce as { type?: unknown }).type : null;
-  return { type, emailId, bounceType: typeof bounceType === "string" ? bounceType : null };
+  const first = Array.isArray(to) ? to[0] : to;
+  return {
+    type,
+    emailId,
+    bounceType: typeof bounceType === "string" ? bounceType : null,
+    campaignId: campaignTag(tags),
+    to: typeof first === "string" ? first.trim().toLowerCase() : null,
+  };
 }
 
 function move(env: Env, now: Date, id: string, status: string, from: readonly string[], stampColumn: string | null): D1PreparedStatement {
@@ -69,6 +91,15 @@ async function apply(env: Env, now: Date, event: ResendEvent, row: CampaignRecip
   }
 }
 
+async function unmatched(env: Env, event: ResendEvent): Promise<CampaignRecipientRow | null> {
+  if (!NEEDS_BLOCK.has(event.type) || event.campaignId === null || event.to === null) return null;
+  return env.DB.prepare(
+    "SELECT * FROM campaign_recipients WHERE campaign_id = ? AND email = ? AND status IN ('sending', 'sent', 'uncertain') ORDER BY sent_at DESC LIMIT 1",
+  )
+    .bind(event.campaignId, event.to)
+    .first<CampaignRecipientRow>();
+}
+
 async function handle(request: Request, env: Env, now: Date): Promise<Response> {
   if (request.method !== "POST") return textResponse("This address only answers POST requests.", 405, { Allow: "POST" });
   const secret = env.CAMPAIGN_WEBHOOK_SECRET;
@@ -87,7 +118,8 @@ async function handle(request: Request, env: Env, now: Date): Promise<Response> 
   if (event === null) return textResponse("That is not a delivery event.", 400);
 
   const row = await env.DB.prepare("SELECT * FROM campaign_recipients WHERE resend_id = ?").bind(event.emailId).first<CampaignRecipientRow>();
-  if (row !== null) await apply(env, now, event, row);
+  const target = row ?? (await unmatched(env, event));
+  if (target !== null) await apply(env, now, event, target);
   return textResponse("ok", 200);
 }
 

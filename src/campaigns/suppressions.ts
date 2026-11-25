@@ -35,35 +35,47 @@ export interface BlockSpec {
 
 /**
  * Blocks the recipient's address with a live suppression and runs `mark`, in one system change. An address that is
- * already blocked (any reason) gets no second block; only `mark` runs, unaudited.
+ * already blocked gets no second row; an unsubscribe is upgraded to the bounce or complaint (clearing only lifts unsubscribes), any other live block stays, and only `mark` runs, unaudited.
  */
 export async function blockAddress(db: Ctx["db"], now: Date, recipient: CampaignRecipientRow, spec: BlockSpec): Promise<void> {
   const email = recipient.email.trim().toLowerCase();
-  const live = () => db.prepare("SELECT id FROM email_suppressions WHERE email = ? AND cleared_at IS NULL").bind(email).first<{ id: string }>();
-  if ((await live()) === null) {
-    const stamp = now.toISOString();
-    const row: EmailSuppressionRow = {
-      id: newId("su"),
-      email,
-      reason: spec.reason,
-      contact_id: recipient.contact_id,
-      campaign_id: recipient.campaign_id,
-      created_at: stamp,
-      cleared_at: null,
-      version: 1,
-    };
-    const ctx: Ctx = { db, now, actor: "system", tool: spec.tool };
+  const live = () => db.prepare("SELECT * FROM email_suppressions WHERE email = ? AND cleared_at IS NULL").bind(email).first<EmailSuppressionRow>();
+  const ctx: Ctx = { db, now, actor: "system", tool: spec.tool };
+  // A second pass covers two blocks at once: the other one's row now stands, and may itself need the upgrade.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const current = await live();
     try {
-      await commitChange(ctx, {
-        target: { table: "email_suppressions", id: row.id },
-        summary: spec.summary,
-        changes: [{ table: "email_suppressions", id: row.id, before: null, after: row }],
-        extra: [spec.mark],
-      });
-      return;
+      if (current === null) {
+        const row: EmailSuppressionRow = {
+          id: newId("su"),
+          email,
+          reason: spec.reason,
+          contact_id: recipient.contact_id,
+          campaign_id: recipient.campaign_id,
+          created_at: now.toISOString(),
+          cleared_at: null,
+          version: 1,
+        };
+        await commitChange(ctx, {
+          target: { table: "email_suppressions", id: row.id },
+          summary: spec.summary,
+          changes: [{ table: "email_suppressions", id: row.id, before: null, after: row }],
+          extra: [spec.mark],
+        });
+        return;
+      }
+      if (current.reason === "unsubscribed" && spec.reason !== "unsubscribed") {
+        await commitChange(ctx, {
+          target: { table: "email_suppressions", id: current.id },
+          summary: spec.summary,
+          changes: [{ table: "email_suppressions", id: current.id, before: current, after: updatedRow(current, { reason: spec.reason }, now) }],
+          extra: [spec.mark],
+        });
+        return;
+      }
+      break;
     } catch (error) {
-      // Two blocks at once: the other one's block now stands, so fall through to the already-blocked path.
-      if ((await live()) === null) throw error;
+      if (attempt === 1) throw error;
     }
   }
   await spec.mark.run();
