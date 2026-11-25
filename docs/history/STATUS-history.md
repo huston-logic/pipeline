@@ -178,6 +178,37 @@ Changes to scope, product or a decision since run 3, one line each:
 
 # History (kept from earlier runs; facts re-checked on 2026-11-23)
 
+## Run 7 (2026-11-24)
+
+Run 7, "Speed" (2026-11-24). Plan: `docs/superpowers/plans/2026-11-24-run7-speed.md`. Decision 0052. Goal: make every later run faster and cheaper without lowering the bar.
+
+Built:
+
+- PR A (#73, merged): `npm run check:fast` (only the unit tests a change can reach; all of them when unsure), one shared e2e Worker with a fresh database copy per file, `scripts/board-changed.mjs` for CI, the baseline timings.
+- PR B (this PR, auto-merge queued): docs/PROCESS.md, `npm run check:process` and its tests, STATUS.md under 150 lines (history moved unchanged), the decisions index, CLAUDE.md and AGENTS.md with each rule once and one merge rule, the short "Autonomous runs".
+- Owner-only proposals (hook, ci.yml, three agents) with one batch script: Needs Grant 1.
+
+Timings: full check 82.3 s to 29.9 s here; e2e 66.6 s to 15.7 s; check:fast 3 to 5 s; CI `check` job 3 min 18 s to 1 min 56 s. Details: docs/PROCESS.md "Timings".
+
+| PR | Wall-clock | Commits | Time in checks | Waiting on CI |
+|---|---|---|---|---|
+| A (#73) | about 21 min to open (12:56 to 13:17), merged 13:30 | 6 | about 3.5 min (the old hook ran the full check on each commit, plus two timing runs) | 12.5 min (Lighthouse about 12 min; the PR changed package files, so a full audit) |
+| B (this PR) | about 40 min to open, built while A was in CI | 5 | about 3 min | see the PR; it still runs the full audits until the owner's ci.yml lands |
+
+Judgment calls (one line each):
+
+- "Execute unattended" was treated as an autonomous run: auto-merge after review.
+- `check:process` runs on its own until the owner batch wires it in, because it checks the hook file and would block every commit before then (0052).
+- `check:fast` checks what is not committed yet (against HEAD); `-- --branch` checks the whole branch.
+- Unit tests stay one process per file: one shared process was slower (18.0 s against 9.5 s).
+- The e2e Worker uses wrangler's unstable `unstable_startWorker`; wrangler is pinned, and a break fails loudly.
+- `src/mcp/` is not a board path for the audits; a push to main audits everything anyway.
+- Branch B was built on A's tip and rebased onto main after A merged, before its first push (no force push).
+- The proposed ci.yml adds a "Process rules" step to `check`, so CI also runs `check:process`.
+- Not changed: CLAUDE.md still says both "Plan first and wait for my approval" and "plan, decide and build without asking me" (outside autonomous runs); your call.
+
+Queued: nothing beyond Needs Grant 1 to 3.
+
 ## Run 6 (2026-11-23 to 2026-11-24)
 
 Daily work (docs/PLAN.md, "Run 6"; plan `docs/superpowers/plans/2026-11-24-run6-daily-work.md`): approve before
