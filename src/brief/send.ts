@@ -42,7 +42,8 @@ export async function sendBrief(
   try {
     const response = await fetch(RESEND_URL, {
       method: "POST",
-      headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, "Content-Type": "application/json" },
+      // Resend may answer a raw HTTP client with no User-Agent a 403.
+      headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, "Content-Type": "application/json", "User-Agent": "pipeline-engine" },
       body: JSON.stringify({ from: env.BRIEF_FROM, to: [settings.brief_email], subject: brief.subject, text: brief.text }),
     });
     return response.ok ? { sent: true } : { sent: false, reason: `failed: ${response.status}` };

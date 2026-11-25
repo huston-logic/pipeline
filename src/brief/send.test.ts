@@ -29,6 +29,7 @@ test("sending posts plain text to Resend only when every switch is on", async (t
   const headers = call?.init.headers as Record<string, string>;
   assert.equal(headers.Authorization, "Bearer re_fake_key");
   assert.equal(headers["Content-Type"], "application/json");
+  assert.equal(headers["User-Agent"], "pipeline-engine");
   assert.deepEqual(JSON.parse(String(call?.init.body)), {
     from: "brief@example.test",
     to: ["owner@example.test"],
