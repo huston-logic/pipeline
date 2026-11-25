@@ -2,7 +2,7 @@
 // campaign shows who gets it, who is skipped and why, what the email looks like to the first person, and the buttons
 // that send it. The page reads and writes nothing. A campaign that has gone out shows its results instead
 // (campaign-results.ts). 404 for an unknown or archived campaign and while campaigns are off.
-import { parseAudience, type ResolvedAudience, resolveAudience } from "../../campaigns/audience.ts";
+import { type Member, parseAudience, type ResolvedAudience, resolveAudience, type SkipReason } from "../../campaigns/audience.ts";
 import { loadCampaign } from "../../campaigns/drafts.ts";
 import { fingerprint } from "../../campaigns/freeze.ts";
 import { replyTo, sendingBlocker } from "../../campaigns/readiness.ts";
@@ -11,6 +11,7 @@ import type { CampaignRow, CampaignStepRow, SettingsRow } from "../../db/db.ts";
 import { getSettings } from "../../db/queries.ts";
 import { isCampaignId } from "../../ids.ts";
 import { UserError } from "../../services/errors.ts";
+import { contactName } from "../../services/labels.ts";
 import { statusLabels } from "../../services/status-labels.ts";
 import { addDays, formatLocal, localDate, localWhen } from "../../time.ts";
 import { campaignPreview } from "../campaign-preview.ts";
@@ -111,16 +112,41 @@ const refusalNote = (state: ReviewState | undefined): Html | "" =>
 
 type Reviewed = { campaign: CampaignRow; step: CampaignStepRow; settings: SettingsRow; tz: string };
 
+type FrozenLine = { contact_id: string; name: string; untrusted_fields: string; first_name: string | null; email: string; status: string; skip_reason: SkipReason | null };
+
+/** A scheduled campaign's list as it was frozen: the recipient rows, not the people on file now. */
+async function frozenAudience(ctx: PageContext, campaignId: string): Promise<ResolvedAudience> {
+  const found = await ctx.db
+    .prepare(
+      `SELECT r.contact_id, c.name, c.untrusted_fields, r.first_name, r.email, r.status, r.skip_reason
+       FROM campaign_recipients r JOIN contacts c ON c.id = r.contact_id WHERE r.campaign_id = ? ORDER BY lower(c.name), r.id`,
+    )
+    .bind(campaignId)
+    .all<FrozenLine>();
+  const member = (line: FrozenLine): Member => ({
+    contactId: line.contact_id,
+    label: contactName({ id: line.contact_id, name: line.name, untrusted_fields: line.untrusted_fields }),
+    email: line.email === "" ? null : line.email,
+    firstName: line.first_name,
+    leadStatus: null,
+  });
+  return {
+    sendable: found.results.filter((line) => line.status !== "skipped").map(member),
+    skipped: found.results.flatMap((line) => (line.status === "skipped" && line.skip_reason !== null ? [{ ...member(line), reason: line.skip_reason }] : [])),
+    newLeads: 0,
+  };
+}
+
 async function reviewBody(ctx: PageContext, { campaign, step, settings, tz }: Reviewed, state: ReviewState | undefined): Promise<Html> {
+  const scheduled = campaign.status === "scheduled";
   let resolved: ResolvedAudience | null = null;
   let problem: string | null = null;
   try {
-    resolved = await resolveAudience(ctx.db, ctx.now, parseAudience(campaign.audience));
+    resolved = scheduled ? await frozenAudience(ctx, campaign.id) : await resolveAudience(ctx.db, ctx.now, parseAudience(campaign.audience));
   } catch (error) {
     if (!(error instanceof UserError)) throw error;
     problem = error.message;
   }
-  const scheduled = campaign.status === "scheduled";
   const sendable = resolved?.sendable ?? [];
   const first = sendable[0];
   const business = ctx.look.name;
@@ -140,7 +166,7 @@ async function reviewBody(ctx: PageContext, { campaign, step, settings, tz }: Re
       ? html`<p class="notice">${problem}</p>`
       : html`${pairs([{ name: "To", value: `${people(sendable.length)}, from ${await howChosen(ctx, campaign)}` }])}${resolved.newLeads > 0
           ? html`<p class="notice">${resolved.newLeads === 1 ? "1 of them is a lead" : `${resolved.newLeads} of them are leads`} you haven't contacted yet. A first email from a list can land in spam and hurt your sending.</p>`
-          : ""}${limitLine(sendable.length, settings.campaign_daily_limit, sendDay)}`;
+          : ""}${limitLine(sendable.length, settings.campaign_daily_limit, sendDay)}${scheduled ? html`<p>The list was fixed when you scheduled it.</p>` : ""}`;
 
   const timeLine = scheduled
     ? campaign.send_after === null
@@ -150,8 +176,7 @@ async function reviewBody(ctx: PageContext, { campaign, step, settings, tz }: Re
       ? ""
       : html`<p>Suggested time: ${when(campaign.suggested_send_at, formatLocal(campaign.suggested_send_at, tz))}</p>`;
 
-  // A notice is announced only when a post was just refused; on a plain load it is ordinary page text.
-  const announce = state?.refusal === undefined ? "" : html` role="alert"`;
+  // The refusal note is the page's one alert; these notices are ordinary text, so a refused post is announced once.
   const formsShown = !scheduled && resolved !== null && blocker === null && sendable.length > 0;
   let actions: Html;
   if (scheduled) {
@@ -163,9 +188,9 @@ async function reviewBody(ctx: PageContext, { campaign, step, settings, tz }: Re
       resolved === null
         ? ""
         : blocker !== null
-          ? html`<p class="notice"${announce}>${blocker}</p>`
+          ? html`<p class="notice">${blocker}</p>`
           : sendable.length === 0
-            ? html`<p class="notice"${announce}>No one in this group can get the email.</p>`
+            ? html`<p class="notice">No one in this group can get the email.</p>`
             : html`${sendForms(ctx, campaign, tz, sendable.length, await fingerprint(campaign, step, resolved), state)}${testForm(ctx, campaign)}`;
     actions = html`${own}${send}`;
   }

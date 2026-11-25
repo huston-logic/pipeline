@@ -21,6 +21,7 @@ import {
   isClientRatePairFailure,
   isForeignKeyFailure,
   isRunningTimerFailure,
+  isSuppressionEmailFailure,
   isWorkTypeNameFailure,
   primaryKey,
   readSnapshot,
@@ -740,6 +741,9 @@ export async function undoChange(ctx: Ctx, changeId: string): Promise<ChangeResu
     if (isForeignKeyFailure(error)) throw new UserError(dependsMessage(id, "records added since"), { cause: error });
     if (isRunningTimerFailure(error)) {
       throw new UserError(`Can't undo ${id}: it would start a timer again, but another one is running now. Stop it first, or leave the change.`, { cause: error });
+    }
+    if (isSuppressionEmailFailure(error)) {
+      throw new UserError(`Can't undo ${id}: that address has a newer block. Leave the change.`, { cause: error });
     }
     if (isWorkTypeNameFailure(error) || isClientRatePairFailure(error)) {
       throw new UserError(`Can't undo ${id}: a work type or client rate it would put back has been set again since. Change that one first, or leave the change.`, { cause: error });

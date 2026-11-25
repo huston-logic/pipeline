@@ -59,6 +59,17 @@ test("undo puts the unsubscribe back", async () => {
   assert.equal((await suppressionOf(db, { email: "una@example.com", contactId: "ct_u1" }))?.reason, "unsubscribed");
 });
 
+test("undo is a plain refusal when the address has a newer block", async () => {
+  const db = await people();
+  const result = await clearSuppression(owner(db), "ct_u1");
+  db.exec("INSERT INTO email_suppressions (id, email, reason, contact_id) VALUES ('su_u2', 'una@example.com', 'bounced', 'ct_u1')");
+  await assert.rejects(
+    undoChange({ db, now: NOW, actor: "owner", tool: "undo_change" }, result.changeId),
+    (error: unknown) => error instanceof UserError && error.message === `Can't undo ${result.changeId}: that address has a newer block. Leave the change.`,
+  );
+  assert.ok((await suppression(db, "su_u1"))?.cleared_at);
+});
+
 test("a bounce, a complaint, or no block at all is refused and nothing changes", async () => {
   const db = await people();
   const before = (await db.prepare("SELECT COUNT(*) AS n FROM audit_log").first<{ n: number }>())?.n;

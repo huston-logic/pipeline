@@ -7,7 +7,7 @@ import type { SqliteD1 } from "../db/sqlite-d1.ts";
 import type { Env } from "../env.ts";
 import { parseAudience, resolveAudience } from "./audience.ts";
 import { addCampaignDraft } from "./drafts.ts";
-import { approveCampaign, cancelCampaign, fingerprint, pauseCampaign } from "./freeze.ts";
+import { approveCampaign, cancelCampaign, fingerprint, pauseCampaign, resumeCampaign } from "./freeze.ts";
 import { runCampaigns } from "./send.ts";
 
 const NOW = new Date("2026-11-24T18:00:00.000Z");
@@ -481,6 +481,31 @@ test("a refusal of a RESEND never re-queues: 503 then 401 makes the rows uncerta
   assert.equal(new Set(w.sent.map((s) => s.headers["Idempotency-Key"])).size, 1);
   assert.equal(await count(w.db, "SELECT id FROM campaign_batches"), 1);
   assert.equal(await activitiesOf(w.db, w.id), 0);
+});
+
+test("a resumed campaign with every row uncertain is finished by the next run", async (t) => {
+  const w = await world(t, 3);
+  w.answer.fn = () => new Response("", { status: 503 });
+  await runCampaigns(w.env, NOW);
+  w.answer.fn = () => new Response("{}", { status: 401 });
+  await runCampaigns(w.env, at(15 * MINUTE));
+  assert.equal((await campaignOf(w.db, w.id))?.status, "paused");
+  await resumeCampaign({ db: w.db, now: at(20 * MINUTE), actor: "owner", tool: "campaign_resume" }, w.id);
+  assert.equal((await campaignOf(w.db, w.id))?.status, "sending");
+  assert.deepEqual(await runCampaigns(w.env, at(30 * MINUTE)), {});
+  const campaign = await campaignOf(w.db, w.id);
+  assert.deepEqual([campaign?.status, campaign?.completed_at], ["sent", at(30 * MINUTE).toISOString()]);
+  assert.equal(w.sent.length, 2);
+});
+
+test("a campaign cancelled during a first attempt that Resend then refuses gets its rows back as cancelled, not queued", async (t) => {
+  const w = await world(t, 2);
+  w.answer.fn = () => {
+    w.db.exec("UPDATE campaigns SET status = 'cancelled', completed_at = '2026-11-24T18:00:30.000Z', version = version + 1");
+    return new Response("{}", { status: 429 });
+  };
+  await runCampaigns(w.env, NOW);
+  assert.deepEqual(await statusCounts(w.db, w.id), { cancelled: 2 });
 });
 
 test("503 then 429 on the resend stays in flight, and after 20 hours becomes uncertain", async (t) => {

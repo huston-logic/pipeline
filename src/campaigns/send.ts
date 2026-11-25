@@ -151,12 +151,14 @@ function payload(sender: Sender, rows: CampaignRecipientRow[], campaign: Campaig
 
 /**
  * The rows go back to the queue, only while the batch is still in_flight and on its first attempt: once another run has
- * taken it over to send it again, the first attempt may have been accepted, so its answer must not undo anything.
+ * taken it over to send it again, the first attempt may have been accepted, so its answer must not undo anything. A campaign
+ * cancelled while the request was out gets its rows back as cancelled, so they never show "Waiting" on a stopped campaign.
  */
 const returnRows = (db: Db, batchId: string): D1PreparedStatement[] => [
   db
     .prepare(
-      "UPDATE campaign_recipients SET status = 'queued', batch_id = NULL, claimed_at = NULL, version = version + 1 " +
+      "UPDATE campaign_recipients SET status = CASE WHEN (SELECT status FROM campaigns WHERE id = campaign_recipients.campaign_id) = 'cancelled' THEN 'cancelled' ELSE 'queued' END, " +
+        "batch_id = NULL, claimed_at = NULL, version = version + 1 " +
         "WHERE batch_id = ? AND status = 'sending' AND EXISTS (SELECT 1 FROM campaign_batches WHERE id = ? AND status = 'in_flight' AND attempts = 1)",
     )
     .bind(batchId, batchId),
@@ -422,6 +424,9 @@ export async function runCampaigns(env: Env, now: Date): Promise<Counts> {
   if (!(await resolveInFlight(sender, loaded))) return counts;
 
   const campaigns = await promote(sender, loaded.campaigns);
+  // A resumed campaign whose last rows resolved while it was paused has nothing to claim, so nothing else would finish it.
+  const finished = campaigns.filter((campaign) => campaign.status === "sending" && campaign.queued === 0);
+  if (finished.length > 0) await db.batch(finished.map((campaign) => completeIfDone(db, campaign.id, now)));
   const room = Math.min(MAX_PER_BATCH, settings.campaign_daily_limit - loaded.usedToday);
   if (room <= 0) {
     counts.no_room = 1;

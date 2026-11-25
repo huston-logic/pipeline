@@ -161,6 +161,8 @@ Do this once, after steps 1 to 7. It uses your own email address.
 - A person who unsubscribes or bounces after approval is skipped at the next batch. They are not sent the email.
 - "Not confirmed" means Resend may or may not have sent that batch. The batch is never sent again, so nobody gets an
   email twice.
+- If you change the business name, postal address or accent while a batch is being retried, that batch is marked Not
+  confirmed instead of being sent again.
 - **Pause** stops new batches. A batch already handed to Resend still finishes. **Cancel** does the same and stops the
   emails still waiting. Undo does not work on sending steps.
 
