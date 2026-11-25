@@ -11,7 +11,7 @@ import { createTestDb, type SqliteD1 } from "../src/db/sqlite-d1.ts";
 import { UserError } from "../src/services/errors.ts";
 import { listDealsFiltered } from "../src/services/read.ts";
 import { previewRuleFor } from "../src/services/rules.ts";
-import { dealsInView, peopleInView } from "../src/services/view-read.ts";
+import { dealsInView, peopleInView, projectsInView } from "../src/services/view-read.ts";
 import { parseFilters, parseSort } from "../src/services/view-spec.ts";
 import { listViews } from "../src/services/views.ts";
 import { undoChange } from "../src/services/undo.ts";
@@ -373,13 +373,17 @@ test("node scripts/seed-dev.ts --out <file> writes the seed", () => {
   }
 });
 
-test("two saved views (decision 0042): referrals, latest activity first, and open commercial jobs by value", async () => {
+test("three saved views (decision 0042): referrals, open commercial jobs by value, and open projects by target date", async () => {
   const db = await seeded();
   const saved = (await listViews(db)).filter((view) => view.kind === "saved");
   assert.deepEqual(saved.map((view) => [view.id, view.name, view.path]), [
     ["vw_seed01", "Referrals", "/people?view=vw_seed01"],
     ["vw_seed02", "Commercial jobs", "/pipeline?view=vw_seed02"],
+    ["vw_seed03", "Open work", "/projects?view=vw_seed03"],
   ]);
+  const work = await db.prepare("SELECT * FROM views WHERE id = 'vw_seed03'").first<{ filters: string; sort: string }>();
+  const open = await projectsInView(db, parseFilters(work?.filters ?? "{}"), parseSort("projects", work?.sort ?? ""));
+  assert.deepEqual(open.items.map((project) => project.id), ["pj_seed01", "pj_seed02"], "both demo projects are open, soonest target first");
   const row = async (id: string) => (await db.prepare("SELECT * FROM views WHERE id = ?").bind(id).first<{ filters: string; sort: string }>())!;
   const people = await row("vw_seed01");
   const referrals = await peopleInView(db, NOW, DEFAULT_TZ, parseFilters(people.filters), parseSort("people", people.sort));

@@ -56,20 +56,20 @@ test("/projects is a 404 while projects are off, and is in boardRoutes", async (
   assert.equal((await load(devEnv(off), "/projects?status=all&layout=table")).res.status, 404);
 });
 
-test("the default is the active projects, soonest target first with none last, as cards", async () => {
+test("the default is the open projects, soonest target first with none last, as cards", async () => {
   const { res, body } = await load(devEnv(await projectsDb()), "/projects");
   assert.equal(res.status, 200);
   assert.equal(h1Count(body), 1);
   assert.match(body, /<h1>Projects<\/h1>/);
   assert.ok(body.includes(`<p class="lede">${LEDE}`), "lede");
   assert.match(titleOf(body), /^Projects · /);
-  assert.deepEqual(ids(body), ["pj_retro", "pj_shed"]);
+  assert.deepEqual(ids(body), ["pj_garden", "pj_retro", "pj_shed"]);
   assert.match(body, /<ul class="cards">/);
   assert.match(body, /<a href="\/projects\/pj_retro">Retrofit<\/a>/);
   assert.match(body, /Pat Example/);
   assert.match(body, /<dt>Open tasks<\/dt><dd>2<\/dd>/);
   assert.match(body, /Sat Dec 5/);
-  assert.doesNotMatch(body, /Garden|Old fence|Gone shed/);
+  assert.doesNotMatch(body, /Old fence|Gone shed/);
 });
 
 test("card titles are h2, so no heading level is skipped under the h1", async () => {
@@ -78,14 +78,14 @@ test("card titles are h2, so no heading level is skipped under the h1", async ()
   assert.doesNotMatch(body, /<h3/);
 });
 
-test("status picks which projects show; archived lists archived ones of every status; unknown is active", async () => {
+test("status picks which projects show; archived lists archived ones of every status; unknown is open", async () => {
   const env = devEnv(await projectsDb());
   const at = async (query: string) => (await load(env, `/projects${query}`)).body;
   assert.deepEqual(ids(await at("?status=on_hold")), ["pj_garden"]);
   assert.deepEqual(ids(await at("?status=done")), ["pj_old"]);
   assert.deepEqual(ids(await at("?status=archived")), ["pj_gone"]);
   assert.deepEqual(ids(await at("?status=all")), ["pj_garden", "pj_retro", "pj_shed", "pj_old"]);
-  assert.deepEqual(ids(await at("?status=nonsense")), ["pj_retro", "pj_shed"]);
+  assert.deepEqual(ids(await at("?status=nonsense")), ["pj_garden", "pj_retro", "pj_shed"]);
   assert.equal(titleOf(await at("?status=nonsense")), titleOf(await at("")));
   assert.match(await at("?status=on_hold"), /<option value="on_hold" selected>/);
 });

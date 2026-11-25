@@ -122,7 +122,7 @@ export type PersonSubstatusRow = {
   updated_at: string;
 };
 
-export type ViewModule = "people" | "deals";
+export type ViewModule = "people" | "deals" | "projects";
 export type ViewLayout = "cards" | "table";
 
 /** A saved view (migration 0013, decision 0042). */
@@ -130,9 +130,8 @@ export type ViewRow = {
   /** "vw_..." */
   id: string;
   name: string;
-  /** The table also accepts "projects" since migration 0021; the type widens with the views task (A5). */
   module: ViewModule;
-  /** JSON object: person_status, sub_status, source, q, fields { <key>: value } and, for deals, stage. */
+  /** JSON object: person_status, sub_status, source, q, fields { <key>: value }; for deals, stage; for projects, status, contact, archived. */
   filters: string;
   /** "<key>-<asc|desc>". */
   sort: string;

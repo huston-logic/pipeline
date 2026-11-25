@@ -429,8 +429,9 @@ export function registerReadTools(server: McpServer, deps: ToolDeps): void {
       title: "List custom fields",
       kind: "read",
       description:
-        "The owner's custom fields on contacts and deals: id, key, label, type (text, number, date, choice) and the " +
-        "choices of a choice field. Use the keys when setting field values. Archived fields are left out unless asked for.",
+        "The owner's custom fields on contacts, deals and, while Projects is on, projects: id, key, label, type (text, " +
+        "number, date, choice) and the choices of a choice field. Use the keys when setting field values. Archived fields " +
+        "are left out unless asked for.",
       input: z.strictObject({
         entity: z.enum(FIELD_ENTITIES).optional().describe("Only fields of this kind of record."),
         includeArchived: z.boolean().optional().describe("true to list archived fields too."),
@@ -438,12 +439,12 @@ export function registerReadTools(server: McpServer, deps: ToolDeps): void {
       async run({ entity, includeArchived }, { db }) {
         const fields = await fieldOverview(db, { entity, includeArchived });
         const of = (kind: string) => fields.filter((f) => f.entity === kind).length;
-        return toolResult(
-          fields.length === 0
-            ? "There are no custom fields yet. Add one with add_field."
-            : `${count(of("deal"), "deal field")} and ${count(of("contact"), "contact field")}.`,
-          { fields },
-        );
+        const projects = of("project");
+        const counts =
+          projects === 0
+            ? `${count(of("deal"), "deal field")} and ${count(of("contact"), "contact field")}`
+            : `${count(of("deal"), "deal field")}, ${count(of("contact"), "contact field")} and ${count(projects, "project field")}`;
+        return toolResult(fields.length === 0 ? "There are no custom fields yet. Add one with add_field." : `${counts}.`, { fields });
       },
     },
     deps,

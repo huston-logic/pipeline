@@ -17,7 +17,7 @@ import { contactLink, dealLink, empty, labelled, pairs, projectHref, section, ta
 import { outsideNote, taskCard, timelineItem } from "../records.ts";
 import { addTaskForm, type Subject } from "../task-forms.ts";
 import { startTimerForm } from "../timer-start.ts";
-import { dateOr } from "./projects.ts";
+import { dateOr } from "../project-parts.ts";
 
 export const projectEditPath = (id: string): string => `${projectHref(id)}/edit`;
 

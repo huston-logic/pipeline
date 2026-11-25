@@ -3,11 +3,13 @@
 // link. A header is a sort link only for a column the module can sort by (the fixed lists in view-spec.ts). Outside
 // values are labelled in the cell, as on the cards, and a name or title from outside is never a link's text.
 import type { FieldDefRow, ViewModule } from "../db/db.ts";
+import type { ProjectItem } from "../services/project-read.ts";
 import type { DealViewItem, PersonViewItem } from "../services/view-read.ts";
 import { columnsOf, FIELD_COLUMN, FIRST_COLUMN, type SortKey, VIEW_SORTS, type ViewSort, parseSort, sortText } from "../services/view-spec.ts";
 import { sortLine } from "../services/views.ts";
 import { formatLocal } from "../time.ts";
 import { type Html, html } from "./html.ts";
+import { dateOr as dayOr, itemLink, personOf, projectCard, statusText } from "./project-parts.ts";
 import { contactLink, count, dealLink, formatNumber, labelled, tag, when } from "./parts.ts";
 import { dataTable, type Layout, type TableColumn, withParams } from "./table.ts";
 import { dealCard, personCard } from "./view-parts.ts";
@@ -42,6 +44,8 @@ export interface ListOptions {
   summary: string;
 }
 
+const ENTITY: Record<ViewModule, FieldDefRow["entity"]> = { people: "contact", deals: "deal", projects: "project" };
+
 /** The first column, then the others once each; a key that is neither built in nor a custom field is dropped. */
 function columnKeys(module: ViewModule, keys: readonly string[]): string[] {
   const builtIn = columnsOf(module);
@@ -54,12 +58,16 @@ function headerOf(module: ViewModule, key: string, fields: readonly FieldDefRow[
   const builtIn = columnsOf(module);
   if (Object.hasOwn(builtIn, key)) return builtIn[key] ?? key;
   const field = key.slice(FIELD_COLUMN.length);
-  const entity = module === "people" ? "contact" : "deal";
+  const entity = ENTITY[module];
   return fields.find((def) => def.entity === entity && def.key === field)?.label ?? field;
 }
 
-function sortOf(module: ViewModule, key: string, options: ListOptions): TableColumn<unknown>["sort"] {
+/** A column that sorts by another key: the project's name column sorts by name. */
+const SORT_OF_COLUMN: Partial<Record<ViewModule, Record<string, SortKey>>> = { projects: { project: "name" } };
+
+function sortOf(module: ViewModule, column: string, options: ListOptions): TableColumn<unknown>["sort"] {
   const sorts: Record<string, "asc" | "desc"> = VIEW_SORTS[module];
+  const key = SORT_OF_COLUMN[module]?.[column] ?? column;
   const first = sorts[key];
   if (first === undefined) return undefined;
   const current = options.sort.key === (key as SortKey);
@@ -148,6 +156,28 @@ function dealCell(key: string, deal: DealViewItem, tz: string): Html | string {
   }
 }
 
+function projectCell(key: string, project: ProjectItem, tz: string): Html | string {
+  const outside = new Set<string>(project.untrusted_fields);
+  switch (key) {
+    case "project":
+      return itemLink(project);
+    case "status":
+      return statusText(project);
+    case "person":
+      return personOf(project);
+    case "deal":
+      return project.dealId === null || project.dealTitle === null ? "None" : dealLink(project.dealId, project.dealTitle, outside.has("dealTitle"));
+    case "start":
+      return dayOr(project.startAt, tz);
+    case "target":
+      return dayOr(project.targetAt, tz);
+    case "open_tasks":
+      return String(project.openTasks);
+    default:
+      return fieldText(project.fields[key.slice(FIELD_COLUMN.length)]);
+  }
+}
+
 const label = (options: ListOptions) => `${options.name}, as a table`;
 const caption = (options: ListOptions) => `${options.name}: ${options.summary}`;
 
@@ -158,6 +188,17 @@ export function peopleList(items: readonly PersonViewItem[], options: ListOption
     label: label(options),
     caption: caption(options),
     columns: columns<PersonViewItem>("people", options, (key, person) => personCell(key, person, options.tz)),
+    rows: items,
+  });
+}
+
+/** The projects of a view, as cards or as a table. */
+export function projectsList(items: readonly ProjectItem[], options: ListOptions): Html {
+  if (options.layout === "cards") return html`<ul class="cards">${items.map((project) => projectCard(project, options.tz))}</ul>`;
+  return dataTable({
+    label: label(options),
+    caption: caption(options),
+    columns: columns<ProjectItem>("projects", options, (key, project) => projectCell(key, project, options.tz)),
     rows: items,
   });
 }

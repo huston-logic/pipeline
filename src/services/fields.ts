@@ -10,7 +10,7 @@ import { UserError } from "./errors.ts";
 import { clean } from "./input.ts";
 import type { FieldValue, FieldValues } from "./lookup.ts";
 import { parseStringArray } from "./lookup.ts";
-import { fieldDefRows, type Reader } from "./memo.ts";
+import { fieldDefRows, type Reader, settingsRow } from "./memo.ts";
 import { requireProjects } from "./settings.ts";
 import { slugOf, uniqueKey } from "./slug.ts";
 
@@ -293,7 +293,9 @@ export async function fieldOverview(
   db: Db,
   options: { entity?: FieldEntity; includeArchived?: boolean },
 ): Promise<FieldOverview[]> {
-  return (await listFieldDefs(db, options)).map((def) => ({
+  const projectsOn = (await settingsRow(db)).projects === 1;
+  // While projects are off their fields stay stored but nothing shows.
+  return (await listFieldDefs(db, options)).filter((def) => projectsOn || def.entity !== "project").map((def) => ({
     id: def.id,
     entity: def.entity,
     key: def.key,

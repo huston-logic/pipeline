@@ -69,7 +69,7 @@ function checkName(raw: string | null | undefined): string {
 }
 
 /** A live project status by key or label (ignoring case); an archived one is never accepted. */
-async function findProjectStatus(src: Source, ref: string): Promise<ProjectStatusRow> {
+export async function findProjectStatus(src: Source, ref: string): Promise<ProjectStatusRow> {
   const text = ref.trim();
   const statuses = await projectStatusRows(src);
   const match = statuses.find((s) => s.key === text) ?? statuses.find((s) => s.label.toLowerCase() === text.toLowerCase());

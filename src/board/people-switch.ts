@@ -1,7 +1,8 @@
 // The People tab's views (decisions 0016, 0027 and 0042): the built-in Contacts, Leads and Companies, then the default
 // view of each person status other than Lead and Contact, in status order, then the saved people views in position
 // order. Addresses carry only a status key or a view id, both owner-made, never outside text. The Pipeline tab's
-// switch (Board, List, then saved deals views) is drawn the same way.
+// switch (Board, List, then saved deals views) and the Projects page's (Open, each live project status, then saved
+// projects views) are drawn the same way.
 import type { Db, ViewModule } from "../db/db.ts";
 import { BUILT_IN_VIEWS } from "../services/view-spec.ts";
 import { switchItems } from "../services/views.ts";
@@ -12,7 +13,7 @@ export type SwitchCurrent = { kind: "built_in" | "status" | "saved"; id: string 
 
 export type PeopleView = "contacts" | "leads" | "companies";
 
-const LABELS: Record<ViewModule, string> = { people: "Show people as", deals: "Show the pipeline as" };
+const LABELS: Record<ViewModule, string> = { people: "Show people as", deals: "Show the pipeline as", projects: "Show projects as" };
 
 /** The view switch of one module: a labelled list of links, the shown one marked aria-current="page". */
 export async function viewSwitch(db: Db, module: ViewModule, current: SwitchCurrent): Promise<Html> {
