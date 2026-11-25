@@ -30,6 +30,14 @@ export async function requireTimeTracking(src: Reader): Promise<void> {
   if ((await settingsRow(src)).time_tracking !== 1) throw new UserError(TIME_TRACKING_OFF);
 }
 
+/** The answer every campaign tool and service gives while campaigns are off. */
+export const CAMPAIGNS_OFF = "Campaigns are off. The owner can turn them on (update_settings campaigns true).";
+
+/** Refuses unless the owner turned campaigns on. */
+export async function requireCampaigns(src: Reader): Promise<void> {
+  if ((await settingsRow(src)).campaigns !== 1) throw new UserError(CAMPAIGNS_OFF);
+}
+
 /** How the AI app's record tools write: propose everything, or apply small changes at once. */
 export async function getAiEdits(db: Db): Promise<AiEdits> {
   return (await getSettingsRow(db)).ai_edits;
@@ -49,6 +57,12 @@ export interface SettingsView {
   aiEdits: AiEditsChoice;
   /** Whether the time tools and pages are on (decision 0049); off by default. */
   timeTracking: boolean;
+  /** Whether campaigns are on; off by default. */
+  campaigns: boolean;
+  /** Printed in every campaign email; null until the owner adds it. */
+  postalAddress: string | null;
+  /** Emails a day the campaign cron may send. */
+  campaignDailyLimit: number;
   /** When the latest brief was composed (the briefs log), or null before the first one. */
   lastBriefAt: string | null;
   /** When a brief last went out by email, or null when none has. */
@@ -71,6 +85,12 @@ export interface SettingsPatch {
   aiEdits?: AiEditsChoice;
   /** true turns the time tools and pages on (decision 0049). */
   timeTracking?: boolean;
+  /** true turns campaigns on. */
+  campaigns?: boolean;
+  /** 1 to 300 characters, line breaks kept; null clears it (an empty string is refused). */
+  postalAddress?: string | null;
+  /** A whole number, 1 to 5000. */
+  campaignDailyLimit?: number;
 }
 
 export interface SettingsOptions {
@@ -92,6 +112,9 @@ export async function getSettings(db: Db): Promise<SettingsView> {
     accentColor: row.accent_color,
     aiEdits: AI_EDITS_CHOICE[row.ai_edits],
     timeTracking: row.time_tracking === 1,
+    campaigns: row.campaigns === 1,
+    postalAddress: row.postal_address,
+    campaignDailyLimit: row.campaign_daily_limit,
     lastBriefAt: latest?.composed_at ?? null,
     lastBriefSentAt: sent?.at ?? null,
   };
@@ -130,6 +153,29 @@ function checkBusinessName(input: string | null): string | null {
     );
   }
   return name;
+}
+
+const MAX_POSTAL_ADDRESS = 300;
+
+/** The address with each line trimmed and empty lines dropped, or a UserError. */
+function checkPostalAddress(input: string): string {
+  const lines = input.replace(/\r\n?/g, "\n").split("\n").map((line) => line.trim());
+  while (lines[0] === "") lines.shift();
+  while (lines[lines.length - 1] === "") lines.pop();
+  const address = lines.join("\n");
+  if (address === "") {
+    throw new UserError("A postal address can't be empty. Give the address, or use null to clear it.");
+  }
+  if (/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u.test(address.replace(/\n/g, ""))) {
+    throw new UserError("A postal address can only be plain text with line breaks, without tabs or invisible formatting characters.");
+  }
+  const length = [...address].length;
+  if (length > MAX_POSTAL_ADDRESS) {
+    throw new UserError(
+      `A postal address can be at most ${MAX_POSTAL_ADDRESS} characters (this one has ${length}). Give a shorter address.`,
+    );
+  }
+  return address;
 }
 
 function checkOwnerEmail(email: string, owners: string[]): void {
@@ -201,6 +247,27 @@ export async function updateSettings(ctx: Ctx, patch: SettingsPatch, options: Se
   if (patch.timeTracking !== undefined && (patch.timeTracking ? 1 : 0) !== before.time_tracking) {
     set.time_tracking = patch.timeTracking ? 1 : 0;
     parts.push(`time tracking ${patch.timeTracking ? "on" : "off"}`);
+  }
+  if (patch.campaigns !== undefined && (patch.campaigns ? 1 : 0) !== before.campaigns) {
+    set.campaigns = patch.campaigns ? 1 : 0;
+    parts.push(`campaigns ${patch.campaigns ? "on" : "off"}`);
+  }
+  if (patch.postalAddress !== undefined) {
+    const address = patch.postalAddress === null ? null : checkPostalAddress(patch.postalAddress);
+    if (address !== before.postal_address) {
+      set.postal_address = address;
+      parts.push(address === null ? "postal address cleared" : "postal address set");
+    }
+  }
+  if (patch.campaignDailyLimit !== undefined) {
+    const limit = patch.campaignDailyLimit;
+    if (!Number.isInteger(limit) || limit < 1 || limit > 5000) {
+      throw new UserError(`The campaign daily limit must be a whole number between 1 and 5000 (got ${limit}).`);
+    }
+    if (limit !== before.campaign_daily_limit) {
+      set.campaign_daily_limit = limit;
+      parts.push(`campaign daily limit ${limit}`);
+    }
   }
 
   if (parts.length === 0) {

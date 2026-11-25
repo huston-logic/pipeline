@@ -43,6 +43,14 @@ export type Env = {
   BRIEF_FROM?: string;
   /** Resend API key (a secret: set with `wrangler secret put`, never in the repo). */
   RESEND_API_KEY?: string;
+  /** "on" lets campaign email be sent; anything else, or unset, keeps campaign sending off (a per-copy var). */
+  CAMPAIGN_SENDING?: string;
+  /** The "from" address for campaign email, a plain address or "Name <address>" on a domain verified in Resend (a per-copy var). */
+  CAMPAIGN_FROM?: string;
+  /** Resend API key for campaign email (a secret: set with `wrangler secret put`, never in the repo). */
+  CAMPAIGN_RESEND_API_KEY?: string;
+  /** The secret that signs Resend's delivery-event webhook for campaigns (a secret). */
+  CAMPAIGN_WEBHOOK_SECRET?: string;
   /**
    * The full email logging address, for example "log-<32 random hex>@log.example.com" (a secret; decision 0031). Mail
    * routed to the Worker for any other address, or with this unset, is dropped silently.

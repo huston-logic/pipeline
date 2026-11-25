@@ -592,6 +592,13 @@ export function registerWriteTools(server: McpServer, deps: ToolDeps): void {
           .optional()
           .describe("review_first (the default: record changes wait for the owner's yes) or apply_small (small changes apply at once)."),
         timeTracking: z.boolean().optional().describe("true to turn on time tracking (the timer, time entries, work types and rates), false to turn it off."),
+        campaigns: z.boolean().optional().describe("true to turn on campaigns (email to a list of people), false to turn them off."),
+        postalAddress: z
+          .string()
+          .nullable()
+          .optional()
+          .describe("The business's postal address, printed in every campaign email (1 to 300 characters, line breaks kept). null clears it."),
+        campaignDailyLimit: z.number().optional().describe("Most campaign emails sent a day: a whole number from 1 to 5000 (default 90)."),
       }),
       async run(args, deps) {
         const result = await updateSettings(aiCtx(deps, "update_settings"), args, {
