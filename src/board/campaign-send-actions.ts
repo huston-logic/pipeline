@@ -4,7 +4,7 @@
 // campaigns are off. A refused post draws the review page again (422) with the sentence that says why.
 import { loadCampaign, archiveCampaign, duplicateCampaign } from "../campaigns/drafts.ts";
 import { approveCampaign, cancelCampaign, pauseCampaign, resumeCampaign } from "../campaigns/freeze.ts";
-import { sendingBlocker } from "../campaigns/readiness.ts";
+import { type CampaignEnv, sendingBlocker } from "../campaigns/readiness.ts";
 import type { CampaignRow } from "../db/db.ts";
 import { getSettings } from "../db/queries.ts";
 import { isCampaignId } from "../ids.ts";
@@ -16,14 +16,21 @@ import { hidden, postForm } from "./forms.ts";
 import { html } from "./html.ts";
 import { renderPage } from "./layout.ts";
 import { CAMPAIGNS_PATH, campaignPath } from "./pages/campaigns.ts";
-import { campaignReviewPage } from "./pages/campaign-review.ts";
+import { campaignReviewPage, type ReviewState } from "./pages/campaign-review.ts";
 import { withChange } from "./return-to.ts";
+
+const campaignEnvOf = (env: ActionContext["env"]): CampaignEnv => ({
+  CAMPAIGN_SENDING: env.CAMPAIGN_SENDING,
+  CAMPAIGN_FROM: env.CAMPAIGN_FROM,
+  CAMPAIGN_RESEND_API_KEY: env.CAMPAIGN_RESEND_API_KEY,
+  OWNER_EMAILS: env.OWNER_EMAILS,
+});
 
 /** A campaign form's page context: campaigns are on (the paths 404 otherwise), so More lists Campaigns on a refused form too. */
 export const campaignContext = (ctx: ActionContext, here: string): PageContext => ({
   ...pageContext(ctx, here),
   campaigns: true,
-  campaignEnv: ctx.env,
+  campaignEnv: campaignEnvOf(ctx.env),
   origin: ctx.origin,
 });
 
@@ -39,8 +46,8 @@ async function known(ctx: ActionContext, id: string): Promise<CampaignRow | null
 }
 
 /** A refused post: the review page again with the reason, or a plain refusal page when that page is gone (archived). */
-async function refused(ctx: ActionContext, id: string, message: string): Promise<ActionResult> {
-  const view = await campaignReviewPage(campaignContext(ctx, campaignPath(id)), id, { refusal: message });
+async function refused(ctx: ActionContext, id: string, message: string, schedule?: NonNullable<ReviewState["schedule"]>): Promise<ActionResult> {
+  const view = await campaignReviewPage(campaignContext(ctx, campaignPath(id)), id, { refusal: message, ...(schedule === undefined ? {} : { schedule }) });
   return page(422, view ?? refusedPage(ctx, "The campaign wasn't changed", message, CAMPAIGNS_PATH, ""));
 }
 
@@ -61,12 +68,18 @@ function postedWhen(form: URLSearchParams, tz: string): Date | string {
 async function send(ctx: ActionContext, id: string, scheduled: boolean): Promise<ActionResult> {
   if ((await known(ctx, id)) === null) return notFound(ctx);
   const settings = await getSettings(ctx.db);
+  // What the Schedule form was posted with, kept on the form when it is drawn again.
+  const typed = (onField: boolean) => ({
+    date: (ctx.form.get("send_at.date") ?? "").trim(),
+    time: (ctx.form.get("send_at.time") ?? "").trim(),
+    onField,
+  });
   const blocker = sendingBlocker(ctx.env, settings);
-  if (blocker !== null) return refused(ctx, id, blocker);
+  if (blocker !== null) return refused(ctx, id, blocker, scheduled ? typed(false) : undefined);
   let sendAfter = ctx.now;
   if (scheduled) {
     const at = postedWhen(ctx.form, settings.timezone);
-    if (typeof at === "string") return refused(ctx, id, at);
+    if (typeof at === "string") return refused(ctx, id, at, typed(true));
     sendAfter = at;
   }
   try {
@@ -78,7 +91,8 @@ async function send(ctx: ActionContext, id: string, scheduled: boolean): Promise
     });
     return redirect(withChange(campaignPath(id), result.changeId));
   } catch (error) {
-    return refused(ctx, id, refusal(error, "campaign"));
+    const message = refusal(error, "campaign");
+    return refused(ctx, id, message, scheduled ? typed(message.startsWith("Pick a time in the next")) : undefined);
   }
 }
 
@@ -109,7 +123,8 @@ function confirmPage(ctx: ActionContext, campaign: CampaignRow, action: "cancel"
   return renderPage({
     title: `Confirm: ${action} a campaign`,
     description: "This stops a campaign, so it asks first. Confirm, or go back.",
-    frame: { look: ctx.look },
+    current: CAMPAIGNS_PATH,
+    frame: { look: ctx.look, campaigns: true },
     body: html`<h1>${stop.title}</h1>
 <p class="lede">${stop.question(campaign.name)}</p>
 ${postForm(

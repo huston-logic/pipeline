@@ -82,7 +82,7 @@ test("the review page shows every part, in order, with the preview for the first
   assert.match(body, /Draft/);
   assert.match(body, /2 people/);
   assert.match(body, /from people you picked/);
-  assert.match(body, /1 of them are leads you haven't contacted yet\. A first email from a list can land in spam and hurt your sending\./);
+  assert.match(body, /1 of them is a lead you haven't contacted yet\. A first email from a list can land in spam and hurt your sending\./);
   assert.match(body, /Skipped: 4/);
   for (const [heading, who] of [
     ["No email address", "ct_cy"],
@@ -99,14 +99,16 @@ test("the review page shows every part, in order, with the preview for the first
   const region = /<section aria-labelledby="campaign-preview">[\s\S]*?<\/section>/.exec(body)?.[0] ?? "";
   assert.match(region, /<h2 id="campaign-preview">Preview, as Amy Example will see it<\/h2>/);
   assert.match(region, /Hi Amy,/);
-  assert.match(region, /<a href="https:\/\/example\.com\/news" target="_blank" rel="noopener noreferrer">our site<\/a>/);
-  assert.match(region, /<a href="https:\/\/example\.org\/x" target="_blank" rel="noopener noreferrer">https:\/\/example\.org\/x<\/a>/);
-  assert.match(region, /<a class="button" href="https:\/\/example\.com\/rsvp" target="_blank" rel="noopener noreferrer">RSVP<\/a>/);
+  assert.match(region, /<a href="https:\/\/example\.com\/news" target="_blank" rel="noopener noreferrer">our site<span class="visually-hidden"> \(opens in a new tab\)<\/span><\/a>/);
+  assert.match(region, /<a href="https:\/\/example\.org\/x" target="_blank" rel="noopener noreferrer">https:\/\/example\.org\/x<span class="visually-hidden"> \(opens in a new tab\)<\/span><\/a>/);
+  assert.match(region, /<a class="button" href="https:\/\/example\.com\/rsvp" target="_blank" rel="noopener noreferrer">RSVP<span class="visually-hidden"> \(opens in a new tab\)<\/span><\/a>/);
+  assert.match(body, /<details class="text-version">/);
+  assert.doesNotMatch(body, /role="alert"/);
   assert.match(region, /Example Bakery/);
   assert.match(region, /1 Example Road<br>Springfield/);
   assert.match(region, /Unsubscribe from these emails/);
   assert.doesNotMatch(region, /<a[^>]*>Unsubscribe/);
-  assert.match(body, /<details>\s*<summary>Text version<\/summary>\s*<pre>[\s\S]*Hi Amy,[\s\S]*RSVP: https:\/\/example\.com\/rsvp[\s\S]*\/unsubscribe\/preview[\s\S]*<\/pre>/);
+  assert.match(body, /<details class="text-version">\s*<summary>Text version<\/summary>\s*<pre>[\s\S]*Hi Amy,[\s\S]*RSVP: https:\/\/example\.com\/rsvp[\s\S]*\/unsubscribe\/preview[\s\S]*<\/pre>/);
   assert.match(body, /Suggested time: /);
   assert.match(body, /href="\/campaigns\/cp_[a-z0-9]+\/edit"/);
   assert.match(body, /action="\/campaigns\/cp_[a-z0-9]+\/duplicate"/);
@@ -250,6 +252,13 @@ test("Schedule refuses a past time, one over 90 days away, and a missing date, w
   const past = await post(env, `/campaigns/${id}/schedule`, scheduleFields(page, id, addDays(localDate(new Date(), DEFAULT_TZ), -1)), { cookie: page.cookie, token: page.token });
   assert.equal(past.res.status, 422);
   assert.match(past.body, /Pick a time in the next 90 days\./);
+  // The form is drawn again with what was typed, the error tied to the fields, and a summary beside the form.
+  const yesterday = addDays(localDate(new Date(), DEFAULT_TZ), -1);
+  assert.match(past.body, new RegExp(`name="send_at\\.date" type="date" value="${yesterday}" required aria-describedby="schedule-at-hint schedule-at-error" aria-invalid="true"`));
+  assert.match(past.body, /name="send_at\.time" type="time" value="14:30" required aria-describedby="schedule-at-hint schedule-at-error" aria-invalid="true"/);
+  assert.match(past.body, /<div class="error-summary" role="alert"[\s\S]*Pick a time in the next 90 days\./);
+  assert.match(past.body, /Date <span class="field-required">\(required\)<\/span><\/label>/);
+  assert.match(past.body, /Time <span class="field-required">\(required\)<\/span><\/label>/);
   const far = await post(env, `/campaigns/${id}/schedule`, scheduleFields(page, id, addDays(localDate(new Date(), DEFAULT_TZ), 91)), { cookie: page.cookie, token: page.token });
   assert.equal(far.res.status, 422);
   assert.match(far.body, /Pick a time in the next 90 days\./);
@@ -344,6 +353,32 @@ test("Duplicate makes a new draft and Archive hides a draft", async () => {
   assert.match(archived.location, /^\/campaigns\?change=chg_/);
   assert.equal((await auditOf(db, changeIdOf(archived.location)))?.tool, "archive_campaign");
   assert.equal((await open(env, newId)).res.status, 404);
+});
+
+test("approving or scheduling an archived campaign is refused and writes nothing", async () => {
+  const { db, id } = await reviewDb();
+  const env = envOf(db);
+  const page = await open(env, id);
+  const fields = formFields(page.body, `/campaigns/${id}/approve`);
+  db.exec("UPDATE campaigns SET archived = 1");
+  const before = await auditCount(db);
+  const approve = await post(env, `/campaigns/${id}/approve`, fields, { cookie: page.cookie, token: page.token });
+  assert.equal(approve.res.status, 422);
+  assert.match(approve.body, /is archived/);
+  const schedule = await post(env, `/campaigns/${id}/schedule`, scheduleFields(page, id, nextMonth()), { cookie: page.cookie, token: page.token });
+  assert.equal(schedule.res.status, 422);
+  assert.equal(await auditCount(db), before);
+  assert.equal((await campaignOf(db, id))?.status, "draft");
+  assert.equal(await recipientCount(db, id), 0);
+});
+
+test("the confirm page keeps Campaigns in the nav", async () => {
+  const { db, id } = await reviewDb();
+  const env = envOf(db);
+  const page = await open(env, id);
+  await post(env, `/campaigns/${id}/schedule`, scheduleFields(page, id, nextMonth()), { cookie: page.cookie, token: page.token });
+  const ask = await post(env, `/campaigns/${id}/cancel`, new URLSearchParams(), { cookie: page.cookie, token: page.token });
+  assert.match(ask.body, /<a [^>]*href="\/campaigns"/);
 });
 
 test("an unknown id, an archived campaign and campaigns being off are all a 404, for GET and POST", async () => {

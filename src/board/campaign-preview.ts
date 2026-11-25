@@ -7,12 +7,13 @@ import type { CampaignStepRow } from "../db/db.ts";
 import { type Html, html } from "./html.ts";
 
 const EXTERNAL = html` target="_blank" rel="noopener noreferrer"`;
+const NEW_TAB = html`<span class="visually-hidden"> (opens in a new tab)</span>`;
 
 export type PreviewFrame = { business: string; postal: string | null; firstName: string };
 
 function inline(part: Inline, firstName: string): Html {
   if (part.kind === "text") return html`${mergeFirstName(part.text, firstName)}`;
-  return html`<a href="${part.href}"${EXTERNAL}>${mergeFirstName(part.text, firstName)}</a>`;
+  return html`<a href="${part.href}"${EXTERNAL}>${mergeFirstName(part.text, firstName)}${NEW_TAB}</a>`;
 }
 
 function paragraph(block: Block, firstName: string): Html {
@@ -26,7 +27,7 @@ const lines = (text: string): string[] => text.replace(/\r\n?/g, "\n").split("\n
 export function campaignPreview(step: CampaignStepRow, frame: PreviewFrame): Html {
   const button =
     step.button_label !== null && step.button_url !== null && isHttpsUrl(step.button_url)
-      ? html`<p><a class="button" href="${step.button_url}"${EXTERNAL}>${step.button_label}</a></p>`
+      ? html`<p><a class="button" href="${step.button_url}"${EXTERNAL}>${step.button_label}${NEW_TAB}</a></p>`
       : "";
   const postal = frame.postal === null ? "" : frame.postal;
   return html`<div class="email-preview">

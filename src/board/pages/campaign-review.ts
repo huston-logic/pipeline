@@ -17,7 +17,7 @@ import { campaignPreview } from "../campaign-preview.ts";
 import type { PageContext } from "../context.ts";
 import { hidden, postForm } from "../forms.ts";
 import { type Html, html } from "../html.ts";
-import { field } from "../inputs.ts";
+import { errorSummary, field } from "../inputs.ts";
 import { renderPage } from "../layout.ts";
 import { contactHref, count, outsideLabel, pairs, section, tag, when } from "../parts.ts";
 import { CAMPAIGNS_PATH, campaignPath } from "./campaigns.ts";
@@ -44,7 +44,14 @@ const SKIP_HEADINGS: [SkipReason, string][] = [
 const people = (n: number): string => count(n, "person", "people");
 
 /** The review page's own refusal: a form that was posted again, with the sentence that says why nothing happened. */
-export type ReviewState = { refusal?: string };
+export type ReviewState = {
+  refusal?: string;
+  /**
+   * The Schedule form was posted: the date and time as typed (kept on the form), and whether the refusal is about the
+   * date or time themselves (then the field is marked) rather than the list or the sending set-up.
+   */
+  schedule?: { date: string; time: string; onField: boolean };
+};
 
 const actionPath = (id: string, action: string): string => `${campaignPath(id)}/${action}`;
 
@@ -88,9 +95,14 @@ function limitLine(n: number, limit: number, sendDay: string): Html | "" {
 /** The when fields' value for the Schedule form: the suggested time as the owner's wall clock, or empty. */
 const suggestedWhen = (campaign: CampaignRow, tz: string): string => (campaign.suggested_send_at === null ? "" : localWhen(campaign.suggested_send_at, tz));
 
-function sendForms(ctx: PageContext, campaign: CampaignRow, tz: string, n: number, print: string): Html {
+function sendForms(ctx: PageContext, campaign: CampaignRow, tz: string, n: number, print: string, state: ReviewState | undefined): Html {
   const form = { csrf: ctx.csrf, here: ctx.here };
+  const typed = state?.schedule;
+  const message = typed === undefined ? undefined : state?.refusal;
+  const value = typed === undefined ? suggestedWhen(campaign, tz) : `${typed.date}${typed.time === "" ? "" : `T${typed.time}`}`;
+  const timeOnly = typed !== undefined && typed.date !== "" && typed.time === "";
   return html`<div class="card send-forms">
+${message === undefined ? "" : errorSummary([{ id: timeOnly ? "schedule-at-time" : "schedule-at-date", message }])}
 ${postForm("send-form", actionPath(campaign.id, "approve"), form, html`${hidden("fingerprint", print)}<button class="button" type="submit">Approve and send to ${people(n)}</button>`)}
 ${postForm(
   "send-form",
@@ -101,9 +113,11 @@ ${postForm(
     name: "send_at",
     label: "Send at",
     kind: "when",
-    value: suggestedWhen(campaign, tz),
+    value,
     required: true,
+    timeRequired: true,
     hint: "In your timezone. Goes out within 15 minutes after this time.",
+    ...(typed?.onField && message !== undefined ? { error: message } : {}),
   })}<button class="button button-quiet" type="submit">Schedule</button>`,
 )}
 </div>`;
@@ -158,9 +172,9 @@ async function reviewBody(ctx: PageContext, { campaign, step, settings, tz }: Re
 
   const to =
     resolved === null
-      ? html`<p class="notice" role="alert">${problem}</p>`
+      ? html`<p class="notice">${problem}</p>`
       : html`${pairs([{ name: "To", value: `${people(sendable.length)}, from ${await howChosen(ctx, campaign)}` }])}${resolved.newLeads > 0
-          ? html`<p class="notice">${resolved.newLeads} of them are leads you haven't contacted yet. A first email from a list can land in spam and hurt your sending.</p>`
+          ? html`<p class="notice">${resolved.newLeads === 1 ? "1 of them is a lead" : `${resolved.newLeads} of them are leads`} you haven't contacted yet. A first email from a list can land in spam and hurt your sending.</p>`
           : ""}${limitLine(sendable.length, settings.campaign_daily_limit, sendDay)}`;
 
   const timeLine = scheduled
@@ -171,26 +185,28 @@ async function reviewBody(ctx: PageContext, { campaign, step, settings, tz }: Re
       ? ""
       : html`<p>Suggested time: ${when(campaign.suggested_send_at, formatLocal(campaign.suggested_send_at, tz))}</p>`;
 
+  // A notice is announced only when a post was just refused; on a plain load it is ordinary page text.
+  const announce = state?.refusal === undefined ? "" : html` role="alert"`;
+  const formsShown = !scheduled && resolved !== null && blocker === null && sendable.length > 0;
   let actions: Html;
   if (scheduled) {
-    actions = html`<div class="page-action">${smallForm(ctx, campaign.id, "cancel", "Cancel")}${smallForm(ctx, campaign.id, "duplicate", "Duplicate")}</div>`;
+    actions = html`<div class="page-action">${smallForm(ctx, campaign.id, "cancel", "Cancel campaign")}${smallForm(ctx, campaign.id, "duplicate", "Duplicate")}</div>`;
   } else {
     const edit = html`<a class="button button-quiet" href="${campaignEditPath(campaign.id)}">Edit</a>`;
     const own = html`<div class="page-action">${edit}${smallForm(ctx, campaign.id, "duplicate", "Duplicate")}${smallForm(ctx, campaign.id, "archive", "Archive")}</div>`;
-    // Task C3 adds "Send test to me" here: one more form beside Edit, shown whatever the blocker says (it has its own checks).
     const send =
       resolved === null
         ? ""
         : blocker !== null
-          ? html`<p class="notice" role="alert">${blocker}</p>`
+          ? html`<p class="notice"${announce}>${blocker}</p>`
           : sendable.length === 0
-            ? html`<p class="notice" role="alert">No one in this group can get the email.</p>`
-            : sendForms(ctx, campaign, tz, sendable.length, await fingerprint(campaign, step, resolved));
+            ? html`<p class="notice"${announce}>No one in this group can get the email.</p>`
+            : sendForms(ctx, campaign, tz, sendable.length, await fingerprint(campaign, step, resolved), state);
     actions = html`${own}${send}`;
   }
 
   return html`<h1>${campaign.name}</h1>
-${refusalNote(state)}
+${state?.schedule !== undefined && formsShown ? "" : refusalNote(state)}
 <p class="lede">${tag(STATUS_LABELS[campaign.status])}</p>
 ${to}
 ${resolved === null ? "" : skippedSection(resolved)}
@@ -204,7 +220,7 @@ ${section(
   heading,
   campaignPreview(step, { business, postal, firstName: first?.firstName ?? campaign.first_name_fallback }),
 )}
-<details>
+<details class="text-version">
 <summary>Text version</summary>
 <pre>${rendered.text}</pre>
 </details>

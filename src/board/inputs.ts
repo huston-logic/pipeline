@@ -16,6 +16,8 @@ export type FieldProps = {
   /** As the form shows it. A "when" value is "YYYY-MM-DD" or "YYYY-MM-DDTHH:mm", or "". */
   value: string;
   required?: boolean;
+  /** A "when" field whose time is needed too: both parts are required and say so in their labels. */
+  timeRequired?: boolean;
   hint?: string;
   error?: string;
   /** The value shown came from outside (a website form or an import). */
@@ -111,16 +113,18 @@ function whenField(props: FieldProps): Html {
   const [date = "", time = ""] = props.value.split("T");
   const aria = html`${describedBy(described(props))}${props.error === undefined ? "" : html` aria-invalid="true"`}`;
   const required = props.required ? html` required` : "";
+  const both = props.timeRequired === true;
+  const inLabel = both ? html` <span class="field-required">(required)</span>` : "";
   return html`<fieldset class="field field-when${props.error === undefined ? "" : " field-invalid"}">
-<legend>${props.label}${props.required ? html` <span class="field-required">(required)</span>` : ""}${outsideOf(props)}</legend>
+<legend>${props.label}${props.required && !both ? html` <span class="field-required">(required)</span>` : ""}${outsideOf(props)}</legend>
 ${hintOf(props)}${errorOf(props)}<div class="when-row">
 <div class="when-part">
-<label for="${props.id}-date">Date</label>
+<label for="${props.id}-date">Date${inLabel}</label>
 <input id="${props.id}-date" name="${props.name}.date" type="date" value="${date}"${required}${aria}>
 </div>
 <div class="when-part">
-<label for="${props.id}-time">Time</label>
-<input id="${props.id}-time" name="${props.name}.time" type="time" value="${time}"${aria}>
+<label for="${props.id}-time">Time${inLabel}</label>
+<input id="${props.id}-time" name="${props.name}.time" type="time" value="${time}"${both ? " required" : ""}${aria}>
 </div>
 </div>
 ${wasField(props)}</fieldset>`;
