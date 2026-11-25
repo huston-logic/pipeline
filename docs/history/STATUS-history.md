@@ -199,6 +199,22 @@ Changes to scope, product or a decision since run 3, one line each:
 
 # History (kept from earlier runs; facts re-checked on 2026-11-23)
 
+## Run 9, Projects (2026-11-25)
+
+Plan: `docs/superpowers/plans/2026-11-25-run9-projects.md`. Design: `docs/superpowers/specs/2026-11-25-projects-design.md`. Decision 0055, migration 0020.
+
+Run 9 added projects, delivery work after a sale: a project comes from a won deal or is started by hand, holds tasks, notes and time, and shows on a Projects list and project page, all off until the owner turns it on.
+
+| PR | Wall-clock | Commits | Time in checks | Waiting on CI |
+|---|---|---|---|---|
+| A #82 core: data, services, AI app | 22:18 to 22:59 (41 min) to open | 12 | check:fast on each commit (3 to 7 s); one full `npm run check` about 30 s | 13 min (merged 23:12) |
+| B #83 board pages | 23:00 to 23:26 (26 min) to open | 7 | check:fast on each commit; one full check about 30 s | 11 min (merged 23:37) |
+| C #84 closing: exports, acceptance, final-review fixes, docs | 23:26 to open | 4 | check:fast on each commit; one full check | merged 23:46 |
+
+Judgment calls: the brief's cut-off last line read as "can later grow without reshaping its data" (ruling 1); the person is required and a deal is optional and must be Won (2); three fixed statuses, renamed only (3); a project's tasks leave the deal (4); the offer lives on the won deal's page (5); the move-tasks box is unticked by default (6); notes on a project are activities (7); no board settings switch (8); no Lighthouse slot (9); nothing shows while projects are off (10); no project views, import or custom fields (11); `update_time_entry` never moves an entry off its project implicitly; the demo seed moved from PR C to PR B.
+
+Queued then (all fixed in run 10): the archived filter in memory, the done-task read, project notes unlabelled on the person page.
+
 ## Run 8 (2026-11-24 to 25)
 
 Run 8, "Campaigns, step 1". Plan: `docs/superpowers/plans/2026-11-24-run8-campaigns.md`. Design:
