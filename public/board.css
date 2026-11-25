@@ -2565,3 +2565,30 @@ button.button {
     transition: none !important;
   }
 }
+
+/* ---------- Pending changes (run 10) ---------- */
+
+.pending-note .button {
+  max-width: 100%;
+  height: auto;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+
+.list-heading {
+  margin: 1.25rem 0 0.5rem;
+  font-size: 1rem;
+  color: var(--ink-2);
+}
+
+.sub-rows {
+  margin: 0.25rem 0 0;
+  padding-left: 1.25rem;
+  list-style: none;
+}
+
+.sub-rows > li {
+  margin: 0.25rem 0;
+  border: 0;
+}

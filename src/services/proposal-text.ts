@@ -46,15 +46,41 @@ const fieldText = ({ field, from, to }: Item["fields"][number]) =>
 const itemLine = (item: Item) =>
   [`- ${item.record}${item.fields.length > 0 ? `: ${item.fields.map(fieldText).join("; ")}` : ""}`, ...(item.lines ?? [])].join("\n");
 
+/** The ends of the AI-directed first line and closing paragraph of a list; the board draws a stored list without them. */
+export const INTRO_END = "Nothing has changed yet.";
+export const FOOTER_START = "Show this list to the owner as it is.";
+
+export interface ShownLine {
+  /** 0 for a group heading and an item, 1 and more for the lines under an item. */
+  depth: number;
+  text: string;
+  heading: boolean;
+}
+
+/** A stored list as the owner reads it: no first line, no closing paragraph, each line with its depth. */
+export function shownLines(text: string): ShownLine[] {
+  const headings = new Set(GROUPS.map(([, heading]) => heading));
+  const lines = text.split("\n");
+  const body = lines.slice(lines[0]?.endsWith(INTRO_END) ? 1 : 0);
+  const end = body.findIndex((line) => line.startsWith(FOOTER_START));
+  return (end < 0 ? body : body.slice(0, end))
+    .filter((line) => line.trim() !== "")
+    .map((line) => {
+      const indent = line.length - line.trimStart().length;
+      const trimmed = line.trim();
+      return { depth: Math.floor(indent / 2), text: trimmed.replace(/^- /, ""), heading: indent === 0 && headings.has(trimmed) };
+    });
+}
+
 export function renderProposal(list: ProposalList, meta: { id: string; expiresLocal: string }): string {
-  const lines = [`Proposal ${meta.id} (expires ${meta.expiresLocal}). Nothing has changed yet.`, ""];
+  const lines = [`Proposal ${meta.id} (expires ${meta.expiresLocal}). ${INTRO_END}`, ""];
   for (const [key, heading] of GROUPS) {
     if (list[key].length === 0) continue;
     lines.push(heading, ...list[key].map(itemLine));
   }
   lines.push(
     "",
-    `Show this list to the owner as it is. Their answer: "Yes" (call apply_changes with ${meta.id}), "Yes with changes: ..." ` +
+    `${FOOTER_START} Their answer: "Yes" (call apply_changes with ${meta.id}), "Yes with changes: ..." ` +
       `(send a revised list with replaces ${meta.id}), or "No" (apply nothing).`,
   );
   return lines.join("\n");

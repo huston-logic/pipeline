@@ -56,7 +56,7 @@ export const PROPOSAL_TTL_MS = 2 * 60 * 60 * 1000;
 /** Applied and dropped proposals stay a day, so a second yes or the old id of a revised list still gets its answer. */
 const KEEP_CLOSED_MS = 24 * 60 * 60 * 1000;
 
-const AGAIN = "Propose the changes again and show the owner the new list.";
+export const AGAIN = "Propose the changes again and show the owner the new list.";
 
 const TOO_LONG = "This list is too long to keep. Send it as two lists.";
 

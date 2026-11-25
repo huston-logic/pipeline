@@ -5,6 +5,7 @@ import type { ProposalRow } from "../../db/db.ts";
 import { getSettings } from "../../db/queries.ts";
 import { ownerTimezone } from "../../services/lookup.ts";
 import { listOpenProposals } from "../../services/proposals.ts";
+import { type ShownLine, shownLines } from "../../services/proposal-text.ts";
 import { formatLocal } from "../../time.ts";
 import type { PageContext } from "../context.ts";
 import { type FormContext, postForm } from "../forms.ts";
@@ -39,17 +40,52 @@ function listNames(rows: ProposalRow[], tz: string): string[] {
   });
 }
 
+/** The lines from `at` on that sit at `depth`, each item with the deeper lines under it as a nested list. */
+function nested(lines: ShownLine[], at: number, depth: number): { list: Html; next: number } {
+  const items: Html[] = [];
+  let i = at;
+  while (i < lines.length) {
+    const line = lines[i];
+    if (line === undefined || line.heading || line.depth < depth) break;
+    const inner = lines[i + 1] !== undefined && !lines[i + 1]?.heading && (lines[i + 1]?.depth ?? 0) > depth;
+    const below = inner ? nested(lines, i + 1, depth + 1) : null;
+    items.push(html`<li>${line.text}${below?.list ?? ""}</li>`);
+    i = below?.next ?? i + 1;
+  }
+  return { list: html`<ul class="${depth === 0 ? "rows" : "sub-rows"}">${items}</ul>`, next: i };
+}
+
+/** A stored list as headed groups of items; the AI-directed first line and closing paragraph are left out. */
+function listBody(text: string): Html[] {
+  const lines = shownLines(text);
+  const out: Html[] = [];
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    if (line?.heading) {
+      out.push(html`<h3 class="list-heading">${line.text}</h3>`);
+      i += 1;
+    }
+    const group = nested(lines, i, 0);
+    if (group.next === i) i += 1;
+    else {
+      out.push(group.list);
+      i = group.next;
+    }
+  }
+  return out;
+}
+
 function proposalCard(row: ProposalRow, name: string, form: FormContext, tz: string): Html {
-  const lines = row.text.split("\n").filter((line) => line.trim() !== "");
-  return html`<li class="card" aria-labelledby="list-${row.id}">
-<h2 id="list-${row.id}">List from ${name}</h2>
+  return html`<li class="card">
+<h2>List from ${name}</h2>
 <p class="panel-note">Made ${when(row.created_at, formatLocal(row.created_at, tz))}. Expires ${when(row.expires_at, formatLocal(row.expires_at, tz))}.</p>
-<ul class="rows">${lines.map((line) => html`<li>${line}</li>`)}</ul>
+${listBody(row.text)}
 <div class="confirm-actions">
 ${postForm("row-form", pendingAction(row.id, "approve"), form, html`<button class="button" type="submit">Approve<span class="visually-hidden"> the list from ${name}</span></button>`)}
 ${postForm("row-form", pendingAction(row.id, "discard"), form, html`<button class="button button-quiet" type="submit" aria-describedby="discard-${row.id}">Discard<span class="visually-hidden"> the list from ${name}</span></button>`)}
-</div>
 <p class="field-hint" id="discard-${row.id}">Discard throws this list away. It can't be undone, but your AI app can suggest it again.</p>
+</div>
 </li>`;
 }
 

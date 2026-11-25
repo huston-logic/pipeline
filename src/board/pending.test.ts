@@ -32,7 +32,7 @@ test("the page lists only open, unexpired lists, with named buttons", async () =
   assert.match(body, new RegExp(`action="/pending/${open}/discard"`));
   assert.doesNotMatch(body, new RegExp(dropped));
   assert.doesNotMatch(body, new RegExp(old));
-  assert.match(body, /<h2 id="list-pr_[a-z0-9]+">List from \d{1,2}:\d{2} [AP]M, 1 change<\/h2>/);
+  assert.match(body, /<h2>List from \d{1,2}:\d{2} [AP]M, 1 change<\/h2>/);
   assert.match(body, /Approve<span class="visually-hidden"> the list from \d{1,2}:\d{2} [AP]M, 1 change<\/span>/);
   assert.match(body, /aria-describedby="discard-pr_[a-z0-9]+">Discard/);
   assert.match(body, /Discard throws this list away\. It can't be undone, but your AI app can suggest it again\./);
@@ -102,7 +102,8 @@ test("a list whose records changed since is a 422 and writes nothing", async () 
   const before = await auditCount(db);
   const { res, body } = await post(devEnv(db), `/pending/${id}/approve`, {});
   assert.equal(res.status, 422);
-  assert.match(body, /changed since this list was made/);
+  assert.match(body, /This list changed since it was made\. Ask your AI app for a new one\./);
+  assert.doesNotMatch(body, /Propose the changes again/);
   assert.match(body, /href="\/pending"/);
   assert.equal(h1Count(body), 1);
   assert.equal(await auditCount(db), before);
@@ -146,4 +147,38 @@ test("Today shows the notice only while a list waits, and More lists Pending cha
   const today = (await load(env, "/")).body;
   assert.match(today, /<a class="button button-quiet" href="\/pending">1 change from your AI app is waiting\. Review it\.<\/a>/);
   assert.match((await load(env, "/more")).body, /href="\/pending"[^]*Pending changes/);
+});
+
+test("the card shows the owner's list: no AI-directed lines, headings as headings, a plan nested three deep", async () => {
+  const db = await seededDb();
+  const id = await propose(db, TASK);
+  const text = [
+    `Proposal ${id} (expires 5:00 PM). Nothing has changed yet.`,
+    "",
+    "Add",
+    "- Project Sign: person Pat Example",
+    "  - Design",
+    "    - Mockups",
+    "      - Logo",
+    "Tasks",
+    "- Task Call Pat",
+    "",
+    `Show this list to the owner as it is. Their answer: "Yes" (call apply_changes with ${id}), or "No" (apply nothing).`,
+  ].join("\n");
+  await db.prepare("UPDATE proposals SET text = ? WHERE id = ?").bind(text, id).run();
+  const { body } = await load(devEnv(db), "/pending");
+  assert.doesNotMatch(body, /apply_changes|Show this list|Nothing has changed yet|Proposal pr_/);
+  assert.match(body, /<h3 class="list-heading">Add<\/h3>/);
+  assert.match(body, /<h3 class="list-heading">Tasks<\/h3>/);
+  assert.match(body, /<li>Design<ul class="sub-rows"><li>Mockups<ul class="sub-rows"><li>Logo<\/li><\/ul><\/li><\/ul><\/li>/);
+  assert.match(body, /<li>Task Call Pat<\/li>/);
+});
+
+test("Approve of a list that marks one deal Won goes on to Start a project while projects are on", async () => {
+  const db = await seededDb();
+  await db.prepare("UPDATE settings SET projects = 1").run();
+  const id = await propose(db, [{ action: "update_deal", deal: "dl_seed05", status: "won" }]);
+  const { res, location } = await post(devEnv(db), `/pending/${id}/approve`, {});
+  assert.equal(res.status, 303);
+  assert.match(location, /^\/deals\/dl_seed05\/projects\/new\?change=chg_[a-z0-9]{12}$/);
 });
