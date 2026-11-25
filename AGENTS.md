@@ -260,12 +260,17 @@ hooks and the commands are in `CLAUDE.md`.
   `via: "campaign"`, and no read counts it as reaching anyone. `/unsubscribe/*` and `/hooks/resend` are answered in
   `src/index.ts` before the board and are not board routes; the token or the Svix signature is the check. The
   unsubscribe token is never shown, logged, exported or sent to MCP.
-- **Projects** (decision 0055): delivery after the sale, kept apart from selling. Off until `settings.projects`
+- **Projects** (decisions 0055, 0056): delivery after the sale, kept apart from selling. Off until `settings.projects`
   (`update_settings projects`); while off every project tool, service and input refuses with `PROJECTS_OFF`
   (`requireProjects` in `src/services/settings.ts`), a proposal before any name is matched, and nothing about projects
-  shows. Tables `projects` (`pj_`: name, person, optional won deal, status, start and target, notes, archived) and
-  `project_statuses` (fixed keys `active`, `on_hold`, `done`; renamed only, `update_project_status`; read through the
-  memo's `projectStatusRows`); `project_id` on tasks, activities and time entries (migration 0020). The link rules live in
+  shows. Tables `projects` (`pj_`: name, optional person, optional won deal, status, start and target, notes, custom
+  `fields`, archived) and `project_statuses` (a table the owner shapes: `add_project_status`, `update_project_status`,
+  `archive_project_status`; kind open or closed; at least one live of each; a new project takes the first live open
+  status; read through the memo's `projectStatusRows`). Custom fields take entity `project`; saved views take module
+  `projects` (`/projects?view=<vw id>`). A project may have no person (an internal project: its records have no person
+  and no deal, so every reader of a project's person must allow none). `addProject` takes `completeOpenTasks` (the
+  deal's open tasks are done, not moved). The board's Won confirm goes to Start a project when the deal has no live
+  project. Lighthouse allows 22 routes (`LIGHTHOUSE_MAX_ROUTES`). `project_id` on tasks, activities and time entries (migration 0020). The link rules live in
   `src/services/project-links.ts`: a record on a project gets the project's person and no deal, a deal with a project is
   refused, an archived project takes nothing new, and `update_time_entry` never moves an entry off its project unless
   given `project: null`. `src/services/projects.ts` (`addProject`, `updateProject`, `findProject`; a project's deal must

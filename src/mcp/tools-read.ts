@@ -252,13 +252,13 @@ export function registerReadTools(server: McpServer, deps: ToolDeps): void {
       description:
         "The owner's to-dos: open ones by default (snoozed ones included, and ones with no date or no person), or done " +
         "ones with status done. Overdue first, undated last, then newest. Filters: contact (id or name; their own " +
-        "tasks and their deals'), deal (id or name), standalone true (only tasks with no person and no deal), limit " +
+        "tasks and their deals'), deal (id or name), standalone true (only tasks with no person, no deal and no project), limit " +
         "(1 to 100, default 50). Use it for \"What's on my list?\" and to find a task's id.",
       input: z.strictObject({
         status: z.enum(["open", "done"]).optional().describe("open (the default) or done."),
         contact: shortText("Only this person's tasks and their deals' tasks: id or exact name.").optional(),
         deal: shortText("Only this deal's tasks: id or title.").optional(),
-        standalone: z.boolean().optional().describe("true: only tasks that belong to no person and no deal."),
+        standalone: z.boolean().optional().describe("true: only tasks that belong to no person, no deal and no project."),
         project: shortText("Only this project's tasks: its id (pj_...) or exact name. Refused while projects are off.").optional(),
         limit: z.number().int().min(1).max(100).optional().describe("At most this many, default 50."),
       }),

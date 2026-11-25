@@ -401,7 +401,7 @@ export interface TaskListFilter {
  */
 export async function listTaskItems(db: Db, filter: TaskListFilter, tz: string): Promise<(TaskItem & { doneAt: string | null })[]> {
   if (filter.standalone === true && (filter.contact !== undefined || filter.deal !== undefined)) {
-    throw new UserError("standalone means tasks with no person and no deal, so it can't be combined with contact or deal. Leave one out.");
+    throw new UserError("standalone means tasks with no person, no deal and no project, so it can't be combined with contact or deal. Leave one out.");
   }
   const clauses = [filter.status === "done" ? "t.done_at IS NOT NULL" : "t.done_at IS NULL"];
   const params: unknown[] = [];
