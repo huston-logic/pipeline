@@ -23,6 +23,7 @@ import {
   addProjectInput,
   updateProjectInput,
   addTaskInput,
+  addTaskPlanInput,
   completeTaskInput,
   logActivityInput,
   qualifyLeadInput,
@@ -204,6 +205,22 @@ export function registerWriteTools(server: McpServer, deps: ToolDeps): void {
         PROPOSES,
       input: addTaskInput,
       run: (args, deps) => recordWrite(deps, { action: "add_task", ...args }),
+    },
+    deps,
+  );
+
+  registerTool(
+    server,
+    {
+      name: "add_task_plan",
+      title: "Add a task plan to a project",
+      kind: "write",
+      description:
+        "Adds a project's whole task list at once, as one flat list in order. An item's under is the 1-based number of an " +
+        "earlier item it goes under; dueDays counts from the project's start date. Refused while projects are off. " +
+        PROPOSES,
+      input: addTaskPlanInput,
+      run: (args, deps) => recordWrite(deps, { action: "add_task_plan", ...args }),
     },
     deps,
   );

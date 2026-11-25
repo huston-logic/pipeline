@@ -45,6 +45,7 @@ import {
   withStopTimes,
 } from "./proposal-actions.ts";
 import { type ProposalList, proposalList, renderProposal, shownList } from "./proposal-text.ts";
+import { TASK_PLAN_MAX } from "./task-plan.ts";
 import { runningTimerRefusal } from "./timer.ts";
 import { wonDealIds } from "./won-offers.ts";
 
@@ -129,6 +130,8 @@ export async function proposeChanges(caller: Ctx, input: { actions: RecordAction
     throw new UserError(`A proposal holds at most ${PROPOSAL_MAX_ACTIONS} actions; this one has ${count}. Split it into smaller lists.`);
   }
   const checked = checkActions(input.actions);
+  const planned = checked.reduce((sum, action) => sum + (action.action === "add_task_plan" ? action.tasks.length : 0), 0);
+  if (planned > TASK_PLAN_MAX) throw new UserError(`A proposal holds at most ${TASK_PLAN_MAX} planned tasks; this one has ${planned}. Split it into two lists.`);
   const old = input.replaces === undefined ? null : await replaceable(db, input.replaces.trim(), now);
   const { actions, questions } = await resolveActions(ctx, checked);
   if (questions.length > 0) return { kind: "questions", questions };

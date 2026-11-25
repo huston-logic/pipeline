@@ -181,7 +181,20 @@ export const addTaskInput = z.strictObject({
   dueAt: when("When it is due").optional(),
 });
 
-export const completeTaskInput = z.strictObject({
+export const taskPlanItemInput = z.strictObject({
+  title: shortText("What to do, in a few words."),
+  due: when("When it is due").optional(),
+  dueDays: z.number().int().min(0).max(3650).describe("Days after the project's start date; use this or due.").optional(),
+  under: z.number().int().describe("The 1-based number of an earlier task in this list to put this under.").optional(),
+});
+
+export const addTaskPlanInput = z.strictObject({
+  project: projectRef("").describe("The project: its id (pj_...) or exact name, or @n for a project an earlier action in the list adds."),
+  under: z.string().min(1).max(100).describe("An open task (tk_...) of the project to put the whole plan under.").optional(),
+  tasks: z.array(taskPlanItemInput).min(1).max(100).describe("The tasks, in order, at most 100."),
+});
+
+export const completeTaskInput =z.strictObject({
   task: taskRef(),
   subTasks: z.enum(["complete", "leave"]).optional().describe('Needed when the task has open sub-tasks: "complete" finishes them too, "leave" keeps them open.'),
 });

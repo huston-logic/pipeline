@@ -144,6 +144,16 @@ const VARIANTS: Record<RecordActionName, Variant[]> = {
     { input: { deal: "dl_seed07", name: "Salon launch", moveOpenTasks: true, completeOpenTasks: true }, setup: OPEN_TASK_ON_WON_DEAL },
     { input: { name: "Office move", fields: { scope: "Two floors" } } },
   ],
+  add_task_plan: [
+    {
+      input: {
+        project: "Retrofit",
+        under: "tk_proj",
+        tasks: [{ title: "Survey", dueDays: 3 }, { title: "Measure", under: 1, due: "2026-12-05" }, { title: "Order" }],
+      },
+      setup: `${ENTRY_ON_PROJECT}; UPDATE projects SET start_at = '2026-12-01T08:00:00.000Z' WHERE id = 'pj_seed01'`,
+    },
+  ],
   update_project: [
     { input: { project: "Retrofit", name: "Retrofit phase 2", status: "done", startAt: "2026-12-02", targetAt: "2027-02-01", notes: "Anchors ordered." } },
     { input: { project: "pj_seed01", startAt: null, targetAt: null, notes: null }, setup: PROJECT_WITH_DATES },

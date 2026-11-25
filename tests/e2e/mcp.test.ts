@@ -34,6 +34,7 @@ test("lists the tools over Streamable HTTP, with the server instructions", async
     "add_stage",
     "add_sub_status",
     "add_task",
+    "add_task_plan",
     "add_time_entry",
     "add_view",
     "add_work_type",
