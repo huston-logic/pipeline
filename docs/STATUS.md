@@ -6,8 +6,8 @@ History of every earlier run: [docs/history/STATUS-history.md](history/STATUS-hi
 
 Checked on 2026-11-24 against the repo and `gh`.
 
-- **Merged:** everything in the spec and in the runs 2, 4, 5 and 6 briefs, run 7's PR A (#73), PR B (#74) and owner batch (#75), and run 8's PR A (#76) and PR B (#77). The repo has migrations 0001 to 0019 and decisions 0001 to 0053.
-- **Open:** run 8's PR C (#78, sending, unsubscribe and delivery results), auto-merge queued (the controller will correct this line at the end); run 8's PR D (this PR, closing docs).
+- **Merged:** everything in the spec and in the runs 2, 4, 5 and 6 briefs, run 7's PR A (#73), PR B (#74) and owner batch (#75), and run 8's PR A (#76), PR B (#77) and PR C (#78). The repo has migrations 0001 to 0019 and decisions 0001 to 0053.
+- **Open:** run 8's PR D (this PR, closing docs), auto-merge queued.
 - **Campaigns (run 8):** email campaigns, off by default: drafts by the AI app or by hand, review and approve on the board, batches every 15 minutes within a daily limit, one-click unsubscribe, delivery results by webhook (0053).
 - **Board, the daily screen:** HTML rendered by the Worker, editable (0014, 0017, 0018); look and navigation (0015); home-screen app (0019); phone actions and Ask Claude (0021); Today as a list (0047); timer bar on the board (0050); time pages (0051).
 - **Pipeline and contacts:** kanban and List, contacts and companies (0016, 0017, 0020, 0043).
@@ -76,7 +76,7 @@ Built:
 
 - PR A (#76, merged): core, data and the AI door (migration 0019, the draft tools, the setting).
 - PR B (#77, merged): the board pages (the Campaigns list, the review page, the settings).
-- PR C (#78, auto-merge queued): sending, unsubscribe and delivery results.
+- PR C (#78, merged): sending, unsubscribe and delivery results.
 - PR D (this PR): closing docs and the acceptance sentences 31 to 34, end to end.
 
 | PR | Wall-clock | Commits | Time in checks | Waiting on CI |
