@@ -803,7 +803,7 @@ export function registerWriteTools(server: McpServer, deps: ToolDeps): void {
         "add removes what it added. Refuses if the change was already undone or a record it touched changed since.",
       input: z.strictObject({ changeId: z.string().min(1).max(100).describe("The change id, chg_...") }),
       async run({ changeId }, deps) {
-        const result = await undoChange(aiCtx(deps, "undo_change"), changeId);
+        const result = await undoChange(aiCtx(deps, "undo_change"), changeId, deps.origin === undefined ? {} : { origin: deps.origin });
         return toolResult(result.summary, { changeId: result.changeId, undid: changeId.trim() });
       },
     },

@@ -8,6 +8,7 @@
 // same number of reads for 2 rows as for 2,000. A change that had parts, or touched more than 50 rows, is undone
 // with a bulk change and described with counts.
 import type { AuditRow, ContactRow, Db, RuleType } from "../db/db.ts";
+import { getSettings as getSettingsRow } from "../db/queries.ts";
 import { newId } from "../ids.ts";
 import { chunkBy, sqlBytes } from "./bulk.ts";
 import {
@@ -690,8 +691,12 @@ export async function undoRemovals(db: Ctx["db"], changeId: string): Promise<Rem
   );
 }
 
-export async function undoChange(ctx: Ctx, changeId: string): Promise<ChangeResult> {
+export async function undoChange(ctx: Ctx, changeId: string, options: { origin?: string } = {}): Promise<ChangeResult> {
   const { db } = ctx;
+  // While the owner approves AI changes on the board, the AI app can't undo anything: an undo would be a way round it.
+  if (ctx.actor === "ai" && (await getSettingsRow(db)).ai_approval === "board") {
+    throw new UserError(`The owner undoes changes on the board while AI changes are approved there: ${options.origin ?? ""}/changes.`);
+  }
   const id = changeId.trim();
   const original = await db.prepare("SELECT * FROM audit_log WHERE id = ?").bind(id).first<AuditRow>();
   if (!original) throw new UserError(`There's no change ${id}. Use recent_changes to find the change id.`);

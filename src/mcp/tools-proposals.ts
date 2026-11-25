@@ -4,8 +4,7 @@
 import type { CallToolResult, McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import { parseOwnerEmailsVar } from "../auth/owners.ts";
-import { UserError } from "../services/errors.ts";
-import { getApproveIn, pendingUrl } from "../services/settings.ts";
+import { pendingUrl } from "../services/settings.ts";
 import { RECORD_ACTIONS, recordActionSchema } from "../services/proposal-actions.ts";
 import { applyChanges, PROPOSAL_MAX_ACTIONS, PROPOSAL_MAX_OPEN, type ProposeAnswer, proposeChanges } from "../services/proposals.ts";
 import { toolText } from "./format.ts";
@@ -18,7 +17,7 @@ const proposalId = (description: string) => z.string().min(1).max(40).describe(d
  * propose_changes' answer: the list, a blank line and `{ proposal, expiresAt, list }`, or the questions and
  * `{ questions }`. The record tools answer a proposal the same way (record-write.ts, decision 0045).
  */
-export function proposeResult(answer: ProposeAnswer, approveAt?: string): CallToolResult {
+export function proposeResult(answer: ProposeAnswer, origin?: string): CallToolResult {
   if (answer.kind === "questions") {
     const n = answer.questions.length;
     const head = `Nothing was proposed: ${n === 1 ? "a name needs" : `${n} names need`} checking first. Ask the owner, then send the list again.`;
@@ -26,13 +25,9 @@ export function proposeResult(answer: ProposeAnswer, approveAt?: string): CallTo
   }
   // The stored text (compared at apply time) keeps its closing ask; with board approval the answer swaps it for the link.
   const asked = answer.text.lastIndexOf("\n\nShow this list to the owner");
-  const text = approveAt === undefined || asked < 0 ? answer.text : `${answer.text.slice(0, asked)}\n\nApprove on the board: ${approveAt}.`;
+  const link = `Approve on the board: ${pendingUrl(origin)}.`;
+  const text = answer.approveIn !== "board" ? answer.text : `${asked < 0 ? answer.text : answer.text.slice(0, asked)}\n\n${link}`;
   return toolText(text, { proposal: answer.id, expiresAt: answer.expiresAt, list: answer.list });
-}
-
-/** "<origin>/pending" while the owner approves on the board, else undefined (the owner says yes in chat). */
-export async function approveAt(deps: ToolDeps): Promise<string | undefined> {
-  return (await getApproveIn(deps.db)) === "board" ? pendingUrl(deps.origin) : undefined;
 }
 
 export function registerProposalTools(server: McpServer, deps: ToolDeps): void {
@@ -68,7 +63,7 @@ export function registerProposalTools(server: McpServer, deps: ToolDeps): void {
           replaces === undefined ? { actions } : { actions, replaces },
           { extraOwnerEmails: parseOwnerEmailsVar(deps.ownerEmailsVar) },
         );
-        return proposeResult(answer, await approveAt(deps));
+        return proposeResult(answer, deps.origin);
       },
     },
     deps,
@@ -91,12 +86,9 @@ export function registerProposalTools(server: McpServer, deps: ToolDeps): void {
         "whether to start a project (a deal was marked Won), ask them; never add a project without their yes.",
       input: z.strictObject({ proposal: proposalId("The proposal's id, pr_..., from propose_changes.") }),
       async run({ proposal }, deps) {
-        const board = await approveAt(deps);
-        if (board !== undefined) {
-          throw new UserError(`The owner approves changes on the board: ${board}. Ask them to open it and press Approve.`);
-        }
         const result = await applyChanges(aiCtx(deps, "apply_changes"), proposal, {
           extraOwnerEmails: parseOwnerEmailsVar(deps.ownerEmailsVar),
+          refuseOnBoard: `The owner approves changes on the board: ${pendingUrl(deps.origin)}. Ask them to open it and press Approve.`,
         });
         return answerApplied(deps.db, result.summary, { changeId: result.changeId, proposal: proposal.trim(), applied: result.applied }, result.wonDeals);
       },

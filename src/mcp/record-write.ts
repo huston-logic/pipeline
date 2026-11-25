@@ -12,7 +12,7 @@ import { proposeChanges } from "../services/proposals.ts";
 import { getAiEdits } from "../services/settings.ts";
 import { answerApplied } from "./start-project.ts";
 import { aiCtx, type ToolDeps } from "./tool.ts";
-import { approveAt, proposeResult } from "./tools-proposals.ts";
+import { proposeResult } from "./tools-proposals.ts";
 
 /** A record named by "@n" is one a list adds, never an existing one. */
 const existing = (ref: string | undefined) => ref === undefined || !ref.trim().startsWith("@");
@@ -58,7 +58,7 @@ export async function recordWrite(deps: ToolDeps, action: RecordAction): Promise
     return answerApplied(deps.db, result.summary, answerData(result), []);
   }
   try {
-    return proposeResult(await proposeChanges(ctx, { actions: [action] }, options), await approveAt(deps));
+    return proposeResult(await proposeChanges(ctx, { actions: [action] }, options), deps.origin);
   } catch (error) {
     throw ownMessage(error);
   }

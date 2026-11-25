@@ -4,6 +4,8 @@
 import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import { IMPORT_MAX_ROWS, IMPORT_MAX_VALUE_BYTES } from "../import/engine.ts";
+import { UserError } from "../services/errors.ts";
+import { getApproveIn } from "../services/settings.ts";
 import { applyImport, IMPORT_MAX_MCP_COLUMNS, IMPORT_ROWS_PER_CALL, importRows } from "../services/import-rows.ts";
 import { toolResult } from "./format.ts";
 import { registerTool, type ToolDeps } from "./tool.ts";
@@ -107,6 +109,9 @@ export function registerImportTools(server: McpServer, deps: ToolDeps): void {
         version: z.number().int().min(1).describe("The version of the preview the owner said yes to, from import_rows' answer."),
       }),
       async run(args, deps) {
+        if ((await getApproveIn(deps.db)) === "board") {
+          throw new UserError(`The owner applies imports on the board: ${deps.origin ?? ""}/import/${encodeURIComponent(args.draft.trim())}.`);
+        }
         const applied = await applyImport({ db: deps.db, now: deps.now() }, args.draft, args.version);
         const { changeId, draft, alreadyApplied } = applied;
         return toolResult(applied.summary, { changeId, draft, alreadyApplied });

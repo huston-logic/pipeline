@@ -2,8 +2,11 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { buildFixtureSeed } from "../../tests/helpers/fixture-seed.ts";
 import { connectInMemory, fails, ok, okText } from "../../tests/helpers/mcp-client.ts";
+import { countingDb } from "../../tests/helpers/counting-db.ts";
 import { createTestDb } from "../db/sqlite-d1.ts";
+import { PROPOSAL_MAX_ACTIONS } from "../services/proposals.ts";
 import { updateSettings } from "../services/settings.ts";
+import { undoChange } from "../services/undo.ts";
 import { DEFAULT_TZ } from "../time.ts";
 import { createMcpServer } from "./server.ts";
 
@@ -63,4 +66,49 @@ test("small changes still apply at once under Apply small changes while approval
   const activities = await count("activities");
   await ok(c, "log_activity", { deal: "dl_seed01", type: "note", summary: "Talked it over" });
   assert.equal(await count("activities"), activities + 1);
+});
+
+test("while approval is on the board the AI app can't undo anything; the owner can; under chat the AI can", async () => {
+  const { db, c } = await setup();
+  const early = await ok(c, "update_settings", { businessName: "Oak" });
+  assert.match((await ok(c, "undo_change", { changeId: (early.data as { changeId: string }).changeId })).headline, /^Undid/);
+  const name = await ok(c, "update_settings", { businessName: "Fernwood" });
+  const nameId = (name.data as { changeId: string }).changeId;
+  const set = await ok(c, "update_settings", { approveIn: "board" });
+  const setId = (set.data as { changeId: string }).changeId;
+  const refusal = `The owner undoes changes on the board while AI changes are approved there: ${ORIGIN}/changes.`;
+  assert.equal(await fails(c, "undo_change", { changeId: setId }), refusal);
+  assert.equal(await fails(c, "undo_change", { changeId: nameId }), refusal);
+  const ownerUndo = await undoChange({ db, now: NOW, actor: "owner", tool: "undo_change" }, setId);
+  assert.match(ownerUndo.summary, /^Undid/);
+});
+
+test("while approval is on the board the AI app can't loosen AI edits; the owner can", async () => {
+  const { db, c } = await setup();
+  await ok(c, "update_settings", { approveIn: "board" });
+  const message = await fails(c, "update_settings", { aiEdits: "apply_small" });
+  assert.equal(message, `Only the board can loosen this while AI changes are approved there. Switch approval back to chat on the board first: ${ORIGIN}/pending.`);
+  await updateSettings({ db, now: NOW, actor: "owner", tool: "update_settings" }, { aiEdits: "apply_small" });
+  const back = await ok(c, "update_settings", { aiEdits: "review_first" });
+  assert.match(back.headline, /Review first/);
+});
+
+test("while approval is on the board apply_import refuses and points at the board's import page", async () => {
+  const { c } = await setup();
+  await ok(c, "update_settings", { approveIn: "board" });
+  assert.equal(await fails(c, "apply_import", { draft: "im_abc", version: 1 }), `The owner applies imports on the board: ${ORIGIN}/import/im_abc.`);
+});
+
+test("a maximum-size propose and apply through the tools make at most 40 D1 calls each", async () => {
+  const raw = await createTestDb();
+  raw.exec(buildFixtureSeed(NOW, DEFAULT_TZ));
+  const db = countingDb(raw);
+  const c = await connectInMemory(createMcpServer({ db, now: () => NOW, origin: ORIGIN }));
+  const actions = Array.from({ length: PROPOSAL_MAX_ACTIONS }, (_, i) => ({ action: "add_task", title: `Task ${i + 1}`, dueAt: "2026-11-21" }));
+  db.reset();
+  const proposed = await okText(c, "propose_changes", { actions });
+  assert.ok(db.calls <= 40, `propose made ${db.calls} D1 calls`);
+  db.reset();
+  await ok(c, "apply_changes", { proposal: (proposed.data as { proposal: string }).proposal });
+  assert.ok(db.calls <= 40, `apply made ${db.calls} D1 calls`);
 });

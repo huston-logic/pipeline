@@ -271,6 +271,11 @@ export async function updateSettings(ctx: Ctx, patch: SettingsPatch, options: Se
   if (patch.aiEdits !== undefined) {
     const stored = AI_EDITS_STORED[patch.aiEdits];
     if (stored !== before.ai_edits) {
+      if (stored === "small" && ctx.actor === "ai" && before.ai_approval === "board") {
+        throw new UserError(
+          `Only the board can loosen this while AI changes are approved there. Switch approval back to chat on the board first: ${pendingUrl(options.origin)}.`,
+        );
+      }
       set.ai_edits = stored;
       parts.push(`AI edits: ${AI_EDITS_LABELS[stored]}`);
     }

@@ -30,7 +30,7 @@ import {
 import { capitalize, rowLabel, short } from "./describe.ts";
 import { UserError } from "./errors.ts";
 import { ownerTimezone } from "./lookup.ts";
-import { ReadMemo } from "./memo.ts";
+import { ReadMemo, settingsRow } from "./memo.ts";
 import { PlanCollector } from "./plan.ts";
 import {
   type ActionResult,
@@ -61,7 +61,7 @@ const AGAIN = "Propose the changes again and show the owner the new list.";
 const TOO_LONG = "This list is too long to keep. Send it as two lists.";
 
 export type ProposeAnswer =
-  | { kind: "proposal"; id: string; expiresAt: string; text: string; list: ProposalList }
+  | { kind: "proposal"; id: string; expiresAt: string; text: string; list: ProposalList; approveIn: "chat" | "board" }
   | { kind: "questions"; questions: string[] };
 
 type Deps = { extraOwnerEmails: string[] };
@@ -194,7 +194,7 @@ export async function proposeChanges(caller: Ctx, input: { actions: RecordAction
     if (isGuardFailure(error) && old !== null) await replaceable(db, old.id, now);
     throw error;
   }
-  return { kind: "proposal", id, expiresAt, text, list };
+  return { kind: "proposal", id, expiresAt, text, list, approveIn: (await settingsRow(ctx)).ai_approval };
 }
 
 function parseReads(json: string): Record<string, number | null> {
@@ -359,9 +359,11 @@ async function appliedAnswer(db: Db, row: ProposalRow): Promise<ApplyResult> {
  * caller, tool apply_changes), only while every row they write is as it was when the list was made. A second apply
  * writes nothing and answers the first change.
  */
-export async function applyChanges(caller: Ctx, id: string, deps: Deps): Promise<ApplyResult> {
+export async function applyChanges(caller: Ctx, id: string, deps: Deps & { refuseOnBoard?: string }): Promise<ApplyResult> {
   const ctx: Ctx = { ...caller, memo: new ReadMemo(caller.db) };
   const { db, now } = ctx;
+  // The AI app's apply: while the owner approves on the board it writes nothing (the refusal text comes from src/mcp).
+  if (deps.refuseOnBoard !== undefined && (await settingsRow(ctx)).ai_approval === "board") throw new UserError(deps.refuseOnBoard);
   const ref = id.trim();
   const row = isProposalId(ref) ? await getProposal(db, ref) : null;
   if (row === null) throw new UserError(`No proposal ${isProposalId(ref) ? ref : "by that id"}. Propose the changes again.`);
