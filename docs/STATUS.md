@@ -87,7 +87,7 @@ Changed: decision 0054 and its index line (0007 marked partly replaced); INSTALL
 
 | PR | Wall-clock | Commits | Time in checks | Waiting on CI |
 |---|---|---|---|---|
-| Managed hosting (this PR) | about 12 min from the first commit (21:25) to PR open; reading and the limit lookups came before | 3 | check:fast on each commit (docs only, seconds); one full `npm run check` 27 s | see the PR |
+| Managed hosting (this PR) | about 12 min from the first commit (21:25) to PR open; reading and the limit lookups came before. One review fix commit after. | 4 | check:fast on each commit (docs only, seconds); one full `npm run check` 27 s | see the PR |
 
 Judgment calls (one line each):
 
