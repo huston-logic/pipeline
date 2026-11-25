@@ -1,6 +1,7 @@
-// The hourly Cron Trigger ("0 * * * *" in wrangler.jsonc). Each job runs on its own, so one failing never stops the
+// The Cron Triggers in wrangler.jsonc: the hourly one ("0 * * * *") and the campaign one. Each job runs on its own, so one failing never stops the
 // next. Logs hold fixed event names and counts only, never record data or error text.
 import { runBrief } from "./brief/run.ts";
+import { runCampaigns } from "./campaigns/send.ts";
 import type { Env } from "./env.ts";
 import { deleteExpiredDrafts } from "./import/drafts.ts";
 import { deleteExpiredProposals } from "./services/proposals.ts";
@@ -19,6 +20,11 @@ export const CRON_JOBS: [name: string, job: CronJob][] = [
   ["import_drafts", async (env, now) => ({ deleted: await deleteExpiredDrafts(env.DB, now) })],
   ["proposals", async (env, now) => ({ deleted: await deleteExpiredProposals(env.DB, now) })],
 ];
+
+/** The campaign Cron Trigger ("5,20,35,50 * * * *" in wrangler.jsonc): its own invocation, so its own CPU and D1 budget. */
+export const CAMPAIGN_CRON = "5,20,35,50 * * * *";
+
+export const CAMPAIGN_JOBS: [name: string, job: CronJob][] = [["campaigns", runCampaigns]];
 
 export async function runScheduled(env: Env, now: Date, jobs: [string, CronJob][] = CRON_JOBS): Promise<void> {
   for (const [name, job] of jobs) {

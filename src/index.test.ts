@@ -188,6 +188,15 @@ test("scheduled() runs the hourly rules, then the brief, then clears expired imp
   ]);
 });
 
+test("scheduled() on the campaign cron runs only the campaign job, and an off copy logs one skipped count", async (t) => {
+  const logged = t.mock.method(console, "log", () => {});
+  const failed = t.mock.method(console, "error", () => {});
+  const controller = { cron: "5,20,35,50 * * * *", scheduledTime: Date.parse("2026-11-19T18:05:00.000Z"), noRetry() {} } as unknown as ScheduledController;
+  await worker.scheduled(controller, { ...fakeEnv(), DB: await openTestDb() }, ctx);
+  assert.equal(failed.mock.callCount(), 0);
+  assert.deepEqual(logged.mock.calls.map((call) => call.arguments[0]), [JSON.stringify({ event: "cron_campaigns_done", skipped: 1 })]);
+});
+
 test("email() logs a BCC'd email, and a failure is logged without the message and never answers the sender", async (t) => {
   const logged = t.mock.method(console, "log", () => {});
   const failed = t.mock.method(console, "error", () => {});

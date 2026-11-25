@@ -8,7 +8,7 @@ import { notFoundPage, serverErrorPage } from "./board/pages/not-found.ts";
 import { handleBoardPost } from "./board/post.ts";
 import { matchBoardPage } from "./board/router.ts";
 import { THEME_PATH, themeStylesheet } from "./board/theme.ts";
-import { runScheduled } from "./cron.ts";
+import { CAMPAIGN_CRON, CAMPAIGN_JOBS, CRON_JOBS, runScheduled } from "./cron.ts";
 import { logAddressOf } from "./email/address.ts";
 import type { Env } from "./env.ts";
 import { apiMethodNotAllowed, handleApi, isApiPath, json } from "./http/api.ts";
@@ -187,9 +187,10 @@ export default {
     return handleFetch(request, env, ctx);
   },
 
-  // The hourly Cron Trigger. Awaited (not waitUntil): the invocation lasts exactly as long as the run.
+  // The Cron Triggers: the campaign one runs only the campaign job, every other one (the hourly "0 * * * *") the rest.
+  // Awaited (not waitUntil): the invocation lasts exactly as long as the run.
   async scheduled(controller: ScheduledController, env: Env, _ctx: ExecutionContext): Promise<void> {
-    await runScheduled(env, new Date(controller.scheduledTime));
+    await runScheduled(env, new Date(controller.scheduledTime), controller.cron === CAMPAIGN_CRON ? CAMPAIGN_JOBS : CRON_JOBS);
   },
 
   // Email Routing hands mail for the log address here (decision 0031). Loaded only for an email, so the board never

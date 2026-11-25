@@ -57,8 +57,9 @@
       }
     ]
   },
-  // The hourly run (src/cron.ts): the rules, then the daily brief. Cron Triggers are on the free plan (docs/PAID-PLAN.md).
-  "triggers": { "crons": ["0 * * * *"] },
+  // The hourly run (src/cron.ts): the rules, then the daily brief; and every 15 minutes the campaign sender, which has its
+  // own invocation and so its own CPU and D1 budget. Cron Triggers are on the free plan (docs/PAID-PLAN.md).
+  "triggers": { "crons": ["0 * * * *", "5,20,35,50 * * * *"] },
   // Invocation logs would store request metadata; the Worker's own log lines hold no personal data.
   "observability": { "enabled": true, "logs": { "invocation_logs": false } }
 }
