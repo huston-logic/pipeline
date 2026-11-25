@@ -103,7 +103,9 @@ export async function newProjectOfDealPage(ctx: PageContext, id: string, state?:
   const box: Html | undefined =
     open === 0
       ? undefined
-      : html`${checkbox({
+      : html`<fieldset class="field field-when">
+<legend>This deal's open tasks</legend>
+${checkbox({
           id: "project-move-tasks",
           name: MOVE_TASKS,
           label: "Move open tasks to the project",
@@ -111,7 +113,15 @@ export async function newProjectOfDealPage(ctx: PageContext, id: string, state?:
           checked: fresh || state.move === true,
           hint: `This deal has ${openTasksText(open)}.`,
         })}
-${checkbox({ id: "project-complete-tasks", name: COMPLETE_TASKS, label: "Complete all open tasks", value: "yes", checked: state?.complete === true })}`;
+${checkbox({
+          id: "project-complete-tasks",
+          name: COMPLETE_TASKS,
+          label: "Complete all open tasks",
+          value: "yes",
+          checked: state?.complete === true,
+          hint: "Marks them done and leaves them on the deal, instead of moving them.",
+        })}
+</fieldset>`;
   const words = dealWords(deal);
   const back = dealHref(deal.id);
   return recordFormPage(ctx, {

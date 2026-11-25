@@ -110,7 +110,8 @@ test("a confirmed Won with projects on and no live project goes to Start a proje
   assert.match(location, /^\/deals\/dl_seed01\/projects\/new\?change=chg_[a-z0-9]{12}$/);
   const next = await load(env, location);
   assert.equal(next.res.status, 200);
-  assert.match(next.body, /Undo/);
+  assert.match(next.body, /<div class="banner" role="status">/);
+  assert.match(next.body, /action="\/changes\/chg_[a-z0-9]{12}\/undo"[^]*Undo/);
 });
 
 test("a confirmed Won keeps the usual redirect when projects are off or the deal has a live project", async () => {
@@ -131,8 +132,11 @@ test("Start a project from a deal: move box ticked, complete box not, both only 
   const page = await load(env, "/deals/dl_seed07/projects/new");
   assert.match(page.body, /<input id="project-move-tasks" name="move_tasks" type="checkbox" value="yes" checked[ >]/);
   assert.match(page.body, /Move open tasks to the project/);
-  assert.match(page.body, /<input id="project-complete-tasks" name="complete_tasks" type="checkbox" value="yes">/);
+  assert.match(page.body, /<input id="project-complete-tasks" name="complete_tasks" type="checkbox" value="yes" aria-describedby/);
   assert.match(page.body, /Complete all open tasks/);
+  assert.match(page.body, /<fieldset[^>]*>\s*<legend>This deal(?:'|&#39;)s open tasks<\/legend>[^]*project-complete-tasks[^]*<\/fieldset>/);
+  assert.match(page.body, /aria-describedby="project-complete-tasks-hint"/);
+  assert.match(page.body, /Marks them done and leaves them on the deal, instead of moving them\./);
 });
 
 test("the two boxes: move moves, complete completes and wins, and a refusal keeps both as posted", async () => {
