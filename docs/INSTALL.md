@@ -61,7 +61,8 @@ npm run copies:provision -- --copy <name>
 
 It asks for:
 
-- **the account**: it lists the accounts your login can use; type the number of the hosting account;
+- **the account**: it lists the accounts your login can use; type the number of the hosting account. The prompt still
+  asks "Which account is the client's?": that wording is old, and the answer is the hosting account;
 - **owner email(s)**: who may sign in, comma-separated;
 - **the Access team domain** and **AUD tag** from step 3. The team domain is the host only, for example
   `<team>.cloudflareaccess.com`, with no `https://` and no `/` at the end (with them, it asks again). The AUD tag is
@@ -106,7 +107,10 @@ later works the same way: [docs/UPDATING.md](UPDATING.md).
 
 ## 6. Check sign-in and connect an AI app
 
-1. Do [ACCESS-SETUP.md](ACCESS-SETUP.md) step 7 ("Check it"): the board opens for an owner email only.
+1. Do [ACCESS-SETUP.md](ACCESS-SETUP.md) step 7 ("Check it"): the board opens for an owner email only. Access sends
+   the one-time code to the email you sign in with, which is the client's, not yours. Have the client's owner with you,
+   or add your own email as a temporary owner email for the check and remove it after (it counts toward the 50-user
+   limit; see "Removing someone's access" below).
 2. In the AI app (for example Claude), add a custom connector (a remote MCP server) with the address
    `https://<copy host>/mcp`. The app opens a page "Allow <app name> to use your pipeline?"; select **Allow**, sign in
    with the owner email and the code Access sends, and the app is connected. The email of the AI app's own account
@@ -149,8 +153,9 @@ kept for 2 hours, then thrown away. Everything imported is outside text (like a 
 follows instructions written in it. If it is the owner's own customer list, tick **This is my own list** on step 3 so
 names, businesses, emails, phones and sources show as the owner's own; leave it unticked for a file someone else made
 (decision 0038). Deals and tasks import the same way and accept the board's own CSV export. On a copy with a very big
-list, a full 2,000-row import can pass the free plan's CPU limit: if it fails with "exceeded CPU", import it from the
-Mac (below), split it, or see docs/PAID-PLAN.md ("Run 5: import").
+list, a full 2,000-row import can pass the free plan's CPU limit (the hosting account is on Workers Paid, so this should
+not happen there): if it fails with "exceeded CPU", import it from the Mac (below), split it, or see docs/PAID-PLAN.md
+("Run 5: import").
 
 The AI app can do the same: say "Import these people from my sheet". It shows you the preview first and saves only after
 you say yes.
@@ -231,11 +236,16 @@ per copy, before you set `BRIEF_FROM` or `CAMPAIGN_FROM`. It touches DNS and a s
 
    Use a second key and `CAMPAIGN_RESEND_API_KEY` for campaigns (docs/CAMPAIGNS.md, step 3). Paste each key only at the
    prompt; never into chat or a file.
-6. **The from addresses.** Set `BRIEF_FROM` (and for campaigns `CAMPAIGN_FROM`) to an address on that subdomain, in the
-   copy's own config (docs/SECRETS.md). The reply-to address stays the owner's own email.
+6. **The from addresses and the switches.** Set `BRIEF_FROM` and `BRIEF_SENDING = "on"` (and for campaigns
+   `CAMPAIGN_FROM` and `CAMPAIGN_SENDING = "on"`) in the copy's own config; `BRIEF_FROM` must be an address on that
+   subdomain (docs/SECRETS.md). Provisioning never writes the switches. The reply-to address stays the client
+   owner's own email.
 
 Campaign setup continues in [docs/CAMPAIGNS.md](CAMPAIGNS.md). The webhook for delivery results is per copy
 (`https://<copy host>/hooks/resend`, with its own secret), so it is also in your Resend account, once per copy.
+Resend's docs do not say whether a webhook can be limited to one sending domain, so every copy's endpoint may receive
+every client's delivery events. A copy ignores an event it does not know (it answers 200 and writes nothing), but
+check this in Resend before the first client campaign (decision 0054).
 
 ## Removing someone's access
 

@@ -50,7 +50,8 @@ itself and no repo secret is needed. Give them docs/INSTALL.md and docs/UPDATING
 ## 4. Sign-in in their account
 
 Do docs/ACCESS-SETUP.md steps 1 to 4 in **their** Zero Trust organisation, with their owner emails and the new host.
-Keep the five values and the new team domain and AUD tag for step 5.
+Wherever that file says "the hosting account", read "the client's account" for this step. Keep the five values and the
+new team domain and AUD tag for step 5.
 
 ## 5. Provision the new copy
 
@@ -73,8 +74,9 @@ read only people, deals and tasks (decisions 0034 to 0037). Decide before the fi
 - **The whole database, change log included**, may be possible with wrangler's own D1 export and import commands. They
   have not been tried on this schema. Check Cloudflare's D1 documentation first and rehearse it.
 
-Either way the suppression list must come across: nobody who unsubscribed may be emailed again. Check that
-`email_suppressions` rows exist in the new copy before any campaign sends.
+Either way the suppression list must come across: nobody who unsubscribed may be emailed again. The export holds
+`email_suppressions`, but no importer reads it. It moves only by the whole-database route, or by SQL you build by hand
+from the export. Treat it as a go/no-go: check that the rows exist in the new copy before the first campaign sends there.
 
 ## 7. Move the secrets and email
 
@@ -90,7 +92,9 @@ name), on a call if needed.
 | `VAPID_*` | New keys; every device turns notifications on again |
 | `EMAIL_LOG_ADDRESS` | A new log address on their domain (docs/EMAIL-LOGGING.md); the owner changes their Bcc |
 
-Set `BRIEF_FROM` and `CAMPAIGN_FROM` in `.copies/<new>/wrangler.jsonc` after Resend verifies.
+Set `BRIEF_FROM`, `BRIEF_SENDING = "on"` and, for campaigns, `CAMPAIGN_FROM` and `CAMPAIGN_SENDING = "on"` in
+`.copies/<new>/wrangler.jsonc` after Resend verifies, then `npm run copies:update -- --copy <new>`. Provisioning never
+writes the switches, so without them the brief and campaigns stay off.
 
 ## 8. Check it
 
@@ -107,7 +111,8 @@ Only after step 8's written yes. These steps delete data and cannot be undone:
 1. The client removes your login from their Cloudflare **Members** and from their GitHub, and you remove their domain
    and keys from your Resend account.
 2. In the hosting account, delete the old copy: its Worker, both D1 databases, both KV namespaces and its Access
-   applications, and remove its owner emails from Zero Trust (this frees seats; docs/ACCESS-SETUP.md). **Open
+   applications, and remove its owner emails from Zero Trust (this should free seats toward the 50-user limit; check how Cloudflare
+counts users before you rely on it). **Open
    question:** campaign emails already sent carry unsubscribe links on the old host. Keep the old copy running with
    sending off for as long as you agree with the client, then delete it.
 3. Delete `.copies/<name>/`, `.copies/<new>/` and the client's folders under `exports/` on your Mac.

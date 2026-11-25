@@ -69,7 +69,8 @@ Steps only you can do, in order. Items marked "per copy" repeat for each new cli
     - (e) Resend: one account on Pro ($20 a month). Pro allows 10 sending domains, one per client subdomain; an add-on gives more (check resend.com/pricing).
     - (f) Put both logins on passkeys or two-step sign-in. One account serving every client is one place to protect.
     - (g) Rehearse docs/OFFBOARDING.md once, on a fake copy and a second Cloudflare account. Decide whether to build a full-restore command (its step 6 "Gap": only people, deals and tasks import today) and how long an old copy stays up for unsubscribe links.
-    - (h) Read the managed hosting wording in docs/INSTALL.md, ACCESS-SETUP.md and OFFBOARDING.md. The fee and the client terms live in the master, not here.
+    - (h) Resend webhooks: check whether an endpoint can be limited to one sending domain. If not, every copy receives every client's delivery events and ignores the ones it does not know (decision 0054). Decide before the first client campaign.
+    - (i) Read the managed hosting wording in docs/INSTALL.md, ACCESS-SETUP.md and OFFBOARDING.md. The fee and the client terms live in the master, not here.
 
 ## For the master
 
@@ -95,8 +96,9 @@ Judgment calls (one line each):
 - The developers "account limits" page states no Zero Trust user cap; the 50-user figure is from Cloudflare's plans page, and the docs say so.
 - The offboarding runbook names two gaps instead of papering over them: no whole-copy restore (only people, deals and tasks import) and the unsubscribe links already sent point at the old host.
 - Handover date and terms go in the master's client record, never this public repo.
+- A fresh review of the diff found six real doc gaps (who receives the sign-in code, Access application names colliding across copies, the webhook, the suppression list, the sending switches, "owner" meaning two people); all are fixed here.
 
-Queued: nothing beyond Needs Grant 16.
+Queued: nothing beyond Needs Grant 16, and one small code change: `scripts/copies.mjs` still says "Ask the client to invite your Cloudflare user" (`notMember`) and "Which account is the client's?" (decision 0054 makes both wrong). Left alone because this run is docs only; INSTALL.md says the wording is old. Its tests need the same edit.
 
 ## Changelog
 

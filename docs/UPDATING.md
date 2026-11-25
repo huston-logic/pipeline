@@ -177,7 +177,8 @@ in three sentences. Nothing is deleted at any step, and each step is undoable.
 
 A full 2,000-row import in the Worker takes about 11 ms of CPU on a big copy, a little over the free plan's 10 ms
 (docs/PAID-PLAN.md, "Run 5: import"). If a board import of a big file fails with "exceeded CPU", split the file, import
-it from your Mac (`npm run import:contacts`, docs/INSTALL.md step 8), or move the copy to Workers Paid.
+it from your Mac (`npm run import:contacts`, docs/INSTALL.md step 8), or move the copy to Workers Paid (the hosting account is already on Workers Paid, so this
+should not happen there).
 
 ## Run 6: after you update
 
@@ -242,7 +243,8 @@ by talking to the AI app.
 D1 is the copy's database; a batch is several database steps sent at once; Workers Paid is Cloudflare's $5 a month plan
 with far higher limits. A list of 25 changes (the most one list holds) makes about 30 D1 calls, inside the free plan's
 50 if each batch counts as one. Whether Cloudflare counts each statement inside a batch is still unknown (docs/PAID-PLAN.md, "Run 6"). If a
-long list fails, send it as two shorter ones, or move the copy to Workers Paid.
+long list fails, send it as two shorter ones, or move the copy to Workers Paid (the hosting account is already on
+Workers Paid, so this should not happen there).
 
 ## Run 8: after you update
 
@@ -276,7 +278,7 @@ cannot send, schedule, approve, pause or cancel.
 
 ### 4. Turn campaigns on, only if the client wants them
 
-Follow docs/CAMPAIGNS.md, steps 1 to 8: the sending subdomain in the owner's Resend account ([docs/INSTALL.md, "Sending email from the client's domain"](INSTALL.md#sending-email-from-the-clients-domain)), the key, the from address and the
+Follow docs/CAMPAIGNS.md, steps 1 to 8: the sending subdomain in your Resend account (the hosting one) ([docs/INSTALL.md, "Sending email from the client's domain"](INSTALL.md#sending-email-from-the-clients-domain)), the key, the from address and the
 sending switch, the postal address, the Access bypass, the optional delivery results, then the go-live check with
 your own address.
 

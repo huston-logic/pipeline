@@ -36,6 +36,8 @@ Throughout, `<copy host>` is the address your copy answers on, for example `pipe
 - You know `<copy host>`, a hostname on the hosting domain (see "workers.dev or a custom domain" at the end).
 - You know the email address(es) that should be able to sign in (the client's owner emails). Each one is added to the
   **Allow** policies below, and each counts toward the 50-user limit above.
+- Application names must be unique in your Zero Trust organisation, and every copy shares it. So each copy's three
+  applications carry the copy's name: `<name> MCP`, `<name> board` and `<name> bypass`.
 
 ## 1. The Access for SaaS application for `/mcp`
 
@@ -43,7 +45,7 @@ This is the sign-in your AI app sends you to when it connects.
 
 1. In the Cloudflare dashboard, open **Zero Trust**, then **Access controls**, then **Applications**.
 2. Select **Create new application**, then **SaaS application**.
-3. Give it a name, for example `Pipeline MCP`.
+3. Give it a name: `<name> MCP`, the copy's name then MCP.
 4. Select the textbox below the name, choose **OIDC**, then select **Add application**.
 5. Under **Redirect URLs**, enter `https://<copy host>/callback` (exactly: https, your host, `/callback`).
 6. Copy these five values somewhere safe for a few minutes (a password manager, never a chat or a document). Each goes
@@ -62,7 +64,9 @@ This is the sign-in your AI app sends you to when it connects.
 7. **Refresh tokens** (under Advanced settings) can stay off: the pipeline issues its own tokens to your AI app.
 8. **PKCE**: the pipeline sends a PKCE code challenge with every sign-in, as well as the client secret. If the
    application has a PKCE setting, leave it at its default or turn it on. **Check in the dashboard.**
-9. Under **Policies**, add a policy: Action **Allow**, a rule **Include** > **Emails** with your owner email(s).
+9. Under **Policies**, add a policy: Action **Allow**, a rule **Include** > **Emails** with your owner email(s). Make a
+   separate policy for each application, listing only that copy's owner emails. Do not reuse one policy across copies:
+   it would let one client's owner into another client's board.
 10. Under identity providers, choose **One-time PIN**. With one identity provider, turn on **Apply instant
     authentication** (Cloudflare recommends it).
 11. Select **Create** (or **Save**).
@@ -73,12 +77,13 @@ This puts the board and its JSON (`/api/...`) behind the one-time code.
 
 1. In **Zero Trust** > **Access controls** > **Applications**, select **Create new application**, then
    **Self-hosted and private** (Cloudflare's docs use this name; an older dashboard may say "Self-hosted").
-2. Name it, for example `Pipeline board`.
+2. Name it `<name> board`.
 3. Select **Add public hostname** and choose `<copy host>` (its domain from the **Domain** list), with the path left
    empty so it covers the whole host. Use the public hostname (public DNS) choice, **not** a Workers choice if the
    dashboard offers one: the Worker does not exist yet before the first deploy (docs/INSTALL.md step 5), so there is
    nothing to pick. **Check in the dashboard** for the exact name of the Workers choice.
-4. Add a policy: Action **Allow**, **Include** > **Emails** with the same owner email(s).
+4. Add a policy: Action **Allow**, **Include** > **Emails** with the same owner email(s). As in step 1, make a separate
+   policy for this application, with only that copy's owner emails. Do not reuse a policy from another copy.
 5. Under identity providers, choose **One-time PIN** (and **Apply instant authentication** if offered).
 6. Save the application.
 
@@ -115,7 +120,7 @@ One self-hosted application covers all ten paths, with one hostname-and-path row
 first live copy):
 
 1. **Create new application** > **Self-hosted and private**, the same type as step 2.
-2. Name it `Pipeline bypass`.
+2. Name it `<name> bypass`.
 3. Select **Add public hostname** and choose `<copy host>`, with `intake` in the **Path** box next to it. Then add
    another public hostname row for each of the other paths, the same host each time: `mcp`, `authorize`,
    `callback`, `token`, `register`, `.well-known`, `icons`, `unsubscribe` and `hooks/resend`. That is ten rows in all.
@@ -176,6 +181,11 @@ change them). An `OWNER_EMAILS` var, if you add one, also lets its emails in. Ne
 (decision 0005).
 
 ## 7. Check it
+
+The one-time code goes to the email you sign in with. So you cannot open a client's board as yourself unless your own
+email is allowed. Either have the client's owner on a call to read you the check, or add your own email as a temporary
+owner email and an Allow-policy entry (it counts toward the 50-user limit), and remove it after the check
+(docs/INSTALL.md, "Removing someone's access").
 
 1. Open `https://<copy host>/` in a browser. Access asks for your email and sends a code; after it, the board opens.
    Another email gets "This account isn't allowed to open this board." If you get it when you meant to use an owner

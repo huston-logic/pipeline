@@ -1,11 +1,12 @@
 # Campaign emails: setup (per copy)
 
-This is for the owner of one copy of the pipeline, in the hosting account and the owner's Resend account. It turns on sending campaign emails
+This is for the repo owner (you), setting up campaigns for one copy, in the hosting account and your Resend account. It turns on sending campaign emails
 from the board (decision 0053). Every step is separate. Nothing sends until all the steps are done and you tap Approve
 on the board.
 
 Throughout, `<copy>` is the copy's name (its folder name in `.copies/`), and `<copy host>` is the address the copy
-answers on, as in docs/ACCESS-SETUP.md. `example.com` stands for your own domain.
+answers on, as in docs/ACCESS-SETUP.md. `example.com` stands for the client's own domain. The copy's address is on the
+hosting domain.
 
 Steps marked **(check in the dashboard)** were not confirmed when this was written (2026-11-24). Follow what the
 dashboard shows and note any difference.
@@ -98,7 +99,7 @@ These two are plain settings, not secrets. They go in the copy's own config.
 ## 5. The postal address and the daily limit
 
 1. On the board, open **More** > **Campaigns**, then **Campaign settings**.
-2. **Postal address:** your business's postal address. Every campaign email shows it in the footer. Line breaks are kept.
+2. **Postal address:** the client's business postal address, asked of the client. Every campaign email shows it in the footer. Line breaks are kept.
 3. **Daily limit:** the default is 90. The limit counts UTC days (the day starts at midnight UTC, not your local
    midnight). The daily brief is not counted in this limit, so leave room for it. 90 leaves room for the brief on
    Resend Free.
@@ -110,7 +111,7 @@ Two paths must reach the Worker without the board's sign-in. People click the un
 calls the webhook. Each page checks its own token or signature, so no sign-in is needed.
 
 1. In the Cloudflare dashboard, open **Zero Trust** > **Access controls** > **Applications**.
-2. Open the **Pipeline bypass** application from docs/ACCESS-SETUP.md, step 3. Its rows are where the bypass paths
+2. Open the **<copy> bypass** application from docs/ACCESS-SETUP.md, step 3. Its rows are where the bypass paths
    live. Do not change the board's own application.
 3. Select **Edit**. Select **Add public hostname** and choose `<copy host>`. In **Path**, enter `unsubscribe`. This
    covers `/unsubscribe/*` and `/unsubscribe/board.css`.
@@ -127,6 +128,10 @@ stay "Sent". Everything else still works.
 Do steps 1 to 5 in one sitting, before any campaign is sent. Until the secret is set the Worker answers 503, so
 Resend retries each event (for about 37 hours) and would disable the endpoint if that went on.
 
+Resend's docs do not say whether a webhook can be limited to one sending domain. With many copies, every copy's
+endpoint may receive every client's events. A copy ignores events whose email id or campaign it does not know: it
+answers 200 and writes nothing (`src/http/resend-webhook.ts`). Check this in Resend before the first client campaign.
+
 1. In Resend, open **Webhooks** and select **Add endpoint**.
 2. Endpoint URL: `https://<copy host>/hooks/resend`.
 3. Select these events: `email.delivered`, `email.bounced`, `email.complained`, `email.suppressed`, `email.failed`.
@@ -142,20 +147,23 @@ Resend retries each event (for about 37 hours) and would disable the endpoint if
 
 ## 8. Go-live check
 
-Do this once, after steps 1 to 7. It uses your own email address.
+Do this once, after steps 1 to 7. Steps 1, 2, 3, 6 and 8 use the board, so they need a sign-in (docs/ACCESS-SETUP.md, step
+7's note). Steps 5 and 7 are unsubscribe links, which need none. Campaign emails must never go to your own address
+stored in the client's data permanently. Use a temporary test person on an address you control, or the client's
+owner's own address (with their yes).
 
-1. Make sure you are a person on the board with your own email address. If not, add yourself on **People**.
+1. On **People**, add a temporary test person with that address.
 2. On the board, open **More** > **Campaigns** > **New campaign**. Enter a name, a subject and a short body. Under
-   **Who gets it**, choose **People I pick** and pick your own person. Select **Save**.
+   **Who gets it**, choose **People I pick** and pick the test person. Select **Save**.
 3. Open the campaign and select **Send test to me**. The email arrives in your inbox, with a subject that starts with
    "Test: ".
 4. Check the footer of the test: the business name, the postal address and an **Unsubscribe** link.
 5. Select **Unsubscribe** in the test. The page says nothing changed, because test links never change anything.
-6. Make a new campaign with the same person, and select **Approve and send**. It goes out within 15 minutes. Check
+6. Make a new campaign with the same test person, and select **Approve and send**. It goes out within 15 minutes. Check
    your inbox.
 7. In that real email, select **Unsubscribe**. The page says you're unsubscribed.
-8. Open your person page on the board. It shows the unsubscribe with its date. To allow emails again, select
-   **Allow campaign emails again** and confirm. Do that now if you want to keep receiving them.
+8. Open the test person's page on the board. It shows the unsubscribe with its date. Then archive the test person.
+   Select **Allow campaign emails again** and confirm only if the person is the client's owner who wants them.
 
 ## How sending works
 

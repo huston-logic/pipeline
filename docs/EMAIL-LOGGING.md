@@ -17,17 +17,21 @@ Steps marked **(check in the dashboard)** were not confirmed in Cloudflare's doc
 - The hosting domain is on Cloudflare, in the same account as the copy's Worker. The client's own domain is not in
   that account, so it is not used here.
 - Your sending address is one of the copy's owner emails (the ones that can sign in to the board).
-- Your sending address's domain has a DMARC record (a TXT record at `_dmarc.<your domain>`). Mail whose domain has
+- The owner's sending domain (the client's own) has a DMARC record (a TXT record at `_dmarc.<that domain>`). Mail whose domain has
   none gets `dmarc=none` from Cloudflare and is dropped by design (decision 0031, Ruling 3). A strict policy,
   `p=quarantine` or `p=reject` (for example `v=DMARC1; p=reject`), is recommended: Email Routing then rejects mail that
-  fails your domain's DMARC before the Worker runs, so a forged email "from you" never reaches it at all (decision
-  0031, Consequences). Check your domain's DNS before you start.
+  fails the sending domain's DMARC before the Worker runs, so a forged email "from you" never reaches it at all (decision
+  0031, Consequences). Check the sending domain's DNS before you start.
 
 ## 1. Pick a subdomain
 
 Use a subdomain only, such as `log.example.com`, so the mail records of `example.com` itself (your own inbox) are never
 touched. Email Routing adds MX records to the domain it is set up on, and MX records on `example.com` would take over
 your own mail.
+
+`log.example.com` is one example. Each copy needs its own log subdomain on the hosting domain, for example
+`log-<name>.<hosting domain>`, with its own Email Routing setup (steps 2 and 5) and its own `EMAIL_LOG_ADDRESS`
+(step 4).
 
 ## 2. Turn on Email Routing for the subdomain
 
