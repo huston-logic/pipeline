@@ -16,6 +16,9 @@ const DEFAULT_ACCENT = "#2b6455";
 const FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
 const MERGE = /\{\{\s*first_name\s*\}\}/gi;
 
+/** `{{first_name}}` replaced by `value` (the board's preview merges the same way the email does). */
+export const mergeFirstName = (text: string, value: string): string => text.replace(MERGE, () => value);
+
 export type EmailRecipient = { firstName: string | null; token: string };
 export type EmailFrame = { business: string; postal: string; baseUrl: string; fallback: string; accent: string };
 
@@ -27,7 +30,7 @@ export function renderEmail(
   frame: EmailFrame,
 ): { subject: string; html: string; text: string } {
   const value = r.firstName ?? frame.fallback;
-  const merge = (text: string) => text.replace(MERGE, () => value);
+  const merge = (text: string) => mergeFirstName(text, value);
   const subject = merge(step.subject).replace(/\s+/g, " ").trim();
   const unsubscribe = `${frame.baseUrl.replace(/\/$/, "")}/unsubscribe/${r.token}`;
   const accent = isUsableAccent(frame.accent) ? frame.accent : DEFAULT_ACCENT;

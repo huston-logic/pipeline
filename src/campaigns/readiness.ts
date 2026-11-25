@@ -26,8 +26,11 @@ export function replyTo(env: Pick<Env, "OWNER_EMAILS">, settings: Pick<SettingsR
   return stored ?? parseOwnerEmailsVar(env.OWNER_EMAILS)[0] ?? null;
 }
 
+/** The Worker's campaign switches: all the board's pages and the readiness check ever read of the environment. */
+export type CampaignEnv = Pick<Env, "CAMPAIGN_SENDING" | "CAMPAIGN_FROM" | "CAMPAIGN_RESEND_API_KEY" | "OWNER_EMAILS">;
+
 /** The plain sentence saying what stops sending, or null when it can send. The audience is not checked here. */
-export function sendingBlocker(env: Env, settings: SettingsRow): string | null {
+export function sendingBlocker(env: CampaignEnv, settings: SettingsRow): string | null {
   if (settings.postal_address === null || settings.postal_address.trim() === "") {
     return "Add your business's postal address on Campaign settings. Every campaign email shows it.";
   }

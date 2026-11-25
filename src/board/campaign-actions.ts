@@ -4,8 +4,8 @@ import { addCampaignDraft, updateCampaignDraft } from "../campaigns/drafts.ts";
 import { getSettings } from "../db/queries.ts";
 import { ownerTimezone } from "../services/lookup.ts";
 import { updateSettings, type SettingsPatch } from "../services/settings.ts";
-import { type ActionContext, type ActionResult, asOwner, fieldError, notFound, page, pageContext, redirect, refusal, type Route, stateOf } from "./action-kit.ts";
-import type { PageContext } from "./context.ts";
+import { type ActionContext, type ActionResult, asOwner, fieldError, notFound, page, redirect, refusal, type Route, stateOf } from "./action-kit.ts";
+import { CAMPAIGN_SEND_ROUTES, campaignContext } from "./campaign-send-actions.ts";
 import { CAMPAIGN_SETTINGS_PATH, CAMPAIGNS_NEW_PATH, campaignPath } from "./pages/campaigns.ts";
 import {
   audienceRef,
@@ -25,9 +25,6 @@ import { withChange } from "./return-to.ts";
 const NOTHING_TO_SAVE = "Nothing to save: every field is as it was. Change a value, or cancel to go back.";
 
 const campaignsOn = async (ctx: ActionContext): Promise<boolean> => (await getSettings(ctx.db)).campaigns === 1;
-
-/** A campaign form's page context: campaigns are on (the paths 404 otherwise), so More lists Campaigns on a refused form too. */
-export const campaignContext = (ctx: ActionContext, here: string): PageContext => ({ ...pageContext(ctx, here), campaigns: true });
 
 /** POST /campaigns/settings: update_settings with the postal address and daily limit, only those the owner changed. */
 async function saveSettings(ctx: ActionContext): Promise<ActionResult> {
@@ -168,4 +165,5 @@ export const CAMPAIGN_ROUTES: Route[] = [
   { path: /^\/campaigns\/([^/]+)\/edit$/, handle: editCampaign, big: true },
   { path: /^\/campaigns\/([^/]+)\/people\/add$/, handle: addPeople },
   { path: /^\/campaigns\/([^/]+)\/people\/remove$/, handle: removePerson },
+  ...CAMPAIGN_SEND_ROUTES,
 ];
