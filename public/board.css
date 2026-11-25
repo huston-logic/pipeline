@@ -1800,6 +1800,49 @@ button.button {
   flex: 1 1 12rem;
 }
 
+/* The project page's task tree (decision 0057): nested lists, each level set in a little. */
+.task-tree {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.task-tree .task-tree {
+  margin-left: 0.75rem;
+  padding-left: 0.75rem;
+  border-left: 2px solid var(--divider);
+}
+
+.task-row {
+  margin: 0 0 0.75rem;
+  padding: 0.75rem;
+  border: 1px solid var(--edge);
+  border-radius: var(--r-card);
+  background: var(--white);
+}
+
+.task-row p {
+  margin: 0 0 0.25rem;
+  overflow-wrap: anywhere;
+}
+
+.task-more summary {
+  display: list-item;
+  min-height: 44px;
+  padding: 0.625rem 0 0;
+  color: var(--ink-2);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.task-move {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0 0 0.75rem;
+}
+
 /* The time pages (decision 0051): the week's links, each day's table and the month's CSV form. */
 .week-nav {
   display: flex;

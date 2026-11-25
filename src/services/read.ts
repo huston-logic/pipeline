@@ -467,6 +467,19 @@ export async function projectTaskItems(db: Db, projectId: string, status: "open"
   return found.map((row) => toTaskItem(row, tz));
 }
 
+/**
+ * A project's tasks, open and done, for its page's tree: at most `limit`, parents before their children (fewest levels
+ * first, then by position), so a cut drops the deepest ones. `more` says there were more.
+ */
+export async function projectTaskRows(db: Db, projectId: string, tz: string, limit: number): Promise<{ tasks: (TaskItem & { doneAt: string | null })[]; more: boolean }> {
+  const found = await rows<TaskJoin>(
+    db,
+    `${TASK_SELECT} WHERE t.project_id = ? ORDER BY depth, t.position, t.created_at, t.id LIMIT ?`,
+    [projectId, limit + 1],
+  );
+  return { tasks: found.slice(0, limit).map((row) => ({ ...toTaskItem(row, tz), doneAt: row.done_at })), more: found.length > limit };
+}
+
 /** The newest notes and calls logged on a project. */
 export async function projectTimeline(db: Db, projectId: string, tz: string, limit: number): Promise<TimelineItem[]> {
   const found = await rows<ActivityRow>(db, "SELECT * FROM activities WHERE project_id = ? ORDER BY occurred_at DESC, rowid DESC LIMIT ?", [projectId, limit]);

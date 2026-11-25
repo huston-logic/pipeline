@@ -1,20 +1,20 @@
 // /projects/<pj id> (decision 0055): the project's card, its time (only while time tracking is on), open and done tasks,
 // and its notes. 404 while projects are off, for an unknown id or one that is no project's. A name from outside is
 // labelled and never in the <title>, the description or a link's text.
-import { listFieldDefs, projectDoneTimes } from "../../db/queries.ts";
+import { listFieldDefs } from "../../db/queries.ts";
 import { ownerTimezone } from "../../services/lookup.ts";
-import { getProject, type ProjectDetail } from "../../services/project-read.ts";
+import { getProject, type ProjectDetail, type TaskNode, TREE_TASK_LIMIT } from "../../services/project-read.ts";
 import { UserError } from "../../services/errors.ts";
 import { formatDuration, formatMoney } from "../../services/time-format.ts";
-import { formatLocal } from "../../time.ts";
 import type { PageContext } from "../context.ts";
 import { type FormContext, hidden, postForm } from "../forms.ts";
 import { type Html, html } from "../html.ts";
 import { renderPage } from "../layout.ts";
 import { logForm } from "../log-form.ts";
-import { contactLink, dealLink, empty, labelled, pairs, projectHref, section, tag, when } from "../parts.ts";
+import { contactLink, dealLink, empty, labelled, pairs, projectHref, section, tag } from "../parts.ts";
 import { statusChoices } from "../project-form.ts";
-import { customRows, outsideNote, taskCard, timelineItem } from "../records.ts";
+import { taskList } from "../project-tree.ts";
+import { customRows, outsideNote, timelineItem } from "../records.ts";
 import { addTaskForm, type Subject } from "../task-forms.ts";
 import { startTimerForm } from "../timer-start.ts";
 import { dateOr } from "../project-parts.ts";
@@ -89,29 +89,25 @@ ${project.archived ? "" : startTimerForm({ kind: "project", id: project.id }, fo
 }
 
 function tasksSection(project: ProjectDetail, now: Date, tz: string, form: FormContext, subject: Subject): Html {
+  const { open, truncated } = project.taskTree;
   return section(
     "tasks-heading",
     "Open tasks",
-    html`${
-      project.openTasks.length === 0
-        ? empty("No open tasks.")
-        : html`<ul class="cards cards-single">${project.openTasks.map((task) => taskCard(task, now, tz, false, form, true))}</ul>`
-    }
+    html`${open.length === 0 ? empty("No open tasks.") : taskList(open, 1, now, tz, form)}
+${truncated ? html`<p class="section-note">Showing the first ${TREE_TASK_LIMIT} tasks.</p>` : ""}
 ${addTaskForm(subject, form)}`,
   );
 }
 
-function doneSection(project: ProjectDetail, doneAt: Map<string, string>, tz: string): Html {
+function doneSection(project: ProjectDetail, now: Date, tz: string, form: FormContext): Html {
+  const { done } = project.taskTree;
   return section(
     "done-heading",
     "Done",
-    project.doneTasks.length === 0
+    done.length === 0
       ? empty("Nothing done yet.")
-      : html`<p class="section-note">The latest ${project.doneTasks.length}, newest first.</p>
-<ol class="panel rows">${project.doneTasks.map((task) => {
-          const at = doneAt.get(task.id);
-          return html`<li><p class="row-text">${labelled(task.title, task.untrusted_fields.includes("title"))}</p>${at === undefined ? "" : html`<p class="row-head">Done ${when(at, formatLocal(at, tz))}</p>`}</li>`;
-        })}</ol>`,
+      : html`<p class="section-note">The latest ${done.length}, newest first.</p>
+${taskList(done, 1, now, tz, form)}`,
   );
 }
 
@@ -129,11 +125,13 @@ ${
   );
 }
 
+const outsideIn = (nodes: TaskNode[]): boolean => nodes.some((node) => node.untrusted_fields.length > 0 || outsideIn(node.children));
+
 function hasOutsideText(project: ProjectDetail): boolean {
   return (
     project.untrusted_fields.length > 0 ||
-    project.openTasks.some((task) => task.untrusted_fields.length > 0) ||
-    project.doneTasks.some((task) => task.untrusted_fields.length > 0) ||
+    outsideIn(project.taskTree.open) ||
+    outsideIn(project.taskTree.done) ||
     project.timeline.some((item) => item.untrusted_text !== null || item.untrusted_fields.length > 0)
   );
 }
@@ -155,7 +153,6 @@ export async function projectPage(ctx: PageContext, id: string): Promise<string 
   const statuses = await statusChoices(db, project.status);
   const defs = await listFieldDefs(db, { entity: "project", includeArchived: true });
   const labels = new Map(defs.map((def) => [def.key, def.label]));
-  const doneAt = await projectDoneTimes(db, project.id);
   const nameOutside = project.untrusted_fields.includes("name");
   const name = nameOutside ? `Project ${project.id}` : project.name;
   const subject: Subject = { kind: "project", id: project.id };
@@ -175,7 +172,7 @@ ${timeSection(project, ctx, name)}
 </div>
 <div>
 ${tasksSection(project, now, tz, ctx, subject)}
-${doneSection(project, doneAt, tz)}
+${doneSection(project, now, tz, ctx)}
 ${notesSection(project, ctx, subject)}
 </div>
 </div>`,
