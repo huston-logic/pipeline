@@ -20,7 +20,7 @@ export const campaignSettingsSpecs: Spec[] = [
   line("daily_limit", "Daily limit", "number", "contact", {
     column: "campaign_daily_limit",
     prop: "campaignDailyLimit",
-    hint: "Campaign emails sent per day at most. Resend's free plan allows 100 a day, the brief included.",
+    hint: "The most campaign emails sent in one day. Resend's free plan allows 100 a day in all.",
   }),
 ];
 

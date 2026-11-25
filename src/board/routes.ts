@@ -82,6 +82,7 @@ export const boardRoutes: string[] = [
   "/time/te_seed01/edit",
   "/campaigns",
   "/campaigns/settings",
+  "/campaigns/new",
 ];
 
 /** At most this many pages go through Lighthouse, so the CI job's time stops growing with the board. */

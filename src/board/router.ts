@@ -8,7 +8,7 @@ import { herePath, type PageContext } from "./context.ts";
 import { lookOf } from "./layout.ts";
 import { briefPage } from "./pages/brief.ts";
 import { changesPage } from "./pages/changes.ts";
-import { isContactId, isDealId, isImportId, isTimeEntryId } from "../ids.ts";
+import { isCampaignId, isContactId, isDealId, isImportId, isTimeEntryId } from "../ids.ts";
 import { companiesPage } from "./pages/companies.ts";
 import { contactPage } from "./pages/contact.ts";
 import { contactEditPage } from "./pages/contact-edit.ts";
@@ -37,7 +37,9 @@ import { timerStopPage, TIMER_STOP_PATH } from "./pages/timer-stop.ts";
 import { timePage, TIME_PATH } from "./pages/time.ts";
 import { timeEditPage, timeNewPage } from "./pages/time-entry.ts";
 import { TIME_NEW_PATH } from "./time-form.ts";
-import { CAMPAIGN_SETTINGS_PATH, CAMPAIGNS_PATH, campaignsPage } from "./pages/campaigns.ts";
+import { CAMPAIGN_SETTINGS_PATH, CAMPAIGNS_NEW_PATH, CAMPAIGNS_PATH, campaignsPage } from "./pages/campaigns.ts";
+import { campaignEditPage, campaignNewPage } from "./pages/campaign-form.ts";
+import { campaignPeoplePage } from "./pages/campaign-people.ts";
 import { campaignSettingsPage } from "./pages/campaign-settings.ts";
 import { timerState } from "./timer-bar.ts";
 
@@ -77,6 +79,7 @@ const PAGES = new Map<string, Page>([
   [TIME_NEW_PATH, (ctx) => timeNewPage(ctx)],
   [CAMPAIGNS_PATH, (ctx) => campaignsPage(ctx)],
   [CAMPAIGN_SETTINGS_PATH, (ctx) => campaignSettingsPage(ctx)],
+  [CAMPAIGNS_NEW_PATH, (ctx) => campaignNewPage(ctx)],
 ]);
 
 /**
@@ -91,6 +94,8 @@ const RECORD_PATHS: { path: RegExp; isId: (id: string) => boolean; page: RecordP
   { path: /^\/contacts\/([^/]+)\/deals\/new$/, isId: isContactId, page: (ctx, id) => newDealPage(ctx, id) },
   { path: /^\/contacts\/([^/]+)\/qualify$/, isId: isContactId, page: (ctx, id) => qualifyPage(ctx, id) },
   { path: /^\/time\/([^/]+)\/edit$/, isId: isTimeEntryId, page: (ctx, id) => timeEditPage(ctx, id) },
+  { path: /^\/campaigns\/([^/]+)\/edit$/, isId: isCampaignId, page: (ctx, id) => campaignEditPage(ctx, id) },
+  { path: /^\/campaigns\/([^/]+)\/people$/, isId: isCampaignId, page: (ctx, id) => campaignPeoplePage(ctx, id) },
   { path: /^\/import\/([^/]+)$/, isId: isImportId, page: importDraft, gone: importGonePage },
   { path: /^\/import\/([^/]+)\/preview$/, isId: isImportId, page: importPreview, gone: importGonePage },
 ];

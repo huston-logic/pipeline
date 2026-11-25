@@ -89,7 +89,7 @@ test("the settings page shows the stored values and the hints", async () => {
   assert.equal(res.status, 200);
   assert.equal(h1Count(body), 1);
   assert.match(body, /Shown at the bottom of every campaign email\./);
-  assert.match(body, /Campaign emails sent per day at most\. Resend&#39;s free plan allows 100 a day, the brief included\./);
+  assert.match(body, /The most campaign emails sent in one day\. Resend&#39;s free plan allows 100 a day in all\./);
   assert.match(body, /100 Example Street, Springfield/);
   assert.match(body, /value="80"/);
 });

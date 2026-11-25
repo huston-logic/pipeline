@@ -121,8 +121,7 @@ test("the audience is checked: status, view, people", async () => {
   assert.equal(await refusal(add({ kind: "view", view: "vw_deals" })), "That view lists deals. Pick a view of people.");
   assert.match(await refusal(add({ kind: "view", view: "vw_old" })), /archived/);
   assert.match(await refusal(add({ kind: "view", view: "vw_none" })), /^There's no view vw_none\./);
-  assert.match(await refusal(add({ kind: "people", people: [] })), /1 to 500 people/);
-  assert.match(await refusal(add({ kind: "people", people: Array.from({ length: 501 }, (_, i) => `ct_${i}`) })), /1 to 500 people/);
+  assert.match(await refusal(add({ kind: "people", people: Array.from({ length: 501 }, (_, i) => `ct_${i}`) })), /at most 500 people/);
   assert.match(await refusal(add({ kind: "people", people: ["ct_seed01", "ct_nobody"] })), /ct_nobody/);
   assert.match(await refusal(add({ kind: "people", people: ["ct_seed08"] })), /ct_seed08/);
   assert.match(await refusal(add({ kind: "mystery" })), /status, view or people/);
@@ -131,6 +130,8 @@ test("the audience is checked: status, view, people", async () => {
   assert.equal((await campaign(db, view.campaignId))?.audience, '{"kind":"view","view":"vw_people"}');
   const people = await add({ kind: "people", people: ["ct_seed02", "ct_seed01", "ct_seed02"] });
   assert.equal((await campaign(db, people.campaignId))?.audience, '{"kind":"people","people":["ct_seed02","ct_seed01"]}');
+  const nobody = await add({ kind: "people", people: [] });
+  assert.equal((await campaign(db, nobody.campaignId))?.audience, '{"kind":"people","people":[]}');
 });
 
 test("the suggested send time is in the future, in the owner's timezone", async () => {
