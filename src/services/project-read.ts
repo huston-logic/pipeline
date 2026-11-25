@@ -5,6 +5,7 @@ import type { Db, TimeEntryRow } from "../db/db.ts";
 import { untrustedFields } from "./labels.ts";
 import { findContact } from "./lookup.ts";
 import { projectStatusRows, settingsRow } from "./memo.ts";
+import { projectStatusLabels } from "./project-statuses.ts";
 import { findProject } from "./projects.ts";
 import { projectTaskItems, projectTimeline, type TaskItem, type TimelineItem } from "./read.ts";
 import { requireProjects } from "./settings.ts";
@@ -18,7 +19,7 @@ const OPEN_TASK_LIMIT = 200;
 export type ProjectSort = "target" | "name" | "newest";
 
 export interface ProjectListOptions {
-  /** A project status key or label. */
+  /** A project status key or label, or "open" or "closed" for every live status of that kind. */
   status?: string;
   /** A person's id or exact name. */
   contact?: string;
@@ -50,8 +51,8 @@ export interface ProjectList {
   items: ProjectItem[];
   /** How many match, before the limit. */
   total: number;
-  /** Every status, so the answer says what a status filter may be. */
-  statuses: { key: string; label: string }[];
+  /** Every live status, so the answer says what a status filter may be. */
+  statuses: { key: string; label: string; kind: "open" | "closed" }[];
 }
 
 export interface ProjectTime {
@@ -145,15 +146,24 @@ function toItem(row: ProjectJoin, labels: Map<string, string>): ProjectItem {
 export async function listProjects(db: Db, options: ProjectListOptions = {}): Promise<ProjectList> {
   await requireProjects(db);
   const statuses = await projectStatusRows(db);
+  const every = await projectStatusRows(db, { includeArchived: true });
   const clauses: string[] = [];
   const params: unknown[] = [];
   if (options.includeArchived !== true) clauses.push("p.archived = 0");
   if (options.status !== undefined) {
     const text = options.status.trim();
-    const found = statuses.find((s) => s.key === text) ?? statuses.find((s) => s.label.toLowerCase() === text.toLowerCase());
-    if (!found) throw new UserError(`There is no status "${text}". Statuses: ${statuses.map((s) => s.label).join(", ")}. Use one of those.`);
-    clauses.push("p.status_key = ?");
-    params.push(found.key);
+    const lower = text.toLowerCase();
+    const found = every.find((s) => s.key === text) ?? every.find((s) => s.label.toLowerCase() === lower);
+    if (found) {
+      clauses.push("p.status_key = ?");
+      params.push(found.key);
+    } else if (lower === "open" || lower === "closed") {
+      const keys = statuses.filter((s) => s.kind === lower).map((s) => s.key);
+      clauses.push(`p.status_key IN (${keys.map(() => "?").join(", ")})`);
+      params.push(...keys);
+    } else {
+      throw new UserError(`There is no status "${text}". Statuses: ${statuses.map((s) => s.label).join(", ")}. Use one of those.`);
+    }
   }
   if (options.contact !== undefined) {
     clauses.push("p.contact_id = ?");
@@ -161,11 +171,11 @@ export async function listProjects(db: Db, options: ProjectListOptions = {}): Pr
   }
   const limit = Math.min(Math.max(Math.trunc(options.limit ?? PROJECT_LIST_LIMIT), 1), PROJECT_LIST_LIMIT);
   const found = await selectProjects(db, clauses, params, ORDER[options.sort ?? "target"], limit);
-  const labels = new Map(statuses.map((s) => [s.key, s.label]));
+  const labels = new Map(every.map((s) => [s.key, s.label]));
   return {
     items: found.map((row) => toItem(row, labels)),
     total: found[0]?.total ?? 0,
-    statuses: statuses.map((s) => ({ key: s.key, label: s.label })),
+    statuses: statuses.map((s) => ({ key: s.key, label: s.label, kind: s.kind })),
   };
 }
 
@@ -200,7 +210,7 @@ export async function getProject(db: Db, ref: string, _now: Date): Promise<Proje
   const [row] = await selectProjects(db, ["p.id = ?"], [project.id], ORDER.target, 1);
   if (!row) throw new Error(`Project ${project.id} points at a missing person.`);
   const settings = await settingsRow(db);
-  const labels = new Map((await projectStatusRows(db)).map((s) => [s.key, s.label]));
+  const labels = await projectStatusLabels(db);
   const tz = settings.timezone;
   const { openTasks: openTaskCount, ...item } = toItem(row, labels);
   return {

@@ -11,6 +11,7 @@ import { clean, whenOrNull } from "./input.ts";
 import { contactName, dealLabel, dealTitle, isTrusted, projectLabel, projectTitle } from "./labels.ts";
 import { contactById, findSubject, openTasksOfDeal, ownerTimezone, projectById, type Source, sourceOf } from "./lookup.ts";
 import { projectStatusRows } from "./memo.ts";
+import { defaultProjectStatus, projectStatusLabels } from "./project-statuses.ts";
 import { requireProjects } from "./settings.ts";
 
 export interface ProjectInput {
@@ -20,7 +21,7 @@ export interface ProjectInput {
   contact?: string;
   /** A won deal's id, title or contact name. */
   deal?: string;
-  /** A status key or label; Active when left out. */
+  /** A status key or label; the first open status when left out. */
   status?: string;
   startAt?: string;
   targetAt?: string;
@@ -48,7 +49,7 @@ function checkName(raw: string | null | undefined): string {
   return name;
 }
 
-/** A project status by key or label (ignoring case). */
+/** A live project status by key or label (ignoring case); an archived one is never accepted. */
 async function findProjectStatus(src: Source, ref: string): Promise<ProjectStatusRow> {
   const text = ref.trim();
   const statuses = await projectStatusRows(src);
@@ -102,7 +103,7 @@ export async function addProject(ctx: Ctx, input: ProjectInput): Promise<ChangeR
     throw new UserError("Name the project in a few words (the deal's title came from outside).");
   }
   const name = checkName(given ?? (deal ? deal.title : null));
-  const status = await findProjectStatus(ctx, input.status ?? "active");
+  const status = input.status === undefined ? await defaultProjectStatus(ctx) : await findProjectStatus(ctx, input.status);
   const startAt = whenOrNull(input.startAt ?? null, tz);
   const targetAt = whenOrNull(input.targetAt ?? null, tz);
   checkDates(startAt, targetAt);
@@ -158,7 +159,7 @@ export async function updateProject(ctx: Ctx, ref: string, patch: ProjectPatch):
   if (patch.status !== undefined) {
     const status = await findProjectStatus(ctx, patch.status);
     if (status.key !== before.status_key) {
-      const labels = new Map((await projectStatusRows(ctx)).map((s) => [s.key, s.label]));
+      const labels = await projectStatusLabels(ctx);
       set.status_key = status.key;
       parts.push(`status ${labels.get(before.status_key) ?? before.status_key} -> ${status.label}`);
     }

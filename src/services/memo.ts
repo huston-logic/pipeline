@@ -31,7 +31,7 @@ const SNAPSHOT_SQL = [
   "SELECT * FROM person_substatuses ORDER BY status_key, archived, position, key",
   "SELECT * FROM field_defs ORDER BY entity, created_at, rowid",
   "SELECT * FROM work_types ORDER BY position, created_at, id",
-  "SELECT * FROM project_statuses ORDER BY position, key",
+  "SELECT * FROM project_statuses ORDER BY archived, position, key",
 ] as const;
 
 export class ReadMemo {
@@ -118,11 +118,11 @@ export async function subStatusRows(src: Reader, statusKey?: string): Promise<Pe
   return found.results;
 }
 
-/** The three project statuses in position order. */
-export async function projectStatusRows(src: Reader): Promise<ProjectStatusRow[]> {
+/** The live project statuses in position order; archived ones (after them) only when asked. */
+export async function projectStatusRows(src: Reader, options: { includeArchived?: boolean } = {}): Promise<ProjectStatusRow[]> {
   const { db, memo } = readerOf(src);
-  if (memo !== undefined) return memo.get("projectStatuses");
-  return (await db.prepare(SNAPSHOT_SQL[6]).all<ProjectStatusRow>()).results;
+  const all = memo !== undefined ? await memo.get("projectStatuses") : (await db.prepare(SNAPSHOT_SQL[6]).all<ProjectStatusRow>()).results;
+  return options.includeArchived === true ? all : all.filter((row) => row.archived === 0);
 }
 
 /** The live work types in list order. */

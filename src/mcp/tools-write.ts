@@ -15,7 +15,7 @@ import { undoChange } from "../services/undo.ts";
 import { toolResult } from "./format.ts";
 import { SORTING_RULE } from "./instructions.ts";
 import { recordWrite } from "./record-write.ts";
-import { updateProjectStatus } from "../services/project-statuses.ts";
+import { addProjectStatus, archiveProjectStatus, updateProjectStatus } from "../services/project-statuses.ts";
 import {
   addContactInput,
   addDealInput,
@@ -33,6 +33,8 @@ import {
 } from "../services/record-inputs.ts";
 import { FIELD_ENTITIES, FIELD_TYPES, orNull, RULE_TYPES, ruleRef, ruleSettings, shortText, statusRef, subStatusRef } from "./schemas.ts";
 import { aiCtx, registerTool, type ToolDeps } from "./tool.ts";
+
+const PROJECT_STATUS_KIND = z.enum(["open", "closed"]).optional().describe("open (the default for a new status) or closed (a finished project).");
 
 /** The sentence every record tool's description ends with (decision 0045). */
 export const PROPOSES =
@@ -272,19 +274,63 @@ export function registerWriteTools(server: McpServer, deps: ToolDeps): void {
     server,
     {
       name: "update_project_status",
-      title: "Rename a project status",
+      title: "Change a project status",
       kind: "write",
       destructive: true,
       idempotent: true,
       description:
-        "Renames one project status (its key stays: active, on_hold or done). Only when the owner asks. Refused while projects are off.",
+        "Renames a project status, makes it open or closed, or moves it in the list (its key stays). Send only what " +
+        "changes. Only when the owner asks. Refused while projects are off.",
       input: z.strictObject({
-        status: shortText("The status's key: active, on_hold or done."),
-        label: shortText("The new name, for example \"Paused\"."),
+        key: shortText("The status: its key (on_hold) or label (On hold)."),
+        label: shortText("The new name, for example \"Paused\".").optional(),
+        kind: PROJECT_STATUS_KIND,
+        position: z.number().int().min(1).optional().describe("1-based place among the live statuses."),
       }),
-      async run({ status, label }, deps) {
-        const result = await updateProjectStatus(aiCtx(deps, "update_project_status"), status, label);
-        return toolResult(result.summary, { changeId: result.changeId });
+      async run({ key, ...patch }, deps) {
+        const result = await updateProjectStatus(aiCtx(deps, "update_project_status"), key, patch);
+        return toolResult(result.summary, { changeId: result.changeId, key: result.key });
+      },
+    },
+    deps,
+  );
+
+  registerTool(
+    server,
+    {
+      name: "add_project_status",
+      title: "Add a project status",
+      kind: "write",
+      description:
+        "Adds a project status. Its key is made from the label (\"Waiting on client\" becomes waiting_on_client). It is " +
+        "open by default and goes last. Only when the owner asks. Refused while projects are off.",
+      input: z.strictObject({
+        label: shortText("The status's name, for example \"Waiting on client\" (up to 60 characters)."),
+        kind: PROJECT_STATUS_KIND,
+        position: z.number().int().min(1).optional().describe("1-based place among the live statuses; last by default."),
+      }),
+      async run(args, deps) {
+        const result = await addProjectStatus(aiCtx(deps, "add_project_status"), args);
+        return toolResult(result.summary, { changeId: result.changeId, key: result.key });
+      },
+    },
+    deps,
+  );
+
+  registerTool(
+    server,
+    {
+      name: "archive_project_status",
+      title: "Archive a project status",
+      kind: "write",
+      destructive: true,
+      description:
+        "Archives a project status so no project can take it. Refused while a project still has it (move those with " +
+        "update_project first) and for the last open or last closed status. Only when the owner asks.",
+      input: z.strictObject({ key: shortText("The status: its key or label.") }),
+      async run({ key }, deps) {
+        const result = await archiveProjectStatus(aiCtx(deps, "archive_project_status"), key);
+        return toolResult(result.summary, { changeId: result.changeId, key: result.key });
       },
     },
     deps,

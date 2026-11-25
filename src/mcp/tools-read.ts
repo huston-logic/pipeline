@@ -283,7 +283,7 @@ export function registerReadTools(server: McpServer, deps: ToolDeps): void {
         "count, plus every status. Filters: status (key or label), contact (id or exact name), includeArchived, sort " +
         "(target, name or newest). At most 200. Refused while projects are off.",
       input: z.strictObject({
-        status: shortText("Only this status: its key or label (see the statuses in the answer).").optional(),
+        status: shortText("Only this status: its key or label (see the statuses in the answer), or \"open\" or \"closed\" for every live status of that kind.").optional(),
         contact: shortText("Only this person's projects: id or exact name.").optional(),
         includeArchived: z.boolean().optional().describe("true to include archived projects."),
         sort: z.enum(["target", "name", "newest"]).optional().describe("target (the default), name or newest."),

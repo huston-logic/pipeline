@@ -64,6 +64,20 @@ test("listProjects: soonest target first, none last, then name; archived left ou
   assert.deepEqual(ids((await listProjects(db, { includeArchived: true })).items), [garden, retrofit, shed]);
 });
 
+test("listProjects status open or closed means every live status of that kind, and statuses carry their kind", async () => {
+  const { db, garden, retrofit, shed } = await setup();
+  await updateProject(ctxFor(db, "update_project"), shed, { status: "done" });
+  assert.deepEqual(ids((await listProjects(db, { status: "open" })).items), [garden, retrofit]);
+  assert.deepEqual(ids((await listProjects(db, { status: "Closed" })).items), [shed]);
+  const all = await listProjects(db, {});
+  assert.deepEqual(all.statuses, [
+    { key: "active", label: "Active", kind: "open" },
+    { key: "on_hold", label: "On hold", kind: "open" },
+    { key: "done", label: "Done", kind: "closed" },
+  ]);
+  await assert.rejects(listProjects(db, { status: "nope" }), /no status "nope"/);
+});
+
 test("listProjects sorts by name or newest and filters by status and person", async () => {
   const { db, garden, retrofit, shed } = await setup();
   for (const [i, id] of [retrofit, garden, shed].entries()) {
