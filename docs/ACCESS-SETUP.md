@@ -1,8 +1,10 @@
 # Setting up sign-in with Cloudflare Access
 
-This is for the owner of one copy of the pipeline, in their own Cloudflare account. It sets up the sign-in described
-in decision 0006: Cloudflare Access sends you a one-time code by email, the board only opens for your email, and your
-AI app connects to `/mcp` once through a sign-in page and then keeps its own token.
+This is for the repo owner, setting up one copy of the pipeline in the hosting account (decision 0054). It sets up
+the sign-in described in decision 0006: Cloudflare Access sends the client's owner a one-time code by email, the board
+only opens for an owner email, and their AI app connects to `/mcp` once through a sign-in page and then keeps its own
+token. The owner signs in as an **allowed email** in your one Zero Trust organisation; they need no Cloudflare account
+of their own.
 
 You set up three Access applications (the AI app's sign-in, the board, and one bypass application for the public
 paths), five secrets, four settings and one KV namespace. Until they exist, the board, `/api` and `/mcp` answer
@@ -11,21 +13,31 @@ paths), five secrets, four settings and one KV namespace. Until they exist, the 
 Steps marked **check in the dashboard** could not be confirmed from Cloudflare's docs when this was written
 (2026-11-18). The dashboard may name or place them a little differently; the goal of the step is what matters.
 
-Cloudflare Access and KV are on the free plans: Zero Trust Free covers up to 50 users, and a copy needs one or two.
-No paid plan is needed for the steps on this page (docs/PAID-PLAN.md has the free limits).
+Cloudflare Access and KV need no paid plan for the steps on this page (the account is on Workers Paid for other
+reasons, docs/PAID-PLAN.md). **Zero Trust Free allows 50 users in total.** The source is Cloudflare's plans page,
+https://www.cloudflare.com/plans/sase-zero-trust.md ("User Limit: 50 users" for Free; Pay-as-you-go has no limit at $7
+per user a month), checked on 2026-11-24. Cloudflare's developers "account limits" page does not state a user cap, so
+check the plans page again before you rely on it. Because every copy is in one Zero Trust organisation, **every owner
+email of every copy counts, plus yours**. Keep a count in your private client records (never in this repo), and move
+to a paid Zero Trust plan before the count reaches the limit. Access also limits an account to 500 applications; a
+copy uses three (developers.cloudflare.com/cloudflare-one/account-limits/).
 
 Throughout, `<copy host>` is the address your copy answers on, for example `pipeline.example.com` (a custom domain) or
 `pipeline-yourname.yourname.workers.dev`.
 
 ## Before you start
 
-- Check which Cloudflare account owns your domain (the account where the domain is listed). Do everything on this
-  page in that account: Access, the Worker and the custom domain must all live there. Access set up in another
-  account does not protect the domain.
-- Your Cloudflare account has Zero Trust turned on (the Zero Trust item in the dashboard's sidebar). The first time,
-  Cloudflare asks you to pick a team name and the Free plan.
-- You know `<copy host>`. A custom domain is recommended (see "workers.dev or a custom domain" at the end).
-- You know the email address(es) that should be able to sign in (yours, and anyone you share the pipeline with).
+- Do everything on this page in the hosting account, the one that owns the Worker and the hosting domain. Access, the
+  Worker and the custom domain must all live in that one account. Access set up in another account does not protect
+  the domain. The client's own domain is not used for the copy.
+- The hosting account has Zero Trust turned on (the Zero Trust item in the dashboard's sidebar). The first time,
+  Cloudflare asks you to pick a team name and the Free plan. This is once for all copies: the team domain
+  (`<team>.cloudflareaccess.com`) is the same for every copy.
+- You know `<copy host>`, a hostname on the hosting domain (see "workers.dev or a custom domain" at the end).
+- You know the email address(es) that should be able to sign in (the client's owner emails). Each one is added to the
+  **Allow** policies below, and each counts toward the 50-user limit above.
+- Application names must be unique in your Zero Trust organisation, and every copy shares it. So each copy's three
+  applications carry the copy's name: `<name> MCP`, `<name> board` and `<name> bypass`.
 
 ## 1. The Access for SaaS application for `/mcp`
 
@@ -33,7 +45,7 @@ This is the sign-in your AI app sends you to when it connects.
 
 1. In the Cloudflare dashboard, open **Zero Trust**, then **Access controls**, then **Applications**.
 2. Select **Create new application**, then **SaaS application**.
-3. Give it a name, for example `Pipeline MCP`.
+3. Give it a name: `<name> MCP`, the copy's name then MCP.
 4. Select the textbox below the name, choose **OIDC**, then select **Add application**.
 5. Under **Redirect URLs**, enter `https://<copy host>/callback` (exactly: https, your host, `/callback`).
 6. Copy these five values somewhere safe for a few minutes (a password manager, never a chat or a document). Each goes
@@ -52,7 +64,9 @@ This is the sign-in your AI app sends you to when it connects.
 7. **Refresh tokens** (under Advanced settings) can stay off: the pipeline issues its own tokens to your AI app.
 8. **PKCE**: the pipeline sends a PKCE code challenge with every sign-in, as well as the client secret. If the
    application has a PKCE setting, leave it at its default or turn it on. **Check in the dashboard.**
-9. Under **Policies**, add a policy: Action **Allow**, a rule **Include** > **Emails** with your owner email(s).
+9. Under **Policies**, add a policy: Action **Allow**, a rule **Include** > **Emails** with your owner email(s). Make a
+   separate policy for each application, listing only that copy's owner emails. Do not reuse one policy across copies:
+   it would let one client's owner into another client's board.
 10. Under identity providers, choose **One-time PIN**. With one identity provider, turn on **Apply instant
     authentication** (Cloudflare recommends it).
 11. Select **Create** (or **Save**).
@@ -63,12 +77,13 @@ This puts the board and its JSON (`/api/...`) behind the one-time code.
 
 1. In **Zero Trust** > **Access controls** > **Applications**, select **Create new application**, then
    **Self-hosted and private** (Cloudflare's docs use this name; an older dashboard may say "Self-hosted").
-2. Name it, for example `Pipeline board`.
+2. Name it `<name> board`.
 3. Select **Add public hostname** and choose `<copy host>` (its domain from the **Domain** list), with the path left
    empty so it covers the whole host. Use the public hostname (public DNS) choice, **not** a Workers choice if the
    dashboard offers one: the Worker does not exist yet before the first deploy (docs/INSTALL.md step 5), so there is
    nothing to pick. **Check in the dashboard** for the exact name of the Workers choice.
-4. Add a policy: Action **Allow**, **Include** > **Emails** with the same owner email(s).
+4. Add a policy: Action **Allow**, **Include** > **Emails** with the same owner email(s). As in step 1, make a separate
+   policy for this application, with only that copy's owner emails. Do not reuse a policy from another copy.
 5. Under identity providers, choose **One-time PIN** (and **Apply instant authentication** if offered).
 6. Save the application.
 
@@ -105,7 +120,7 @@ One self-hosted application covers all ten paths, with one hostname-and-path row
 first live copy):
 
 1. **Create new application** > **Self-hosted and private**, the same type as step 2.
-2. Name it `Pipeline bypass`.
+2. Name it `<name> bypass`.
 3. Select **Add public hostname** and choose `<copy host>`, with `intake` in the **Path** box next to it. Then add
    another public hostname row for each of the other paths, the same host each time: `mcp`, `authorize`,
    `callback`, `token`, `register`, `.well-known`, `icons`, `unsubscribe` and `hooks/resend`. That is ten rows in all.
@@ -167,6 +182,11 @@ change them). An `OWNER_EMAILS` var, if you add one, also lets its emails in. Ne
 
 ## 7. Check it
 
+The one-time code goes to the email you sign in with. So you cannot open a client's board as yourself unless your own
+email is allowed. Either have the client's owner on a call to read you the check, or add your own email as a temporary
+owner email and an Allow-policy entry (it counts toward the 50-user limit), and remove it after the check
+(docs/INSTALL.md, "Removing someone's access").
+
 1. Open `https://<copy host>/` in a browser. Access asks for your email and sends a code; after it, the board opens.
    Another email gets "This account isn't allowed to open this board." If you get it when you meant to use an owner
    email, the browser signed in to Access with a different email: sign out at
@@ -198,8 +218,8 @@ developer console, look for a message about `form-action`, and report it (decisi
 
 ## workers.dev or a custom domain
 
-- **Custom domain (recommended).** Every step above works as written. Set `MCP_ALLOWED_HOSTNAMES` to the custom
-  hostname: `/mcp` and its sign-in then answer only there (anywhere else they say "/mcp isn't set up for this
+- **Custom domain (recommended): a hostname on the hosting domain, never the client's own domain.** Every step above
+  works as written. Set `MCP_ALLOWED_HOSTNAMES` to the custom hostname: `/mcp` and its sign-in then answer only there (anywhere else they say "/mcp isn't set up for this
   hostname"). If the copy is also reachable on its workers.dev address, the board there stays closed (the Worker
   refuses requests without a valid Access token for your board application), but you can also turn the workers.dev
   route off in the Worker's settings.

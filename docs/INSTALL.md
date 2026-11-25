@@ -1,47 +1,55 @@
 # Installing a copy for a client
 
 This is for the person who sets up and looks after client copies of the pipeline (the repo owner). Each client gets
-their own copy: their own Worker, database and sign-in, in **their own Cloudflare account**. The code is the same for
-every copy; what differs lives in the client's account and in a git-ignored folder on your Mac, `/.copies/<name>/`.
+their own copy: their own Worker, database and sign-in, all hosted in **your own Cloudflare account**, the hosting
+account (decision 0054). The client needs no Cloudflare account. The code is the same for every copy; what differs
+lives in the hosting account's data and in a git-ignored folder on your Mac, `/.copies/<name>/`. A client who wants
+their copy in their own accounts instead is [docs/OFFBOARDING.md](OFFBOARDING.md).
 
 Steps marked **check in the dashboard** could not be confirmed from Cloudflare's docs when this was written; the goal
-of the step is what matters. Decision 0007 explains why it works this way.
+of the step is what matters. Decisions 0007 (how the commands work) and 0054 (whose account) explain why.
 
 Throughout, `<name>` is a short name you pick for the copy (lowercase letters, digits and dashes, for example
 `acme`), and `<copy host>` is the address the copy answers on.
 
 ## 1. What you need
 
-- **First, find out which Cloudflare account owns the client's domain** (the account where the domain shows under
-  the client's websites or domains list). Access, the Worker and the custom domain must all live in that one account.
-  If the client has more than one Cloudflare account, use that one for every step below.
+- **The hosting account.** Every copy lives in your one Cloudflare account, on the **Workers Paid** plan (decision
+  0054: the free plan allows only 5 Cron Triggers and 10 D1 databases per account, and each copy uses 2 of each).
+  Access, the Worker and the copy's address must all live in this one account.
 - This repo, with its packages installed: `npx --yes npm@10.9.9 ci` (README, "Develop").
 - Node 22.19 or later.
 - Wrangler logged in as **you**, in your own terminal: `npx wrangler login`. It opens a browser page to approve the
-  login: approve it in a browser signed in to the Cloudflare login that can use the account owning the domain (yours,
-  once the client has invited you in step 2). If the browser is signed in to a different Cloudflare login, wrangler
-  gets that one instead (see "Troubleshooting"). Check it with `npx wrangler whoami`.
+  login: approve it in a browser signed in to the Cloudflare login that owns the hosting account. If the browser is
+  signed in to a different Cloudflare login, wrangler gets that one instead (see "Troubleshooting"). Check it with
+  `npx wrangler whoami`.
 - The client's email address(es) that should be able to sign in (the "owner emails").
-- A decision on the address: a custom hostname on a domain in the client's Cloudflare account (recommended, for
-  example `pipeline.clientdomain.com`), or the free `workers.dev` address.
+- **The address.** A hostname on the hosting domain, a domain you keep on Cloudflare in the hosting account, for
+  example `<name>.<hosting domain>` (recommended), or the free `workers.dev` address. The client's own domain cannot
+  be used: a Worker's custom domain and its Access application must be in the account that owns the Worker. The
+  client's domain is used only for sending email (see "Sending email from the client's domain" below).
+- **A free Zero Trust seat for each owner.** Zero Trust Free allows 50 users in total, and one organisation serves
+  every copy (docs/ACCESS-SETUP.md, "Before you start"). Count every owner email of every copy, plus yours, before
+  you add a copy.
 
-## 2. Get invited to the client's Cloudflare account
+## 2. Check the hosting account
 
-You never ask for the client's password or an API token. Instead the client adds you as a member of their account:
+There is no invitation to ask for: the copy goes in your own account. Once, before the first copy:
 
-1. The client opens the Cloudflare dashboard **in the account that owns the domain** (step 1), then **Manage
-   Account** > **Members** > **Invite**. **Check in the dashboard** for the exact place.
-2. They enter your Cloudflare login email and pick a role that can edit Workers, D1, KV and Zero Trust (for example
-   Administrator). **Check in the dashboard** for the role names.
-3. You accept the invitation from the email Cloudflare sends.
-4. Run `npx wrangler whoami`: the client's account should now be in the list, with its account id.
+1. Run `npx wrangler whoami`: the hosting account should be in the list, with its account id.
+2. In the Cloudflare dashboard, check the account is on **Workers Paid** (**Check in the dashboard** for the exact
+   place) and that Zero Trust is turned on (docs/ACCESS-SETUP.md, "Before you start").
+3. Check the hosting domain is listed under the account's domains.
 
-If the client ever removes you, `npm run copies:update` stops for their copy and says so.
+If `npm run copies:update` says "isn't a member of account", your wrangler login is not the hosting account's. See
+"Troubleshooting".
 
 ## 3. Set up sign-in (Cloudflare Access)
 
-Follow [docs/ACCESS-SETUP.md](ACCESS-SETUP.md) steps 1 to 4 in the client's account (the one that owns the domain),
-using `<copy host>`. The Zero Trust **Free** plan is enough. Keep the five values from step 1 at hand (in a password
+Follow [docs/ACCESS-SETUP.md](ACCESS-SETUP.md) steps 1 to 4 in the hosting account, using `<copy host>`. The owner
+signs in as an allowed email in your Zero Trust organisation: the **Allow** policies in steps 1 to 2 list the owner
+emails. Every copy has its own three Access applications; the team domain is the same for all of them. The Zero Trust
+**Free** plan is enough while the count above stays under 50. Keep the five values from step 1 at hand (in a password
 manager) for the secrets in step 4 below, and note the **team domain** and the board application's **AUD tag** from
 step 4 of that page. Skip its steps 5 and 6: provisioning does them.
 
@@ -53,15 +61,17 @@ npm run copies:provision -- --copy <name>
 
 It asks for:
 
-- **the account**: it lists the accounts your login can use; type the number of the client's;
+- **the account**: it lists the accounts your login can use; type the number of the hosting account. The prompt still
+  asks "Which account is the client's?": that wording is old, and the answer is the hosting account;
 - **owner email(s)**: who may sign in, comma-separated;
 - **the Access team domain** and **AUD tag** from step 3. The team domain is the host only, for example
   `<team>.cloudflareaccess.com`, with no `https://` and no `/` at the end (with them, it asks again). The AUD tag is
   the value labelled **Application Audience (AUD) Tag** on the board application;
-- **where the copy answers**: `workers.dev`, or the custom hostname;
-- **a "from" address for the daily brief** (optional; press Enter to leave the brief unsent).
+- **where the copy answers**: `workers.dev`, or the custom hostname on the hosting domain;
+- **a "from" address for the daily brief** (optional; press Enter to leave the brief unsent). It must be on the
+  client's own sending domain, set up in Resend first (see "Sending email from the client's domain").
 
-Then it creates, in the client's account: the production database `pipeline-<name>`, the preview database
+Then it creates, in the hosting account: the production database `pipeline-<name>`, the preview database
 `pipeline-<name>-preview`, and two KV namespaces for sign-in (`pipeline-<name>-oauth` and `-oauth-preview`). It
 writes the copy's config to `.copies/<name>/wrangler.jsonc` (with `copy.json` beside it: what was done, for
 `--resume`), sets up both databases (migrations, default stages and the starter rulebook) and stores the owner emails
@@ -92,12 +102,15 @@ To see what it would do first, add `--dry-run` (it creates and writes nothing). 
 npm run copies:update -- --copy <name>
 ```
 
-It checks your login can use the client's account, builds, applies the database migrations and deploys. Updating
+It checks your login can use the hosting account, builds, applies the database migrations and deploys. Updating
 later works the same way: [docs/UPDATING.md](UPDATING.md).
 
 ## 6. Check sign-in and connect an AI app
 
-1. Do [ACCESS-SETUP.md](ACCESS-SETUP.md) step 7 ("Check it"): the board opens for an owner email only.
+1. Do [ACCESS-SETUP.md](ACCESS-SETUP.md) step 7 ("Check it"): the board opens for an owner email only. Access sends
+   the one-time code to the email you sign in with, which is the client's, not yours. Have the client's owner with you,
+   or add your own email as a temporary owner email for the check and remove it after (it counts toward the 50-user
+   limit; see "Removing someone's access" below).
 2. In the AI app (for example Claude), add a custom connector (a remote MCP server) with the address
    `https://<copy host>/mcp`. The app opens a page "Allow <app name> to use your pipeline?"; select **Allow**, sign in
    with the owner email and the code Access sends, and the app is connected. The email of the AI app's own account
@@ -140,8 +153,9 @@ kept for 2 hours, then thrown away. Everything imported is outside text (like a 
 follows instructions written in it. If it is the owner's own customer list, tick **This is my own list** on step 3 so
 names, businesses, emails, phones and sources show as the owner's own; leave it unticked for a file someone else made
 (decision 0038). Deals and tasks import the same way and accept the board's own CSV export. On a copy with a very big
-list, a full 2,000-row import can pass the free plan's CPU limit: if it fails with "exceeded CPU", import it from the
-Mac (below), split it, or see docs/PAID-PLAN.md ("Run 5: import").
+list, a full 2,000-row import can pass the free plan's CPU limit (the hosting account is on Workers Paid, so this should
+not happen there): if it fails with "exceeded CPU", import it from the Mac (below), split it, or see docs/PAID-PLAN.md
+("Run 5: import").
 
 The AI app can do the same: say "Import these people from my sheet". It shows you the preview first and saves only after
 you say yes.
@@ -189,6 +203,50 @@ It writes every table as JSON and CSV, plus `all.json` (the same shape as the bo
 earlier export is never overwritten). The files hold the client's data: keep them private. `exports/` is git-ignored. The board's
 Export page offers the same download to the client.
 
+The client can also take their own export from the board's Export page at any time. To move a copy to the client's own
+Cloudflare and GitHub accounts, follow [docs/OFFBOARDING.md](OFFBOARDING.md).
+
+## Sending email from the client's domain
+
+The daily brief and campaign emails go out from the client's own domain, through **your one Resend account**
+(decision 0054). Resend is the service that sends the email. You do not make a Resend account per client. Do this once
+per copy, before you set `BRIEF_FROM` or `CAMPAIGN_FROM`. It touches DNS and a secret, so it waits for you.
+
+1. **Pick a sending subdomain** on the client's domain, for example `mail.clientdomain.com` for the brief and
+   `news.clientdomain.com` for campaigns. A subdomain keeps complaints about campaigns away from the client's main
+   mailbox. The brief and campaigns can share one subdomain if you prefer one domain slot in Resend.
+2. **Add it in Resend.** In your Resend account open **Domains** > **Add domain** and enter the subdomain. Check the
+   plan limits at resend.com/pricing: on 2026-11-24 Pro allowed 10 sending domains, one per client subdomain, and an
+   add-on adds 100 more. Each client uses one or two.
+3. **The client adds the DNS records.** Resend shows the records for that subdomain: an SPF TXT record, a DKIM TXT
+   record, and an MX or TXT record for the return path (copy each name and value exactly as Resend shows it; this repo
+   holds none of them). Send them to the client, or to whoever looks after their domain. They add them where their
+   domain's DNS lives (their registrar, or Cloudflare if the domain is there; in Cloudflare set each one to **DNS
+   only**, grey cloud). They should also have a DMARC record on the domain (`_dmarc.clientdomain.com`); if there is
+   none, Resend's docs explain a starting one. Nothing else is needed from the client: no login, no Cloudflare account.
+4. **Verify.** When the client says the records are in, select **Verify** on the domain in Resend. It can take from
+   15 minutes to 72 hours.
+5. **One key for this client.** In Resend open **API Keys** > **Create API key**, named for the copy, with
+   **Permission** **Sending access** and **Domain** set to this client's subdomain only (not all domains). That keeps
+   one client's key from sending as another. Set it straight away:
+
+   ```bash
+   npx wrangler secret put RESEND_API_KEY -c .copies/<name>/wrangler.jsonc
+   ```
+
+   Use a second key and `CAMPAIGN_RESEND_API_KEY` for campaigns (docs/CAMPAIGNS.md, step 3). Paste each key only at the
+   prompt; never into chat or a file.
+6. **The from addresses and the switches.** Set `BRIEF_FROM` and `BRIEF_SENDING = "on"` (and for campaigns
+   `CAMPAIGN_FROM` and `CAMPAIGN_SENDING = "on"`) in the copy's own config; `BRIEF_FROM` must be an address on that
+   subdomain (docs/SECRETS.md). Provisioning never writes the switches. The reply-to address stays the client
+   owner's own email.
+
+Campaign setup continues in [docs/CAMPAIGNS.md](CAMPAIGNS.md). The webhook for delivery results is per copy
+(`https://<copy host>/hooks/resend`, with its own secret), so it is also in your Resend account, once per copy.
+Resend's docs do not say whether a webhook can be limited to one sending domain, so every copy's endpoint may receive
+every client's delivery events. A copy ignores an event it does not know (it answers 200 and writes nothing), but
+check this in Resend before the first client campaign (decision 0054).
+
 ## Removing someone's access
 
 Owner emails are in the copy's database, never changeable through the AI app (decision 0005). To change them, run a
@@ -219,6 +277,6 @@ open the board again and use the owner email:
   `https://<team>.cloudflareaccess.com/cdn-cgi/access/get-identity`; **check in the dashboard** which one shows your
   sign-in.
 
-**`npx wrangler whoami` does not list the client's account.** The `wrangler login` page was approved in a browser
-signed in to a different Cloudflare login. Run `npx wrangler logout`, sign the browser in to the login the client
-invited (step 2), then run `npx wrangler login` again and approve it there.
+**`npx wrangler whoami` does not list the hosting account.** The `wrangler login` page was approved in a browser
+signed in to a different Cloudflare login. Run `npx wrangler logout`, sign the browser in to the login that owns the
+hosting account (step 2), then run `npx wrangler login` again and approve it there.

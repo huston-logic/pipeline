@@ -1,7 +1,7 @@
 # Secrets and settings
 
-Every secret and variable the Worker reads, in one place. **Names and places only, never values.** Each client copy's
-owner sets that copy's secrets personally, with their own wrangler login, in their own Cloudflare account. Claude, CI
+Every secret and variable the Worker reads, in one place. **Names and places only, never values.** The repo owner sets
+each copy's secrets with their own wrangler login, in the hosting account (decision 0054). Claude, CI
 and this repo never see them, and nothing here should be pasted into chat, a pull request, an issue or a log.
 
 ## Variables (not secrets)
@@ -14,9 +14,9 @@ and this repo never see them, and nothing here should be pasted into chat, a pul
 | `ACCESS_AUD` | The board application's AUD tag | Per copy, in the copy's own config `vars` (provisioning writes it). Unset: the board and `/api` answer 500 (docs/ACCESS-SETUP.md, step 4) |
 | `OWNER_EMAILS` | Comma-separated emails, or unset | Optional, per copy, in the copy's own config `vars`. Who may sign in, together with `settings.owner_emails` (decision 0005); compared ignoring case. Provisioning writes the owner emails into `settings.owner_emails` only and leaves this unset (decision 0007), so there is one list to change. With neither, the board and `/api` answer 500 and no one can connect `/mcp` |
 | `BRIEF_SENDING` | `on`, or unset | The master switch for emailing the daily brief (decision 0011). Unset (the default) or any other value keeps sending off; the brief is still composed and stored each day. Set it in the copy's own config `vars`, never in this repo's `wrangler.jsonc`. |
-| `BRIEF_FROM` | An address on a domain verified in Resend, or unset | The "from" address of the brief email. Unset keeps sending off. Set it in the copy's own config `vars`. |
+| `BRIEF_FROM` | An address on the client's own verified sending domain in your Resend account (the hosting one), or unset | The "from" address of the brief email. Unset keeps sending off. Set it in the copy's own config `vars`. |
 | `CAMPAIGN_SENDING` | `on`, or unset | The master switch for sending campaign emails (decision 0053). Unset (the default) or any other value keeps sending off. Set it in the copy's own config `vars`, never in this repo's `wrangler.jsonc`. Setup: docs/CAMPAIGNS.md, step 4. |
-| `CAMPAIGN_FROM` | An address on the campaign sending subdomain verified in Resend, or unset | The "from" address of campaign emails, for example `Name <news@news.example.com>`. Unset keeps sending off. Set it in the copy's own config `vars`. Setup: docs/CAMPAIGNS.md, step 4. |
+| `CAMPAIGN_FROM` | An address on the client's own campaign sending subdomain, verified in your Resend account (the hosting one), or unset | The "from" address of campaign emails, for example `Name <news@news.example.com>`. Unset keeps sending off. Set it in the copy's own config `vars`. Setup: docs/CAMPAIGNS.md, step 4. |
 | `MCP_ALLOWED_HOSTNAMES` | Comma-separated hostnames, or unset | Per copy (provisioning writes it for a custom hostname). A copy on a custom domain must set it (for example `pipeline.example.com`): `/mcp` and its OAuth sign-in answer only on the listed hosts. Unset, they answer only on `*.workers.dev` and localhost (decisions 0004 and 0006). |
 
 ## Secrets
@@ -27,8 +27,8 @@ right Worker: `npx wrangler secret put <NAME> -c .copies/<name>/wrangler.jsonc`.
 
 | Name | For | Set with |
 |---|---|---|
-| `RESEND_API_KEY` | Emailing the daily brief through Resend (task 7). Read only when sending is on. | `npx wrangler secret put RESEND_API_KEY` (the owner, in their own Cloudflare account) |
-| `CAMPAIGN_RESEND_API_KEY` | Sending campaign emails through Resend. A key with Sending access, limited to the campaign subdomain. Separate from `RESEND_API_KEY`. Read only when campaign sending is on. | `npx wrangler secret put CAMPAIGN_RESEND_API_KEY -c .copies/<copy>/wrangler.jsonc` (docs/CAMPAIGNS.md, step 3) |
+| `RESEND_API_KEY` | Emailing the daily brief through Resend (task 7). Read only when sending is on. | `npx wrangler secret put RESEND_API_KEY` (the repo owner, in the hosting account; the key is limited to the client's sending domain, docs/INSTALL.md "Sending email from the client's domain") |
+| `CAMPAIGN_RESEND_API_KEY` | Sending campaign emails through Resend. A key with Sending access, limited to the client's campaign subdomain in your Resend account (the hosting one). Separate from `RESEND_API_KEY`. Read only when campaign sending is on. | `npx wrangler secret put CAMPAIGN_RESEND_API_KEY -c .copies/<copy>/wrangler.jsonc` (docs/CAMPAIGNS.md, step 3) |
 | `CAMPAIGN_WEBHOOK_SECRET` | The signing secret (`whsec_…`) of the Resend webhook that posts delivery results to `/hooks/resend` (decision 0053). Optional: without it, sent emails stay "Sent". The endpoint answers 503 until it is set. | `npx wrangler secret put CAMPAIGN_WEBHOOK_SECRET -c .copies/<copy>/wrangler.jsonc` (docs/CAMPAIGNS.md, step 7) |
 | `ACCESS_CLIENT_ID` | The Client ID of the Access for SaaS (OIDC) application for `/mcp` (decision 0006; docs/ACCESS-SETUP.md, step 1) | `npx wrangler secret put ACCESS_CLIENT_ID` |
 | `ACCESS_CLIENT_SECRET` | That application's Client secret | `npx wrangler secret put ACCESS_CLIENT_SECRET` |

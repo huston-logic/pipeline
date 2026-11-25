@@ -4,8 +4,9 @@ Once this is set up, an email you send to a lead or contact shows up on their ti
 address in Bcc (decision 0031). Only mail you send from one of the copy's owner emails, that passes Cloudflare's
 authentication checks, is logged; everything else sent to the address is dropped without an answer.
 
-This is done once per copy, by the owner, in the client's Cloudflare account. It touches DNS, so it is a STOP item:
-nothing in this repo does it for you. `example.com` below stands for the copy's own domain.
+This is done once per copy, by the owner, in the hosting account (decision 0054). The log subdomain is on the hosting
+domain, not the client's own domain. It touches DNS, so it is a STOP item: nothing in this repo does it for you.
+`example.com` below stands for the hosting domain.
 
 Steps marked **(check in the dashboard)** were not confirmed in Cloudflare's docs when this was written
 (2026-11-20); follow what the dashboard shows and note any difference here.
@@ -13,19 +14,24 @@ Steps marked **(check in the dashboard)** were not confirmed in Cloudflare's doc
 ## Before you start
 
 - The copy runs the code with email logging: run `npm run copies:update` first (docs/UPDATING.md).
-- The domain is on Cloudflare, in the same account as the copy's Worker.
+- The hosting domain is on Cloudflare, in the same account as the copy's Worker. The client's own domain is not in
+  that account, so it is not used here.
 - Your sending address is one of the copy's owner emails (the ones that can sign in to the board).
-- Your sending address's domain has a DMARC record (a TXT record at `_dmarc.<your domain>`). Mail whose domain has
+- The owner's sending domain (the client's own) has a DMARC record (a TXT record at `_dmarc.<that domain>`). Mail whose domain has
   none gets `dmarc=none` from Cloudflare and is dropped by design (decision 0031, Ruling 3). A strict policy,
   `p=quarantine` or `p=reject` (for example `v=DMARC1; p=reject`), is recommended: Email Routing then rejects mail that
-  fails your domain's DMARC before the Worker runs, so a forged email "from you" never reaches it at all (decision
-  0031, Consequences). Check your domain's DNS before you start.
+  fails the sending domain's DMARC before the Worker runs, so a forged email "from you" never reaches it at all (decision
+  0031, Consequences). Check the sending domain's DNS before you start.
 
 ## 1. Pick a subdomain
 
 Use a subdomain only, such as `log.example.com`, so the mail records of `example.com` itself (your own inbox) are never
 touched. Email Routing adds MX records to the domain it is set up on, and MX records on `example.com` would take over
 your own mail.
+
+`log.example.com` is one example. Each copy needs its own log subdomain on the hosting domain, for example
+`log-<name>.<hosting domain>`, with its own Email Routing setup (steps 2 and 5) and its own `EMAIL_LOG_ADDRESS`
+(step 4).
 
 ## 2. Turn on Email Routing for the subdomain
 

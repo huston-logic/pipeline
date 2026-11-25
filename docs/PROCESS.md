@@ -59,6 +59,12 @@ was decided and what enforces it; `npm run check:process` fails if a rule has no
 **Decided:** 2026-11-24, run 7 brief (decision 0052)
 **Enforced by:** CLAUDE.md "Autonomous runs" (review, not a script).
 
+### Hosting
+**What:** Every client copy is hosted in Huston Logic's own Cloudflare account, on Workers Paid, behind one Zero Trust organisation (the owner signs in as an allowed email), and sends its email from the client's own domain through Huston Logic's Resend account. The client's data stays theirs (full export any time) and they pay for their own AI app. On request the copy, its data and the current code move to the client's own Cloudflare and GitHub accounts, and Huston Logic's responsibility ends at handover. The fee and the client terms live in the master, never in this repo.
+**Why:** Owners want it handled. It costs about the same whatever the number of copies, and the free plan's limits (10 ms CPU, 5 Cron Triggers, 10 D1 databases per account) do not fit many copies.
+**Decided:** 2026-11-24, Grant's managed hosting brief (decision 0054)
+**Enforced by:** docs/INSTALL.md and docs/OFFBOARDING.md (a runbook, not yet rehearsed), the owner's own wrangler login (decision 0007), the "What still stops for Grant" rule below.
+
 ### What still stops for Grant
 **What:** These steps wait for Grant. Secrets or credentials. DNS. Accounts or money. Sending real email. Deleting user data. Lowering a threshold or changing which checks are required. Any owner-only path: .claude/hooks, .claude/agents, .claude/skills, .claude/settings*.json, .github/workflows. For those, the change goes to the scratchpad as a `.proposed` file, with one batch script. Anything that reaches a real client copy: copies:provision, copies:update, copies:export, and import:contacts for real.
 **Why:** These cannot be undone easily, cost money, or change what protects main.

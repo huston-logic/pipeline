@@ -1,7 +1,7 @@
 # Pipeline
 
 A small sales follow-up engine for a small-business owner who does their own selling. The owner runs it by talking to
-their AI app through one MCP endpoint. Every client gets their own copy in their own Cloudflare account, and every copy
+their AI app through one MCP endpoint. Every client gets their own copy, hosted in the repo owner's Cloudflare account (decision 0054), and every copy
 runs the identical code in this repo.
 
 - What it does and must never do: [`docs/SPEC.md`](docs/SPEC.md).
@@ -148,14 +148,14 @@ which is the real gate (decision 0003).
 
 ## Secrets
 
-Names only, never values: [`docs/SECRETS.md`](docs/SECRETS.md). Each copy's secrets are set by its owner with wrangler,
-in their own account. `.env*` and `.dev.vars*` files are git-ignored; only `.env.example` is committed.
+Names only, never values: [`docs/SECRETS.md`](docs/SECRETS.md). Each copy's secrets are set by the repo owner with wrangler,
+in the hosting account. `.env*` and `.dev.vars*` files are git-ignored; only `.env.example` is committed.
 
 ## Client copies: install, update, import, export
 
 This repo has no production deploy of its own: merging into `main` deploys nothing. Each client copy lives in the
-client's own Cloudflare account, and the repo owner, invited into that account, creates and updates it from this repo
-with their own wrangler login (decision 0007). Per-copy config is generated into the git-ignored `/.copies/<name>/`;
+repo owner's own Cloudflare account (managed hosting, decision 0054). The repo owner creates and updates it from this
+repo with their own wrangler login (decision 0007). Moving a copy to a client's own accounts is docs/OFFBOARDING.md. Per-copy config is generated into the git-ignored `/.copies/<name>/`;
 exports go to the git-ignored `/exports/`.
 
 | Command | What it does |

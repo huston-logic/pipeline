@@ -3,15 +3,22 @@
 The engine is meant to run on Cloudflare's free plan. This file lists everything that needs the $5/month Workers Paid
 plan, with the reason, and the free-plan limits to watch. Each task adds to it.
 
+Under managed hosting (decision 0054), every copy runs in one Workers Paid account ($5 a month). The free-plan limits
+below are kept as history, and as the reason Paid is needed: the free plan allows 5 Cron Triggers and 10 D1 databases
+per account, each copy uses 2 of each, and the 10 ms CPU limit applies. Source: Cloudflare's Workers and D1 limits
+pages, read 2026-11-24.
+
 ## Needed so far
 
-Nothing. Every part built so far runs on the free plan. One exception on a big copy: past a few hundred deals with
+Under managed hosting the hosting account is on Workers Paid (decision 0054), because of the account limits above. A
+single copy on its own would still run on the free plan. One exception on a big copy: past a few hundred deals with
 their history, the board's "Download everything (JSON)" goes over the free plan's CPU limit (see "CPU check" below);
 such a copy exports from the Mac with `npm run copies:export` instead, or moves to Workers Paid.
 
 Production sign-in (decision 0006) adds two things, both free: a KV namespace (`OAUTH_KV`, on the Workers free plan:
 100,000 reads and 1,000 writes a day, far more than one owner's sign-ins and `/mcp` token checks use) and Cloudflare
-Access (Zero Trust Free covers up to 50 users; a copy needs one or two).
+Access. Zero Trust Free covers up to 50 users (Cloudflare's plans page, checked 2026-11-24). A copy needs one or two,
+and every copy's owners count, since one organisation serves all copies (docs/ACCESS-SETUP.md).
 
 ## Limits to watch
 

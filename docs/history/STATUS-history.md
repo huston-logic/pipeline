@@ -178,6 +178,26 @@ Changes to scope, product or a decision since run 3, one line each:
 
 # History (kept from earlier runs; facts re-checked on 2026-11-23)
 
+## Run 8 (2026-11-24 to 25)
+
+Run 8, "Campaigns, step 1". Plan: `docs/superpowers/plans/2026-11-24-run8-campaigns.md`. Design:
+`docs/superpowers/specs/2026-11-24-campaigns-design.md`. Decision 0053. PRs: A (#76, core, data and the AI door,
+migration 0019), B (#77, the board pages), C (#78, sending, unsubscribe and delivery results), D (#79, closing docs and
+acceptance sentences 31 to 34).
+
+| PR | Wall-clock | Commits | Time in checks | Waiting on CI |
+|---|---|---|---|---|
+| A (#76) | about 38 min to open, merged 17:21 | 12 | about 4 min | 12.5 min (full audits: the seed changed) |
+| B (#77) | about 35 min to open, merged 17:58 | 7 | about 3 min | 13.5 min |
+| C (#78) | about 33 min to open, one more commit at 18:27 for a CodeQL false positive in a test | 13 | about 4 min | about 25 min |
+| D (#79) | about 15 min to open, built while C was in CI | 5 | about 2 min | see the PR |
+
+Judgment calls: a second cron trigger sends the campaign batches; the unsubscribe token is stored, not signed; a
+campaign email never counts as reaching a person; an unsubscribe or a complaint follows the person, a bounce blocks only
+its address; a valid unsubscribe link is never rate limited; test sends write no audit row; the daily limit counts UTC
+days, default 90; the Lighthouse slot moved to the campaign review page; `copies:update` now brings each copy's cron
+triggers in step with the template.
+
 ## Run 7 (2026-11-24)
 
 Run 7, "Speed" (2026-11-24). Plan: `docs/superpowers/plans/2026-11-24-run7-speed.md`. Decision 0052. Goal: make every later run faster and cheaper without lowering the bar.

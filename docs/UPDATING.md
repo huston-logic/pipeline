@@ -1,8 +1,8 @@
 # Updating the copies
 
 Every copy runs the code in this repo. When `main` has a new version, you bring every copy up to it with one
-command, from this repo on your Mac, logged in to wrangler as yourself (decision 0007; docs/INSTALL.md step 2 has the
-account invitation this relies on). Merging into `main` deploys nothing by itself.
+command, from this repo on your Mac, logged in to wrangler as yourself (decision 0007). Every copy is in the hosting account (decision 0054), so
+your login must be the one that owns it. Merging into `main` deploys nothing by itself.
 
 ## The command
 
@@ -16,7 +16,8 @@ npm run copies:update -- --copy <name>  # just one
 What it does, in order:
 
 1. Asks wrangler which accounts your login can use (`wrangler whoami --json`). A copy whose account isn't in that list
-   is not touched and is reported as failed ("isn't a member of account ..."): ask that client to invite you again.
+   is not touched and is reported as failed ("isn't a member of account ..."): your login is not the one that owns the
+   hosting account. Run `npx wrangler whoami` to see which login you are, then `npx wrangler login` as the right one.
 2. Builds once (`npm run build`). If the build fails, nothing is updated.
 3. For each copy: applies any new database migrations to its production database (wrangler lists them and asks you
    to confirm), checks that none is left pending, then deploys the Worker with the copy's own config
@@ -92,7 +93,7 @@ files of that size. Each import is one change; ask the AI app to undo it if it w
 
 ### 5. Email logging
 
-Optional, per copy, and a STOP item (it needs DNS and Email Routing in the client's account). Follow
+Optional, per copy, and a STOP item (it needs DNS and Email Routing in the hosting account, on the hosting domain). Follow
 `docs/EMAIL-LOGGING.md`: a log subdomain, the `EMAIL_LOG_ADDRESS` secret, the routing rule to the Worker, then the two
 go-live checks in its section 6 (a normal email is logged, and Cloudflare's activity log shows DMARC pass). A strict
 DMARC policy (`p=quarantine` or `p=reject`) on your sending domain is recommended. Until the secret is set, the copy
@@ -176,7 +177,8 @@ in three sentences. Nothing is deleted at any step, and each step is undoable.
 
 A full 2,000-row import in the Worker takes about 11 ms of CPU on a big copy, a little over the free plan's 10 ms
 (docs/PAID-PLAN.md, "Run 5: import"). If a board import of a big file fails with "exceeded CPU", split the file, import
-it from your Mac (`npm run import:contacts`, docs/INSTALL.md step 8), or move the copy to Workers Paid.
+it from your Mac (`npm run import:contacts`, docs/INSTALL.md step 8), or move the copy to Workers Paid (the hosting account is already on Workers Paid, so this
+should not happen there).
 
 ## Run 6: after you update
 
@@ -241,12 +243,12 @@ by talking to the AI app.
 D1 is the copy's database; a batch is several database steps sent at once; Workers Paid is Cloudflare's $5 a month plan
 with far higher limits. A list of 25 changes (the most one list holds) makes about 30 D1 calls, inside the free plan's
 50 if each batch counts as one. Whether Cloudflare counts each statement inside a batch is still unknown (docs/PAID-PLAN.md, "Run 6"). If a
-long list fails, send it as two shorter ones, or move the copy to Workers Paid.
+long list fails, send it as two shorter ones, or move the copy to Workers Paid (the hosting account is already on
+Workers Paid, so this should not happen there).
 
 ## Run 8: after you update
 
-Run 8 adds email campaigns: a newsletter or an event invite sent to a group of people, from the client's own email
-account. Campaigns are off until you turn them on. Nothing sends until the sending switches are set for that copy and
+Run 8 adds email campaigns: a newsletter or an event invite sent to a group of people, from the client's own domain. Campaigns are off until you turn them on. Nothing sends until the sending switches are set for that copy and
 you tap Approve (or Schedule) on the board. Setup for one copy is in docs/CAMPAIGNS.md, steps 1 to 8. Do these in
 order, per copy.
 
@@ -276,7 +278,7 @@ cannot send, schedule, approve, pause or cancel.
 
 ### 4. Turn campaigns on, only if the client wants them
 
-Follow docs/CAMPAIGNS.md, steps 1 to 8: the Resend account and sending subdomain, the key, the from address and the
+Follow docs/CAMPAIGNS.md, steps 1 to 8: the sending subdomain in your Resend account (the hosting one) ([docs/INSTALL.md, "Sending email from the client's domain"](INSTALL.md#sending-email-from-the-clients-domain)), the key, the from address and the
 sending switch, the postal address, the Access bypass, the optional delivery results, then the go-live check with
 your own address.
 
@@ -320,8 +322,8 @@ Data changes made through the AI app are separate: each one can be undone with `
 
 ## When something fails
 
-- **"isn't a member of account"**: your login lost access to that client's account. They invite you again
-  (INSTALL.md step 2).
+- **"isn't a member of account"**: your wrangler login is not the one that owns the hosting account. Run
+  `npx wrangler whoami`, then `npx wrangler login` as the right login.
 - **"wrangler isn't logged in"**: run `npx wrangler login` in your own terminal.
 - **"not fully provisioned"**: finish it with `npm run copies:provision -- --copy <name> --resume`.
 - **Migrations failed**: wrangler printed the reason above the summary line. Fix it, then update that copy again.
