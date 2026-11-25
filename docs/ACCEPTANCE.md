@@ -322,3 +322,65 @@ won deal `dl_seed07`) and `pj_seed02` (On hold). Record edits go through a propo
 - Asserts: the seeded totals show minutes, billable minutes and an amount; one more billable hour at 95 an hour adds
   exactly 60 minutes, 60 billable minutes and 9,500 cents.
 - Test: `38. "How much time is on the retrofit project?"`
+
+## The run 10 sentences (39 to 48)
+
+Run 10 finished projects (decisions 0056 to 0060). Sentences 39 to 48, two per area, run in `tests/e2e/run10.test.ts`,
+over MCP against the real Worker and the fake seed, in order on one database. "Dana" is the seed's Dana Whitfield
+(`ct_seed01`). Record edits go through a proposal and `apply_changes`. Sentences 47 and 48 come last: once approval is on
+the board the AI app can no longer apply or undo.
+
+## 39. Add a project status Waiting on client, open, after On hold.
+- Tools: `add_project_status` (`label`, `kind: open`, `position: 3`), `list_projects`.
+- Asserts: the answer has a change id; the statuses list shows Waiting on client, open, third, right after On hold.
+- Test: `39. "Add a project status Waiting on client, open, after On hold."`
+
+## 40. Start an internal project: office move.
+- Tools: `add_project` (no person, no deal), `add_task` (`project` by name), `get_project`, `list_tasks`.
+- Asserts: the project has no person, and a task added to it has no person, no deal and the project.
+- Test: `40. "Start an internal project: office move."`
+
+## 41. Under the retrofit's first task, add a sub-task: book the crane.
+- Tools: `add_task` (`parent`), `list_tasks`, `get_project`.
+- Asserts: the sub-task has the parent's id as `parentId`, depth 1, the retrofit project and no deal.
+- Test: `41. "Under the retrofit's first task, add a sub-task: book the crane."`
+
+## 42. Mark that task done and its sub-tasks too.
+- Tools: `complete_task` (without, then with `subTasks: "complete"`), `get_project`, `undo_change`.
+- Asserts: without `subTasks` it is refused with the question and nothing is written; with it both tasks are done in one
+  change; undoing that change reopens both.
+- Test: `42. "Mark that task done and its sub-tasks too."`
+
+## 43. Plan the Harbor kitchen job: a new project starting Monday with demolition (two sub-tasks), cabinets and paint.
+- Tools: `propose_changes` (`add_project`, then `add_task_plan` on `@1` with `under` and `dueDays`), `apply_changes`,
+  `undo_change`.
+- Asserts: the list indents the sub-tasks; one apply gives one change id; the project has all five tasks, two at depth 1;
+  undoing that change removes the project and every task.
+- Test: `43. "Plan the Harbor kitchen job: ..."`
+
+## 44. Add three more tasks to the retrofit project.
+- Tools: `propose_changes` (`add_task_plan` on an existing project), `apply_changes`, `list_tasks`.
+- Asserts: three tasks are added, each placed after the project's existing top-level tasks, in the order given.
+- Test: `44. "Add three more tasks to the retrofit project."`
+
+## 45. Start a project for Dana from the Website build template.
+- Tools: `add_project` (`contact`, `template`), `list_tasks`, `update_template`.
+- Asserts: the template's five tasks are copied with their nesting onto Dana's project; editing the template afterwards
+  leaves the project as it was.
+- Test: `45. "Start a project for Dana from the Website build template."`
+
+## 46. Save the retrofit project's tasks as a template called Retrofit job.
+- Tools: `save_project_as_template`, `get_template`.
+- Asserts: the template holds the retrofit's tasks as a tree, the crane under the bolts task at depth 1.
+- Test: `46. "Save the retrofit project's tasks as a template called Retrofit job."`
+
+## 47. From now on, approve AI changes on the board only.
+- Tools: `update_settings` (`approveIn: board`, then `chat`), `get_settings`, `add_task`, `apply_changes`.
+- Asserts: the setting reads `board`; `apply_changes` is refused with a link to `/pending` and writes nothing; the AI app
+  cannot switch it back to chat.
+- Test: `47. "From now on, approve AI changes on the board only."`
+
+## 48. Undo that.
+- Tools: `undo_change`, `get_settings`.
+- Asserts: while approval is on the board, undo over MCP is refused with a link to `/changes`, and the setting stays.
+- Test: `48. "Undo that."`
