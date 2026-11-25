@@ -17,7 +17,7 @@ Add a line here for every new decision (`npm run check:process` fails on a decis
 - [0004](0004-mcp-endpoint.md) The MCP endpoint: the factory-per-request, stateless handler is what the current docs prescribe and needs no Durable Object. (partly replaced by 0006)
 - [0005](0005-owner-emails-not-via-mcp.md) Owner emails are not changeable through MCP: owner emails decide who gets access, so no AI tool may add one; outside text could otherwise grant it.
 - [0006](0006-production-auth.md) Production sign-in: Cloudflare Access guards the board and `/api`; `/mcp` uses OAuth with Access upstream, so one identity covers both.
-- [0007](0007-update-mechanism.md) Many copies: provisioning, the update command, import and export: only the owner's own login reaches client accounts, so no client credential or identifier is stored outside it.
+- [0007](0007-update-mechanism.md) Many copies: provisioning, the update command, import and export: only the owner's own login reaches client accounts, so no client credential or identifier is stored outside it. (partly replaced by 0054)
 - [0008](0008-data-layer.md) Data layer details (schema, test database, dev seed, clock changes): tests that run the real SQL catch constraint and query mistakes that mocks would hide.
 - [0009](0009-change-records-and-undo.md) Change records and undo: one write function means no write can skip the audit row or the guard, and undo needs no per-tool code.
 - [0010](0010-rules-engine.md) The rules engine: pure functions make every rule testable without a database; one change per firing keeps the audit log honest. (partly replaced by 0020)
@@ -64,3 +64,4 @@ Add a line here for every new decision (`npm run check:process` fails on a decis
 - [0051](0051-time-pages.md) Time pages, hand entry and the time CSV: A week suits "what did I do" and a month suits billing, so the CSV is monthly.
 - [0052](0052-fast-checks-and-change-aware-audits.md) Fast commit check, one e2e Worker and change-aware audits: the slow parts were setup, not testing; the full suite still runs before every push, in CI and on main.
 - [0053](0053-campaigns.md) Campaigns, step 1: Only the board sends, every email can be unsubscribed from, and a frozen list with one row per person means no one gets an email twice.
+- [0054](0054-managed-hosting.md) Managed hosting: every copy lives in Huston Logic's Cloudflare account, because owners want it handled and one paid account costs about the same however many copies it holds; offboarding moves a copy to the client's own accounts.

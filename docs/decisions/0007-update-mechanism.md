@@ -1,5 +1,8 @@
 # 0007: Many copies: provisioning, the update command, import and export
 
+Partly replaced by [0054](0054-managed-hosting.md): copies now live in the repo owner's own Cloudflare account, so the
+client-invites-the-owner steps below no longer apply. The commands, checks and file layout stand.
+
 ## Context
 
 The spec asks for an install path (a provisioning script that creates the production and preview databases, applies
