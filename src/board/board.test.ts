@@ -653,7 +653,7 @@ test("board pages answer GET and HEAD only: any other method is 405 (writes have
   // A record form page (Add a lead or a deal, Edit, New deal, Qualify) is posted back to its own path (decisions 0018,
   // 0028), and the import's first step to /import (decision 0036), behind the same checks as every board write: a bare
   // POST (no origin, no cookie, no token) is refused.
-  const formPage = (path: string) => /\/(?:edit|new|qualify)$/.test(path) || ["/import", "/timer/stop"].includes(path.split("?")[0] ?? "");
+  const formPage = (path: string) => /\/(?:edit|new|qualify)$/.test(path) || ["/import", "/timer/stop", "/campaigns/settings"].includes(path.split("?")[0] ?? "");
   for (const path of boardRoutes) {
     for (const method of ["POST", "PUT", "DELETE", "PATCH"]) {
       if (method === "POST" && formPage(path)) {

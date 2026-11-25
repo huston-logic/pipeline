@@ -26,7 +26,8 @@ export type IconName =
   | "import"
   | "notifications"
   | "email"
-  | "time";
+  | "time"
+  | "campaigns";
 
 /** `hint` is read out after the label but not shown, where the label alone says too little ("More" alone fails
  * Lighthouse's descriptive-link-text audit). */
@@ -79,6 +80,8 @@ export const boardRoutes: string[] = [
   "/time?week=2026-11-16",
   "/time/new",
   "/time/te_seed01/edit",
+  "/campaigns",
+  "/campaigns/settings",
 ];
 
 /** At most this many pages go through Lighthouse, so the CI job's time stops growing with the board. */
@@ -147,9 +150,18 @@ export const timeItem: NavItem = {
   description: "The week's time entries and totals, adding time by hand, and the month's CSV.",
 };
 
-/** The More items for this copy: Time sits after "What it caught" when time tracking is on. */
-export function moreItemsFor(timeTracking: boolean): NavItem[] {
-  if (!timeTracking) return moreItems;
+/** Campaigns, under More only while campaigns are on (decision 0053). */
+export const campaignsItem: NavItem = {
+  href: "/campaigns",
+  label: "Campaigns",
+  icon: "campaigns",
+  description: "Email newsletters and invites: drafts, review, sending and results.",
+};
+
+/** The More items for this copy: Time, then Campaigns, sit after "What it caught" when each is on. */
+export function moreItemsFor(on: { timeTracking: boolean; campaigns: boolean }): NavItem[] {
+  const extra = [...(on.timeTracking ? [timeItem] : []), ...(on.campaigns ? [campaignsItem] : [])];
+  if (extra.length === 0) return moreItems;
   const at = moreItems.findIndex((item) => item.href === "/report") + 1;
-  return [...moreItems.slice(0, at), timeItem, ...moreItems.slice(at)];
+  return [...moreItems.slice(0, at), ...extra, ...moreItems.slice(at)];
 }

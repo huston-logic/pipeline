@@ -956,6 +956,7 @@ export function buildDevSeed(now: Date, tz: string): string {
     ...seed.importDraftParts.map((row) => insert("import_draft_parts", row)),
     ...seed.views.map((row) => insert("views", row)),
     "UPDATE settings SET time_tracking = 1 WHERE id = 1;",
+    "UPDATE settings SET campaigns = 1, postal_address = '100 Example Street, Springfield' WHERE id = 1;",
     ...seed.workTypes.map((row) => insert("work_types", row)),
     ...seed.clientRates.map((row) => insert("client_rates", row)),
     ...seed.timeEntries.map((row) => insert("time_entries", row)),
