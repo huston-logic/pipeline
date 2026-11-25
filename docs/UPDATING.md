@@ -292,6 +292,35 @@ Say these one at a time. Each one makes a draft or answers a question. Only the 
 - **Ask who would get it.** "Who would get it?" It lists the people the draft would reach.
 - **Send it.** "Send it." The AI app says only you can send it, on the board, and gives you the link.
 
+## Run 9: after you update
+
+Run 9 adds projects: delivery work after a sale (engineering jobs, your own pilots), kept apart from the sales pipeline
+(decision 0055). Projects are off until you turn them on. Do these in order, per copy. (A copy still on run 8 or earlier:
+do "Run 8" first.)
+
+### 1. Update the copy
+
+```bash
+git switch main && git pull --ff-only
+npm run copies:update -- --copy <name> --dry-run
+npm run copies:update -- --copy <name>
+```
+
+Migration 0020 applies when wrangler asks you to confirm. It adds tables and columns and keeps every row. Nothing else
+needs setting: no secret, no DNS record and no cron change.
+
+### 2. Turn projects on, only if you want them
+
+Ask the AI app: "Turn on projects." It runs `update_settings projects true`. Until then no Projects item, project label
+or offer shows on the board, and the AI app's project tools answer that projects are off.
+
+### 3. What changes in daily use
+
+- Once projects are on, More shows Projects. The Projects list and each project page sit there.
+- A won deal offers "Start a project?" on its page. Nothing starts on its own; you answer the offer.
+- After a deal is marked Won, the AI app asks the same question. It adds a project only after your yes.
+- The deal's open tasks move to the project only if you tick "Also move this deal's N open tasks to the project" (it is unticked by default).
+
 ## Before a release that has a new migration
 
 Migrations only go forward: there is no "undo" for a database change. Try a release on a copy's preview database

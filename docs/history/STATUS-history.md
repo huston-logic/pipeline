@@ -8,6 +8,27 @@ Spec: `docs/SPEC.md`. Plan: `docs/PLAN.md`. Decisions: `docs/decisions/`. Dates 
 Last checked on 2026-11-24 from the run 6 ledger and `gh` (PR states and merge times). The local `main` was not pulled,
 so no `main` commit is named here.
 
+## Managed hosting (docs run, 2026-11-24)
+
+"Managed hosting", the pipeline half of the 09 doc's item H1 (2026-11-24). Plan: `docs/superpowers/plans/2026-11-24-managed-hosting.md`. Decision 0054. One PR, docs only.
+
+Changed: decision 0054 and its index line (0007 marked partly replaced); INSTALL.md (steps 1 to 3, a "Sending email from the client's domain" section), UPDATING.md, ACCESS-SETUP.md (one Zero Trust organisation, the 50-user limit and its source), SECRETS.md, SPEC.md, README.md, and the same account wording in CAMPAIGNS.md, EMAIL-LOGGING.md and PAID-PLAN.md; new docs/OFFBOARDING.md (not yet rehearsed); a "Hosting" rule in PROCESS.md. No code, test, threshold or required check changed.
+
+| PR | Wall-clock | Commits | Time in checks | Waiting on CI |
+|---|---|---|---|---|
+| Managed hosting (this PR) | about 12 min from the first commit (21:25) to PR open; reading and the limit lookups came before. One review fix commit after. | 4 | check:fast on each commit (docs only, seconds); one full `npm run check` 27 s | see the PR |
+
+Judgment calls (one line each):
+
+- The client price stays out of the repo (PROCESS.md "Where facts live"); decision 0054 says the fee lives in the master. Grant's costs (Workers Paid $5, Resend Pro $20) are vendor list prices and are in.
+- The client's own domain can't host the copy: a Worker's custom domain and its Access application must be in the Worker's account. So a copy answers on a hosting domain, the email-log subdomain moves there too, and the client's domain is used for email sending only.
+- The developers "account limits" page states no Zero Trust user cap; the 50-user figure is from Cloudflare's plans page, and the docs say so.
+- The offboarding runbook names two gaps instead of papering over them: no whole-copy restore (only people, deals and tasks import) and the unsubscribe links already sent point at the old host.
+- Handover date and terms go in the master's client record, never this public repo.
+- A fresh review of the diff found six real doc gaps (who receives the sign-in code, Access application names colliding across copies, the webhook, the suppression list, the sending switches, "owner" meaning two people); all are fixed here.
+
+Queued: nothing beyond Needs Grant 16. The two stale prompts in `scripts/copies.mjs` ("Ask the client to invite your Cloudflare user", "Which account is the client's?") were fixed in a small follow-up PR, with their test.
+
 ## Current state
 
 **Merged.** Everything in the spec and in the run 2, 4, 5 and 6 briefs is built. #1 to #69 are merged. Open on
