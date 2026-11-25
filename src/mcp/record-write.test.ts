@@ -181,6 +181,8 @@ test("isSmallAction: a call or note on an existing person or deal, and completin
   assert.equal(isSmallAction({ action: "log_activity", contact: "ct_seed01", type: "email", summary: "Emailed." }), false);
   assert.equal(isSmallAction({ action: "log_activity", contact: "ct_seed01", type: "meeting", summary: "Met." }), false);
   assert.equal(isSmallAction({ action: "log_activity", contact: "@1", type: "call", summary: "Called." }), false, "not on a record a list adds");
+  assert.equal(isSmallAction({ action: "log_activity", project: "pj_seed01", type: "note", summary: "A note." }), true);
+  assert.equal(isSmallAction({ action: "log_activity", project: "@1", type: "note", summary: "A note." }), false, "not on a project a list adds");
   assert.equal(isSmallAction({ action: "complete_task", task: "tk_seed01" }), true);
   assert.equal(isSmallAction({ action: "snooze_task", task: "tk_seed01", until: "2026-11-25" }), false);
   assert.equal(isSmallAction({ action: "add_task", contact: "ct_seed01", title: "Call Pat" }), false);

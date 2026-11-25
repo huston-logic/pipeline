@@ -28,7 +28,7 @@ export function isSmallAction(action: RecordAction): boolean {
   if (action.action === "start_timer") return existing(action.deal) && existing(action.contact) && existing(action.task) && existing(action.project);
   if (action.action === "stop_timer") return action.nextStepDate === undefined;
   if (action.action !== "log_activity") return false;
-  return (action.type === "call" || action.type === "note") && existing(action.deal) && existing(action.contact);
+  return (action.type === "call" || action.type === "note") && existing(action.deal) && existing(action.contact) && existing(action.project);
 }
 
 /** The ids each record tool has always answered beside its change id, when the action made them. */
