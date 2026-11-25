@@ -12,7 +12,10 @@ import {
   addProjectInput,
   addTaskInput,
   addTaskPlanInput,
+  addTemplateInput,
   completeTaskInput,
+  saveProjectAsTemplateInput,
+  updateTemplateInput,
   logActivityInput,
   qualifyLeadInput,
   returnToLeadInput,
@@ -39,7 +42,9 @@ import { type Match, MATCH_MAX, matchAll } from "./name-match.ts";
 import { readerOf, type Reader } from "./memo.ts";
 import { addProject, updateProject } from "./projects.ts";
 import { requireProjects } from "./settings.ts";
+import { saveProjectAsTemplate } from "./save-template.ts";
 import { addTaskPlan } from "./task-plan.ts";
+import { addTemplate, updateTemplate } from "./templates.ts";
 import { addTask, completeTask, snoozeTask } from "./tasks.ts";
 import { addTimeEntry, updateTimeEntry } from "./time-entries.ts";
 import { startTimer, stopTimer } from "./timer.ts";
@@ -64,6 +69,9 @@ export const RECORD_ACTIONS = [
   "add_project",
   "update_project",
   "add_task_plan",
+  "add_template",
+  "update_template",
+  "save_project_as_template",
 ] as const;
 
 export type RecordActionName = (typeof RECORD_ACTIONS)[number];
@@ -91,6 +99,9 @@ const ACTION_SCHEMAS = {
   add_project: addProjectInput.extend({ action: named("add_project") }),
   update_project: updateProjectInput.extend({ action: named("update_project") }),
   add_task_plan: addTaskPlanInput.extend({ action: named("add_task_plan") }),
+  add_template: addTemplateInput.extend({ action: named("add_template") }),
+  update_template: updateTemplateInput.extend({ action: named("update_template") }),
+  save_project_as_template: saveProjectAsTemplateInput.extend({ action: named("save_project_as_template") }),
 } as const satisfies Record<RecordActionName, z.ZodObject>;
 
 /** One action: a record tool's input plus `action`, the tool's name (a discriminated union on it). */
@@ -113,6 +124,9 @@ export const recordActionSchema = z.discriminatedUnion("action", [
   ACTION_SCHEMAS.add_project,
   ACTION_SCHEMAS.update_project,
   ACTION_SCHEMAS.add_task_plan,
+  ACTION_SCHEMAS.add_template,
+  ACTION_SCHEMAS.update_template,
+  ACTION_SCHEMAS.save_project_as_template,
 ]);
 
 export type RecordAction = z.output<typeof recordActionSchema>;
@@ -170,6 +184,10 @@ const REF_FIELDS: Record<RecordActionName, RefSpec[]> = {
   update_project: [{ field: "project", kind: "project", subject: false }],
   // A plan may be for a project an earlier action adds.
   add_task_plan: [{ field: "project", kind: "project", subject: true }],
+  add_template: [],
+  update_template: [],
+  // A project an earlier action adds (with its tasks) may be saved.
+  save_project_as_template: [{ field: "project", kind: "project", subject: true }],
 };
 
 /** What an action adds (or, for qualify_lead's person, names) that a later "@n" could point at. */
@@ -306,7 +324,7 @@ function projectQuestion(match: Match<ProjectRow>, ref: string): Found {
 export async function resolveActions(src: Reader, actions: readonly RecordAction[]): Promise<{ actions: ResolvedAction[]; questions: string[] }> {
   const { db } = readerOf(src);
   // Every project input refuses while projects are off, before any name is matched (the memo makes this read free).
-  const projectful = actions.some((action) => action.action === "add_project" || action.action === "update_project" || refsOf(action).some((ref) => ref.kind === "project"));
+  const projectful = actions.some((action) => action.action === "add_project" || action.action === "update_project" || action.action === "add_template" || action.action === "update_template" || action.action === "save_project_as_template" || refsOf(action).some((ref) => ref.kind === "project"));
   if (projectful) await requireProjects(src);
   const named = actions.map((action) => refsOf(action).filter((ref) => refNumber(ref.value) === null));
   const asked: Record<RefKind, string[]> = { contact: [], deal: [], task: [], project: [] };
@@ -423,6 +441,14 @@ export async function runAction(ctx: Ctx, action: ResolvedAction, _deps: { extra
       const { taskIds, ...result } = await addTaskPlan(ctx, omitAction(action));
       return { ...result, taskId: taskIds[0] ?? "" };
     }
+    case "add_template":
+      return addTemplate(ctx, omitAction(action));
+    case "update_template": {
+      const { template, ...patch } = omitAction(action);
+      return updateTemplate(ctx, template, patch);
+    }
+    case "save_project_as_template":
+      return saveProjectAsTemplate(ctx, omitAction(action));
   }
 }
 

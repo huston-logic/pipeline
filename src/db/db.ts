@@ -39,6 +39,8 @@ export const TABLE_NAMES = [
   "email_suppressions",
   "project_statuses",
   "projects",
+  "project_templates",
+  "template_tasks",
 ] as const;
 
 export type TableName = (typeof TABLE_NAMES)[number];
@@ -238,6 +240,8 @@ export type TaskRow = {
   parent_id?: string | null;
   /** Order among siblings (same project, same parent), from 1; null for a task not on a project. */
   position?: number | null;
+  /** The work type a timer started on this task defaults to (migration 0024), else null. */
+  work_type_id?: string | null;
   contact_id: string | null;
   title: string;
   due_at: string | null;
@@ -453,6 +457,40 @@ export type ProjectRow = {
   archived: Flag;
   /** JSON array, always "[]" for now; kept for a later import. */
   untrusted_fields: string;
+  version: number;
+  created_at: string;
+  updated_at: string;
+};
+
+/** A named task tree a new project can copy (migration 0024). */
+export type ProjectTemplateRow = {
+  /** "tp_..." */
+  id: string;
+  /** 1 to 200 characters on one line; unique among live templates, ignoring case. */
+  name: string;
+  /** Up to 2,000 characters, or null. */
+  description: string | null;
+  archived: Flag;
+  /** JSON array, always "[]" for now. */
+  untrusted_fields: string;
+  version: number;
+  created_at: string;
+  updated_at: string;
+};
+
+/** One task of a template (migration 0024); a tree through parent_id, siblings in position order from 1. */
+export type TemplateTaskRow = {
+  /** "tt_..." */
+  id: string;
+  template_id: string;
+  parent_id: string | null;
+  position: number;
+  /** 1 to 200 characters on one line. */
+  title: string;
+  /** Days after the project's start, 0 to 3650, or null. */
+  due_days: number | null;
+  work_type_id: string | null;
+  archived: Flag;
   version: number;
   created_at: string;
   updated_at: string;

@@ -47,6 +47,8 @@ const PRIMARY_KEYS = {
   time_entries: "id",
   project_statuses: "key",
   projects: "id",
+  project_templates: "id",
+  template_tasks: "id",
   campaigns: "id",
   campaign_steps: "id",
   email_suppressions: "id",
@@ -126,6 +128,8 @@ const ROW_NOUNS: Record<ChangeTable, string> = {
   time_entries: "Time entry",
   project_statuses: "Project status",
   projects: "Project",
+  project_templates: "Project template",
+  template_tasks: "Template task",
   campaigns: "Campaign",
   campaign_steps: "Campaign email",
   email_suppressions: "Campaign email block",
@@ -254,6 +258,8 @@ export const isRunningTimerFailure = (error: unknown) =>
 
 /** A second live work type with the same name, or a second live client rate for one work type and person. */
 export const isWorkTypeNameFailure = (error: unknown) => /UNIQUE constraint failed: index 'work_types_name'/.test(errorText(error));
+/** A second live template with the same name (ignoring case). */
+export const isTemplateNameFailure = (error: unknown) => /UNIQUE constraint failed: index 'project_templates_name'/.test(errorText(error));
 export const isClientRatePairFailure = (error: unknown) =>
   /UNIQUE constraint failed: client_rates\.work_type_id, client_rates\.contact_id/.test(errorText(error));
 
@@ -332,9 +338,12 @@ const BULK_ORDER: readonly ChangeTable[] = [
   "deals",
   "project_statuses",
   "projects",
+  // Before the tasks and templates that name them (migration 0024).
+  "work_types",
   "tasks",
   "activities",
-  "work_types",
+  "project_templates",
+  "template_tasks",
   "client_rates",
   // After the tasks and activities an entry points at.
   "time_entries",
@@ -346,6 +355,19 @@ const BULK_ORDER: readonly ChangeTable[] = [
   "push_subscriptions",
   "views",
 ];
+
+/** A change touching more rows than this is written as a bulk change (decision 0035). */
+const BULK_ROWS = 50;
+
+/**
+ * Bulk when the change has more than BULK_ROWS rows, or when its snapshot (before_json or after_json, each one bound
+ * parameter of the audit row) would be over CHUNK_BYTES, measured as bulk.ts measures (decision 0035).
+ */
+export function needsBulk(changes: readonly RowChange[]): boolean {
+  if (changes.length > BULK_ROWS) return true;
+  const snapshot = (side: "before" | "after") => JSON.stringify(Object.fromEntries(changes.map((change) => [rowKey(change.table, change.id), change[side]])));
+  return sqlBytes(snapshot("before")) > CHUNK_BYTES || sqlBytes(snapshot("after")) > CHUNK_BYTES;
+}
 
 export const isBulkTable = (table: ChangeTable) => BULK_ORDER.includes(table);
 

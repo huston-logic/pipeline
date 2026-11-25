@@ -45,6 +45,9 @@ export interface DevSeed {
   projects: Row[];
   projectActivities: Row[];
   projectTimeEntries: Row[];
+  /** Project templates: two, with 4 and 5 tasks; their ids are tp_seed01, tp_seed02, tt_seed01 and on. */
+  templates: Row[];
+  templateTasks: Row[];
   /** Campaigns (decision 0053): a draft to Partners, a sent one with every kind of result, a draft to people picked by hand. */
   campaigns: Row[];
   campaignSteps: Row[];
@@ -985,6 +988,45 @@ export function devSeed(now: Date, tz: string): DevSeed {
     project(1, "Storage building B retrofit", "ct_seed07", "dl_seed07", "active", day(-4, "00:00"), day(42, "00:00"), day(-4, "10:00"), "Permit is approved. Crew starts after the bolts arrive."),
     project(2, "Cedar Row balcony repair", "ct_seed03", null, "on_hold", day(-5, "00:00"), day(60, "00:00"), day(-5, "09:00"), "Waiting on the co-op board's budget vote."),
   ];
+  // Project templates: Website build (a nested task, a work type) and Kitchen remodel. tt_seed01 is the first task.
+  const template = (n: number, name: string, description: string): Row => ({
+    id: `tp_seed${n2(n)}`,
+    name,
+    description,
+    archived: 0,
+    untrusted_fields: "[]",
+    version: 1,
+    created_at: fixedEnd,
+    updated_at: fixedEnd,
+  });
+  const templateTask = (n: number, templateNo: number, parent: number | null, position: number, title: string, dueDays: number | null, workType: string | null): Row => ({
+    id: `tt_seed${n2(n)}`,
+    template_id: `tp_seed${n2(templateNo)}`,
+    parent_id: parent === null ? null : `tt_seed${n2(parent)}`,
+    position,
+    title,
+    due_days: dueDays,
+    work_type_id: workType,
+    archived: 0,
+    version: 1,
+    created_at: fixedEnd,
+    updated_at: fixedEnd,
+  });
+  const templates: Row[] = [
+    template(1, "Website build", "A small business website, from kickoff to launch.\nEdit the days to fit the job."),
+    template(2, "Kitchen remodel", "A kitchen remodel, from the measure to the final walk-through."),
+  ];
+  const templateTasks: Row[] = [
+    templateTask(1, 1, null, 1, "Kickoff call", 0, null),
+    templateTask(2, 1, null, 2, "Design the pages", 7, "wt_seed01"),
+    templateTask(3, 1, 2, 1, "Home page mockup", 5, "wt_seed01"),
+    templateTask(4, 1, null, 3, "Build and test", 21, null),
+    templateTask(5, 1, null, 4, "Launch", 28, null),
+    templateTask(6, 2, null, 1, "Measure the room", 0, null),
+    templateTask(7, 2, null, 2, "Order the cabinets", 7, null),
+    templateTask(8, 2, null, 3, "Schedule the plumber", 14, null),
+    templateTask(9, 2, null, 4, "Final walk-through", 45, null),
+  ];
   const projectActivities: Row[] = [
     {
       id: "ac_seedpj01",
@@ -1201,6 +1243,8 @@ export function devSeed(now: Date, tz: string): DevSeed {
     clientRates,
     timeEntries,
     projects,
+    templates,
+    templateTasks,
     projectActivities,
     projectTimeEntries,
     campaigns,
@@ -1235,6 +1279,8 @@ export function buildDevSeed(now: Date, tz: string): string {
     "UPDATE settings SET campaigns = 1, postal_address = '100 Example Street, Springfield' WHERE id = 1;",
     ...seed.workTypes.map((row) => insert("work_types", row)),
     ...seed.clientRates.map((row) => insert("client_rates", row)),
+    ...seed.templates.map((row) => insert("project_templates", row)),
+    ...seed.templateTasks.map((row) => insert("template_tasks", row)),
     ...seed.timeEntries.map((row) => insert("time_entries", row)),
     ...seed.projectActivities.map((row) => insert("activities", row)),
     ...seed.projectTimeEntries.map((row) => insert("time_entries", row)),

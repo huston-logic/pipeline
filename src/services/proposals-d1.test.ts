@@ -143,6 +143,28 @@ test("a project and a 100-task plan stay at most 40 D1 calls each way, apply as 
   assert.deepEqual({ ...(await rows()) }, { p: 0, t: 0 });
 });
 
+test("a project copied from a 100-task template stays at most 40 D1 calls each way and undoes as one", async () => {
+  const rows = PLAN_TASKS.map((item, i) => {
+    const parent = item.under === undefined ? "NULL" : `'tt_${item.under}'`;
+    return `('tt_${i + 1}', 'tp_big', ${parent}, ${i + 1}, '${item.title}', ${item.dueDays ?? "NULL"}, ${i % 3 === 0 ? "'wt_design'" : "NULL"})`;
+  }).join(", ");
+  const more =
+    "UPDATE settings SET projects = 1; INSERT INTO project_templates (id, name) VALUES ('tp_big', 'Big kit'); " +
+    `INSERT INTO template_tasks (id, template_id, parent_id, position, title, due_days, work_type_id) VALUES ${rows}`;
+  const db = await seeded(more);
+  const answer = await proposeChanges(ctxFor(db, "propose_changes"), { actions: [{ action: "add_project", contact: "Pat", name: "Harbor kitchen", template: "Big kit" }] }, DEPS);
+  assert.equal(answer.kind, "proposal", JSON.stringify(answer));
+  const proposeCalls = db.calls;
+  db.reset();
+  const result = await applyChanges(ctxFor(db, "apply_changes"), answer.kind === "proposal" ? answer.id : "", DEPS);
+  assert.ok(proposeCalls <= 40, `propose made ${proposeCalls} D1 calls`);
+  assert.ok(db.calls <= 40, `apply made ${db.calls} D1 calls`);
+  const count = async () => (await db.prepare("SELECT count(*) AS n FROM tasks WHERE title LIKE 'Step %'").first<{ n: number }>())?.n;
+  assert.equal(await count(), 100);
+  await undoChange({ db, now: NOW, actor: "owner", tool: "undo_change" }, result.changeId);
+  assert.equal(await count(), 0);
+});
+
 test("a one-action proposal makes at most 12 D1 calls to propose and 12 to apply", async () => {
   assertAtMost(await measure([{ action: "log_activity", deal: "Pat", type: "call", summary: "Pat wants a quote by Friday." }]), 12);
 });

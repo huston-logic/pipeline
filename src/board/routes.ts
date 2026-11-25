@@ -90,6 +90,11 @@ export const boardRoutes: string[] = [
   "/projects/new",
   "/projects/pj_seed01",
   "/projects/pj_seed01/edit",
+  "/templates",
+  "/templates?show=archived",
+  "/templates/new",
+  "/templates/tp_seed01",
+  "/templates/tp_seed01/tasks/tt_seed01/edit",
   "/contacts/ct_seed07/projects/new",
   "/deals/dl_seed07/projects/new",
   "/campaigns",
@@ -184,6 +189,14 @@ export const projectsItem: NavItem = {
   description: "Delivery work after a sale: each project's tasks, notes and time.",
 };
 
+/** Templates, under More only while projects are on: task lists a new project can start from. */
+export const templatesItem: NavItem = {
+  href: "/templates",
+  label: "Templates",
+  icon: "projects",
+  description: "Task lists a new project can start from.",
+};
+
 /** Campaigns, under More only while campaigns are on (decision 0053). */
 export const campaignsItem: NavItem = {
   href: "/campaigns",
@@ -194,7 +207,7 @@ export const campaignsItem: NavItem = {
 
 /** The More items for this copy: Time, Projects, then Campaigns, sit after "What it caught" when each is on. */
 export function moreItemsFor(on: { timeTracking: boolean; campaigns: boolean; projects?: boolean }): NavItem[] {
-  const extra = [...(on.timeTracking ? [timeItem] : []), ...(on.projects === true ? [projectsItem] : []), ...(on.campaigns ? [campaignsItem] : [])];
+  const extra = [...(on.timeTracking ? [timeItem] : []), ...(on.projects === true ? [projectsItem, templatesItem] : []), ...(on.campaigns ? [campaignsItem] : [])];
   if (extra.length === 0) return moreItems;
   const at = moreItems.findIndex((item) => item.href === "/report") + 1;
   return [...moreItems.slice(0, at), ...extra, ...moreItems.slice(at)];

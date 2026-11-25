@@ -4,9 +4,10 @@
 // change.
 import type { ContactRow, ProjectRow, ProjectStatusRow } from "../db/db.ts";
 import { newId } from "../ids.ts";
-import { formatLocal } from "../time.ts";
-import { type ChangeResult, commitChange, type Ctx, type RowChange, updatedRow } from "./change.ts";
-import { capitalize, fieldsLabel } from "./describe.ts";
+import { formatLocal, localDate, parseWhen } from "../time.ts";
+import { type ChangeResult, commitChange, type Ctx, needsBulk, type RowChange, updatedRow } from "./change.ts";
+import { capitalize, fieldsLabel, short } from "./describe.ts";
+import { readTemplateCopy, templateTaskRows } from "./template-copy.ts";
 import { UserError } from "./errors.ts";
 import { checkFieldValues } from "./fields.ts";
 import { clean, whenOrNull, withoutNulls } from "./input.ts";
@@ -45,6 +46,8 @@ export interface ProjectInput {
   moveOpenTasks?: boolean;
   /** Marks every open task of the deal done, leaving them on the deal; needs a deal, and wins over moveOpenTasks. */
   completeOpenTasks?: boolean;
+  /** A template's id or exact name: its live tasks are copied onto the project (no link back is kept). */
+  template?: string;
 }
 
 export interface ProjectPatch {
@@ -123,8 +126,15 @@ export async function addProject(ctx: Ctx, input: ProjectInput): Promise<ChangeR
   }
   const name = checkName(given ?? (deal ? deal.title : null));
   const status = input.status === undefined ? await defaultProjectStatus(ctx) : await findProjectStatus(ctx, input.status);
-  const startAt = whenOrNull(input.startAt ?? null, tz);
+  const copy = input.template === undefined ? null : await readTemplateCopy(ctx, input.template);
+  const givenStart = whenOrNull(input.startAt ?? null, tz);
+  // A template with due dates counts from the start, so a project with none starts today (ruling 9).
+  const startsToday = givenStart === null && copy !== null && copy.tasks.some((task) => task.due_days !== null);
+  const startAt = startsToday ? parseWhen(localDate(ctx.now, tz), tz).toISOString() : givenStart;
   const targetAt = whenOrNull(input.targetAt ?? null, tz);
+  if (startsToday && targetAt !== null && startAt !== null && targetAt < startAt) {
+    throw new UserError("The target date is before the start date, which defaulted to today because the template has due dates. Give a startAt, or a later target.");
+  }
   checkDates(startAt, targetAt);
   const fields = withoutNulls(input.fields ?? {});
   await checkFieldValues(ctx, "project", fields);
@@ -156,14 +166,21 @@ export async function addProject(ctx: Ctx, input: ProjectInput): Promise<ChangeR
       : { project_id: project.id, deal_id: null, contact_id: contact?.id ?? null, parent_id: null, position: i + 1 };
     changes.push({ table: "tasks", id: task.id, before: task, after: updatedRow(task, set, ctx.now) });
   }
+  const copied = copy === null ? [] : templateTaskRows(ctx, copy.tasks, { project, startAt, tz, contactId: contact?.id ?? null, first: open.length + 1 });
+  changes.push(...copied.map((row) => ({ table: "tasks" as const, id: row.id, before: null, after: row, group: `copy:${project.id}` })));
+  const copiedText =
+    copy === null
+      ? ""
+      : ` (copied ${copied.length} ${copied.length === 1 ? "task" : "tasks"} from template "${short(copy.template.name, 60)}"${startsToday ? ", starting today" : ""})`;
   const from = deal ? `, from ${dealTitle(deal)}` : "";
   const taskWord = `${open.length} open task${open.length === 1 ? "" : "s"}`;
   const movedText = open.length === 0 ? "" : ` (${complete ? "completed" : "moved"} ${taskWord})`;
   const forText = contact === null ? "" : ` for ${contactName(contact)}`;
   const result = await commitChange(ctx, {
     target: { table: "projects", id: project.id },
-    summary: `Added project ${projectTitle(project)}${forText}${from}${movedText}`,
+    summary: `Added project ${projectTitle(project)}${forText}${from}${movedText}${copiedText}`,
     changes,
+    bulk: ctx.plan === undefined && needsBulk(changes),
   });
   return { ...result, projectId: project.id, ...(contact === null ? {} : { contactId: contact.id }) };
 }

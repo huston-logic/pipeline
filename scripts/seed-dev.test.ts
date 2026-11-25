@@ -32,6 +32,15 @@ async function rows<T>(db: SqliteD1, sql: string): Promise<T[]> {
   return (await db.prepare(sql).all<T>()).results;
 }
 
+test("the seed has two templates: tp_seed01 with its tasks, tt_seed01 first, one nested", async () => {
+  const db = await seeded();
+  const templates = await rows<{ id: string }>(db, "SELECT id FROM project_templates ORDER BY id");
+  assert.deepEqual(templates.map((t) => t.id), ["tp_seed01", "tp_seed02"]);
+  const tasks = await rows<{ id: string; parent_id: string | null }>(db, "SELECT id, parent_id FROM template_tasks WHERE template_id = 'tp_seed01' ORDER BY id");
+  assert.equal(tasks[0]?.id, "tt_seed01");
+  assert.ok(tasks.length >= 4 && tasks.some((t) => t.parent_id !== null));
+});
+
 const TABLES = ["field_defs", "contacts", "deals", "activities", "tasks", "rules", "briefs", "audit_log", "views"];
 
 test("the seed loads onto the defaults with clean foreign keys, and loading it twice adds nothing", async () => {

@@ -1035,6 +1035,34 @@ test("0022 numbers each project's existing tasks by created_at then id, all top 
   assert.deepEqual((await db.prepare("PRAGMA foreign_key_check").all()).results, []);
 });
 
+test("0024 adds templates and a task work type: old tasks keep their values, the new tables enforce their rules", async () => {
+  const db = new SqliteD1();
+  await applyMigrations(db, 23);
+  applySqlFile(db, "seed/defaults.sql");
+  db.exec(`INSERT INTO tasks (id, title) VALUES ('tk_old', 'Buy ink');`);
+  const before = await snapshot(db, ["tasks"]);
+
+  assert.deepEqual(await applyMigrations(db, 24), ["0024_templates.sql"]);
+
+  const after = await snapshot(db, ["tasks"]);
+  assert.deepEqual(after.tasks?.map((row) => ({ ...row, work_type_id: undefined })), before.tasks?.map((row) => ({ ...row, work_type_id: undefined })));
+  assert.equal(after.tasks?.[0]?.work_type_id, null);
+  db.exec(`INSERT INTO work_types (id, name, position) VALUES ('wt_a', 'Design', 1);
+    INSERT INTO project_templates (id, name) VALUES ('tp_a', 'Launch');
+    INSERT INTO template_tasks (id, template_id, position, title, due_days, work_type_id) VALUES ('tt_a', 'tp_a', 1, 'Plan', 0, 'wt_a');
+    INSERT INTO template_tasks (id, template_id, parent_id, position, title) VALUES ('tt_b', 'tp_a', 'tt_a', 1, 'Draft');
+    UPDATE tasks SET work_type_id = 'wt_a'`);
+  assert.throws(() => db.exec("INSERT INTO project_templates (id, name) VALUES ('tp_b', 'LAUNCH')"), /UNIQUE/);
+  db.exec("UPDATE project_templates SET archived = 1 WHERE id = 'tp_a'; INSERT INTO project_templates (id, name) VALUES ('tp_b', 'LAUNCH')");
+  assert.throws(() => db.exec("INSERT INTO project_templates (id, name) VALUES ('tp_c', '')"), /CHECK/);
+  assert.throws(() => db.exec("INSERT INTO project_templates (id, name) VALUES ('tp_c', 'a' || char(10) || 'b')"), /CHECK/);
+  assert.throws(() => db.exec("INSERT INTO template_tasks (id, template_id, position, title, due_days) VALUES ('tt_c', 'tp_b', 1, 'x', 3651)"), /CHECK/);
+  assert.throws(() => db.exec("INSERT INTO template_tasks (id, template_id, position, title, due_days) VALUES ('tt_c', 'tp_b', 1, 'x', -1)"), /CHECK/);
+  assert.throws(() => db.exec("INSERT INTO template_tasks (id, template_id, position, title) VALUES ('tt_c', 'tp_none', 1, 'x')"), /FOREIGN KEY/);
+  assert.throws(() => db.exec("INSERT INTO template_tasks (id, template_id, position, title, work_type_id) VALUES ('tt_c', 'tp_b', 1, 'x', 'wt_none')"), /FOREIGN KEY/);
+  assert.deepEqual((await db.prepare("PRAGMA foreign_key_check").all()).results, []);
+});
+
 /**
  * Fake rows for every table, with only the columns the table had when it was created, so they load at any later
  * version. A migration that adds a table must add its rows here (the test below fails until it does).
@@ -1093,6 +1121,9 @@ const FAKE_ROWS: Record<string, string> = {
   project_statuses: "INSERT INTO project_statuses (key, label, position) VALUES ('fake', 'Fake', 4)",
   projects:
     "INSERT INTO projects (id, name, contact_id, deal_id, status_key, start_at, target_at, notes) VALUES ('pj_fake', 'Website refresh', 'ct_fake', 'dl_fake', 'active', '2026-11-18T08:00:00.000Z', '2026-12-18T08:00:00.000Z', 'Notes')",
+  project_templates: "INSERT INTO project_templates (id, name, description) VALUES ('tp_fake', 'Website launch', 'Standard steps')",
+  template_tasks:
+    "INSERT INTO template_tasks (id, template_id, parent_id, position, title, due_days, work_type_id) VALUES ('tt_fake', 'tp_fake', NULL, 1, 'Plan', 0, 'wt_fake'), ('tt_fake2', 'tp_fake', 'tt_fake', 1, 'Draft', 7, NULL)",
 };
 
 /**

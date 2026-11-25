@@ -141,7 +141,7 @@ async function planned<T>(names: Names, table: Named, id: string | null): Promis
   return readerOf(names.src).db.prepare(`SELECT * FROM ${table} WHERE id = ?`).bind(id).first<T>();
 }
 
-type Named = "contacts" | "deals" | "tasks" | "projects";
+type Named = "contacts" | "deals" | "tasks" | "projects" | "project_templates";
 
 /** At most this many ids in one IN list (D1 takes 100 bound parameters a statement). */
 const IDS_PER_READ = 100;
@@ -373,36 +373,85 @@ async function taskItem(names: Names, id: string, before: Row | null, after: Row
   };
 }
 
+/** One task or template task as a line of a tree: its row and the words after its title. */
+interface TreeNode {
+  row: Row;
+  words: string[];
+}
+
+/** The nodes as lines in tree order, two spaces deeper for each level; a parent outside the set makes a node top level. */
+function treeLines(nodes: readonly TreeNode[], title: (row: Row) => string): string[] {
+  const inSet = new Set(nodes.map((node) => String(node.row.id)));
+  const kids = new Map<string | null, TreeNode[]>();
+  for (const node of nodes) {
+    const parent = typeof node.row.parent_id === "string" && inSet.has(node.row.parent_id) ? node.row.parent_id : null;
+    kids.set(parent, [...(kids.get(parent) ?? []), node]);
+  }
+  const lines: string[] = [];
+  const walk = (parent: string | null, depth: number) => {
+    const siblings = [...(kids.get(parent) ?? [])].sort((a, b) => Number(a.row.position ?? 0) - Number(b.row.position ?? 0));
+    for (const node of siblings) {
+      lines.push(`${"  ".repeat(depth + 1)}- ${title(node.row)}${node.words.length === 0 ? "" : ` (${node.words.join("; ")})`}`);
+      walk(String(node.row.id), depth + 1);
+    }
+  };
+  walk(null, 0);
+  return lines;
+}
+
+const taskTitleOf = (row: Row) => taskTitle(row as unknown as { id: string; title: string });
+
+/** The lines of tasks a plan or a template copy adds: title, due date and work type. */
+async function taskLines(names: Names, rows: readonly Row[]): Promise<string[]> {
+  const nodes: TreeNode[] = [];
+  for (const row of rows) {
+    show(names, "tasks", String(row.id), ["title", "deal_id", "contact_id", "project_id", "parent_id", "position", "due_at", "work_type_id", ...(row.source === "owner" ? ["source"] : [])]);
+    const words: string[] = [];
+    if (row.due_at !== null && row.due_at !== undefined) words.push(`due ${shown(names, "tasks", "due_at", row.due_at)}`);
+    const type = await workTypeName(names, row.work_type_id);
+    if (type !== null) words.push(type);
+    nodes.push({ row, words });
+  }
+  return treeLines(nodes, taskTitleOf);
+}
+
 /**
  * A task plan (add_task_plan) as one item: "Add 3 tasks to project "Retrofit"", then a line per task in tree order, two
- * spaces deeper for each level, with its due date when set. A plan put under an existing task says so.
+ * spaces deeper for each level, with its due date and work type when set. A plan put under an existing task says so.
  */
 async function planItem(names: Names, rows: readonly Row[]): Promise<Pick<Item, "record" | "fields" | "lines">> {
   const first = rows[0] as Row;
   const project = await planned<ProjectRow>(names, "projects", String(first.project_id));
   const inPlan = new Set(rows.map((row) => String(row.id)));
-  const kids = new Map<string | null, Row[]>();
-  for (const row of rows) {
-    const parent = typeof row.parent_id === "string" && inPlan.has(row.parent_id) ? row.parent_id : null;
-    kids.set(parent, [...(kids.get(parent) ?? []), row]);
-    show(names, "tasks", String(row.id), ["title", "deal_id", "contact_id", "project_id", "parent_id", "position", "due_at", ...(row.source === "owner" ? ["source"] : [])]);
-  }
-  const lines: string[] = [];
-  const walk = (parent: string | null, depth: number) => {
-    const siblings = [...(kids.get(parent) ?? [])].sort((a, b) => Number(a.position ?? 0) - Number(b.position ?? 0));
-    for (const row of siblings) {
-      const due = row.due_at === null || row.due_at === undefined ? "" : ` (due ${shown(names, "tasks", "due_at", row.due_at)})`;
-      lines.push(`${"  ".repeat(depth + 1)}- ${taskTitle(row as unknown as { id: string; title: string })}${due}`);
-      walk(String(row.id), depth + 1);
-    }
-  };
-  walk(null, 0);
+  const lines = await taskLines(names, rows);
   const top = typeof first.parent_id === "string" && !inPlan.has(first.parent_id) ? await planned<TaskRow>(names, "tasks", first.parent_id) : null;
   return {
     record: `Add ${rows.length} ${rows.length === 1 ? "task" : "tasks"} to ${project ? projectWord(project) : `project ${String(first.project_id)}`}`,
     fields: top ? [{ field: "under", to: `task ${taskTitle(top)}` }] : [],
     lines,
   };
+}
+
+/** "Leaves out 2 tasks..." for a template saved from a project with outside titles (the count rides in the group). */
+function leftOutField(group: string | undefined): Item["fields"] {
+  const n = Number(/:out:(\d+)$/.exec(group ?? "")?.[1] ?? 0);
+  return n > 0 ? [{ field: "", to: `Leaves out ${n} ${n === 1 ? "task" : "tasks"} whose titles came from outside.` }] : [];
+}
+
+const templateTitle = (row: Row) => `"${short(String(row.title), 60)}"`;
+
+/** The lines of tasks added to a template: title, days after the start and work type. */
+async function templateLines(names: Names, rows: readonly Row[]): Promise<string[]> {
+  const nodes: TreeNode[] = [];
+  for (const row of rows) {
+    show(names, "template_tasks", String(row.id), ["template_id", "parent_id", "position", "title", "due_days", "work_type_id", "archived"]);
+    const words: string[] = [];
+    if (typeof row.due_days === "number") words.push(`due ${row.due_days} ${row.due_days === 1 ? "day" : "days"} after the start`);
+    const type = await workTypeName(names, row.work_type_id);
+    if (type !== null) words.push(type);
+    nodes.push({ row, words });
+  }
+  return treeLines(nodes, templateTitle);
 }
 
 /** A work type's name, archived ones too (work types are configuration: a plan never writes them). */
@@ -521,7 +570,29 @@ export async function shownList(src: Reader, input: ChangeInput, tz: string, now
   const notes = new Set(input.changes.flatMap((change) => (change.table === "activities" && change.before === null && change.after !== null ? [change.id] : [])));
   const list: ProposalList = { add: [], update: [], tasks: [], notes: [], time: [] };
   const plans = new Map<string, { item: Item; rows: Row[] }>();
+  // Tasks copied from a template, by project id; template tasks added or archived, by template id.
+  const copies = new Map<string, Row[]>();
+  const added = new Map<string, Row[]>();
+  const removed = new Map<string, Row[]>();
   for (const { table, id, before, after, group } of input.changes) {
+    if (table === "tasks" && before === null && after !== null && group?.startsWith("copy:") === true) {
+      copies.set(String(after.project_id), [...(copies.get(String(after.project_id)) ?? []), after]);
+      continue;
+    }
+    if (table === "template_tasks" && after !== null) {
+      const into = before === null ? added : removed;
+      into.set(String(after.template_id), [...(into.get(String(after.template_id)) ?? []), before === null ? after : before]);
+      continue;
+    }
+    if (table === "project_templates" && before === null && after !== null) {
+      show(names, table, id, ["name", "description", "archived"]);
+      list.add.push({ record: capitalize(rowLabel(table, after)), id, fields: [
+          ...(after.description === null || after.description === "" ? [] : [{ field: "description", to: cell(names, table, after, "description", after.description) }]),
+          ...leftOutField(group),
+        ],
+      });
+      continue;
+    }
     if (table === "tasks" && before === null && after !== null && group !== undefined) {
       const plan = plans.get(group) ?? { item: { record: "", id, fields: [] }, rows: [] };
       if (plan.rows.length === 0) {
@@ -574,6 +645,22 @@ export async function shownList(src: Reader, input: ChangeInput, tz: string, now
     if (before === null || fields.length > 0) list.update.push({ record: capitalize(rowLabel(table, before ?? after)), id, fields });
   }
   for (const { item, rows } of plans.values()) Object.assign(item, await planItem(names, rows));
+  for (const [projectId, rows] of copies) {
+    const item = list.add.find((entry) => entry.id === projectId);
+    if (item !== undefined) item.lines = await taskLines(names, rows);
+  }
+  for (const templateId of new Set([...added.keys(), ...removed.keys()])) {
+    const gone = removed.get(templateId) ?? [];
+    for (const row of gone) show(names, "template_tasks", String(row.id), ["archived"]);
+    let item = [...list.add, ...list.update].find((entry) => entry.id === templateId);
+    if (item === undefined) {
+      const template = await planned<Row>(names, "project_templates", templateId);
+      item = { record: template === null ? "Template" : capitalize(rowLabel("project_templates", template)), id: templateId, fields: [] };
+      list.update.push(item);
+    }
+    if (gone.length > 0) item.fields.push({ field: "removes", to: `${gone.length} ${gone.length === 1 ? "task" : "tasks"}` });
+    item.lines = await templateLines(names, added.get(templateId) ?? []);
+  }
   const unshown = input.changes.flatMap(({ table, id, before, after }) => {
     if (after === null) return [];
     const shows = names.shows.get(rowKey(table, id));

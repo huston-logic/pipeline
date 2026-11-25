@@ -1,11 +1,12 @@
 // Text primary keys: <prefix>_<12 lowercase base32 characters> (60 random bits).
 
-export const ID_PREFIXES = ["ct", "dl", "ac", "tk", "ru", "rf", "fd", "br", "chg", "ps", "im", "vw", "pr", "wt", "cr", "te", "cp", "cs", "rc", "cb", "su", "pj"] as const;
+export const ID_PREFIXES = ["ct", "dl", "ac", "tk", "ru", "rf", "fd", "br", "chg", "ps", "im", "vw", "pr", "wt", "cr", "te", "cp", "cs", "rc", "cb", "su", "pj", "tp", "tt"] as const;
 
 /**
  * ct contact, dl deal, ac activity, tk task, ru rule, rf rule firing, fd field, br brief, chg change, ps push
  * subscription, im board import draft, vw saved view, pr proposal, wt work type, cr client rate, te time entry,
- * cp campaign, cs campaign step, rc campaign recipient, cb campaign batch, su email suppression, pj project.
+ * cp campaign, cs campaign step, rc campaign recipient, cb campaign batch, su email suppression, pj project,
+ * tp project template, tt template task.
  */
 export type IdPrefix = (typeof ID_PREFIXES)[number];
 
@@ -46,6 +47,12 @@ export const isActivityId = (id: string): boolean => /^ac_[a-z0-9]{1,32}$/.test(
 
 /** The same check for a project id ("pj_" ...), used by the board's project page and posts (decision 0055). */
 export const isProjectId = (id: string): boolean => /^pj_[a-z0-9]{1,32}$/.test(id);
+
+/** The same check for a project template id ("tp_" ...), used by the board's template pages and posts. */
+export const isTemplateId = (id: string): boolean => /^tp_[a-z0-9]{1,32}$/.test(id);
+
+/** The same check for a template task id ("tt_" ...), used by the board's template task pages and posts. */
+export const isTemplateTaskId = (id: string): boolean => /^tt_[a-z0-9]{1,32}$/.test(id);
 
 /** The same check for a campaign id ("cp_" ...), used by the board's campaign pages (decision 0053). */
 export const isCampaignId = (id: string): boolean => /^cp_[a-z0-9]{1,32}$/.test(id);

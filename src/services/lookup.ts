@@ -2,7 +2,19 @@
 // that matches more than one record is refused with every match's id, so the caller can pick.
 // The reads by id a record service makes take a Source: a database, or a ctx that may carry a plan (decision 0044).
 // In collect mode a row the plan already has is read from the plan, so each action sees what the earlier ones planned.
-import type { ContactRow, Db, DealRow, ProjectRow, StageKind, StageRow, TaskRow, TimeEntryRow, WorkTypeRow } from "../db/db.ts";
+import type {
+  ContactRow,
+  Db,
+  DealRow,
+  ProjectRow,
+  ProjectTemplateRow,
+  StageKind,
+  StageRow,
+  TaskRow,
+  TemplateTaskRow,
+  TimeEntryRow,
+  WorkTypeRow,
+} from "../db/db.ts";
 import { findContactByEmail } from "../db/queries.ts";
 import type { ChangeTable, Row } from "./change.ts";
 import { UserError } from "./errors.ts";
@@ -23,7 +35,7 @@ export function sourceOf(src: Source): { db: Db; plan: PlanCollector | undefined
   return "prepare" in src ? { db: src, plan: undefined } : { db: src.db, plan: src.plan };
 }
 
-type ById = "contacts" | "deals" | "tasks" | "time_entries" | "work_types" | "projects";
+type ById = "contacts" | "deals" | "tasks" | "time_entries" | "work_types" | "projects" | "project_templates" | "template_tasks";
 
 async function rowById<T>(src: Source, table: ById, id: string): Promise<T | null> {
   const { db, plan } = sourceOf(src);
@@ -43,6 +55,33 @@ export const taskById = (src: Source, id: string) => rowById<TaskRow>(src, "task
 export const timeEntryById = (src: Source, id: string) => rowById<TimeEntryRow>(src, "time_entries", id);
 export const workTypeById = (src: Source, id: string) => rowById<WorkTypeRow>(src, "work_types", id);
 export const projectById = (src: Source, id: string) => rowById<ProjectRow>(src, "projects", id);
+export const templateById = (src: Source, id: string) => rowById<ProjectTemplateRow>(src, "project_templates", id);
+export const templateTaskById = (src: Source, id: string) => rowById<TemplateTaskRow>(src, "template_tasks", id);
+
+/** A template's live tasks in tree order (siblings by position, parents before children), as the plan leaves them. */
+export async function templateTasksOf(src: Source, templateId: string): Promise<TemplateTaskRow[]> {
+  const { db } = sourceOf(src);
+  const found = await db
+    .prepare("SELECT * FROM template_tasks WHERE template_id = ? AND archived = 0 ORDER BY position, created_at, id")
+    .bind(templateId)
+    .all<TemplateTaskRow>();
+  const all = withPlanned(src, "template_tasks", found.results, (row) => row.template_id === templateId && row.archived === 0);
+  const children = new Map<string | null, TemplateTaskRow[]>();
+  for (const task of all) children.set(task.parent_id, [...(children.get(task.parent_id) ?? []), task]);
+  const out: TemplateTaskRow[] = [];
+  const seen = new Set<string>();
+  const walk = (parent: string | null) => {
+    const kids = (children.get(parent) ?? []).sort((a, b) => a.position - b.position || a.id.localeCompare(b.id));
+    for (const kid of kids) {
+      if (seen.has(kid.id)) continue;
+      seen.add(kid.id);
+      out.push(kid);
+      walk(kid.id);
+    }
+  };
+  walk(null);
+  return out;
+}
 
 /** A row the plan has (null: planned deleted), else the one read with it, if it is that row, else a read of its own. */
 async function plannedOr<T extends { id: string }>(src: Source, table: ById, id: string, read: T | undefined): Promise<T | null> {
@@ -148,6 +187,25 @@ export async function siblingTasks(src: Source, projectId: string, parentId: str
   const match = (row: Row) => row.project_id === projectId && (row.parent_id ?? null) === parentId;
   const all = withPlanned(src, "tasks", found.results, match);
   return all.sort((a, b) => (a.position ?? 0) - (b.position ?? 0) || a.id.localeCompare(b.id));
+}
+
+/** Every task of a project, open and done, in tree order (a parent before its children), as the plan leaves them. */
+export async function projectTasksOf(src: Source, projectId: string): Promise<TaskRow[]> {
+  const { db } = sourceOf(src);
+  const found = await db.prepare("SELECT * FROM tasks WHERE project_id = ? ORDER BY position, created_at, id").bind(projectId).all<TaskRow>();
+  const all = withPlanned(src, "tasks", found.results, (row) => row.project_id === projectId);
+  const children = new Map<string | null, TaskRow[]>();
+  for (const task of all) children.set(task.parent_id ?? null, [...(children.get(task.parent_id ?? null) ?? []), task]);
+  const out: TaskRow[] = [];
+  const walk = (parent: string | null) => {
+    const kids = (children.get(parent) ?? []).sort((a, b) => (a.position ?? 0) - (b.position ?? 0) || a.id.localeCompare(b.id));
+    for (const kid of kids) {
+      out.push(kid);
+      walk(kid.id);
+    }
+  };
+  walk(null);
+  return out;
 }
 
 /** The position a new task takes: last among its siblings (same project, same parent), planned tasks counted, plus one. */
