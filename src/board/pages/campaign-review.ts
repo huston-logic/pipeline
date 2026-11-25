@@ -71,6 +71,13 @@ function limitLine(n: number, limit: number, sendDay: string): Html | "" {
 /** The when fields' value for the Schedule form: the suggested time as the owner's wall clock, or empty. */
 const suggestedWhen = (campaign: CampaignRow, tz: string): string => (campaign.suggested_send_at === null ? "" : localWhen(campaign.suggested_send_at, tz));
 
+/** "Send test to me": one email to the signed-in owner, never to the list. */
+const testForm = (ctx: PageContext, campaign: CampaignRow): Html =>
+  html`<div class="card send-forms">
+${postForm("send-form", actionPath(campaign.id, "test"), { csrf: ctx.csrf, here: ctx.here }, html`<button class="button button-quiet" type="submit">Send test to me</button>
+<p class="field-hint">Sends one email to you, with “Test: ” before the subject.</p>`)}
+</div>`;
+
 function sendForms(ctx: PageContext, campaign: CampaignRow, tz: string, n: number, print: string, state: ReviewState | undefined): Html {
   const form = { csrf: ctx.csrf, here: ctx.here };
   const typed = state?.schedule;
@@ -148,7 +155,7 @@ async function reviewBody(ctx: PageContext, { campaign, step, settings, tz }: Re
   const formsShown = !scheduled && resolved !== null && blocker === null && sendable.length > 0;
   let actions: Html;
   if (scheduled) {
-    actions = html`<div class="page-action">${smallForm(ctx, campaign.id, "cancel", "Cancel campaign")}${smallForm(ctx, campaign.id, "duplicate", "Duplicate")}</div>`;
+    actions = html`<div class="page-action">${smallForm(ctx, campaign.id, "cancel", "Cancel campaign")}${smallForm(ctx, campaign.id, "duplicate", "Duplicate")}</div>${blocker === null ? testForm(ctx, campaign) : ""}`;
   } else {
     const edit = html`<a class="button button-quiet" href="${campaignEditPath(campaign.id)}">Edit</a>`;
     const own = html`<div class="page-action">${edit}${smallForm(ctx, campaign.id, "duplicate", "Duplicate")}${smallForm(ctx, campaign.id, "archive", "Archive")}</div>`;
@@ -159,12 +166,13 @@ async function reviewBody(ctx: PageContext, { campaign, step, settings, tz }: Re
           ? html`<p class="notice"${announce}>${blocker}</p>`
           : sendable.length === 0
             ? html`<p class="notice"${announce}>No one in this group can get the email.</p>`
-            : sendForms(ctx, campaign, tz, sendable.length, await fingerprint(campaign, step, resolved), state);
+            : html`${sendForms(ctx, campaign, tz, sendable.length, await fingerprint(campaign, step, resolved), state)}${testForm(ctx, campaign)}`;
     actions = html`${own}${send}`;
   }
 
   return html`<h1>${campaign.name}</h1>
 ${state?.schedule !== undefined && formsShown ? "" : refusalNote(state)}
+${ctx.query.get("test") === "sent" ? html`<p class="notice">A test is on its way to you.</p>` : ""}
 <p class="lede">${tag(STATUS_LABELS[campaign.status])}</p>
 ${to}
 ${resolved === null ? "" : skippedSection(resolved)}
