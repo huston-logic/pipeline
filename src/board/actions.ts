@@ -23,6 +23,7 @@ import { PROJECT_ROUTES } from "./project-actions.ts";
 import { TEMPLATE_ROUTES } from "./template-actions.ts";
 import { newProjectOfDealPath } from "./project-form.ts";
 import { PUSH_ROUTES } from "./push-actions.ts";
+import { PENDING_ROUTES } from "./pending-actions.ts";
 import { type FormContext, hidden, postForm } from "./forms.ts";
 import { html } from "./html.ts";
 import { renderPage } from "./layout.ts";
@@ -173,6 +174,7 @@ const ROUTES: Route[] = [
   ...TEMPLATE_ROUTES,
   ...CAMPAIGN_ROUTES,
   ...PUSH_ROUTES,
+  ...PENDING_ROUTES,
   ...LEAD_ROUTES,
   ...IMPORT_ROUTES,
 ];

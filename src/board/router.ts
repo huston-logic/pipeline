@@ -27,6 +27,7 @@ import { LEAD_PATH, leadPage } from "./pages/lead-new.ts";
 import { leadsPage } from "./pages/leads.ts";
 import { morePage } from "./pages/more.ts";
 import { NOTIFICATIONS_PATH, notificationsPage } from "./pages/notifications.ts";
+import { PENDING_PATH, pendingPage } from "./pages/pending.ts";
 import { notFoundPage } from "./pages/not-found.ts";
 import { PEOPLE_VIEW_PATH, peopleViewPage } from "./pages/people-view.ts";
 import { pipelinePage } from "./pages/pipeline.ts";
@@ -86,6 +87,7 @@ const PAGES = new Map<string, Page>([
   ["/more", morePage],
   ["/rules", rulesPage],
   ["/changes", changesPage],
+  [PENDING_PATH, (ctx) => pendingPage(ctx)],
   [REPORT_PATH, reportPage],
   ["/export", exportPage],
   [NOTIFICATIONS_PATH, (ctx, request) => notificationsPage(ctx, request.pushKey)],

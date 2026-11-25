@@ -58,6 +58,7 @@ export const boardRoutes: string[] = [
   "/more",
   "/rules",
   "/changes",
+  "/pending",
   "/report",
   "/export",
   "/notifications",
@@ -166,6 +167,7 @@ export const navItems: NavItem[] = [
 export const moreItems: NavItem[] = [
   { href: "/rules", label: "Rules", icon: "rules", description: "Your follow-up rules, and whether each one is on." },
   { href: "/changes", label: "Changes", icon: "changes", description: "Every change from the last 30 days, with its change id." },
+  { href: "/pending", label: "Pending changes", icon: "changes", description: "Changes your AI app proposed, waiting for your yes." },
   { href: "/report", label: "What it caught", icon: "report", description: "Last month: what your rules did, and how many nudges you acted on." },
   { href: "/export", label: "Export", icon: "export", description: "Download a copy of everything, as JSON or CSV." },
   { href: "/import", label: "Import", icon: "import", description: "Bring in people, deals or tasks from a spreadsheet, as a CSV file." },

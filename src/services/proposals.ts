@@ -73,6 +73,24 @@ async function getProposal(db: Db, id: string): Promise<ProposalRow | null> {
   return db.prepare("SELECT * FROM proposals WHERE id = ?").bind(id).first<ProposalRow>();
 }
 
+/** The open, unexpired lists waiting for the owner, newest first (the board's Pending changes page). */
+export async function listOpenProposals(db: Db, now: Date): Promise<ProposalRow[]> {
+  const { results } = await db
+    .prepare("SELECT * FROM proposals WHERE status = 'open' AND expires_at > ? ORDER BY created_at DESC, rowid DESC")
+    .bind(now.toISOString())
+    .all<ProposalRow>();
+  return results;
+}
+
+/** The owner turns a waiting list down: it is dropped (scratch space, not audited). Anything not open is refused plainly. */
+export async function discardProposal(db: Db, id: string, now: Date): Promise<void> {
+  const row = isProposalId(id) ? await getProposal(db, id) : null;
+  if (row === null) throw new UserError("That list isn't there any more. It may have expired.");
+  if (row.status === "applied") throw new UserError("That list was already approved, so it can't be discarded.");
+  if (row.status === "dropped" || row.expires_at <= now.toISOString()) throw new UserError("That list was already closed.");
+  await db.prepare("UPDATE proposals SET status = 'dropped' WHERE id = ? AND status = 'open'").bind(id).run();
+}
+
 /** The actions planned in order with a fresh collector; a service's refusal comes back as "Action N: ...". */
 async function planActions(ctx: Ctx, actions: readonly ResolvedAction[], deps: Deps): Promise<PlanCollector> {
   const plan = new PlanCollector();
