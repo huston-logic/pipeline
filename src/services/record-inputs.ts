@@ -194,7 +194,7 @@ export const addTaskPlanInput = z.strictObject({
   tasks: z.array(taskPlanItemInput).min(1).max(100).describe("The tasks, in order, at most 100."),
 });
 
-export const completeTaskInput =z.strictObject({
+export const completeTaskInput = z.strictObject({
   task: taskRef(),
   subTasks: z.enum(["complete", "leave"]).optional().describe('Needed when the task has open sub-tasks: "complete" finishes them too, "leave" keeps them open.'),
 });

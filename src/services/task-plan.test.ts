@@ -85,12 +85,19 @@ test("a plan can go under an existing open task of the project", async () => {
   await assert.rejects(addTaskPlan(ctxFor(db), { project: "pj_nodate", under: "tk_old", tasks: [{ title: "x" }] }), /parent's project/);
 });
 
+test("dueDays across the spring daylight-saving change land on local midnight", async () => {
+  const db = await setup("UPDATE projects SET start_at = '2026-03-05T08:00:00.000Z' WHERE id = 'pj_seed01'");
+  const result = await addTaskPlan(ctxFor(db), { project: "pj_seed01", tasks: [{ title: "After the change", dueDays: 10 }] });
+  const row = (await tasksOf(db, "pj_seed01")).find((task) => task.id === result.taskIds[0]);
+  assert.equal(row?.due_at, "2026-03-15T07:00:00.000Z");
+});
+
 test("projects off refuses", async () => {
   const db = await setup("", 0);
   await assert.rejects(addTaskPlan(ctxFor(db), { project: "pj_seed01", tasks: [{ title: "A" }] }), /projects are off/i);
 });
 
-test("add_project then a plan on @1 in one proposal: indented list, due days from the planned start, apply equals one by one", async () => {
+test("add_project then a plan on @1 in one proposal: indented list, due days from the planned start, apply and one undo", async () => {
   const db = await setup();
   const actions: RecordAction[] = [
     { action: "add_project", name: "Office move", startAt: "2026-12-07" },
