@@ -1,9 +1,8 @@
 // /projects/<pj id> (decision 0055): the project's card, its time (only while time tracking is on), open and done tasks,
 // and its notes. 404 while projects are off, for an unknown id or one that is no project's. A name from outside is
 // labelled and never in the <title>, the description or a link's text.
-import { projectDoneTimes } from "../../db/queries.ts";
+import { listFieldDefs, projectDoneTimes } from "../../db/queries.ts";
 import { ownerTimezone } from "../../services/lookup.ts";
-import { projectStatusRows } from "../../services/memo.ts";
 import { getProject, type ProjectDetail } from "../../services/project-read.ts";
 import { UserError } from "../../services/errors.ts";
 import { formatDuration, formatMoney } from "../../services/time-format.ts";
@@ -14,7 +13,8 @@ import { type Html, html } from "../html.ts";
 import { renderPage } from "../layout.ts";
 import { logForm } from "../log-form.ts";
 import { contactLink, dealLink, empty, labelled, pairs, projectHref, section, tag, when } from "../parts.ts";
-import { outsideNote, taskCard, timelineItem } from "../records.ts";
+import { statusChoices } from "../project-form.ts";
+import { customRows, outsideNote, taskCard, timelineItem } from "../records.ts";
 import { addTaskForm, type Subject } from "../task-forms.ts";
 import { startTimerForm } from "../timer-start.ts";
 import { dateOr } from "../project-parts.ts";
@@ -45,7 +45,7 @@ function archiveForm(project: ProjectDetail, form: FormContext): Html {
   );
 }
 
-function projectSection(project: ProjectDetail, statuses: { key: string; label: string }[], tz: string, form: FormContext): Html {
+function projectSection(project: ProjectDetail, statuses: { key: string; label: string }[], labels: Map<string, string>, tz: string, form: FormContext): Html {
   const outside = new Set<string>(project.untrusted_fields);
   return section(
     "project-heading",
@@ -58,6 +58,7 @@ ${pairs([
   { name: "Start", value: dateOr(project.startAt, tz) },
   { name: "Target", value: dateOr(project.targetAt, tz) },
   project.notes !== null && project.notes !== "" && { name: "Notes", value: project.notes },
+  ...customRows(project.fields, labels, new Set()),
 ])}
 ${project.archived ? html`<p class="note">This project is archived.</p>` : ""}
 <p class="card-actions"><a href="${projectEditPath(project.id)}">Edit project</a></p>
@@ -151,7 +152,9 @@ export async function projectPage(ctx: PageContext, id: string): Promise<string 
   // A name is looked up by id only here: a project another one is named like never gets this page.
   if (project.id !== id) return null;
   const tz = await ownerTimezone(db);
-  const statuses = await projectStatusRows(db);
+  const statuses = await statusChoices(db, project.status);
+  const defs = await listFieldDefs(db, { entity: "project", includeArchived: true });
+  const labels = new Map(defs.map((def) => [def.key, def.label]));
   const doneAt = await projectDoneTimes(db, project.id);
   const nameOutside = project.untrusted_fields.includes("name");
   const name = nameOutside ? `Project ${project.id}` : project.name;
@@ -167,7 +170,7 @@ export async function projectPage(ctx: PageContext, id: string): Promise<string 
 ${hasOutsideText(project) ? outsideNote() : ""}
 <div class="deal-columns">
 <div>
-${projectSection(project, statuses, tz, ctx)}
+${projectSection(project, statuses, labels, tz, ctx)}
 ${timeSection(project, ctx, name)}
 </div>
 <div>

@@ -1,13 +1,12 @@
 // /projects/<id>/edit (decision 0055): change a project's name, status, dates or notes (update_project). Only the fields
 // the owner changes are saved (decision 0018). 404 while projects are off and for an id that is no project's; an archived
 // project can still be edited.
-import { getSettings } from "../../db/queries.ts";
+import { getSettings, listFieldDefs } from "../../db/queries.ts";
 import { isProjectId } from "../../ids.ts";
 import { ownerTimezone, projectById } from "../../services/lookup.ts";
-import { projectStatusRows } from "../../services/memo.ts";
 import type { PageContext } from "../context.ts";
 import { projectHref } from "../parts.ts";
-import { PROJECT_PREFIX, projectSavePath, projectSpecs } from "../project-form.ts";
+import { PROJECT_PREFIX, projectSavePath, projectSpecs, statusChoices } from "../project-form.ts";
 import { editShown } from "../record-form.ts";
 import { type FormState, recordFormPage } from "./record-page.ts";
 import { projectEditPath } from "./project.ts";
@@ -17,8 +16,9 @@ export async function projectEditPage(ctx: PageContext, id: string, state?: Form
   const project = await projectById(ctx.db, id);
   if (project === null) return null;
   const tz = await ownerTimezone(ctx.db);
-  const specs = projectSpecs(await projectStatusRows(ctx.db));
-  const shown = state?.shown ?? (await editShown(specs, { ...project, fields: "{}" }, tz));
+  const defs = await listFieldDefs(ctx.db, { entity: "project" });
+  const specs = projectSpecs(await statusChoices(ctx.db, project.status_key), { defs });
+  const shown = state?.shown ?? (await editShown(specs, project, tz));
   const back = projectHref(project.id);
   return recordFormPage(ctx, {
     title: "Edit project",

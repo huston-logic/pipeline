@@ -118,15 +118,15 @@ test("New project from a won deal: the name is the deal's title, and no box with
   assert.doesNotMatch(body, /move_tasks/);
 });
 
-test("the move box is unticked and counts the open tasks, in the singular for one", async () => {
+test("the move box is ticked and counts the open tasks, in the singular for one", async () => {
   const db = await projectDb();
   await addTask(ctxFor(db, "add_task"), { dealId: "dl_seed07", title: "Send the contract" });
   const one = (await load(devEnv(db), "/deals/dl_seed07/projects/new")).body;
-  assert.match(one, /<input id="[^"]*" name="move_tasks" type="checkbox" value="yes">/);
-  assert.match(one, /Also move this deal(?:'|&#39;)s 1 open task to the project/);
+  assert.match(one, /<input id="[^"]*" name="move_tasks" type="checkbox" value="yes" checked/);
+  assert.match(one, /This deal has 1 open task\./);
   await addTask(ctxFor(db, "add_task"), { dealId: "dl_seed07", title: "Book the site visit" });
   const two = (await load(devEnv(db), "/deals/dl_seed07/projects/new")).body;
-  assert.match(two, /Also move this deal(?:'|&#39;)s 2 open tasks to the project/);
+  assert.match(two, /This deal has 2 open tasks\./);
 });
 
 test("an outside deal title leaves the name empty with a hint, and the heading uses the id", async () => {

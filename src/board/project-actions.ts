@@ -1,7 +1,7 @@
 // The project page's posts (decision 0055): Save status and Archive or Bring back (update_project), Add a task
 // (add_task) and Log it (log_activity). Each calls the service the matching MCP tool calls, as the owner under that tool's
 // name. While projects are off, or for an id that is no project, every path here is a 404.
-import { getContact, getSettings } from "../db/queries.ts";
+import { getContact, getSettings, listFieldDefs } from "../db/queries.ts";
 import { isContactId, isProjectId } from "../ids.ts";
 import { ownerTimezone, projectById } from "../services/lookup.ts";
 import { projectStatusRows } from "../services/memo.ts";
@@ -11,9 +11,9 @@ import type { PageContext } from "./context.ts";
 import { addTaskTo, logOn } from "./edit-actions.ts";
 import { projectHref } from "./parts.ts";
 import { projectEditPage } from "./pages/project-edit.ts";
-import { newProjectOfContactPage, newProjectOfDealPage, wonDeal } from "./pages/project-new.ts";
+import { newInternalProjectPage, newProjectOfContactPage, newProjectOfDealPage, wonDeal } from "./pages/project-new.ts";
 import { projectEditPath, statusForm } from "./pages/project.ts";
-import { MOVE_TASKS, newProjectOfContactPath, newProjectOfDealPath, projectSpecs } from "./project-form.ts";
+import { COMPLETE_TASKS, MOVE_TASKS, newInternalProjectPath, newProjectOfContactPath, newProjectOfDealPath, projectSpecs, statusChoices } from "./project-form.ts";
 import { collectEdit, collectNew } from "./record-form.ts";
 import { withChange } from "./return-to.ts";
 
@@ -33,7 +33,7 @@ async function saveStatus(ctx: ActionContext, id: string): Promise<ActionResult>
     const result = await updateProject(asOwner(ctx, "update_project"), project.id, { status: asked });
     return redirect(withChange(back, result.changeId));
   } catch (error) {
-    const statuses = await projectStatusRows(ctx.db);
+    const statuses = await statusChoices(ctx.db, project.status_key);
     const form = statusForm(project.id, statuses, { csrf: ctx.csrf, here: back }, asked);
     return page(422, refusedPage(ctx, "The status wasn't saved", refusal(error, "project"), back, form, projectHref(project.id)));
   }
@@ -59,14 +59,33 @@ const formContext = (ctx: ActionContext, here: string): PageContext => ({ ...pag
 
 const projectsOn = async (ctx: ActionContext): Promise<boolean> => (await getSettings(ctx.db)).projects === 1;
 
-type FormInput = { name?: string; status?: string; startAt?: string; targetAt?: string; notes?: string };
+type FormInput = { name?: string; status?: string; startAt?: string; targetAt?: string; notes?: string; fields?: Record<string, string | number> };
+
+/** The new-project form's specs: the live statuses and the live custom project fields. */
+const specsOf = async (ctx: ActionContext) =>
+  projectSpecs(await projectStatusRows(ctx.db), { defs: await listFieldDefs(ctx.db, { entity: "project" }) });
+
+/** POST /projects/new: add_project with no person and no deal (an internal project). */
+async function addInternal(ctx: ActionContext): Promise<ActionResult> {
+  if (!(await projectsOn(ctx))) return notFound(ctx);
+  const collected = collectNew(await specsOf(ctx), ctx.form);
+  const refused = async (extra: string[] = []) =>
+    page(422, (await newInternalProjectPage(formContext(ctx, newInternalProjectPath), stateOf(collected, extra))) ?? "");
+  if (collected.errors.length > 0) return refused();
+  try {
+    const result = await addProject(asOwner(ctx, "add_project"), collected.input as FormInput);
+    return redirect(withChange(projectHref(result.projectId), result.changeId));
+  } catch (error) {
+    return refused([refusal(error, "project")]);
+  }
+}
 
 /** POST /contacts/<id>/projects: add_project for that person. Then the new project's page. */
 async function addOfContact(ctx: ActionContext, id: string): Promise<ActionResult> {
   if (!(await projectsOn(ctx)) || !isContactId(id)) return notFound(ctx);
   const contact = await getContact(ctx.db, id);
   if (contact === null || contact.archived === 1) return notFound(ctx);
-  const collected = collectNew(projectSpecs(await projectStatusRows(ctx.db)), ctx.form);
+  const collected = collectNew(await specsOf(ctx), ctx.form);
   const refused = async (extra: string[] = []) =>
     page(422, (await newProjectOfContactPage(formContext(ctx, newProjectOfContactPath(id)), id, stateOf(collected, extra))) ?? "");
   if (collected.errors.length > 0) return refused();
@@ -84,12 +103,14 @@ async function addOfDeal(ctx: ActionContext, id: string): Promise<ActionResult> 
   const deal = await wonDeal(ctx, id);
   if (deal === null) return notFound(ctx);
   const move = ctx.form.get(MOVE_TASKS) === "yes";
-  const collected = collectNew(projectSpecs(await projectStatusRows(ctx.db)), ctx.form);
+  const complete = ctx.form.get(COMPLETE_TASKS) === "yes";
+  const collected = collectNew(await specsOf(ctx), ctx.form);
   const refused = async (extra: string[] = []) =>
-    page(422, (await newProjectOfDealPage(formContext(ctx, newProjectOfDealPath(id)), id, { ...stateOf(collected, extra), move })) ?? "");
+    page(422, (await newProjectOfDealPage(formContext(ctx, newProjectOfDealPath(id)), id, { ...stateOf(collected, extra), move, complete })) ?? "");
   if (collected.errors.length > 0) return refused();
   try {
-    const result = await addProject(asOwner(ctx, "add_project"), { ...(collected.input as FormInput), deal: deal.id, ...(move ? { moveOpenTasks: true } : {}) });
+    const tasks = complete ? { completeOpenTasks: true } : move ? { moveOpenTasks: true } : {};
+    const result = await addProject(asOwner(ctx, "add_project"), { ...(collected.input as FormInput), deal: deal.id, ...tasks });
     return redirect(withChange(projectHref(result.projectId), result.changeId));
   } catch (error) {
     return refused([refusal(error, "project")]);
@@ -101,12 +122,13 @@ async function edit(ctx: ActionContext, id: string): Promise<ActionResult> {
   const project = await projectOf(ctx, id);
   if (project === null) return notFound(ctx);
   const tz = await ownerTimezone(ctx.db);
-  const specs = projectSpecs(await projectStatusRows(ctx.db));
-  const collected = await collectEdit(specs, ctx.form, { ...project, fields: "{}" }, tz);
+  const defs = await listFieldDefs(ctx.db, { entity: "project" });
+  const specs = projectSpecs(await statusChoices(ctx.db, project.status_key), { defs });
+  const collected = await collectEdit(specs, ctx.form, project, tz);
   const refused = async (extra: string[] = []) =>
     page(422, (await projectEditPage(formContext(ctx, projectEditPath(id)), id, stateOf(collected, extra))) ?? "");
   if (collected.errors.length > 0) return refused();
-  const input = collected.input as { name?: string; status?: string; startAt?: string | null; targetAt?: string | null; notes?: string | null };
+  const input = collected.input as FormInput & { startAt?: string | null; targetAt?: string | null; notes?: string | null };
   if (Object.keys(input).length === 0) return refused([NOTHING_TO_SAVE]);
   const patch: ProjectPatch = {};
   if (input.name !== undefined) patch.name = input.name;
@@ -114,6 +136,7 @@ async function edit(ctx: ActionContext, id: string): Promise<ActionResult> {
   if (input.startAt !== undefined) patch.startAt = input.startAt;
   if (input.targetAt !== undefined) patch.targetAt = input.targetAt;
   if (input.notes !== undefined) patch.notes = input.notes;
+  if (input.fields !== undefined) patch.fields = input.fields;
   try {
     const result = await updateProject(asOwner(ctx, "update_project"), project.id, patch);
     return redirect(withChange(projectHref(project.id), result.changeId));
@@ -123,6 +146,7 @@ async function edit(ctx: ActionContext, id: string): Promise<ActionResult> {
 }
 
 export const PROJECT_ROUTES: Route[] = [
+  { path: /^\/projects\/(new)$/, handle: (ctx) => addInternal(ctx), big: true },
   { path: /^\/contacts\/([^/]+)\/projects$/, handle: addOfContact, big: true },
   { path: /^\/deals\/([^/]+)\/projects$/, handle: addOfDeal, big: true },
   { path: /^\/projects\/([^/]+)$/, handle: edit, big: true },
