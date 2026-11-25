@@ -270,7 +270,7 @@ export function registerWriteTools(server: McpServer, deps: ToolDeps): void {
       kind: "write",
       description:
         "Makes a new template from a project's tasks, open and done, keeping their nesting, order and work types; a task's " +
-        "due date becomes days after the project's start when both dates exist. Refused while projects are off. " +
+        "due date becomes days after the project's start when both dates exist. Work types are kept only while time tracking is on, tasks whose titles came from outside are left out (with what is under them), and a project over 100 tasks can't be saved. Refused while projects are off. " +
         PROPOSES,
       input: saveProjectAsTemplateInput,
       run: (args, deps) => recordWrite(deps, { action: "save_project_as_template", ...args }),

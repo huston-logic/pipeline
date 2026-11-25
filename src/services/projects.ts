@@ -132,6 +132,9 @@ export async function addProject(ctx: Ctx, input: ProjectInput): Promise<ChangeR
   const startsToday = givenStart === null && copy !== null && copy.tasks.some((task) => task.due_days !== null);
   const startAt = startsToday ? parseWhen(localDate(ctx.now, tz), tz).toISOString() : givenStart;
   const targetAt = whenOrNull(input.targetAt ?? null, tz);
+  if (startsToday && targetAt !== null && startAt !== null && targetAt < startAt) {
+    throw new UserError("The target date is before the start date, which defaulted to today because the template has due dates. Give a startAt, or a later target.");
+  }
   checkDates(startAt, targetAt);
   const fields = withoutNulls(input.fields ?? {});
   await checkFieldValues(ctx, "project", fields);

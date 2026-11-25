@@ -432,6 +432,12 @@ async function planItem(names: Names, rows: readonly Row[]): Promise<Pick<Item, 
   };
 }
 
+/** "Leaves out 2 tasks..." for a template saved from a project with outside titles (the count rides in the group). */
+function leftOutField(group: string | undefined): Item["fields"] {
+  const n = Number(/:out:(\d+)$/.exec(group ?? "")?.[1] ?? 0);
+  return n > 0 ? [{ field: "", to: `Leaves out ${n} ${n === 1 ? "task" : "tasks"} whose titles came from outside.` }] : [];
+}
+
 const templateTitle = (row: Row) => `"${short(String(row.title), 60)}"`;
 
 /** The lines of tasks added to a template: title, days after the start and work type. */
@@ -580,7 +586,11 @@ export async function shownList(src: Reader, input: ChangeInput, tz: string, now
     }
     if (table === "project_templates" && before === null && after !== null) {
       show(names, table, id, ["name", "description", "archived"]);
-      list.add.push({ record: capitalize(rowLabel(table, after)), id, fields: after.description === null || after.description === "" ? [] : [{ field: "description", to: cell(names, table, after, "description", after.description) }] });
+      list.add.push({ record: capitalize(rowLabel(table, after)), id, fields: [
+          ...(after.description === null || after.description === "" ? [] : [{ field: "description", to: cell(names, table, after, "description", after.description) }]),
+          ...leftOutField(group),
+        ],
+      });
       continue;
     }
     if (table === "tasks" && before === null && after !== null && group !== undefined) {

@@ -120,7 +120,7 @@ const stamps = (ctx: Ctx) => ({ version: 1, created_at: ctx.now.toISOString(), u
 
 export async function addTemplate(
   ctx: Ctx,
-  input: { name: string; description?: string | null; tasks?: TemplateTaskInput[] },
+  input: { name: string; description?: string | null; tasks?: TemplateTaskInput[]; leftOut?: number },
 ): Promise<ChangeResult & { templateId: string; taskIds: string[] }> {
   await requireProjects(ctx);
   const name = checkText(input.name, "template name");
@@ -132,11 +132,13 @@ export async function addTemplate(
   const template: ProjectTemplateRow = { id: newId("tp"), name, description, archived: 0, untrusted_fields: "[]", ...stamps(ctx) };
   const ids = items.map(() => newId("tt"));
   const rows = await taskRowsFor(ctx, template.id, items, ids);
-  const group = `template:${template.id}`;
+  const leftOut = input.leftOut ?? 0;
+  // The list reads the number of tasks left out from the group.
+  const group = leftOut > 0 ? `template:${template.id}:out:${leftOut}` : `template:${template.id}`;
   const count = rows.length;
   const result = await commitTemplate(ctx, {
     target: { table: "project_templates", id: template.id },
-    summary: `Added ${templateText(template)}${count === 0 ? "" : ` with ${count} ${count === 1 ? "task" : "tasks"}`}`,
+    summary: `Added ${templateText(template)}${count === 0 ? "" : ` with ${count} ${count === 1 ? "task" : "tasks"}`}${leftOut > 0 ? `. Left out ${leftOut} ${leftOut === 1 ? "task" : "tasks"} whose titles came from outside` : ""}`,
     changes: [
       { table: "project_templates", id: template.id, before: null, after: template, group },
       ...rows.map((row) => ({ table: "template_tasks" as const, id: row.id, before: null, after: row, group })),

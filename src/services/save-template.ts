@@ -8,6 +8,7 @@ import { findProject } from "./projects.ts";
 import { settingsRow } from "./memo.ts";
 import { addTemplate, TEMPLATE_TASKS_MAX, type TemplateTaskInput } from "./templates.ts";
 import { UserError } from "./errors.ts";
+import { isTrusted } from "./labels.ts";
 
 const DAY_MS = 86_400_000;
 
@@ -27,8 +28,15 @@ export async function saveProjectAsTemplate(
   input: { project: string; name: string; description?: string },
 ): Promise<ChangeResult & { templateId: string; taskIds: string[] }> {
   const project = await findProject(ctx, input.project);
-  const tasks = await projectTasksOf(ctx, project.id);
-  if (tasks.length === 0) throw new UserError("That project has no tasks to save. Add its tasks first.");
+  const all = await projectTasksOf(ctx, project.id);
+  if (all.length === 0) throw new UserError("That project has no tasks to save. Add its tasks first.");
+  // A title from outside never reaches a template: the task and everything under it is left out.
+  const out = new Set<string>();
+  for (const task of all) {
+    if (!isTrusted(task, "title") || (task.parent_id !== null && task.parent_id !== undefined && out.has(task.parent_id))) out.add(task.id);
+  }
+  const tasks = all.filter((task) => !out.has(task.id));
+  if (tasks.length === 0) throw new UserError("Every task on this project has a title from outside, so there is nothing to save. Describe the template instead.");
   if (tasks.length > TEMPLATE_TASKS_MAX) {
     throw new UserError(`A template holds at most ${TEMPLATE_TASKS_MAX} tasks; this project has ${tasks.length}. Archive some first.`);
   }
@@ -49,5 +57,6 @@ export async function saveProjectAsTemplate(
     name: input.name,
     ...(input.description === undefined ? {} : { description: input.description }),
     tasks: items,
+    leftOut: out.size,
   });
 }
