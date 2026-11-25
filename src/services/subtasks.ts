@@ -54,9 +54,13 @@ export async function descendants(src: Source, taskId: string): Promise<TaskRow[
     children.set(task.parent_id, [...(children.get(task.parent_id) ?? []), task]);
   }
   const out: TaskRow[] = [];
+  // Bad data (a parent that points at its own descendant) must end the walk: a task already seen is skipped.
+  const seen = new Set<string>([taskId]);
   const walk = (id: string) => {
     const kids = (children.get(id) ?? []).sort((a, b) => (a.position ?? 0) - (b.position ?? 0) || a.id.localeCompare(b.id));
     for (const kid of kids) {
+      if (seen.has(kid.id)) continue;
+      seen.add(kid.id);
       out.push(kid);
       walk(kid.id);
     }

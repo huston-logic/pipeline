@@ -105,6 +105,17 @@ test("descendants lists every level in tree order", async () => {
   assert.deepEqual(await descendants(db, a2), []);
 });
 
+test("descendants ends on bad data: a cycle or a task under itself lists each task once", async () => {
+  const db = await setup();
+  const a = await top(db, "A");
+  const a1 = await sub(db, a, "A1");
+  const a11 = await sub(db, a1, "A11");
+  db.exec(`UPDATE tasks SET parent_id = '${a11}' WHERE id = '${a}'`);
+  assert.deepEqual((await descendants(db, a)).map((t) => t.id), [a1, a11]);
+  db.exec(`UPDATE tasks SET parent_id = '${a1}' WHERE id = '${a1}'`);
+  assert.deepEqual((await descendants(db, a1)).map((t) => t.id), [a11, a]);
+});
+
 test("undoing the change that added a parent is refused while a sub-task points at it", async () => {
   const db = await setup();
   const parent = await addTask(ctxFor(db), { project: "pj_a", title: "A" });

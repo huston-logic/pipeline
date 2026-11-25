@@ -147,7 +147,7 @@ export async function siblingTasks(src: Source, projectId: string, parentId: str
     .all<TaskRow>();
   const match = (row: Row) => row.project_id === projectId && (row.parent_id ?? null) === parentId;
   const all = withPlanned(src, "tasks", found.results, match);
-  return all.sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
+  return all.sort((a, b) => (a.position ?? 0) - (b.position ?? 0) || a.id.localeCompare(b.id));
 }
 
 /** The position a new task takes: last among its siblings (same project, same parent), planned tasks counted, plus one. */
