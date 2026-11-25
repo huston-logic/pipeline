@@ -183,7 +183,7 @@ test("Add a task puts the task under the chosen one; a refusal is a 422 that kee
   const env = devEnv(db);
   const page = `/templates/${made.templateId}`;
   const form = (await load(env, page)).body;
-  assert.match(form, /<option value="tt_[a-z0-9]+">One<\/option>/);
+  assert.match(form, /<option value="tt_[a-z0-9]+">1\. One<\/option>/);
   const added = await post(env, `${page}/tasks`, { title: "Sub", under: made.taskIds[0] ?? "", return_to: page });
   assert.equal(added.res.status, 303);
   const row = await db.prepare("SELECT parent_id FROM template_tasks WHERE title = 'Sub'").first<{ parent_id: string }>();
@@ -195,6 +195,30 @@ test("Add a task puts the task under the chosen one; a refusal is a 422 that kee
   const blank = await post(env, `${page}/tasks`, { title: " ", return_to: page });
   assert.equal(blank.res.status, 422);
   assert.match(blank.body, /Say in a few words what to do\./);
+});
+
+test("the Under choices carry outline numbers, so equal titles differ; the controls say what Remove and Archive do", async () => {
+  const db = await templatesDb();
+  const made = await make(db, "Plan", [{ title: "Prep" }, { title: "Order", under: 1 }, { title: "Prep" }, { title: "Order", under: 3 }, { title: "Deep", under: 4 }]);
+  const body = (await load(devEnv(db), `/templates/${made.templateId}`)).body;
+  for (const label of ["1. Prep", "1.1. Order", "2. Prep", "2.1. Order"]) assert.ok(body.includes(`>${label}</option>`), label);
+  assert.doesNotMatch(body, />2\.1\.1\. Deep<\/option>/);
+  assert.match(body, /The new task goes under the one you choose\./);
+  assert.match(body, /Removes this task and its sub-tasks from the template\. You can undo it on the next page\./);
+  assert.match(body, /Removes this task from the template\./);
+  assert.match(body, /Archived templates aren't offered when you start a project\. You can bring one back\./);
+  assert.match((await load(devEnv(db), "/templates")).body, />Archived templates<\/a>/);
+});
+
+test("a parent from another template through Under is a 422 that keeps the values", async () => {
+  const db = await templatesDb();
+  const mine = await make(db, "Mine", [{ title: "One" }]);
+  const other = await make(db, "Other", [{ title: "Theirs" }]);
+  const page = `/templates/${mine.templateId}`;
+  const { res, body } = await post(devEnv(db), `${page}/tasks`, { title: "Kept title", under: other.taskIds[0] ?? "", return_to: page });
+  assert.equal(res.status, 422);
+  assert.match(body, /value="Kept title"/);
+  assert.equal((await db.prepare("SELECT count(*) AS n FROM template_tasks WHERE title = 'Kept title'").first<{ n: number }>())?.n, 0);
 });
 
 test("a task's edit page saves only changed fields, and a refusal keeps the values", async () => {

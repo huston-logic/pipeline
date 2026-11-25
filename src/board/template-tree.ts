@@ -45,6 +45,7 @@ function changeControls(templateId: string, node: TreeNode, level: number, first
 <summary>Change${hiddenName(name)}</summary>
 <p><a class="button button-quiet button-small" href="${templateTaskEditPath(templateId, node.task.id)}">Edit${hiddenName(name)}</a></p>
 ${moveForm(node, level, first, last, form)}
+<p class="field-hint">Removes this task${node.children.length > 0 ? " and its sub-tasks" : ""} from the template. You can undo it on the next page.</p>
 ${postForm("task-remove", templateTaskPost(node.task.id, "/archive"), form, html`<button class="button button-quiet button-small" type="submit">Remove${hiddenName(name)}</button>`)}
 </details>`;
 }

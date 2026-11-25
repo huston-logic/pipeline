@@ -32,7 +32,7 @@ ${item.description === null ? "" : html`<p>${(item.description.split("\n")[0] ??
 <h1>${archived ? "Archived templates" : "Templates"}</h1>
 <p class="lede">A template is a task list a new project can start from.</p>
 <p class="card-actions"><a class="button button-small" href="${TEMPLATES_NEW_PATH}">New template</a>
-${archived ? html`<a class="button button-quiet button-small" href="${TEMPLATES_PATH}">Back to live templates</a>` : html`<a class="button button-quiet button-small" href="${TEMPLATES_PATH}?show=archived">Archived</a>`}</p>
+${archived ? html`<a class="button button-quiet button-small" href="${TEMPLATES_PATH}">Back to live templates</a>` : html`<a class="button button-quiet button-small" href="${TEMPLATES_PATH}?show=archived">Archived templates</a>`}</p>
 ${items.length === 0 ? empty(archived ? "No archived templates." : "No templates yet.") : html`<ul class="cards">${cards}</ul>`}`,
   });
 }

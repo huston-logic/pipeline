@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { ID_PREFIXES, isChangeId, isContactId, isDealId, isImportId, isProposalId, isPushId, isTaskId, isViewId, newId } from "./ids.ts";
+import { ID_PREFIXES, isChangeId, isContactId, isDealId, isImportId, isProposalId, isPushId, isTaskId, isTemplateId, isTemplateTaskId, isViewId, newId } from "./ids.ts";
+
+test("template ids: tp_ and tt_ with lowercase letters and digits only", () => {
+  assert.ok(isTemplateId("tp_abc123") && !isTemplateId("tt_abc123") && !isTemplateId("tp_ABC") && !isTemplateId("tp_"));
+  assert.ok(isTemplateTaskId("tt_abc123") && !isTemplateTaskId("tp_abc123") && !isTemplateTaskId("tt_a/b"));
+});
 
 test("ids are <prefix>_ plus 12 lowercase base32 characters", () => {
   for (const prefix of ID_PREFIXES) {

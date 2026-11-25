@@ -35,7 +35,17 @@ export async function templateOrNull(db: Db, id: string): Promise<TemplateView |
 }
 
 /** Level-1 and level-2 tasks, the ones another task can go under. */
-const underChoices = (view: TemplateView) => view.tasks.filter((task) => task.depth < 2).map((task) => ({ value: task.id, label: task.title }));
+function underChoices(view: TemplateView): { value: string; label: string }[] {
+  const counters: number[] = [];
+  const choices: { value: string; label: string }[] = [];
+  for (const task of view.tasks) {
+    counters.length = task.depth + 1;
+    counters[task.depth] = (counters[task.depth] ?? 0) + 1;
+    // The outline number ("1.2.") makes two tasks with one title tell apart and shows the level.
+    if (task.depth < 2) choices.push({ value: task.id, label: `${counters.map((n) => n ?? 0).join(".")}. ${task.title}` });
+  }
+  return choices;
+}
 
 export type AddState = { shown: Map<string, Shown>; under: string; errors: FormState["errors"] };
 
@@ -50,7 +60,7 @@ export function addTaskForm(view: TemplateView, workTypes: { id: string; name: s
     form,
     html`${formErrorSummary(state?.errors ?? [], specs, prefix)}<div class="card form-card">
 ${specFields(specs, state?.shown ?? new Map(), prefix)}
-${choices.length === 0 ? "" : field({ id: `${prefix}-under`, name: "under", label: "Under", kind: "choice", value: state?.under ?? "", blank: "Top level", groups: [{ label: "", options: choices }], hint: "Optional. Pick a task to make this one its sub-task." })}
+${choices.length === 0 ? "" : field({ id: `${prefix}-under`, name: "under", label: "Under", kind: "choice", value: state?.under ?? "", blank: "Top level", groups: [{ label: "", options: choices }], hint: "The new task goes under the one you choose." })}
 </div>
 <div class="form-actions"><button class="button" type="submit">Add the task</button></div>`,
     { novalidate: true },
@@ -99,6 +109,7 @@ ${section(
   "template-more",
   "Copy or archive",
   html`${live ? postForm("template-duplicate", `${templateHref(view.id)}/duplicate`, form, html`<button class="button button-quiet button-small" type="submit">Duplicate this template</button>`) : ""}
+${live ? html`<p class="field-hint">Archived templates aren't offered when you start a project. You can bring one back.</p>` : ""}
 ${postForm("template-archive", `${templateHref(view.id)}/archive`, form, html`${hidden("archived", view.archived ? "0" : "1")}<button class="button button-quiet button-small" type="submit">${view.archived ? "Bring back" : "Archive"}</button>`)}`,
 )}`,
   });
