@@ -89,6 +89,9 @@ Further settled points:
   `campaign_send`, `campaign_pause`, `campaign_resume`, `campaign_cancel`, `campaign_test`, `unsubscribe` and
   `campaign_webhook`. The board shows no Undo for them. Undoable: the draft tools (`add_campaign_draft`,
   `update_campaign_draft`, `duplicate_campaign`, `archive_campaign`), `clear_suppression` and the settings.
+- **Suppression follows the person.** An unsubscribe or a complaint also blocks the person it came from, whatever
+  their address becomes, so editing an email (by the owner or through the AI app) never undoes an opt-out. A bounce
+  blocks only its address, since a new address may work.
 - **Activities.** A sent campaign email writes an `email` activity on the person, with the summary "Campaign: <name>"
   and data `{"via":"campaign","campaign":"cp_…"}`. Its actor is `system` and its tool is `campaign_send`. It has no deal
   and no untrusted text, because the body is the owner's.

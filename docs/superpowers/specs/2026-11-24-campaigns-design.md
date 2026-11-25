@@ -135,7 +135,9 @@ New id prefixes: `cp` campaign, `cs` campaign step, `rc` recipient, `cb` batch, 
   needs two campaigns). The approve change for 2,000 people is measured (D1 calls, statements, CPU) and written in
   PAID-PLAN.md; if it does not fit the free plan, the cap is lowered to what fits and the ruling says so.
 - Each person is sendable or skipped with a reason: no email; an email that fails `mailable` (`bad_email`); a live
-  suppression of that address (`unsubscribed`, `bounced`, `complained`); an archived person.
+  suppression of that address (`unsubscribed`, `bounced`, `complained`); a live `unsubscribed` or `complained`
+  suppression on that person whatever their address now (so changing someone's email never undoes an opt-out; a
+  bounce stays with the address, since a new one may work); an archived person.
 - The review page (GET, writes nothing) shows the count, the skipped counts by reason with the names (linked), a
   warning when the group has leads still in New ("N of them are leads you haven't contacted yet. A first email from a
   list can land in spam and hurt your sending."), and, when the sendable count is over the daily limit, "At your
