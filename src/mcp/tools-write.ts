@@ -15,10 +15,13 @@ import { undoChange } from "../services/undo.ts";
 import { toolResult } from "./format.ts";
 import { SORTING_RULE } from "./instructions.ts";
 import { recordWrite } from "./record-write.ts";
+import { updateProjectStatus } from "../services/project-statuses.ts";
 import {
   addContactInput,
   addDealInput,
   addLeadInput,
+  addProjectInput,
+  updateProjectInput,
   addTaskInput,
   completeTaskInput,
   logActivityInput,
@@ -229,6 +232,60 @@ export function registerWriteTools(server: McpServer, deps: ToolDeps): void {
         PROPOSES,
       input: snoozeTaskInput,
       run: (args, deps) => recordWrite(deps, { action: "snooze_task", ...args }),
+    },
+    deps,
+  );
+
+  registerTool(
+    server,
+    {
+      name: "add_project",
+      title: "Add a project",
+      kind: "write",
+      description:
+        "Adds a project: delivery work after a sale, for a person, optionally from a won deal (then the person is the " +
+        "deal's). Making one never changes the deal. Never add one without the owner's yes. Refused while projects are off. " +
+        PROPOSES,
+      input: addProjectInput,
+      run: (args, deps) => recordWrite(deps, { action: "add_project", ...args }),
+    },
+    deps,
+  );
+
+  registerTool(
+    server,
+    {
+      name: "update_project",
+      title: "Update a project",
+      kind: "write",
+      destructive: true,
+      description:
+        "Changes a project's name, status, start or target date, or notes, or archives it. Send only what changes. " +
+        PROPOSES,
+      input: updateProjectInput,
+      run: (args, deps) => recordWrite(deps, { action: "update_project", ...args }),
+    },
+    deps,
+  );
+
+  registerTool(
+    server,
+    {
+      name: "update_project_status",
+      title: "Rename a project status",
+      kind: "write",
+      destructive: true,
+      idempotent: true,
+      description:
+        "Renames one project status (its key stays: active, on_hold or done). Only when the owner asks. Refused while projects are off.",
+      input: z.strictObject({
+        status: shortText("The status's key: active, on_hold or done."),
+        label: shortText("The new name, for example \"Paused\"."),
+      }),
+      async run({ status, label }, deps) {
+        const result = await updateProjectStatus(aiCtx(deps, "update_project_status"), status, label);
+        return toolResult(result.summary, { changeId: result.changeId });
+      },
     },
     deps,
   );
@@ -593,6 +650,7 @@ export function registerWriteTools(server: McpServer, deps: ToolDeps): void {
           .describe("review_first (the default: record changes wait for the owner's yes) or apply_small (small changes apply at once)."),
         timeTracking: z.boolean().optional().describe("true to turn on time tracking (the timer, time entries, work types and rates), false to turn it off."),
         campaigns: z.boolean().optional().describe("true to turn on campaigns (email to a list of people), false to turn them off."),
+        projects: z.boolean().optional().describe("true to turn on projects (delivery work after a sale), false to turn them off."),
         postalAddress: z
           .string()
           .nullable()

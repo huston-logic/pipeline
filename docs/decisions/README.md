@@ -65,3 +65,4 @@ Add a line here for every new decision (`npm run check:process` fails on a decis
 - [0052](0052-fast-checks-and-change-aware-audits.md) Fast commit check, one e2e Worker and change-aware audits: the slow parts were setup, not testing; the full suite still runs before every push, in CI and on main.
 - [0053](0053-campaigns.md) Campaigns, step 1: Only the board sends, every email can be unsubscribed from, and a frozen list with one row per person means no one gets an email twice.
 - [0054](0054-managed-hosting.md) Managed hosting: every copy lives in Huston Logic's Cloudflare account, because owners want it handled and one paid account costs about the same however many copies it holds; offboarding moves a copy to the client's own accounts.
+- [0055](0055-projects.md) Projects: delivery after the sale, kept apart from selling; a project is its own record, so a won deal stays won.

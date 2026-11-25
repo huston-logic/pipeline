@@ -2,13 +2,14 @@
 // checks a list of them (the schema, the cap, the "@n" rules), resolves the records they name to ids (a name that
 // matches several records, or none, becomes a question for the owner) and runs one action through its service.
 import { z } from "zod";
-import type { ContactRow, Db, DealRow, TaskRow } from "../db/db.ts";
+import type { ContactRow, Db, DealRow, ProjectRow, TaskRow } from "../db/db.ts";
 import { getContact } from "../db/queries.ts";
 import { inputErrorMessage } from "./input-errors.ts";
 import {
   addContactInput,
   addDealInput,
   addLeadInput,
+  addProjectInput,
   addTaskInput,
   completeTaskInput,
   logActivityInput,
@@ -20,6 +21,7 @@ import {
   stopTimerInput,
   updateContactInput,
   updateDealInput,
+  updateProjectInput,
   updateTimeEntryInput,
 } from "./record-inputs.ts";
 import { logActivity } from "./activities.ts";
@@ -30,14 +32,17 @@ import { updateContact } from "./contacts.ts";
 import { updateDeal } from "./deals.ts";
 import { short } from "./describe.ts";
 import { UserError } from "./errors.ts";
-import { contactRef, dealTitle, isTrusted, taskTitle } from "./labels.ts";
+import { contactRef, dealTitle, isTrusted, projectTitle, taskTitle } from "./labels.ts";
 import { addLead, qualifyLead, returnToLead } from "./leads.ts";
 import { type Match, MATCH_MAX, matchAll } from "./name-match.ts";
+import { readerOf, type Reader } from "./memo.ts";
+import { addProject, updateProject } from "./projects.ts";
+import { requireProjects } from "./settings.ts";
 import { addTask, completeTask, snoozeTask } from "./tasks.ts";
 import { addTimeEntry, updateTimeEntry } from "./time-entries.ts";
 import { startTimer, stopTimer } from "./timer.ts";
 
-/** The record tools a proposal can hold, in the order the schema lists them; the last four are time (decision 0049). */
+/** The record tools a proposal can hold, in the order the schema lists them; then four of time (decision 0049) and two of projects (0055). */
 export const RECORD_ACTIONS = [
   "add_lead",
   "add_deal",
@@ -54,6 +59,8 @@ export const RECORD_ACTIONS = [
   "stop_timer",
   "add_time_entry",
   "update_time_entry",
+  "add_project",
+  "update_project",
 ] as const;
 
 export type RecordActionName = (typeof RECORD_ACTIONS)[number];
@@ -78,6 +85,8 @@ const ACTION_SCHEMAS = {
   stop_timer: stopTimerInput.extend({ action: named("stop_timer") }),
   add_time_entry: addTimeEntryInput.extend({ action: named("add_time_entry") }),
   update_time_entry: updateTimeEntryInput.extend({ action: named("update_time_entry") }),
+  add_project: addProjectInput.extend({ action: named("add_project") }),
+  update_project: updateProjectInput.extend({ action: named("update_project") }),
 } as const satisfies Record<RecordActionName, z.ZodObject>;
 
 /** One action: a record tool's input plus `action`, the tool's name (a discriminated union on it). */
@@ -97,6 +106,8 @@ export const recordActionSchema = z.discriminatedUnion("action", [
   ACTION_SCHEMAS.stop_timer,
   ACTION_SCHEMAS.add_time_entry,
   ACTION_SCHEMAS.update_time_entry,
+  ACTION_SCHEMAS.add_project,
+  ACTION_SCHEMAS.update_project,
 ]);
 
 export type RecordAction = z.output<typeof recordActionSchema>;
@@ -104,16 +115,19 @@ export type RecordAction = z.output<typeof recordActionSchema>;
 /** An action whose records are named by id, or by "@n" for the record action n adds (as the subject only). */
 export type ResolvedAction = RecordAction;
 
-type RefKind = "contact" | "deal" | "task";
+type RefKind = "contact" | "deal" | "task" | "project";
 
-const TIME_SUBJECT: { field: "contact" | "deal" | "task"; kind: RefKind; subject: boolean }[] = [
+type RefSpec = { field: RefKind; kind: RefKind; subject: boolean };
+
+const TIME_SUBJECT: RefSpec[] = [
   { field: "deal", kind: "deal", subject: true },
   { field: "contact", kind: "contact", subject: true },
   { field: "task", kind: "task", subject: true },
+  { field: "project", kind: "project", subject: true },
 ];
 
 /** The fields of each action that name a record, and whether "@n" may fill them (the action's subject). */
-const REF_FIELDS: Record<RecordActionName, { field: "contact" | "deal" | "task"; kind: RefKind; subject: boolean }[]> = {
+const REF_FIELDS: Record<RecordActionName, RefSpec[]> = {
   add_lead: [],
   add_deal: [{ field: "contact", kind: "contact", subject: false }],
   add_contact: [],
@@ -124,10 +138,12 @@ const REF_FIELDS: Record<RecordActionName, { field: "contact" | "deal" | "task";
   log_activity: [
     { field: "deal", kind: "deal", subject: true },
     { field: "contact", kind: "contact", subject: true },
+    { field: "project", kind: "project", subject: true },
   ],
   add_task: [
     { field: "deal", kind: "deal", subject: true },
     { field: "contact", kind: "contact", subject: true },
+    { field: "project", kind: "project", subject: true },
   ],
   complete_task: [{ field: "task", kind: "task", subject: false }],
   snooze_task: [{ field: "task", kind: "task", subject: false }],
@@ -139,7 +155,14 @@ const REF_FIELDS: Record<RecordActionName, { field: "contact" | "deal" | "task";
     { field: "deal", kind: "deal", subject: false },
     { field: "contact", kind: "contact", subject: false },
     { field: "task", kind: "task", subject: false },
+    { field: "project", kind: "project", subject: false },
   ],
+  // A project may be for a person an earlier action adds; its deal must already be won, so it is never "@n".
+  add_project: [
+    { field: "contact", kind: "contact", subject: true },
+    { field: "deal", kind: "deal", subject: false },
+  ],
+  update_project: [{ field: "project", kind: "project", subject: false }],
 };
 
 /** What an action adds (or, for qualify_lead's person, names) that a later "@n" could point at. */
@@ -149,14 +172,15 @@ const ADDS: Partial<Record<RecordActionName, readonly RefKind[]>> = {
   add_deal: ["contact", "deal"],
   qualify_lead: ["contact", "deal"],
   add_task: ["task"],
+  add_project: ["project"],
 };
 
-const NOUNS: Record<RefKind, string> = { contact: "person", deal: "deal", task: "task" };
+const NOUNS: Record<RefKind, string> = { contact: "person", deal: "deal", task: "task", project: "project" };
 
 const REF = /^@(\d+)$/;
 
-function refsOf(action: RecordAction): { field: "contact" | "deal" | "task"; kind: RefKind; subject: boolean; value: string }[] {
-  const values = action as Partial<Record<"contact" | "deal" | "task", unknown>>;
+function refsOf(action: RecordAction): (RefSpec & { value: string })[] {
+  const values = action as Partial<Record<RefKind, unknown>>;
   return REF_FIELDS[action.action].flatMap((ref) => {
     const value = values[ref.field];
     return typeof value === "string" ? [{ ...ref, value }] : [];
@@ -203,7 +227,7 @@ export function checkActions(actions: readonly unknown[]): RecordAction[] {
         if (ref.kind === "deal" && adds.includes("contact")) {
           throw new UserError(`Action ${n} names @${target} as its deal, but action ${target} adds a person, not a deal. Give @${target} as the contact instead.`);
         }
-        const what = ref.subject && !adds.includes("contact") && !adds.includes("deal") ? "person or deal" : NOUNS[ref.kind];
+        const what = ref.kind !== "project" && ref.subject && !adds.includes("contact") && !adds.includes("deal") ? "person or deal" : NOUNS[ref.kind];
         throw new UserError(`Action ${n} names @${target}, but action ${target} adds no ${what}.`);
       }
       if (!ref.subject) {
@@ -258,20 +282,34 @@ function taskQuestion(match: Match<TaskRow>, ref: string): Found {
   return { question: `Which task is "${shown}"? ${joinOr(labels)}. ${AGAIN}` };
 }
 
+function projectQuestion(match: Match<ProjectRow>, ref: string): Found {
+  const shown = short(ref, 60);
+  if (match.kind === "one") return { id: match.row.id };
+  if (match.kind === "tooMany") return tooMany(shown, match.noun);
+  if (match.kind === "none") return { question: `Which project is "${shown}"? No live project matches. Send the list again with the project's id.` };
+  const labels = match.rows.map((project) => (isTrusted(project, "name") ? `${projectTitle(project)} (${project.id})` : projectTitle(project)));
+  return { question: `Which project is "${shown}"? ${joinOr(labels)}. ${AGAIN}` };
+}
+
 /**
  * Every record the actions name, as an id ("@n" stays as it is). A name that matches several records, or none, is a
  * question; with any question, the caller stores nothing and answers every question at once. Every ref is read in one
  * D1 batch (matchAll).
  */
-export async function resolveActions(db: Db, actions: readonly RecordAction[]): Promise<{ actions: ResolvedAction[]; questions: string[] }> {
+export async function resolveActions(src: Reader, actions: readonly RecordAction[]): Promise<{ actions: ResolvedAction[]; questions: string[] }> {
+  const { db } = readerOf(src);
+  // Every project input refuses while projects are off, before any name is matched (the memo makes this read free).
+  const projectful = actions.some((action) => action.action === "add_project" || action.action === "update_project" || refsOf(action).some((ref) => ref.kind === "project"));
+  if (projectful) await requireProjects(src);
   const named = actions.map((action) => refsOf(action).filter((ref) => refNumber(ref.value) === null));
-  const asked: Record<RefKind, string[]> = { contact: [], deal: [], task: [] };
+  const asked: Record<RefKind, string[]> = { contact: [], deal: [], task: [], project: [] };
   for (const ref of named.flat()) if (!asked[ref.kind].includes(ref.value)) asked[ref.kind].push(ref.value);
-  const matches = await matchAll(db, { contacts: asked.contact, deals: asked.deal, tasks: asked.task });
+  const matches = await matchAll(db, { contacts: asked.contact, deals: asked.deal, tasks: asked.task, projects: asked.project });
   const answer = async (kind: RefKind, value: string): Promise<Found> => {
     const i = asked[kind].indexOf(value);
     if (kind === "contact") return contactQuestion(matches.contacts[i] ?? { kind: "none" }, value);
     if (kind === "deal") return dealQuestion(db, matches.deals[i] ?? { kind: "none" }, value);
+    if (kind === "project") return projectQuestion(matches.projects[i] ?? { kind: "none" }, value);
     return taskQuestion(matches.tasks[i] ?? { kind: "none" }, value);
   };
   const questions: string[] = [];
@@ -294,17 +332,19 @@ export type ActionResult = ChangeResult & {
   activityId?: string;
   taskId?: string;
   entryId?: string;
+  projectId?: string;
   matchedExisting?: boolean;
 };
 
-/** The action with each "@n" replaced by the id of the person, deal or task action n added (`added[n - 1]`). */
+/** The action with each "@n" replaced by the id of the person, deal, task or project action n added (`added[n - 1]`). */
 export function bindAction(action: ResolvedAction, added: readonly ActionResult[]): RecordAction {
   const copy: Record<string, unknown> = { ...action };
   for (const ref of refsOf(action)) {
     const target = refNumber(ref.value);
     if (target === null) continue;
     const result = added[target - 1];
-    const id = ref.kind === "deal" ? result?.dealId : ref.kind === "task" ? result?.taskId : result?.contactId;
+    const id =
+      ref.kind === "deal" ? result?.dealId : ref.kind === "task" ? result?.taskId : ref.kind === "project" ? result?.projectId : result?.contactId;
     if (typeof id !== "string") throw new UserError(`Action ${target} adds no ${NOUNS[ref.kind]}, so @${target} can't be used as the ${ref.field} here.`);
     copy[ref.field] = id;
   }
@@ -365,6 +405,12 @@ export async function runAction(ctx: Ctx, action: ResolvedAction, _deps: { extra
     case "update_time_entry": {
       const { entry, ...patch } = omitAction(action);
       return updateTimeEntry(ctx, entry, patch);
+    }
+    case "add_project":
+      return addProject(ctx, omitAction(action));
+    case "update_project": {
+      const { project, ...patch } = omitAction(action);
+      return updateProject(ctx, project, patch);
     }
   }
 }

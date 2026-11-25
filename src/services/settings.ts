@@ -38,6 +38,14 @@ export async function requireCampaigns(src: Reader): Promise<void> {
   if ((await settingsRow(src)).campaigns !== 1) throw new UserError(CAMPAIGNS_OFF);
 }
 
+/** The answer every project tool and service gives while projects are off. */
+export const PROJECTS_OFF = "Projects are off. The owner can turn them on (update_settings projects true).";
+
+/** Refuses unless the owner turned projects on. */
+export async function requireProjects(src: Reader): Promise<void> {
+  if ((await settingsRow(src)).projects !== 1) throw new UserError(PROJECTS_OFF);
+}
+
 /** How the AI app's record tools write: propose everything, or apply small changes at once. */
 export async function getAiEdits(db: Db): Promise<AiEdits> {
   return (await getSettingsRow(db)).ai_edits;
@@ -59,6 +67,8 @@ export interface SettingsView {
   timeTracking: boolean;
   /** Whether campaigns are on; off by default. */
   campaigns: boolean;
+  /** Whether projects are on; off by default. */
+  projects: boolean;
   /** Printed in every campaign email; null until the owner adds it. */
   postalAddress: string | null;
   /** Emails a day the campaign cron may send. */
@@ -87,6 +97,8 @@ export interface SettingsPatch {
   timeTracking?: boolean;
   /** true turns campaigns on. */
   campaigns?: boolean;
+  /** true turns projects on. */
+  projects?: boolean;
   /** 1 to 300 characters, line breaks kept; null clears it (an empty string is refused). */
   postalAddress?: string | null;
   /** A whole number, 1 to 5000. */
@@ -113,6 +125,7 @@ export async function getSettings(db: Db): Promise<SettingsView> {
     aiEdits: AI_EDITS_CHOICE[row.ai_edits],
     timeTracking: row.time_tracking === 1,
     campaigns: row.campaigns === 1,
+    projects: row.projects === 1,
     postalAddress: row.postal_address,
     campaignDailyLimit: row.campaign_daily_limit,
     lastBriefAt: latest?.composed_at ?? null,
@@ -251,6 +264,10 @@ export async function updateSettings(ctx: Ctx, patch: SettingsPatch, options: Se
   if (patch.campaigns !== undefined && (patch.campaigns ? 1 : 0) !== before.campaigns) {
     set.campaigns = patch.campaigns ? 1 : 0;
     parts.push(`campaigns ${patch.campaigns ? "on" : "off"}`);
+  }
+  if (patch.projects !== undefined && (patch.projects ? 1 : 0) !== before.projects) {
+    set.projects = patch.projects ? 1 : 0;
+    parts.push(`projects ${patch.projects ? "on" : "off"}`);
   }
   if (patch.postalAddress !== undefined) {
     const address = patch.postalAddress === null ? null : checkPostalAddress(patch.postalAddress);

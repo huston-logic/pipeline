@@ -4,7 +4,7 @@
 // rate change never rewrites it; editing its work type, person or billable works the rate out again from today's rates.
 // Entries are archived, never deleted. Every read by id goes through lookup.ts, so a proposal's later actions see what
 // the earlier ones planned (decision 0044).
-import type { ContactRow, DealRow, TaskRow, TimeEntryRow, WorkTypeRow } from "../db/db.ts";
+import type { ContactRow, DealRow, ProjectRow, TaskRow, TimeEntryRow, WorkTypeRow } from "../db/db.ts";
 import { isTimeEntryId, newId } from "../ids.ts";
 import { formatLocal, parseWhen } from "../time.ts";
 import {
@@ -19,12 +19,13 @@ import {
 import { capitalize, rowLabel, short } from "./describe.ts";
 import { UserError } from "./errors.ts";
 import { clean } from "./input.ts";
-import { contactName, dealLabel } from "./labels.ts";
+import { contactName, dealLabel, projectLabel, projectTitle } from "./labels.ts";
 import {
   contactById,
   dealById,
   findSubject,
   ownerTimezone,
+  projectById,
   type Source,
   sourceOf,
   taskById,
@@ -32,7 +33,8 @@ import {
   withPlanned,
   workTypeById,
 } from "./lookup.ts";
-import { requireTimeTracking } from "./settings.ts";
+import { checkGiven, projectSubject } from "./project-links.ts";
+import { requireProjects, requireTimeTracking } from "./settings.ts";
 import { formatDuration, timeLine, timerLine } from "./time-format.ts";
 import { findWorkType } from "./work-types.ts";
 
@@ -47,6 +49,8 @@ export interface TimeEntryInput {
   deal?: string;
   /** Task id. */
   task?: string;
+  /** Project id or exact name: its person is the entry's person, with no deal. */
+  project?: string;
   startedAt: string;
   endedAt?: string;
   minutes?: number;
@@ -61,6 +65,8 @@ export interface TimeEntryPatch {
   contact?: string | null;
   deal?: string | null;
   task?: string | null;
+  /** null leaves the project and keeps the person. */
+  project?: string | null;
   startedAt?: string;
   endedAt?: string;
   minutes?: number;
@@ -75,10 +81,12 @@ export interface TimeLinks {
   contact: ContactRow | null;
   deal: DealRow | null;
   task: TaskRow | null;
+  project: ProjectRow | null;
 }
 
-/** Who an entry is for, as summaries name them: a deal and its person, a person, or null for no one. */
-export function forWho(deal: DealRow | null, contact: ContactRow | null): string | null {
+/** Who an entry is for, as summaries name them: a project and its person, a deal and its person, a person, or null for no one. */
+export function forWho(deal: DealRow | null, contact: ContactRow | null, project: ProjectRow | null = null): string | null {
+  if (project && contact) return projectLabel(project, contact);
   if (deal && contact) return dealLabel(deal, contact);
   return contact ? contactName(contact) : null;
 }
@@ -96,9 +104,31 @@ async function findTask(src: Source, ref: string): Promise<TaskRow> {
  */
 export async function resolveLinks(
   src: Source,
-  refs: { contact?: string | null; deal?: string | null; task?: string | null },
+  refs: { contact?: string | null; deal?: string | null; task?: string | null; project?: string | null },
 ): Promise<TimeLinks> {
   const task = refs.task === undefined || refs.task === null ? null : await findTask(src, refs.task);
+  const taskProject = task?.project_id ?? null;
+  const named = { dealId: refs.deal, contactId: refs.contact };
+  if (typeof refs.project === "string") {
+    // A project gives the entry its person and no deal; a task given with it must be the project's own.
+    const { project, contact } = await projectSubject(src, refs.project, named);
+    if (task !== null && taskProject !== project.id) {
+      const where = taskProject === null ? "is not on a project" : "is on another project";
+      throw new UserError(`${capitalize(rowLabel("tasks", task))} ${where}. Give a task of ${projectTitle(project)}, or leave the task out.`);
+    }
+    return { contact, deal: null, task, project };
+  }
+  if (task !== null && taskProject !== null) {
+    if (refs.project === null) {
+      throw new UserError(`${capitalize(rowLabel("tasks", task))} is on a project. Clear the task too, or keep the project.`);
+    }
+    // A task of a project, given alone, puts the entry on that project.
+    const project = await projectById(src, taskProject);
+    const owner = project === null ? null : await contactById(src, project.contact_id);
+    if (project === null || owner === null) throw new Error(`Task ${task.id} points at a missing project.`);
+    await checkGiven(src, { project, contact: owner }, named);
+    return { contact: owner, deal: null, task, project };
+  }
   const given = (refs.deal ?? null) !== null || (refs.contact ?? null) !== null;
   const subject =
     task !== null && !given
@@ -118,7 +148,7 @@ export async function resolveLinks(
       throw new UserError(`${capitalize(rowLabel("tasks", task))} is for ${who}. Give just the task, or its own deal or person.`);
     }
   }
-  return { contact, deal, task };
+  return { contact, deal, task, project: null };
 }
 
 /** The hourly rate an entry uses: the person's own rate for the work type beats the work type's; null with neither. */
@@ -162,12 +192,18 @@ function finishedSpan(start: Date, end: Date | null, minutes: number | null, now
   return span;
 }
 
+/** Who an entry is for, read by id: its project and person, its deal and person, a person, or null. */
+export async function whoOf(src: Source, row: TimeEntryRow): Promise<string | null> {
+  const deal = row.deal_id === null ? null : await dealById(src, row.deal_id);
+  const contact = row.contact_id === null ? null : await contactById(src, row.contact_id);
+  const project = row.project_id == null ? null : await projectById(src, row.project_id);
+  return forWho(deal, contact, project);
+}
+
 /** How an entry reads: "1 h 30 min, Design, billable at $95.00/h ($142.50), for Pat Example"; a running one "Design, for ...". */
 export async function entryLine(src: Source, row: TimeEntryRow): Promise<string> {
   const workType = row.work_type_id === null ? null : ((await workTypeById(src, row.work_type_id))?.name ?? null);
-  const deal = row.deal_id === null ? null : await dealById(src, row.deal_id);
-  const contact = row.contact_id === null ? null : await contactById(src, row.contact_id);
-  const who = forWho(deal, contact);
+  const who = await whoOf(src, row);
   if (row.minutes === null) return timerLine(workType, who);
   return timeLine({ minutes: row.minutes, workType, billable: row.billable === 1, rate: row.rate, who });
 }
@@ -176,6 +212,7 @@ const linkColumns = (links: TimeLinks) => ({
   contact_id: links.contact?.id ?? null,
   deal_id: links.deal?.id ?? null,
   task_id: links.task?.id ?? null,
+  project_id: links.project?.id ?? null,
 });
 
 const billableOf = (input: boolean | undefined, workType: WorkTypeRow | null) => input ?? workType?.billable_default === 1;
@@ -238,6 +275,30 @@ async function otherRunning(src: Source, id: string): Promise<TimeEntryRow | nul
   return running !== null && running.id !== id ? running : null;
 }
 
+/**
+ * An edit never moves an entry off its project by itself: a deal or person, or a task that isn't the project's, is
+ * refused with the way out (project null).
+ */
+async function keepsProject(src: Source, before: TimeEntryRow, patch: TimeEntryPatch): Promise<void> {
+  const project = before.project_id == null ? null : await projectById(src, before.project_id);
+  const owner = project === null ? null : await contactById(src, project.contact_id);
+  if (project === null || owner === null) return;
+  const label = projectLabel(project, owner);
+  if (typeof patch.deal === "string" || typeof patch.contact === "string") {
+    throw new UserError(
+      `${capitalize(rowLabel("time_entries", before))} is on project ${label}. Give project null (and task null) to put it on a deal or another person.`,
+    );
+  }
+  if (typeof patch.task === "string") {
+    const task = await findTask(src, patch.task);
+    if (task.project_id !== project.id) {
+      throw new UserError(
+        `${capitalize(rowLabel("tasks", task))} isn't on project ${label}. Give a task of the project, or project null to take the entry off it.`,
+      );
+    }
+  }
+}
+
 const ANOTHER_RUNNING = "Another timer is running. Stop it first, or leave this one archived.";
 
 export async function updateTimeEntry(ctx: Ctx, ref: string, patch: TimeEntryPatch): Promise<ChangeResult & { entryId: string }> {
@@ -267,19 +328,26 @@ export async function updateTimeEntry(ctx: Ctx, ref: string, patch: TimeEntryPat
     Object.assign(set, { started_at: start.toISOString(), ended_at: span.end.toISOString(), minutes: span.minutes });
   }
 
-  const linked = patch.contact !== undefined || patch.deal !== undefined || patch.task !== undefined;
+  const linked = patch.contact !== undefined || patch.deal !== undefined || patch.task !== undefined || patch.project !== undefined;
   let contactId = before.contact_id;
   if (linked) {
-    const fromTask = typeof patch.task === "string" && patch.contact === undefined && patch.deal === undefined;
+    if (patch.project === null) await requireProjects(ctx);
+    if (before.project_id != null && patch.project === undefined) await keepsProject(ctx, before, patch);
+    const fromTask = typeof patch.task === "string" && patch.contact === undefined && patch.deal === undefined && patch.project === undefined;
+    // The entry stays on its project unless the edit clears it or gives a deal; a new project brings its own person.
+    const project = patch.project !== undefined ? patch.project : typeof patch.deal === "string" ? undefined : (before.project_id ?? undefined);
+    const onProject = typeof project === "string";
     const links = await resolveLinks(
       ctx,
       fromTask
         ? { task: patch.task }
         : {
             task: patch.task !== undefined ? patch.task : before.task_id,
-            deal: patch.deal !== undefined ? patch.deal : before.deal_id,
+            deal: patch.deal !== undefined ? patch.deal : onProject && patch.project !== undefined ? undefined : before.deal_id,
             // A new deal brings its own person; otherwise the person stays unless given.
-            contact: patch.contact !== undefined ? patch.contact : typeof patch.deal === "string" ? null : before.contact_id,
+            contact:
+              patch.contact !== undefined ? patch.contact : typeof patch.deal === "string" || (onProject && patch.project !== undefined) ? null : before.contact_id,
+            project,
           },
     );
     Object.assign(set, linkColumns(links));

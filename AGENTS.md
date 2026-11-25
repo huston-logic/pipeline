@@ -260,6 +260,20 @@ hooks and the commands are in `CLAUDE.md`.
   `via: "campaign"`, and no read counts it as reaching anyone. `/unsubscribe/*` and `/hooks/resend` are answered in
   `src/index.ts` before the board and are not board routes; the token or the Svix signature is the check. The
   unsubscribe token is never shown, logged, exported or sent to MCP.
+- **Projects** (decision 0055): delivery after the sale, kept apart from selling. Off until `settings.projects`
+  (`update_settings projects`); while off every project tool, service and input refuses with `PROJECTS_OFF`
+  (`requireProjects` in `src/services/settings.ts`), a proposal before any name is matched, and nothing about projects
+  shows. Tables `projects` (`pj_`: name, person, optional won deal, status, start and target, notes, archived) and
+  `project_statuses` (fixed keys `active`, `on_hold`, `done`; renamed only, `update_project_status`; read through the
+  memo's `projectStatusRows`); `project_id` on tasks, activities and time entries (migration 0020). The link rules live in
+  `src/services/project-links.ts`: a record on a project gets the project's person and no deal, a deal with a project is
+  refused, an archived project takes nothing new, and `update_time_entry` never moves an entry off its project unless
+  given `project: null`. `src/services/projects.ts` (`addProject`, `updateProject`, `findProject`; a project's deal must
+  be Won; `moveOpenTasks` moves the deal's open tasks in the same change) and `src/services/project-read.ts`
+  (`listProjects`, `getProject`). `add_project` and `update_project` are in `RECORD_ACTIONS` (proposed, never small);
+  `@n` may name a project an earlier `add_project` adds. After an applied Won, the answer asks the owner whether to start
+  a project (`src/services/won-offers.ts`, `src/mcp/start-project.ts`), built from the rows written, never the action
+  text. A project never changes its deal.
 - **Sign-in:** `src/auth/dev.ts` until task 10. `AUTH_MODE=dev` works only with `ENVIRONMENT=development` on a
   loopback host; anywhere else every route answers 500. Without `AUTH_MODE`, `/mcp` answers 401.
 - **Types:** `src/env.ts` is the `Env` type the code uses. `src/worker-configuration.d.ts` holds the Workers runtime

@@ -37,6 +37,8 @@ export const TABLE_NAMES = [
   "campaign_batches",
   "campaign_recipients",
   "email_suppressions",
+  "project_statuses",
+  "projects",
 ] as const;
 
 export type TableName = (typeof TABLE_NAMES)[number];
@@ -75,6 +77,8 @@ export type SettingsRow = {
   postal_address: string | null;
   /** Emails a day the campaign cron may send, 1 to 5,000 (default 90). */
   campaign_daily_limit: number;
+  /** 1: projects are on (migration 0020); 0, the default, makes every project path and tool refuse. */
+  projects: Flag;
 };
 
 export type StageRow = {
@@ -218,6 +222,8 @@ export type ActivityRow = {
   data: string | null;
   occurred_at: string;
   actor: Actor;
+  /** The project this note is on (migration 0020), else null. */
+  project_id?: string | null;
   version: number;
   created_at: string;
 };
@@ -225,6 +231,8 @@ export type ActivityRow = {
 export type TaskRow = {
   id: string;
   deal_id: string | null;
+  /** The project this task is on (migration 0020), else null. */
+  project_id?: string | null;
   contact_id: string | null;
   title: string;
   due_at: string | null;
@@ -406,6 +414,39 @@ export type ClientRateRow = {
   updated_at: string;
 };
 
+/** One of the three fixed project statuses: active, on_hold, done. Only the label can change (migration 0020). */
+export type ProjectStatusRow = {
+  key: string;
+  label: string;
+  /** 1-based. */
+  position: number;
+  version: number;
+  created_at: string;
+  updated_at: string;
+};
+
+/** Delivery work after a sale (migration 0020). */
+export type ProjectRow = {
+  /** "pj_..." */
+  id: string;
+  /** 1 to 200 characters on one line. */
+  name: string;
+  contact_id: string;
+  /** The won deal it came from; null for a project made by hand. */
+  deal_id: string | null;
+  status_key: string;
+  /** A local date at midnight as an ISO string, or null. */
+  start_at: string | null;
+  target_at: string | null;
+  notes: string | null;
+  archived: Flag;
+  /** JSON array, always "[]" for now; kept for a later import. */
+  untrusted_fields: string;
+  version: number;
+  created_at: string;
+  updated_at: string;
+};
+
 /** Time worked, or the running timer when ended_at is null (decision 0049). */
 export type TimeEntryRow = {
   /** "te_..." */
@@ -413,6 +454,8 @@ export type TimeEntryRow = {
   contact_id: string | null;
   deal_id: string | null;
   task_id: string | null;
+  /** The project the time was for (migration 0020), else null. */
+  project_id?: string | null;
   started_at: string;
   /** Null exactly while the timer runs; at most one live row has none. */
   ended_at: string | null;

@@ -2,7 +2,7 @@
 // one-running index, migration 0018). Stopping fixes its end, minutes and rate in one change that also logs the notes
 // as a note on its person or deal and adds a "Next step" task when asked. A timer left running longer than 16 hours
 // can't be stopped without its real start or end.
-import type { ActivityRow, TaskRow, TimeEntryRow } from "../db/db.ts";
+import type { ActivityRow, DealRow, ProjectRow, TaskRow, TimeEntryRow } from "../db/db.ts";
 import { newId } from "../ids.ts";
 import { formatLocal, localDate, localWhen, parseWhen } from "../time.ts";
 import { activityEffects } from "./activities.ts";
@@ -11,17 +11,17 @@ import { rowLabel } from "./describe.ts";
 import { UserError } from "./errors.ts";
 import { clean, whenOrNull } from "./input.ts";
 import { isTrusted } from "./labels.ts";
-import { contactById, dealById, ownerTimezone, type Source, workTypeById } from "./lookup.ts";
+import { contactById, dealById, ownerTimezone, projectById, type Source, workTypeById } from "./lookup.ts";
 import { requireTimeTracking } from "./settings.ts";
 import {
   ENTRY_MAX_MINUTES,
   entryLine,
-  forWho,
   minutesBetween,
   rateFor,
   resolveLinks,
   runningTimer,
   tooLong,
+  whoOf,
 } from "./time-entries.ts";
 import { formatDuration } from "./time-format.ts";
 import { findWorkType } from "./work-types.ts";
@@ -32,6 +32,8 @@ export interface TimerSubject {
   contact?: string;
   deal?: string;
   task?: string;
+  /** Project id or exact name: its person is the timer's person, with no deal. */
+  project?: string;
   workType?: string;
 }
 
@@ -62,9 +64,7 @@ export async function runningTimerRefusal(src: Source, now: Date): Promise<strin
 }
 
 async function alreadyRunning(src: Source, running: TimeEntryRow, now: Date, tz: string): Promise<string> {
-  const deal = running.deal_id === null ? null : await dealById(src, running.deal_id);
-  const contact = running.contact_id === null ? null : await contactById(src, running.contact_id);
-  const who = forWho(deal, contact);
+  const who = await whoOf(src, running);
   return `A timer is already running${who === null ? "" : ` for ${who}`} since ${sinceText(running.started_at, now, tz)}. Stop it first.`;
 }
 
@@ -82,6 +82,7 @@ export async function startTimer(ctx: Ctx, subject: TimerSubject): Promise<Chang
     contact_id: links.contact?.id ?? null,
     deal_id: links.deal?.id ?? null,
     task_id: links.task?.id ?? null,
+    project_id: links.project?.id ?? null,
     started_at: now,
     ended_at: null,
     minutes: null,
@@ -111,6 +112,12 @@ export async function startTimer(ctx: Ctx, subject: TimerSubject): Promise<Chang
     if (other) throw new UserError(await alreadyRunning(db, other, ctx.now, tz), { cause: error });
     throw error;
   }
+}
+
+/** "Next step: <deal or project name>" when that is the owner's own text, else "Next step". */
+function nextStepTitle(deal: DealRow | null, project: ProjectRow | null): string {
+  if (project !== null) return isTrusted(project, "name") ? `Next step: ${project.name}` : "Next step";
+  return deal !== null && isTrusted(deal, "title") ? `Next step: ${deal.title}` : "Next step";
 }
 
 /** "Fri Nov 20", or "Fri Nov 20, 9:00 AM" when a time was given. */
@@ -146,6 +153,7 @@ export async function stopTimer(
 
   const deal = running.deal_id === null ? null : await dealById(ctx, running.deal_id);
   const contact = running.contact_id === null ? null : await contactById(ctx, running.contact_id);
+  const project = running.project_id == null ? null : await projectById(ctx, running.project_id);
   const workType =
     input.workType === null
       ? null
@@ -167,6 +175,7 @@ export async function stopTimer(
       id: newId("ac"),
       deal_id: deal?.id ?? null,
       contact_id: contact.id,
+      project_id: project?.id ?? null,
       type: "note",
       summary: notes,
       untrusted_text: null,
@@ -188,7 +197,8 @@ export async function stopTimer(
       id: newId("tk"),
       deal_id: deal?.id ?? null,
       contact_id: contact?.id ?? null,
-      title: deal !== null && isTrusted(deal, "title") ? `Next step: ${deal.title}` : "Next step",
+      project_id: project?.id ?? null,
+      title: nextStepTitle(deal, project),
       due_at: whenOrNull(input.nextStepDate, tz),
       done_at: null,
       snoozed_until: null,

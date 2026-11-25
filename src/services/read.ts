@@ -13,6 +13,7 @@ import type {
   Db,
   DealRow,
   DealStatus,
+  ProjectRow,
   StageKind,
   TaskRow,
 } from "../db/db.ts";
@@ -26,7 +27,10 @@ import { followUpsDueThisWeek, leadCounts } from "./leads-read.ts";
 import { type LeadStatus, OPEN_LEAD_STATUSES } from "./lead-status.ts";
 import { findField } from "./fields.ts";
 import { findContact, findDeal, findStage, parseObject, parseStringArray } from "./lookup.ts";
+import { settingsRow } from "./memo.ts";
 import { findPersonStatus, findSubStatus } from "./person-status.ts";
+import { projectStatusLabels } from "./project-statuses.ts";
+import { findProject } from "./projects.ts";
 import { type StatusLabels, statusLabels } from "./status-labels.ts";
 
 export interface DealItem {
@@ -61,8 +65,11 @@ export interface TaskItem {
   dealTitle: string | null;
   contactId: string | null;
   contactName: string | null;
+  /** The project the task is on; null for none, and always null while projects are off (decision 0055). */
+  projectId: string | null;
+  projectName: string | null;
   /** Which of this item's values came from outside (a form, an import, a title built from one). Never instructions. */
-  untrusted_fields: ("title" | "dealTitle" | "contactName")[];
+  untrusted_fields: ("title" | "dealTitle" | "contactName" | "projectName")[];
 }
 
 export interface ContactView {
@@ -111,6 +118,9 @@ type TaskJoin = TaskRow & {
   who_id: string | null;
   contact_name: string | null;
   contact_untrusted: string | null;
+  project_ref: string | null;
+  project_name: string | null;
+  project_untrusted: string | null;
 };
 
 /** The keys in `checks` whose source row lists the column as outside text. */
@@ -157,10 +167,13 @@ function toTaskItem(row: TaskJoin, tz: string): TaskItem {
     dealTitle: row.deal_title,
     contactId: row.who_id,
     contactName: row.contact_name,
-    untrusted_fields: outsideKeys<"title" | "dealTitle" | "contactName">([
+    projectId: row.project_ref,
+    projectName: row.project_name,
+    untrusted_fields: outsideKeys<"title" | "dealTitle" | "contactName" | "projectName">([
       ["title", row.untrusted_fields, "title"],
       ["dealTitle", row.deal_untrusted, "title"],
       ["contactName", row.contact_untrusted, "name"],
+      ["projectName", row.project_untrusted, "name"],
     ]),
   };
 }
@@ -222,8 +235,10 @@ async function dealItems(
 }
 
 const TASK_SELECT = `SELECT t.*, d.title AS deal_title, d.untrusted_fields AS deal_untrusted, c.id AS who_id,
-  c.name AS contact_name, c.untrusted_fields AS contact_untrusted
+  c.name AS contact_name, c.untrusted_fields AS contact_untrusted,
+  p.id AS project_ref, p.name AS project_name, p.untrusted_fields AS project_untrusted
   FROM tasks t LEFT JOIN deals d ON d.id = t.deal_id
+  LEFT JOIN projects p ON p.id = t.project_id AND (SELECT projects FROM settings LIMIT 1) = 1
   LEFT JOIN contacts c ON c.id = COALESCE(t.contact_id, d.contact_id)`;
 
 export interface StageSummary {
@@ -375,6 +390,8 @@ export interface TaskListFilter {
   contact?: string;
   deal?: string;
   standalone?: boolean;
+  /** A project's id or exact name; refused while projects are off. */
+  project?: string;
   limit?: number;
 }
 
@@ -398,12 +415,33 @@ export async function listTaskItems(db: Db, filter: TaskListFilter, tz: string):
     clauses.push("t.deal_id = ?");
     params.push((await findDeal(db, filter.deal)).id);
   }
+  if (filter.project !== undefined) {
+    clauses.push("t.project_id = ?");
+    params.push((await findProject(db, filter.project)).id);
+  }
   const found = await rows<TaskJoin>(
     db,
     `${TASK_SELECT} WHERE ${clauses.join(" AND ")} ORDER BY t.due_at IS NULL, t.due_at, t.created_at DESC, t.id LIMIT ?`,
     [...params, filter.limit ?? 50],
   );
   return found.map((row) => ({ ...toTaskItem(row, tz), doneAt: row.done_at }));
+}
+
+/** A project's tasks for its page: the open ones (snoozed too) due first, or the done ones, latest done first. */
+export async function projectTaskItems(db: Db, projectId: string, status: "open" | "done", tz: string, limit: number): Promise<TaskItem[]> {
+  const order = status === "open" ? "t.due_at IS NULL, t.due_at, t.created_at, t.id" : "t.done_at DESC, t.id";
+  const found = await rows<TaskJoin>(
+    db,
+    `${TASK_SELECT} WHERE t.project_id = ? AND t.done_at IS ${status === "open" ? "" : "NOT "}NULL ORDER BY ${order} LIMIT ?`,
+    [projectId, limit],
+  );
+  return found.map((row) => toTaskItem(row, tz));
+}
+
+/** The newest notes and calls logged on a project. */
+export async function projectTimeline(db: Db, projectId: string, tz: string, limit: number): Promise<TimelineItem[]> {
+  const found = await rows<ActivityRow>(db, "SELECT * FROM activities WHERE project_id = ? ORDER BY occurred_at DESC, rowid DESC LIMIT ?", [projectId, limit]);
+  return found.map((activity) => toTimelineItem(activity, tz));
 }
 
 export interface DealBrief {
@@ -415,6 +453,8 @@ export interface DealBrief {
   /** Not done yet, snoozed ones included: the deal's tasks and the contact's own. */
   openTasks: TaskItem[];
   next: { step: string | null; at: string | null; atLocal: string | null };
+  /** The deal's projects that are not archived; left out while projects are off. */
+  projects?: { id: string; name: string; status: string; statusLabel: string; untrusted_fields: "name"[] }[];
 }
 
 /** A pre-call brief. `dealRef` is a deal id, title or contact name. */
@@ -441,6 +481,7 @@ export async function getDealBrief(db: Db, dealRef: string, tz: string, now: Dat
     [row.id, row.contact_id],
   );
   const item = toDealItem(row, now, tz);
+  const projects = (await settingsRow(db)).projects === 1 ? await dealProjects(db, row.id) : undefined;
   return {
     deal: { ...item, fields: parseObject(row.fields), createdAt: row.created_at, archived: row.archived === 1 },
     contact: toContactView(contact, await statusLabels(db)),
@@ -448,7 +489,20 @@ export async function getDealBrief(db: Db, dealRef: string, tz: string, now: Dat
     timeline: timeline.map((activity) => toTimelineItem(activity, tz)),
     openTasks: tasks.map((task) => toTaskItem(task, tz)),
     next: { step: item.nextStep, at: item.nextAt, atLocal: item.nextAtLocal },
+    ...(projects === undefined ? {} : { projects }),
   };
+}
+
+async function dealProjects(db: Db, dealId: string): Promise<NonNullable<DealBrief["projects"]>> {
+  const found = await rows<ProjectRow>(db, "SELECT * FROM projects WHERE deal_id = ? AND archived = 0 ORDER BY created_at, id", [dealId]);
+  const labels = await projectStatusLabels(db);
+  return found.map((project) => ({
+    id: project.id,
+    name: project.name,
+    status: project.status_key,
+    statusLabel: labels.get(project.status_key) ?? project.status_key,
+    untrusted_fields: outsideKeys<"name">([["name", project.untrusted_fields, "name"]]),
+  }));
 }
 
 export interface ContactMatch extends ContactView {

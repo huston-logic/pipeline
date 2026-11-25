@@ -129,7 +129,7 @@ test("apply writes once with one undo", async () => {
 /** Rows of the record tables, in insertion order. */
 async function recordRows(db: Db): Promise<Record<string, Record<string, unknown>[]>> {
   const out: Record<string, Record<string, unknown>[]> = {};
-  for (const table of ["contacts", "deals", "activities", "tasks", "time_entries"]) {
+  for (const table of ["contacts", "deals", "projects", "activities", "tasks", "time_entries"]) {
     out[table] = (await db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all<Record<string, unknown>>()).results.map((row) => ({ ...row }));
   }
   return out;
@@ -173,6 +173,15 @@ test("apply equals running the actions one by one", async () => {
       { action: "add_time_entry", contact: "@1", startedAt: "2026-11-19T08:00", minutes: 45, workType: "Design", notes: "Sign mock-ups." },
     ],
     [{ action: "start_timer", deal: "dl_seed01", workType: "Design" }],
+    // Projects (decision 0055): a task on a project the list adds, and a project that takes a won deal's open tasks.
+    [
+      { action: "add_project", contact: "ct_seed01", name: "Fence repair", startAt: "2026-12-01" },
+      { action: "add_task", project: "@1", title: "Order posts", dueAt: "2026-11-21" },
+      { action: "log_activity", project: "@1", type: "note", summary: "Pat approved the layout." },
+      { action: "add_time_entry", project: "@1", startedAt: "2026-11-19T08:00", minutes: 30, workType: "Design" },
+    ],
+    [{ action: "add_project", deal: "dl_seed07", name: "Salon launch", moveOpenTasks: true }],
+    [{ action: "update_project", project: "pj_seed01", status: "done", targetAt: "2026-12-04", archived: true }],
   ];
   for (const actions of scenarios) {
     const one = await setup();
@@ -180,19 +189,23 @@ test("apply equals running the actions one by one", async () => {
     await samIsALead(one);
     await samIsALead(both);
     for (const db of [one, both]) {
-      db.exec(`UPDATE settings SET time_tracking = 1; ${WORK_TYPES_SQL}`);
+      db.exec(`UPDATE settings SET time_tracking = 1, projects = 1; ${WORK_TYPES_SQL}`);
+      db.exec(
+        "INSERT INTO projects (id, name, contact_id, created_at, updated_at) VALUES ('pj_seed01', 'Retrofit', 'ct_seed01', '2026-11-01T00:00:00.000Z', '2026-11-01T00:00:00.000Z'); " +
+          "INSERT INTO tasks (id, deal_id, contact_id, title, created_at, updated_at) VALUES ('tk_won1', 'dl_seed07', 'ct_seed07', 'Hang the sign', '2026-11-01T00:00:00.000Z', '2026-11-01T00:00:00.000Z')",
+      );
       if (actions.some((action) => action.action === "stop_timer")) db.exec(RUNNING_ON_PAT);
     }
     const seed = await recordRows(one);
 
     // A: each action through its service, one change each, "@n" bound to the id action n added.
-    const added: { contactId?: string; dealId?: string | null }[] = [];
+    const added: { contactId?: string; dealId?: string | null; projectId?: string }[] = [];
     for (const action of actions) {
       const bound = Object.fromEntries(
         Object.entries(action).map(([key, value]) => {
           const ref = typeof value === "string" ? /^@(\d+)$/.exec(value) : null;
           const earlier = ref ? added[Number(ref[1]) - 1] : undefined;
-          return [key, earlier === undefined ? value : key === "deal" ? earlier.dealId : earlier.contactId];
+          return [key, earlier === undefined ? value : key === "deal" ? earlier.dealId : key === "project" ? earlier.projectId : earlier.contactId];
         }),
       ) as RecordAction;
       added.push(await runAction(ctxFor(one, NOW, bound.action), bound, DEPS));

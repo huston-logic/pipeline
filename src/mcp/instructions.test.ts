@@ -143,6 +143,13 @@ test("the time line: record time tools follow rule 7, work types and rates rule 
   assert.match(line, /change them only when the owner asks, as in rule 5/);
 });
 
+test("the projects line: record edits under rule 7, and ask the owner after a Won, never adding one unasked (decision 0055)", () => {
+  const line = SERVER_INSTRUCTIONS.split("\n").find((text) => text.startsWith("- Projects, ")) ?? "";
+  for (const tool of ["add_project", "update_project", "list_projects", "get_project"]) assert.ok(line.includes(tool), tool);
+  assert.match(line, /record edits under rule 7/);
+  assert.match(line, /After a deal is marked Won, if the answer asks whether to start a project, ask the owner; never add a project without the owner's yes\.$/);
+});
+
 test("the campaigns line lets the AI app draft only and hand over the review address (decision 0053)", () => {
   const line = SERVER_INSTRUCTIONS.split("\n").find((text) => text.startsWith("- Campaigns: ")) ?? "";
   for (const tool of ["add_campaign_draft", "update_campaign_draft"]) assert.ok(line.includes(tool), tool);

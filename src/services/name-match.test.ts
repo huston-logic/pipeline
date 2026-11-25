@@ -106,8 +106,33 @@ test("every ref of a list is matched in one D1 call, each as it would be alone",
   assert.deepEqual(ids(all.deals[5] ?? { kind: "none" }), ["dl_seed03"], "a person's id finds their one open deal");
   assert.deepEqual(plain(all.contacts[3] ?? { kind: "none" }), { kind: "many", ids: ["ct_intake", "ct_seed01"] });
   const blank = countingDb(db);
-  assert.deepEqual(await matchAll(blank, { contacts: ["  "], deals: [] }), { contacts: [{ kind: "none" }], deals: [], tasks: [] });
+  assert.deepEqual(await matchAll(blank, { contacts: ["  "], deals: [] }), { contacts: [{ kind: "none" }], deals: [], tasks: [], projects: [] });
   assert.equal(blank.calls, 0, "nothing to read");
+});
+
+test("a project by id, or by its exact name among the live ones, in the same one D1 call", async () => {
+  const db = await setup();
+  db.exec(
+    "INSERT INTO projects (id, name, contact_id) VALUES ('pj_a', 'Retrofit', 'ct_seed01'), ('pj_b', 'Retrofit', 'ct_seed02'), " +
+      "('pj_c', 'Fence  Install', 'ct_seed01'), ('pj_old', 'Old shed', 'ct_seed01'); " +
+      "UPDATE projects SET archived = 1 WHERE id = 'pj_old'; " +
+      "INSERT INTO projects (id, name, contact_id, untrusted_fields) VALUES ('pj_out', 'Pergola', 'ct_seed01', '[\"name\"]')",
+  );
+  const refs = ["pj_c", "pj_old", " fence install ", "Retrofit", "Old shed", "Nobody", "Fence", "Pergola"];
+  const counted = countingDb(db);
+  const found = (await matchAll(counted, { contacts: ["Pat"], projects: refs })).projects;
+  assert.equal(counted.calls, 1, counted.log.join("\n"));
+  const shape = found.map((match) => [match.kind, ids(match)]);
+  assert.deepEqual(shape, [
+    ["one", ["pj_c"]],
+    ["one", ["pj_old"]],
+    ["one", ["pj_c"]],
+    ["many", ["pj_a", "pj_b"]],
+    ["none", []],
+    ["none", []],
+    ["none", []],
+    ["many", ["pj_out"]],
+  ]);
 });
 
 test("a list's refs past 50 of a kind are read in more statements of the same batch", async () => {

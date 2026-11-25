@@ -121,6 +121,20 @@ export class PlanCollector {
     return this.#rows.get(rowKey(table, id))?.after;
   }
 
+  readonly #fromDatabase = new Map<string, Row | null>();
+
+  /**
+   * A row by id that the plan doesn't have, read from the database at most once for this plan: nothing is written until
+   * the apply, so a second action naming the same person or project costs no D1 call (decision 0044, "D1 calls").
+   */
+  async readOnce(table: ChangeTable, id: string, read: () => Promise<Row | null>): Promise<Row | null> {
+    const key = rowKey(table, id);
+    if (this.#fromDatabase.has(key)) return this.#fromDatabase.get(key) ?? null;
+    const row = await read();
+    this.#fromDatabase.set(key, row);
+    return row;
+  }
+
   /** Planned rows of a table matching a predicate, for list reads such as a contact's open deals. */
   rows(table: ChangeTable, match: (row: Row) => boolean): Row[] {
     const out: Row[] = [];

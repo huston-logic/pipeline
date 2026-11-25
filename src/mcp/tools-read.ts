@@ -13,6 +13,7 @@ import { LEAD_STATUSES, type LeadStatus } from "../services/lead-status.ts";
 import { personStatusOverview } from "../services/person-status.ts";
 import { type StatusLabels, statusLabels } from "../services/status-labels.ts";
 import { getDealBrief, listDealsFiltered, listTaskItems, pipelineSummary, recentChanges, searchContacts, whatsDue } from "../services/read.ts";
+import { getProject, listProjects } from "../services/project-read.ts";
 import { listRules, previewRuleFor, type RulePreview } from "../services/rules.ts";
 import { formatLocal, parseWhen } from "../time.ts";
 import { toolResult } from "./format.ts";
@@ -258,13 +259,59 @@ export function registerReadTools(server: McpServer, deps: ToolDeps): void {
         contact: shortText("Only this person's tasks and their deals' tasks: id or exact name.").optional(),
         deal: shortText("Only this deal's tasks: id or title.").optional(),
         standalone: z.boolean().optional().describe("true: only tasks that belong to no person and no deal."),
+        project: shortText("Only this project's tasks: its id (pj_...) or exact name. Refused while projects are off.").optional(),
         limit: z.number().int().min(1).max(100).optional().describe("At most this many, default 50."),
       }),
-      async run({ status, contact, deal, standalone, limit }, { db }) {
-        const tasks = await listTaskItems(db, { status, contact, deal, standalone, limit }, await ownerTimezone(db));
+      async run({ status, contact, deal, standalone, project, limit }, { db }) {
+        const tasks = await listTaskItems(db, { status, contact, deal, standalone, project, limit }, await ownerTimezone(db));
         const kind = status === "done" ? "done" : "open";
         const headline = tasks.length === 0 ? `No ${kind} tasks.` : count(tasks.length, `${kind} task`);
         return toolResult(tasks.length === 0 ? headline : `${headline}.`, { tasks });
+      },
+    },
+    deps,
+  );
+
+  registerTool(
+    server,
+    {
+      name: "list_projects",
+      title: "List projects",
+      kind: "read",
+      description:
+        "Projects (delivery work after a sale), soonest target first: id, name, status, person, deal, dates and open-task " +
+        "count, plus every status. Filters: status (key or label), contact (id or exact name), includeArchived, sort " +
+        "(target, name or newest). At most 200. Refused while projects are off.",
+      input: z.strictObject({
+        status: shortText("Only this status: its key or label (see the statuses in the answer).").optional(),
+        contact: shortText("Only this person's projects: id or exact name.").optional(),
+        includeArchived: z.boolean().optional().describe("true to include archived projects."),
+        sort: z.enum(["target", "name", "newest"]).optional().describe("target (the default), name or newest."),
+      }),
+      async run(args, { db }) {
+        const list = await listProjects(db, args);
+        const headline = list.total === 0 ? "No projects." : `${count(list.total, "project")}.`;
+        return toolResult(headline, list);
+      },
+    },
+    deps,
+  );
+
+  registerTool(
+    server,
+    {
+      name: "get_project",
+      title: "Get a project",
+      kind: "read",
+      description:
+        "One project: status, person, deal, dates, notes, open and done tasks, the latest notes and calls, and its time " +
+        "totals. Refused while projects are off.",
+      input: z.strictObject({ project: shortText("The project: its id (pj_...) or exact name.") }),
+      async run({ project }, { db, now }) {
+        const detail = await getProject(db, project, now());
+        const who = detail.untrusted_fields.includes("name") ? `project ${detail.id}` : `project "${detail.name}"`;
+        const person = detail.untrusted_fields.includes("contactName") ? `contact ${detail.contactId}` : detail.contactName;
+        return toolResult(`${who} (${person}): ${detail.statusLabel}, ${count(detail.openTaskCount, "open task")}.`, detail);
       },
     },
     deps,
