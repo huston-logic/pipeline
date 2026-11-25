@@ -52,7 +52,6 @@ ${postForm(
   });
 }
 
-/** POST /deals/<id>/move: update_deal with the stage. Won, Lost and Not now need confirm=yes, or ask first. */
 /** Projects are on and the deal has no live project: a new Won goes on to Start a project (run 10). */
 async function needsProject(ctx: ActionContext, dealId: string): Promise<boolean> {
   if ((await getSettings(ctx.db)).projects !== 1) return false;
@@ -60,6 +59,7 @@ async function needsProject(ctx: ActionContext, dealId: string): Promise<boolean
   return live === null;
 }
 
+/** POST /deals/<id>/move: update_deal with the stage. Won, Lost and Not now need confirm=yes, or ask first. */
 async function moveDeal(ctx: ActionContext, id: string): Promise<ActionResult> {
   const deal = isDealId(id) ? await getDeal(ctx.db, id) : null;
   if (deal === null) return notFound(ctx);

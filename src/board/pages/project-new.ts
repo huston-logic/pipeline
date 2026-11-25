@@ -2,7 +2,7 @@
 // deal (add_project). 404 while projects are off, for an unknown or archived person, and for a deal that is not won or is
 // archived. A deal title from outside is never put in the name; the owner names the project.
 import type { ContactRow, DealRow } from "../../db/db.ts";
-import { getContact, getSettings, listFieldDefs } from "../../db/queries.ts";
+import { getContact, getSettings } from "../../db/queries.ts";
 import { isContactId, isDealId } from "../../ids.ts";
 import { contactName, isTrusted } from "../../services/labels.ts";
 import { dealById, openTasksOfDeal } from "../../services/lookup.ts";
@@ -21,6 +21,7 @@ import {
   newProjectOfContactPath,
   newProjectOfDealPath,
   PROJECT_PREFIX,
+  projectFieldDefs,
   projectSpecs,
 } from "../project-form.ts";
 import type { Shown } from "../record-form.ts";
@@ -58,13 +59,11 @@ export async function newProjectOfContactPage(ctx: PageContext, id: string, stat
     cancel: back,
     submit: "Add the project",
     prefix: PROJECT_PREFIX,
-    groups: [{ specs: projectSpecs(await projectStatusRows(ctx.db), { defs: await projectDefs(ctx) }) }],
+    groups: [{ specs: projectSpecs(await projectStatusRows(ctx.db), { defs: await projectFieldDefs(ctx.db) }) }],
     shown: state?.shown ?? firstShown(""),
     errors: state?.errors ?? [],
   });
 }
-
-const projectDefs = (ctx: Pick<PageContext, "db">) => listFieldDefs(ctx.db, { entity: "project" });
 
 /** /projects/new: an internal project, with no person and no deal. */
 export async function newInternalProjectPage(ctx: PageContext, state?: NewProjectState): Promise<string | null> {
@@ -80,7 +79,7 @@ export async function newInternalProjectPage(ctx: PageContext, state?: NewProjec
     cancel: PROJECTS_PATH,
     submit: "Add the project",
     prefix: PROJECT_PREFIX,
-    groups: [{ specs: projectSpecs(await projectStatusRows(ctx.db), { defs: await projectDefs(ctx) }) }],
+    groups: [{ specs: projectSpecs(await projectStatusRows(ctx.db), { defs: await projectFieldDefs(ctx.db) }) }],
     shown: state?.shown ?? firstShown(""),
     errors: state?.errors ?? [],
   });
@@ -126,7 +125,7 @@ ${checkbox({ id: "project-complete-tasks", name: COMPLETE_TASKS, label: "Complet
     cancel: back,
     submit: "Add the project",
     prefix: PROJECT_PREFIX,
-    groups: [{ specs: projectSpecs(await projectStatusRows(ctx.db), { defs: await projectDefs(ctx), ...(trusted ? {} : { nameHint: OUTSIDE_NAME_HINT }) }), after: box }],
+    groups: [{ specs: projectSpecs(await projectStatusRows(ctx.db), { defs: await projectFieldDefs(ctx.db), ...(trusted ? {} : { nameHint: OUTSIDE_NAME_HINT }) }), after: box }],
     shown: state?.shown ?? firstShown(trusted ? deal.title : ""),
     errors: state?.errors ?? [],
   });

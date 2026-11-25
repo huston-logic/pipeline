@@ -38,7 +38,7 @@ hooks and the commands are in `CLAUDE.md`.
   token, the look and the change banner) and return `renderPage({ title, description, body, current, frame: ctx })`
   from `src/board/layout.ts` (the layout appends " · <business name>" to the title and draws the banner). Every board
   path is listed in `boardRoutes` in `src/board/routes.ts` (import-free; the accessibility test and `npm run screenshots`
-  read it); `lighthouserc.cjs` scores `lighthouseRoutes`, one of each kind of page, at most 20 (a test checks), 3 runs
+  read it); `lighthouserc.cjs` scores `lighthouseRoutes`, one of each kind of page, at most 22 (a test checks), 3 runs
   each; `npm run test:lighthouse` (`scripts/lighthouse.mjs`) collects again, at most twice, only the pages whose runs
   crashed (Chrome's `NO_NAVSTART`), then checks scores once. Every new page goes in `boardRoutes`; a new kind of page
   also takes a `lighthouseRoutes` slot. The file also has the nav (`navItems`: Today, Pipeline, People, Brief, More; `moreItems`: Rules, Changes, Export, Import; `moreItemsFor(true)` adds Time while time tracking is on, decision 0051). Pages are

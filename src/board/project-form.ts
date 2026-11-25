@@ -1,6 +1,7 @@
 // The fields of the project forms, New project and Edit project (decision 0055), as record-form specs (decision 0018): the
 // same specs draw the form and read the post. Dates are a date plus an optional time, read in the owner's timezone.
 import type { Db, FieldDefRow } from "../db/db.ts";
+import { listFieldDefs } from "../db/queries.ts";
 import { projectStatusRows } from "../services/memo.ts";
 import { line, projectFieldSpecs, type Spec } from "./record-form.ts";
 
@@ -17,6 +18,9 @@ export const newInternalProjectPath = "/projects/new";
 export const MOVE_TASKS = "move_tasks";
 /** The tick box that completes all of a deal's open tasks; it wins over the move box. */
 export const COMPLETE_TASKS = "complete_tasks";
+
+/** The live custom project fields, which every project form draws and reads. */
+export const projectFieldDefs = (db: Db): Promise<FieldDefRow[]> => listFieldDefs(db, { entity: "project" });
 
 /** The live statuses, plus the project's own status when it has been archived since (marked, so it can stay as it is). */
 export async function statusChoices(db: Db, current?: string): Promise<{ key: string; label: string }[]> {

@@ -1,7 +1,7 @@
 // The project page's posts (decision 0055): Save status and Archive or Bring back (update_project), Add a task
 // (add_task) and Log it (log_activity). Each calls the service the matching MCP tool calls, as the owner under that tool's
 // name. While projects are off, or for an id that is no project, every path here is a 404.
-import { getContact, getSettings, listFieldDefs } from "../db/queries.ts";
+import { getContact, getSettings } from "../db/queries.ts";
 import { isContactId, isProjectId } from "../ids.ts";
 import { ownerTimezone, projectById } from "../services/lookup.ts";
 import { projectStatusRows } from "../services/memo.ts";
@@ -13,7 +13,7 @@ import { projectHref } from "./parts.ts";
 import { projectEditPage } from "./pages/project-edit.ts";
 import { newInternalProjectPage, newProjectOfContactPage, newProjectOfDealPage, wonDeal } from "./pages/project-new.ts";
 import { projectEditPath, statusForm } from "./pages/project.ts";
-import { COMPLETE_TASKS, MOVE_TASKS, newInternalProjectPath, newProjectOfContactPath, newProjectOfDealPath, projectSpecs, statusChoices } from "./project-form.ts";
+import { COMPLETE_TASKS, MOVE_TASKS, newInternalProjectPath, newProjectOfContactPath, newProjectOfDealPath, projectFieldDefs, projectSpecs, statusChoices } from "./project-form.ts";
 import { collectEdit, collectNew } from "./record-form.ts";
 import { withChange } from "./return-to.ts";
 
@@ -63,7 +63,7 @@ type FormInput = { name?: string; status?: string; startAt?: string; targetAt?: 
 
 /** The new-project form's specs: the live statuses and the live custom project fields. */
 const specsOf = async (ctx: ActionContext) =>
-  projectSpecs(await projectStatusRows(ctx.db), { defs: await listFieldDefs(ctx.db, { entity: "project" }) });
+  projectSpecs(await projectStatusRows(ctx.db), { defs: await projectFieldDefs(ctx.db) });
 
 /** POST /projects/new: add_project with no person and no deal (an internal project). */
 async function addInternal(ctx: ActionContext): Promise<ActionResult> {
@@ -122,8 +122,7 @@ async function edit(ctx: ActionContext, id: string): Promise<ActionResult> {
   const project = await projectOf(ctx, id);
   if (project === null) return notFound(ctx);
   const tz = await ownerTimezone(ctx.db);
-  const defs = await listFieldDefs(ctx.db, { entity: "project" });
-  const specs = projectSpecs(await statusChoices(ctx.db, project.status_key), { defs });
+  const specs = projectSpecs(await statusChoices(ctx.db, project.status_key), { defs: await projectFieldDefs(ctx.db) });
   const collected = await collectEdit(specs, ctx.form, project, tz);
   const refused = async (extra: string[] = []) =>
     page(422, (await projectEditPage(formContext(ctx, projectEditPath(id)), id, stateOf(collected, extra))) ?? "");

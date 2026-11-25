@@ -6,6 +6,8 @@ import { createTestDb, openTestDb } from "../db/sqlite-d1.ts";
 import { DEFAULT_TZ } from "../time.ts";
 import type { Ctx } from "./change.ts";
 import { updateDeal } from "./deals.ts";
+import { logActivity } from "./activities.ts";
+import { addProject } from "./projects.ts";
 import { UserError } from "./errors.ts";
 import { addDeal as addDealChange } from "./add-deal.ts";
 import {
@@ -365,6 +367,22 @@ test("contactDetail names the deal of every timeline entry, archived deals inclu
     .bind("2026-11-19T17:00:00.000Z")
     .run();
   assert.equal((await contactDetail(db, "ct_seed01", TZ, NOW))?.timeline[0]?.deal, null, "a note on the contact alone");
+});
+
+test("contactDetail names the project of a timeline entry, only while projects are on", async () => {
+  const db = await seededDb();
+  await db.prepare("UPDATE settings SET projects = 1").run();
+  const ctx: Ctx = { db, now: NOW, actor: "owner", tool: "add_project" };
+  const made = await addProject(ctx, { contact: "ct_seed01", name: "Retrofit" });
+  await db.prepare("UPDATE projects SET untrusted_fields = '[\"name\"]' WHERE id = ?").bind(made.projectId).run();
+  await logActivity({ ...ctx, tool: "log_activity" }, { project: made.projectId, type: "note", summary: "Anchors ordered." });
+  const on = await contactDetail(db, "ct_seed01", TZ, NOW);
+  const item = on?.timeline.find((entry) => entry.summary === "Anchors ordered.");
+  assert.deepEqual(item?.project, { id: made.projectId, name: "Retrofit", untrusted_fields: ["name"] });
+  assert.equal(on?.timeline.find((entry) => entry.project === null)?.project, null);
+  await db.prepare("UPDATE settings SET projects = 0").run();
+  const off = await contactDetail(db, "ct_seed01", TZ, NOW);
+  assert.equal(off?.timeline.find((entry) => entry.summary === "Anchors ordered.")?.project, null);
 });
 
 test("contactDetail keeps the newest 50 timeline entries and says there are more", async () => {

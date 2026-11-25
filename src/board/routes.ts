@@ -109,7 +109,7 @@ export const boardRoutes: string[] = [
 export const publicRoutes: string[] = ["/unsubscribe/test", "/unsubscribe/rcseed01FakeSeedTokenFakeSeedTokenFakeSeedT"];
 
 /** At most this many pages go through Lighthouse, so the CI job's time stops growing with the board. */
-export const LIGHTHOUSE_MAX_ROUTES = 20;
+export const LIGHTHOUSE_MAX_ROUTES = 22;
 
 /**
  * The pages Lighthouse scores: one of each kind of board page (a list, a record page, a form, an import step, ...),
@@ -138,6 +138,8 @@ export const lighthouseRoutes: string[] = [
   "/import",
   "/import/im_seed01",
   "/campaigns/cp_seed01",
+  "/projects",
+  "/projects/pj_seed01",
 ];
 
 /** The phone tab bar and the top of the side bar, in this order. */

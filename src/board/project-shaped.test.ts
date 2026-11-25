@@ -67,6 +67,9 @@ test("GET and POST /projects/new make an internal project, with fields and no pe
   assert.equal(made?.contact_id, null);
   assert.equal(made?.deal_id, null);
   assert.deepEqual(JSON.parse(made?.fields ?? "{}"), { site: "Yard" });
+  const audit = await auditOf(db, changeIdOf(location));
+  assert.equal(audit?.tool, "add_project");
+  assert.equal(audit?.actor, "owner");
   const refused = await post(env, "/projects/new", { name: "" });
   assert.equal(refused.res.status, 422);
   assert.match(refused.body, /Name the project in a few words\./);
