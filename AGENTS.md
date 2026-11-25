@@ -31,7 +31,7 @@ hooks and the commands are in `CLAUDE.md`.
 
 - **One Worker** (`src/index.ts`) handles every route: the board, static files, `/mcp` (`createMcpHandler` from the
   Agents SDK, not `McpAgent`), and in later tasks `/intake`, `/api/*`, the `scheduled` handler (hourly rules, daily
-  brief) and the `email` handler (email logging). `run_worker_first: true`, so every request reaches the Worker; it hands file requests
+  brief, and a second trigger every 15 minutes that sends campaigns only (decision 0053)) and the `email` handler (email logging). `run_worker_first: true`, so every request reaches the Worker; it hands file requests
   (a path ending in `name.ext`) to `env.ASSETS` and renders its own 404 page when the file is missing.
 - **The board is HTML rendered by the Worker** (decisions 0001 and 0014): no React, no framework. Pages
   are modules in `src/board/pages/` that take a `PageContext` (`src/board/context.ts`: db, now, query, `here`, the CSRF

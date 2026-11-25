@@ -93,20 +93,22 @@ The paths:
 | `register` | Your AI app, the first time it connects |
 | `.well-known` | Your AI app, to find the sign-in addresses (`/.well-known/oauth-authorization-server` and `/.well-known/oauth-protected-resource/mcp`) |
 | `icons` | Your phone, for the home-screen icons and the favicon (`/icons/*.png`, decision 0019) |
+| `unsubscribe` | A person who clicks Unsubscribe in a campaign email (`/unsubscribe/*`, decision 0053). Each link carries its own token. |
+| `hooks/resend` | Resend, posting delivery results for campaign emails (decision 0053). Each request is checked by its signature. |
 
 The `icons` path is there because iPhone and Android fetch home-screen icons without the page's cookies, so behind
 Access they would get the sign-in page instead of a PNG. The icons are the same generic green tile for every copy, so
 nothing private is exposed. This can only be checked on a real phone: at the first install, the home-screen icon must
 be the green board tile, not a blank or a screenshot.
 
-One self-hosted application covers all eight paths, with one hostname-and-path row per path (this worked on the
+One self-hosted application covers all ten paths, with one hostname-and-path row per path (this worked on the
 first live copy):
 
 1. **Create new application** > **Self-hosted and private**, the same type as step 2.
 2. Name it `Pipeline bypass`.
 3. Select **Add public hostname** and choose `<copy host>`, with `intake` in the **Path** box next to it. Then add
    another public hostname row for each of the other paths, the same host each time: `mcp`, `authorize`,
-   `callback`, `token`, `register`, `.well-known` and `icons`. That is eight rows in all.
+   `callback`, `token`, `register`, `.well-known`, `icons`, `unsubscribe` and `hooks/resend`. That is ten rows in all.
 4. Add a policy: Action **Bypass**, **Include** > **Everyone**.
 5. Save.
 
@@ -180,6 +182,9 @@ change them). An `OWNER_EMAILS` var, if you add one, also lets its emails in. Ne
 5. `https://<copy host>/icons/icon-192.png` shows the green board tile in a private window, without asking you to
    sign in. Then add the board to your phone's home screen (README, "Install on your phone"): the icon must be the
    green tile. This is the only way to check it; it cannot be tested locally.
+6. In a private window, `https://<copy host>/unsubscribe/test` shows "This link is from a test email." without asking
+   you to sign in (the campaign bypass works, docs/CAMPAIGNS.md step 6). **(check the wording in the dashboard
+   and the app once the campaigns code is live.)**
 
 ### If "Allow" seems to do nothing
 
