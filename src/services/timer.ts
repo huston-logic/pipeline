@@ -75,7 +75,8 @@ export async function startTimer(ctx: Ctx, subject: TimerSubject): Promise<Chang
   const running = await runningTimer(ctx);
   if (running) throw new UserError(await alreadyRunning(ctx, running, ctx.now, tz));
   const links = await resolveLinks(ctx, subject);
-  const workType = subject.workType === undefined ? null : await findWorkType(ctx, subject.workType);
+  const taskWorkType = subject.workType === undefined && links.task?.work_type_id != null ? await workTypeById(ctx, links.task.work_type_id) : null;
+  const workType = subject.workType === undefined ? (taskWorkType?.archived === 0 ? taskWorkType : null) : await findWorkType(ctx, subject.workType);
   const now = ctx.now.toISOString();
   const row: TimeEntryRow = {
     id: newId("te"),

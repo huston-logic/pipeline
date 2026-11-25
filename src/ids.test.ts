@@ -9,7 +9,7 @@ test("ids are <prefix>_ plus 12 lowercase base32 characters", () => {
 });
 
 test("the prefixes are the ones the plan lists", () => {
-  assert.deepEqual([...ID_PREFIXES], ["ct", "dl", "ac", "tk", "ru", "rf", "fd", "br", "chg", "ps", "im", "vw", "pr", "wt", "cr", "te", "cp", "cs", "rc", "cb", "su", "pj"]);
+  assert.deepEqual([...ID_PREFIXES], ["ct", "dl", "ac", "tk", "ru", "rf", "fd", "br", "chg", "ps", "im", "vw", "pr", "wt", "cr", "te", "cp", "cs", "rc", "cb", "su", "pj", "tp", "tt"]);
 });
 
 test("ids do not repeat", () => {

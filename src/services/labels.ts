@@ -48,6 +48,10 @@ export const projectTitle = (project: WithProvenance & { id: string; name: strin
 export const projectLabel = (project: WithProvenance & { id: string; name: string }, contact: ContactLike | null) =>
   contact === null ? projectTitle(project) : `${projectTitle(project)} (${contactName(contact)})`;
 
+/** "template \"Website launch\"", or "template tp_…" when the name came from outside. */
+export const templateLabel = (template: WithProvenance & { id: string; name: string }) =>
+  isTrusted(template, "name") ? `template "${template.name}"` : `template ${template.id}`;
+
 /** "\"Call back\"", or "task tk_…" when the title came from outside. */
 export const taskTitle = (task: TitledLike) => (isTrusted(task, "title") ? `"${task.title}"` : `task ${task.id}`);
 

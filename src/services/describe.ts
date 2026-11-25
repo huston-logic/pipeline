@@ -72,6 +72,10 @@ export function rowLabel(table: ChangeTable, row: Row): string {
       return `project status ${text(row.label)}`;
     case "projects":
       return isTrusted(row, "name") ? `project "${text(row.name)}"` : `project ${id}`;
+    case "project_templates":
+      return isTrusted(row, "name") ? `template "${text(row.name)}"` : `template ${id}`;
+    case "template_tasks":
+      return `template task ${id}`;
     case "campaigns":
       return campaignLabel(id);
     case "campaign_steps":

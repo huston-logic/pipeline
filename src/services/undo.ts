@@ -93,8 +93,13 @@ const DEPENDENTS: Partial<Record<ChangeTable, Dependent[]>> = {
   // A sub-task (migration 0022) points at its parent task.
   tasks: [{ ...TIME_ENTRY, column: "task_id" }, { table: "tasks", column: "parent_id", one: "sub-task", many: "sub-tasks" }],
   activities: [{ ...TIME_ENTRY, column: "activity_id" }],
+  // A template's tasks (migration 0024), and a template task's sub-tasks.
+  project_templates: [{ table: "template_tasks", column: "template_id", one: "template task", many: "template tasks" }],
+  template_tasks: [{ table: "template_tasks", column: "parent_id", one: "template sub-task", many: "template sub-tasks" }],
   work_types: [
     { ...TIME_ENTRY, column: "work_type_id" },
+    { table: "tasks", column: "work_type_id", one: "task", many: "tasks" },
+    { table: "template_tasks", column: "work_type_id", one: "template task", many: "template tasks" },
     { table: "client_rates", column: "work_type_id", one: "client rate", many: "client rates" },
   ],
   stages: [{ table: "deals", column: "stage_key", one: "deal", many: "deals" }],
@@ -634,6 +639,8 @@ const NOUNS: Record<ChangeTable, [string, string]> = {
   time_entries: ["time entry", "time entries"],
   project_statuses: ["project status", "project statuses"],
   projects: ["project", "projects"],
+  project_templates: ["project template", "project templates"],
+  template_tasks: ["template task", "template tasks"],
   campaigns: ["campaign", "campaigns"],
   campaign_steps: ["campaign email", "campaign emails"],
   email_suppressions: ["campaign email block", "campaign email blocks"],
