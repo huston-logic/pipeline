@@ -78,10 +78,18 @@ test("addProject by hand takes a person, a status by label and notes; the name i
   await assert.rejects(addProject(ctxFor(db), { contact: contactId }), /Name the project in a few words\./);
 });
 
+test("a project is refused for an archived person, by contact or by deal", async () => {
+  const { db, dealId, contactId } = await setup();
+  await db.prepare("UPDATE contacts SET archived = 1 WHERE id = ?").bind(contactId).run();
+  const refusal = /Pat Example is archived, so no project can be added for them\./;
+  await assert.rejects(addProject(ctxFor(db), { contact: contactId, name: "x" }), refusal);
+  await assert.rejects(addProject(ctxFor(db), { deal: dealId, name: "x" }), refusal);
+});
+
 test("an outside deal title is never the default name", async () => {
   const { db, dealId } = await setup();
   await db.prepare(`UPDATE deals SET untrusted_fields = '["title"]' WHERE id = ?`).bind(dealId).run();
-  await assert.rejects(addProject(ctxFor(db), { deal: dealId }), /Name the project in a few words\./);
+  await assert.rejects(addProject(ctxFor(db), { deal: dealId }), /Name the project in a few words \(the deal's title came from outside\)\./);
   const named = await addProject(ctxFor(db), { deal: dealId, name: "Retrofit" });
   assert.equal(named.summary, `Added project "Retrofit" for Pat Example, from deal ${dealId} (change ${named.changeId})`);
 });

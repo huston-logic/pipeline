@@ -90,6 +90,7 @@ export async function addProject(ctx: Ctx, input: ProjectInput): Promise<ChangeR
   const tz = await ownerTimezone(ctx);
   const { deal, contact } = await findSubject(ctx, { dealId: input.deal, contactId: input.contact }, { optional: true });
   if (contact === null) throw new UserError("A project needs a person: give contact, or a won deal.");
+  if (contact.archived === 1) throw new UserError(`${capitalize(contactName(contact))} is archived, so no project can be added for them.`);
   if (deal && deal.status !== "won") {
     throw new UserError(`A project comes from a won deal. Mark ${dealTitle(deal)} Won first, or leave the deal out.`);
   }
@@ -97,7 +98,10 @@ export async function addProject(ctx: Ctx, input: ProjectInput): Promise<ChangeR
   if (input.moveOpenTasks === true && !deal) throw new UserError("moveOpenTasks needs a deal: give the won deal whose open tasks should move.");
 
   const given = clean(input.name);
-  const name = checkName(given ?? (deal && isTrusted(deal, "title") ? deal.title : null));
+  if (given === null && deal && !isTrusted(deal, "title")) {
+    throw new UserError("Name the project in a few words (the deal's title came from outside).");
+  }
+  const name = checkName(given ?? (deal ? deal.title : null));
   const status = await findProjectStatus(ctx, input.status ?? "active");
   const startAt = whenOrNull(input.startAt ?? null, tz);
   const targetAt = whenOrNull(input.targetAt ?? null, tz);
