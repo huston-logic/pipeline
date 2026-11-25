@@ -15,7 +15,7 @@ Non-negotiables
 
 Data (Cloudflare D1, forward-only migrations)
 
-* `settings`: timezone, brief hour, brief email address, brief on or off, allowed owner email(s), business name, accent colour, time tracking on or off (decision 0049), campaigns on or off, postal address, campaign daily limit, projects on or off (decision 0055)
+* `settings`: timezone, brief hour, brief email address, brief on or off, allowed owner email(s), business name, accent colour, time tracking on or off (decision 0049), campaigns on or off, postal address, campaign daily limit, projects on or off (decision 0055), where AI changes are approved (in chat or on the board only, decision 0060)
 * `stages`: key, label, position, kind (open, won, lost, not_now), archived
 * `field_defs`: entity (contact, deal or project), key, label, type (text, number, date, choice), choices, archived
 * `contacts`: name, email (unique when present), phone, business, source, notes, custom field values (JSON, validated against `field_defs`), lead status (null: never a lead; `new`, `contacted`, `not_now`, `not_a_fit`, `bad`, `qualified`) and when it last changed, created and updated times. A lead is a person with a lead status and no open deal (decision 0022).

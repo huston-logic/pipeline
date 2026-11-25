@@ -21,7 +21,7 @@ app says can stand in for their yes.
 - Under `board`, the AI's `apply_changes` refuses with a link to `<origin>/pending`, its `undo_change` refuses for every
   change with a link to `<origin>/changes`, and its `apply_import` refuses with the board import link
   `<origin>/import/<draft>`.
-- The setting is read through the request memo, so a maximum-size propose and apply stay at 40 D1 calls or fewer (a
+- Propose and apply read the setting through the request memo (undo and apply_import read it directly), so a maximum-size propose and apply stay at 40 D1 calls or fewer (a
   tool-level test keeps it).
 - Ruling 15: the AI app may tighten the setting to `board` but never loosen it. Loosening is the board's.
 - Ruling 16: board-only approval leaves "Apply small changes" as it is. The AI may not set `aiEdits` to `apply_small`
