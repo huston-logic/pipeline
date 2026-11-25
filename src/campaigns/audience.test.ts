@@ -39,10 +39,24 @@ test("every skip reason, with the order archived, no_email, bad_email, then supp
   assert.deepEqual(got.sendable.map((m) => m.contactId), ["ct_a1"]);
   assert.deepEqual(
     got.skipped.map((m) => `${m.contactId}:${m.reason}`),
-    // Sorted by label: the missing id's label is "contact ct_missing", between Bo and Cy.
-    ["ct_b1:no_email", "ct_missing:archived", "ct_c1:bad_email", "ct_d1:unsubscribed", "ct_e1:bounced", "ct_f1:complained", "ct_g1:unsubscribed", "ct_h1:archived"],
+    // ct_missing is left out entirely: there is no person to skip.
+    ["ct_b1:no_email", "ct_c1:bad_email", "ct_d1:unsubscribed", "ct_e1:bounced", "ct_f1:complained", "ct_g1:unsubscribed", "ct_h1:archived"],
   );
   assert.equal(got.skipped.find((m) => m.contactId === "ct_g1")?.email, "gus@example.com");
+});
+
+test("two sendable people with the same cleaned address are refused", async () => {
+  const db = await withPeople([
+    person("ct_a1", "Ann Example", "same@example.com"),
+    // The unique index is on the stored text, so a trailing space gets past it.
+    person("ct_a2", "Ann Two Example", "same@example.com "),
+  ]);
+  await assert.rejects(
+    resolveAudience(db, NOW, partners),
+    (error: Error) =>
+      error.name === "UserError" &&
+      error.message === "Two people in this group have the same email address (Ann Example and Ann Two Example). Change one of them, then check again.",
+  );
 });
 
 test("a status audience is every unarchived person with that status, sorted by name then id", async () => {

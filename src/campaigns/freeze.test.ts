@@ -155,6 +155,21 @@ test("nobody sendable, a missing, archived or already approved campaign, and a b
   assert.equal(await refusal(approveCampaign(ctxFor(db, "campaign_approve"), id, sendNow(print))), "Only a draft can be approved.");
 });
 
+test("a hand-picked id that no longer exists is left out and approve still works", async () => {
+  const { db } = await draftOn();
+  db.exec("INSERT INTO contacts (id, name, email, person_status) VALUES ('ct_gone', 'Gone Example', 'gone@example.com', 'partner')");
+  const added = await addCampaignDraft(
+    { db, now: NOW, actor: "ai", tool: "add_campaign_draft" },
+    { name: "Picked", recipients: { kind: "people", people: ["ct_a1", "ct_gone"] }, subject: "Hi", body: "News." },
+  );
+  db.exec("PRAGMA foreign_keys = OFF");
+  db.exec("DELETE FROM contacts WHERE id = 'ct_gone'");
+  db.exec("PRAGMA foreign_keys = ON");
+  const id = added.campaignId;
+  await approveCampaign(ctxFor(db, "campaign_approve"), id, sendNow(await openFingerprint(db, id)));
+  assert.deepEqual((await recipientsOf(db, id)).map((r) => r.contact_id), ["ct_a1"]);
+});
+
 test("an archived draft can't be approved", async () => {
   const { db, id } = await draftOn();
   const print = await openFingerprint(db, id);

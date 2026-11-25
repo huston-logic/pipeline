@@ -131,7 +131,7 @@ function requireDraft(campaign: CampaignRow, verb: "edited" | "archived"): void 
   if (campaign.archived === 1) throw new UserError(`${capital(campaignLabel(campaign.id))} is archived. Duplicate it to make a new draft.`);
 }
 
-const capital = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
+export const capital = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
 function newRows(
   ctx: Ctx,

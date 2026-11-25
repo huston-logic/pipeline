@@ -52,14 +52,14 @@ const byLabel = (a: Member, b: Member) => {
 };
 
 /** The people the audience names, archived ones included only for a list of ids (they are skipped, not dropped). */
-async function peopleOf(db: Db, audience: Audience): Promise<{ rows: ContactRow[]; missing: string[] }> {
+async function peopleOf(db: Db, audience: Audience): Promise<ContactRow[]> {
   if (audience.kind === "people") {
     const found = await db
       .prepare("SELECT * FROM contacts WHERE id IN (SELECT j.value FROM json_each(?) AS j)")
       .bind(JSON.stringify(audience.people))
       .all<ContactRow>();
-    const have = new Set(found.results.map((row) => row.id));
-    return { rows: found.results, missing: audience.people.filter((id) => !have.has(id)) };
+    // An id that no longer exists is left out: there is no person to send to, skip or freeze.
+    return found.results;
   }
   let filters: ViewFilters;
   if (audience.kind === "status") {
@@ -75,7 +75,7 @@ async function peopleOf(db: Db, audience: Audience): Promise<{ rows: ContactRow[
     .bind(...where.params, MAX_AUDIENCE + 1)
     .all<ContactRow>();
   if (found.results.length > MAX_AUDIENCE) throw new UserError(TOO_MANY);
-  return { rows: found.results, missing: [] };
+  return found.results;
 }
 
 async function suppressionsFor(db: Db, emails: string[]): Promise<Map<string, EmailSuppressionRow["reason"]>> {
@@ -103,14 +103,13 @@ export function parseAudience(json: string): Audience {
  * reason. Over MAX_AUDIENCE people is a UserError. At most three D1 reads for a group of up to 2,000.
  */
 export async function resolveAudience(db: Db, _now: Date, audience: Audience): Promise<ResolvedAudience> {
-  const { rows, missing } = await peopleOf(db, audience);
-  const members = rows.map((row) => ({ member: memberOf(row), archived: row.archived === 1 }));
+  const members = (await peopleOf(db, audience)).map((row) => ({ member: memberOf(row), archived: row.archived === 1 }));
   const suppressed = await suppressionsFor(
     db,
     members.flatMap(({ member }) => (member.email === null ? [] : [member.email])),
   );
   const sendable: Member[] = [];
-  const skipped: Skipped[] = missing.map((id) => ({ contactId: id, label: `contact ${id}`, email: null, firstName: null, leadStatus: null, reason: "archived" }));
+  const skipped: Skipped[] = [];
   for (const { member, archived } of members) {
     const reason: SkipReason | undefined = archived
       ? "archived"
@@ -124,5 +123,14 @@ export async function resolveAudience(db: Db, _now: Date, audience: Audience): P
   }
   sendable.sort(byLabel);
   skipped.sort(byLabel);
+  // Stored addresses are unique ignoring case, so this only happens when two differ by surrounding spaces.
+  const owners = new Map<string, Member>();
+  for (const member of sendable) {
+    const first = owners.get(member.email ?? "");
+    if (first !== undefined) {
+      throw new UserError(`Two people in this group have the same email address (${first.label} and ${member.label}). Change one of them, then check again.`);
+    }
+    owners.set(member.email ?? "", member);
+  }
   return { sendable, skipped, newLeads: sendable.filter((member) => member.leadStatus === "new").length };
 }

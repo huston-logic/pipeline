@@ -13,7 +13,7 @@ import { settingsRow } from "../services/memo.ts";
 import { requireCampaigns } from "../services/settings.ts";
 import { formatLocal } from "../time.ts";
 import { type Member, parseAudience, type ResolvedAudience, resolveAudience } from "./audience.ts";
-import { loadCampaign } from "./drafts.ts";
+import { capital, loadCampaign } from "./drafts.ts";
 
 const STALE = "The list or the email changed since you opened this page. Check it again.";
 const MAX_SCHEDULE_DAYS = 90;
@@ -101,7 +101,7 @@ export async function approveCampaign(ctx: Ctx, id: string, input: ApproveInput)
   await requireCampaigns(ctx);
   const { campaign, step } = await loadCampaign(ctx.db, id);
   if (campaign.status !== "draft") throw new UserError("Only a draft can be approved.");
-  if (campaign.archived === 1) throw new UserError(`${campaignLabel(campaign.id).replace(/^./, (c) => c.toUpperCase())} is archived. Duplicate it to make a new draft.`);
+  if (campaign.archived === 1) throw new UserError(`${capital(campaignLabel(campaign.id))} is archived. Duplicate it to make a new draft.`);
   const baseUrl = checkBaseUrl(input.baseUrl);
   const sendAfter = input.scheduled ? input.sendAfter : ctx.now;
   if (input.scheduled) {
