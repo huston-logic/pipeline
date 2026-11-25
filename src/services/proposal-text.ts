@@ -3,12 +3,12 @@
 // tasks "Tasks", logged activities "Notes" (a deal's stage move is shown on its Update line), time entries "Time".
 // Keys become the owner's labels; outside text is never shown: a record named from outside is named by id
 // (labels.ts), and an old value from outside reads "(text from outside)".
-import type { ContactRow, Db, DealRow } from "../db/db.ts";
+import type { ContactRow, Db, DealRow, ProjectRow } from "../db/db.ts";
 import { formatLocal, localWhen } from "../time.ts";
 import type { ChangeInput, ChangeTable, Row } from "./change.ts";
 import { changedColumns, oneLine, rowKey } from "./change.ts";
 import { capitalize, columnLabel, joinAnd, rowLabel, short } from "./describe.ts";
-import { activityText, contactName, dealLabel, dealTitle, isTrusted, taskTitle, untrustedFields } from "./labels.ts";
+import { activityText, contactName, dealLabel, dealTitle, isTrusted, projectTitle, taskTitle, untrustedFields } from "./labels.ts";
 import { parseObject, stageLabels } from "./lookup.ts";
 import { fieldDefRows, memoWorkType, type Reader, readerOf } from "./memo.ts";
 import { LEAD } from "./person-move.ts";
@@ -117,7 +117,7 @@ function show(names: Names, table: ChangeTable, id: string, columns: readonly st
   names.shows.set(key, set);
 }
 
-async function planned<T>(names: Names, table: "contacts" | "deals" | "tasks", id: string | null): Promise<T | null> {
+async function planned<T>(names: Names, table: Named, id: string | null): Promise<T | null> {
   if (id === null) return null;
   const key = rowKey(table, id);
   const row = names.planned.get(key) ?? names.read.get(key);
@@ -125,7 +125,9 @@ async function planned<T>(names: Names, table: "contacts" | "deals" | "tasks", i
   return readerOf(names.src).db.prepare(`SELECT * FROM ${table} WHERE id = ?`).bind(id).first<T>();
 }
 
-type Named = "contacts" | "deals" | "tasks";
+
+
+type Named = "contacts" | "deals" | "tasks" | "projects";
 
 /** At most this many ids in one IN list (D1 takes 100 bound parameters a statement). */
 const IDS_PER_READ = 100;
@@ -152,7 +154,7 @@ async function readRows(db: Db, ids: ReadonlyMap<Named, ReadonlySet<string>>, in
 async function namedRows(db: Db, input: ChangeInput, planned: ReadonlyMap<string, Row>): Promise<Map<string, Row | null>> {
   const read = new Map<string, Row | null>();
   const wanted = (rows: readonly Row[], deals: readonly Row[]): Map<Named, Set<string>> => {
-    const ids = new Map<Named, Set<string>>([["contacts", new Set()], ["deals", new Set()], ["tasks", new Set()]]);
+    const ids = new Map<Named, Set<string>>([["contacts", new Set()], ["deals", new Set()], ["tasks", new Set()], ["projects", new Set()]]);
     const want = (table: Named, id: unknown) => {
       if (typeof id === "string" && !planned.has(rowKey(table, id)) && !read.has(rowKey(table, id))) ids.get(table)?.add(id);
     };
@@ -160,6 +162,7 @@ async function namedRows(db: Db, input: ChangeInput, planned: ReadonlyMap<string
       want("contacts", row.contact_id);
       want("deals", row.deal_id);
       want("tasks", row.task_id);
+      want("projects", row.project_id);
     }
     for (const deal of deals) want("contacts", deal.contact_id);
     return ids;
@@ -199,8 +202,16 @@ function cell(names: Names, table: ChangeTable, row: Row, column: string, value:
 
 const statusText = (names: Names, row: Row) => names.statuses.both(String(row.person_status), (row.sub_status as string | null) ?? null);
 
-/** Who a task, note or deal is for: "Pat Example", or a deal and its person. */
+/** A project as the list names it: project "Retrofit", or project pj_... when its name came from outside. */
+const projectWord = (project: ProjectRow) => (isTrusted(project, "name") ? `project ${projectTitle(project)}` : projectTitle(project));
+
+/** Who a task, note or entry is for: a project and its person, a deal and its person, or "Pat Example". */
 async function forWhom(names: Names, row: Row): Promise<string | null> {
+  const project = await planned<ProjectRow>(names, "projects", (row.project_id as string | null | undefined) ?? null);
+  if (project) {
+    const owner = await planned<ContactRow>(names, "contacts", (row.contact_id as string | null) ?? project.contact_id);
+    return owner ? `${projectWord(project)} (${contactName(owner)})` : projectWord(project);
+  }
   const deal = await planned<DealRow>(names, "deals", (row.deal_id as string | null) ?? null);
   const contact = await planned<ContactRow>(names, "contacts", (row.contact_id as string | null) ?? deal?.contact_id ?? null);
   if (deal && contact) return dealLabel(deal, contact);
@@ -229,8 +240,8 @@ async function updatedFields(names: Names, table: ChangeTable, id: string, befor
   }
   // A move's status follows its stage.
   if (table === "deals" && columns.includes("stage_key")) columns = columns.filter((column) => column !== "status");
-  if (table === "tasks" && (columns.includes("deal_id") || columns.includes("contact_id"))) {
-    columns = [...columns.filter((column) => column !== "deal_id" && column !== "contact_id"), "for"];
+  if (table === "tasks" && (columns.includes("deal_id") || columns.includes("contact_id") || columns.includes("project_id"))) {
+    columns = [...columns.filter((column) => column !== "deal_id" && column !== "contact_id" && column !== "project_id"), "for"];
   }
   const order = ORDER[table] ?? [];
   columns.sort((a, b) => (order.indexOf(a) + 1 || 99) - (order.indexOf(b) + 1 || 99));
@@ -288,21 +299,22 @@ function addedFields(names: Names, table: "contacts" | "deals", id: string, row:
 }
 
 async function noteItem(names: Names, id: string, row: Row): Promise<Item> {
-  show(names, "activities", id, ["type", "contact_id", "deal_id", "summary", "occurred_at", "actor"]);
+  show(names, "activities", id, ["type", "contact_id", "deal_id", "project_id", "summary", "occurred_at", "actor"]);
   const contact = await planned<ContactRow>(names, "contacts", (row.contact_id as string | null) ?? null);
   const deal = await planned<DealRow>(names, "deals", (row.deal_id as string | null) ?? null);
+  const project = await planned<ProjectRow>(names, "projects", (row.project_id as string | null | undefined) ?? null);
   const words = TYPE_WORDS[String(row.type)] ?? `${capitalize(String(row.type))} with`;
   const who = contact ? contactName(contact) : NONE;
   const fields: Item["fields"] = [{ field: "", to: short(activityText({ id, summary: String(row.summary), actor: String(row.actor) }), SHOWN_MAX) }];
   if (row.occurred_at !== row.created_at) fields.push({ field: "on", to: shown(names, "activities", "occurred_at", row.occurred_at) });
-  return { record: `${words} ${who}${deal ? ` about ${dealTitle(deal)}` : ""}`, id, fields };
+  return { record: `${words} ${who}${deal ? ` about ${dealTitle(deal)}` : project ? ` about ${projectWord(project)}` : ""}`, id, fields };
 }
 
 async function taskItem(names: Names, id: string, before: Row | null, after: Row): Promise<Item> {
   if (before !== null) return { record: `Task ${taskTitle(before as unknown as { id: string; title: string })}`, id, fields: await updatedFields(names, "tasks", id, before, after) };
   const who = await forWhom(names, after);
   // A task the owner or the AI app adds is the owner's own: its source says so and isn't worth a word.
-  show(names, "tasks", id, ["title", "deal_id", "contact_id", "due_at", ...(after.source === "owner" ? ["source"] : [])]);
+  show(names, "tasks", id, ["title", "deal_id", "contact_id", "project_id", "due_at", ...(after.source === "owner" ? ["source"] : [])]);
   return {
     record: `New task ${taskTitle(after as unknown as { id: string; title: string })}`,
     id,
@@ -337,7 +349,7 @@ async function entryTask(names: Names, row: Row): Promise<string | null> {
 }
 
 /** The columns an entry's line shows: its length (or that it runs), work type, billing and whom it is for. */
-const LINE_COLUMNS = ["ended_at", "minutes", "work_type_id", "billable", "rate", "contact_id", "deal_id"];
+const LINE_COLUMNS = ["ended_at", "minutes", "work_type_id", "billable", "rate", "contact_id", "deal_id", "project_id"];
 
 /** "started <when>", "notes <text>", or each as "old -> new" for an edit. */
 function entryField(names: Names, before: Row | null, after: Row, column: "started_at" | "notes"): Item["fields"][number] {

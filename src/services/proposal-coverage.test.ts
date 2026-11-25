@@ -16,7 +16,8 @@ const NOW = new Date("2026-11-19T18:00:00.000Z");
 const DEPS = { extraOwnerEmails: [] };
 
 const SETUP = [
-  "UPDATE settings SET time_tracking = 1",
+  "UPDATE settings SET time_tracking = 1, projects = 1",
+  "INSERT INTO projects (id, name, contact_id) VALUES ('pj_seed01', 'Retrofit', 'ct_seed01')",
   WORK_TYPES_SQL,
   "INSERT INTO field_defs (id, entity, key, label, type) VALUES ('fd_budget', 'deal', 'budget', 'Budget', 'number'), " +
     "('fd_size', 'contact', 'size', 'Team size', 'text')",
@@ -32,6 +33,11 @@ const RUNNING_ON_PAT =
   "INSERT INTO time_entries (id, contact_id, deal_id, started_at, work_type_id, billable) VALUES ('te_run', 'ct_seed01', 'dl_seed01', '2026-11-19T16:30:00.000Z', 'wt_design', 1)";
 /** A timer for no person or deal since 8:30 AM. */
 const RUNNING_ALONE = "INSERT INTO time_entries (id, started_at, billable) VALUES ('te_run', '2026-11-19T16:30:00.000Z', 0)";
+
+/** A finished half hour on the project, with its own task. */
+const ENTRY_ON_PROJECT =
+  "INSERT INTO tasks (id, contact_id, project_id, title) VALUES ('tk_proj', 'ct_seed01', 'pj_seed01', 'Order anchors'); " +
+  "INSERT INTO time_entries (id, contact_id, project_id, started_at, ended_at, minutes, billable) VALUES ('te_proj', 'ct_seed01', 'pj_seed01', '2026-11-18T17:00:00.000Z', '2026-11-18T17:30:00.000Z', 30, 0)";
 
 type Variant = { input: Record<string, unknown>; setup?: string };
 
@@ -75,10 +81,12 @@ const VARIANTS: Record<RecordActionName, Variant[]> = {
   log_activity: [
     { input: { deal: "dl_seed01", type: "call", summary: "Pat called back.", occurredAt: "2026-11-19T09:15" } },
     { input: { contact: "ct_seed06", type: "note", summary: "Morgan wrote in." } },
+    { input: { project: "Retrofit", type: "call", summary: "Pat approved the anchors." } },
   ],
   add_task: [
     { input: { deal: "dl_seed01", title: "Send the examples", dueAt: "2026-11-21" } },
     { input: { contact: "ct_seed06", title: "Find the card" } },
+    { input: { project: "pj_seed01", title: "Order anchors", dueAt: "2026-11-21" } },
   ],
   complete_task: [{ input: { task: "tk_seed01" } }],
   snooze_task: [{ input: { task: "tk_seed02", until: "2026-11-22" } }],
@@ -86,6 +94,7 @@ const VARIANTS: Record<RecordActionName, Variant[]> = {
     { input: { deal: "dl_seed01", workType: "Design" } },
     { input: { contact: "ct_seed03" } },
     { input: { task: "tk_seed03", workType: "Admin" } },
+    { input: { project: "Retrofit", workType: "Design" } },
   ],
   stop_timer: [
     { input: { notes: "Homepage draft done.", nextStepDate: "2026-11-21" }, setup: RUNNING_ON_PAT },
@@ -97,6 +106,8 @@ const VARIANTS: Record<RecordActionName, Variant[]> = {
     { input: { deal: "dl_seed01", startedAt: "2026-11-19T07:30", endedAt: "2026-11-19T09:00", workType: "Design", notes: "Booking mock-up." } },
     { input: { contact: "ct_seed03", startedAt: "2026-11-19T07:30", minutes: 45, billable: false } },
     { input: { task: "tk_seed03", startedAt: "2026-11-19T07:30", minutes: 20 } },
+    { input: { project: "Retrofit", startedAt: "2026-11-19T07:30", minutes: 20, workType: "Design" } },
+    { input: { task: "tk_proj", startedAt: "2026-11-19T07:30", minutes: 20 }, setup: ENTRY_ON_PROJECT },
   ],
   update_time_entry: [
     { input: { entry: "te_done", contact: "ct_seed03", deal: null, task: null } },
@@ -107,6 +118,8 @@ const VARIANTS: Record<RecordActionName, Variant[]> = {
     { input: { entry: "te_done", workType: null, notes: null } },
     { input: { entry: "te_done", archived: true } },
     { input: { entry: "te_done", archived: true, notes: "Duplicate of Tuesday's.", minutes: 45 } },
+    { input: { entry: "te_done", project: "pj_seed01", task: null } },
+    { input: { entry: "te_proj", project: null }, setup: ENTRY_ON_PROJECT },
   ],
 };
 
@@ -180,4 +193,30 @@ test("a row column the list doesn't show refuses the list with the plain interna
   assert.equal(list.time.length, 1, "the notes edit shows");
   assert.deepEqual(unshown, ["time_entries:te_done activity_id"]);
   assert.throws(() => checkListShows(unshown), /^Error: This list would change records it doesn't show\. Nothing was proposed\.$/);
+});
+
+test("records on a project name it in the list, and every column they write shows", async () => {
+  const task = await proposeOne(VARIANTS.add_task[2] as Variant, "add_task");
+  assert.deepEqual(task.list.tasks.map((item) => [item.record, item.fields]), [
+    ['New task "Order anchors"', [{ field: "for", to: 'project "Retrofit" (Pat Example)' }, { field: "due", to: "Sat Nov 21" }]],
+  ]);
+  const note = await proposeOne(VARIANTS.log_activity[2] as Variant, "log_activity");
+  assert.deepEqual(note.list.notes.map((item) => item.record), ['Call with Pat Example about project "Retrofit"']);
+  const time = await proposeOne(VARIANTS.add_time_entry[3] as Variant, "add_time_entry");
+  assert.match(timeLines(time.text)[0] ?? "", /, for project "Retrofit" \(Pat Example\): started /);
+  const cleared = await proposeOne(VARIANTS.update_time_entry[9] as Variant, "update_time_entry");
+  assert.match(timeLines(cleared.text)[0] ?? "", /for Pat Example: was .*for project "Retrofit" \(Pat Example\)/);
+});
+
+test("a task that moves from a deal to a project shows one for line, and it counts as shown", async () => {
+  const db = await createTestDb();
+  db.exec(buildFixtureSeed(NOW, DEFAULT_TZ));
+  db.exec(SETUP);
+  const before = await db.prepare("SELECT * FROM tasks WHERE id = 'tk_seed01'").first<Row>();
+  assert.ok(before);
+  const after = { ...before, deal_id: null, project_id: "pj_seed01", version: Number(before.version) + 1 };
+  const input: ChangeInput = { target: { table: "tasks", id: "tk_seed01" }, summary: "", changes: [{ table: "tasks", id: "tk_seed01", before, after }] };
+  const { list, unshown } = await shownList(db, input, DEFAULT_TZ, NOW);
+  assert.deepEqual(unshown, []);
+  assert.deepEqual(list.tasks.map((item) => item.fields), [[{ field: "for", from: '"Website refresh for Example Plumbing" (Pat Example)', to: 'project "Retrofit" (Pat Example)' }]]);
 });

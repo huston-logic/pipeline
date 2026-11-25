@@ -7,9 +7,10 @@ import { type ChangeResult, commitChange, type Ctx, type RowChange, updatedRow }
 import { short, withArticle } from "./describe.ts";
 import { UserError } from "./errors.ts";
 import { clean } from "./input.ts";
-import { contactName, dealLabel } from "./labels.ts";
+import { contactName, dealLabel, projectLabel } from "./labels.ts";
 import { contactedIfNew, TEXT_DATA } from "./lead-change.ts";
 import { findSubject, openDealsOf, ownerTimezone, type Source } from "./lookup.ts";
+import { projectSubject } from "./project-links.ts";
 import { statusLabels } from "./status-labels.ts";
 
 /** The activity types that count as contact: they move the deal's last_activity_at. */
@@ -20,6 +21,8 @@ export interface ActivityInput {
   dealId?: string;
   /** Contact id or name. */
   contactId?: string;
+  /** Project id or exact name: the note is the project's and its person's, with no deal. */
+  project?: string;
   type: ActivityType;
   summary: string;
   /** When it happened; defaults to now. */
@@ -78,13 +81,17 @@ export async function logActivity(ctx: Ctx, input: ActivityInput): Promise<Chang
   if (occurred.getTime() > ctx.now.getTime()) {
     throw new UserError("An activity can't be in the future. Log it once it happens, or use add_task to plan it.");
   }
-  const { deal, contact } = await findSubject(ctx, input);
+  const { deal, contact, project } =
+    input.project === undefined
+      ? { ...(await findSubject(ctx, input)), project: null }
+      : { deal: null, ...(await projectSubject(ctx, input.project, input)) };
   const occurredAt = occurred.toISOString();
 
   const activity: ActivityRow = {
     id: newId("ac"),
     deal_id: deal?.id ?? null,
     contact_id: contact.id,
+    project_id: project?.id ?? null,
     type: input.type,
     summary: text,
     untrusted_text: null,
@@ -98,7 +105,7 @@ export async function logActivity(ctx: Ctx, input: ActivityInput): Promise<Chang
   const changes: RowChange[] = [{ table: "activities", id: activity.id, before: null, after: activity }, ...effects.changes];
   const { contacted } = effects;
 
-  const where = deal ? `on ${dealLabel(deal, contact)}` : `with ${contactName(contact)}`;
+  const where = project ? `on ${projectLabel(project, contact)}` : deal ? `on ${dealLabel(deal, contact)}` : `with ${contactName(contact)}`;
   const summary =
     `Logged ${withArticle(input.type)} ${where}: ${short(text)}` +
     (contacted === null ? "" : `; ${contactName(contact)} is now ${(await statusLabels(ctx)).lead("contacted")}`);

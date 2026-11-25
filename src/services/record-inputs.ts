@@ -21,6 +21,9 @@ import { LEAD_STATUSES } from "./lead-status.ts";
 /** Owner-loggable activity types: the contact types without "form", which only comes in through /intake. */
 export const LOGGABLE = CONTACT_TYPES.filter((type) => type !== "form") as ["email", "call", "meeting", "note"];
 
+const projectRef = (what = "") =>
+  z.string().min(1).max(200).describe(`The project: its id (pj_...) or exact name. Its person is the record's person; leave out deal.${what}`);
+
 const taskRef = () => z.string().min(1).max(100).describe("The task's id, tk_...");
 
 export const addLeadInput = z.strictObject({
@@ -131,6 +134,7 @@ export const updateDealInput = z.strictObject({
 export const logActivityInput = z.strictObject({
   deal: dealRef().optional(),
   contact: contactRef().optional(),
+  project: projectRef().optional(),
   type: z.enum(LOGGABLE).describe("What kind of contact it was."),
   summary: longText("What happened, in a sentence or two."),
   occurredAt: when("When it happened; the default is now. It can't be in the future").optional(),
@@ -139,6 +143,7 @@ export const logActivityInput = z.strictObject({
 export const addTaskInput = z.strictObject({
   deal: dealRef("The deal: its id (dl_...), its exact title, or its contact's exact name. Leave out deal and contact for a task of the owner's own.").optional(),
   contact: contactRef("The contact: their id (ct_...) or exact name. Leave out deal and contact for a task of the owner's own.").optional(),
+  project: projectRef().optional(),
   title: shortText("What to do, in a few words."),
   dueAt: when("When it is due").optional(),
 });
@@ -165,6 +170,7 @@ export const startTimerInput = z.strictObject({
   contact: timeContact().optional(),
   deal: timeDeal().optional(),
   task: timeTask().optional(),
+  project: projectRef().optional(),
   workType: workTypeRef().optional(),
 });
 
@@ -181,6 +187,7 @@ export const addTimeEntryInput = z.strictObject({
   contact: timeContact().optional(),
   deal: timeDeal().optional(),
   task: timeTask().optional(),
+  project: projectRef().optional(),
   startedAt: when("When the work started"),
   endedAt: when("When it ended; give this or minutes").optional(),
   minutes: minutesInput().optional(),
@@ -194,6 +201,7 @@ export const updateTimeEntryInput = z.strictObject({
   contact: orNull(timeContact(" null clears it.")).optional(),
   deal: orNull(timeDeal(" null clears it.")).optional(),
   task: orNull(timeTask(" null clears it.")).optional(),
+  project: orNull(projectRef(" null clears it and keeps the person.")).optional(),
   startedAt: when("The new start; the end stays").optional(),
   endedAt: when("The new end; give this or minutes").optional(),
   minutes: minutesInput().optional(),
