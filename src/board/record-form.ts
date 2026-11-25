@@ -14,7 +14,7 @@ export type Spec = {
   name: string;
   label: string;
   kind: FieldKindName;
-  group: "contact" | "deal";
+  group: "contact" | "deal" | "project";
   required?: boolean;
   requiredMessage?: string;
   hint?: string;

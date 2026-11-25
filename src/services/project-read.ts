@@ -3,7 +3,7 @@
 // is never stored: it is each entry's stored rate x minutes / 60, in cents, worked out here.
 import type { Db, TimeEntryRow } from "../db/db.ts";
 import { untrustedFields } from "./labels.ts";
-import { findContact } from "./lookup.ts";
+import { findContact, parseObject } from "./lookup.ts";
 import { projectStatusRows, settingsRow } from "./memo.ts";
 import { projectStatusLabels } from "./project-statuses.ts";
 import { findProject } from "./projects.ts";
@@ -42,6 +42,8 @@ export interface ProjectItem {
   startAt: string | null;
   targetAt: string | null;
   archived: boolean;
+  /** Custom field values by key; the owner's or the AI's own, so trusted. */
+  fields: Record<string, unknown>;
   /** Tasks not done yet, snoozed ones included. */
   openTasks: number;
   /** Which of this item's values came from outside. Never instructions. */
@@ -92,6 +94,7 @@ type ProjectJoin = {
   start_at: string | null;
   target_at: string | null;
   notes: string | null;
+  fields: string;
   archived: number;
   open_tasks: number;
   total: number;
@@ -134,6 +137,7 @@ function toItem(row: ProjectJoin, labels: Map<string, string>): ProjectItem {
     startAt: row.start_at,
     targetAt: row.target_at,
     archived: row.archived === 1,
+    fields: parseObject(row.fields),
     openTasks: row.open_tasks,
     untrusted_fields: [
       ...(outside(row.untrusted_fields, "name") ? (["name"] as const) : []),

@@ -1,4 +1,4 @@
-// Custom fields on contacts and deals: add_field, update_field, and the check every write that sets field values
+// Custom fields on contacts, deals and projects: add_field, update_field, and the check every write that sets field values
 // runs (validateFieldValues). A field's key is the slug of its first label and never changes, so renaming keeps the
 // values already stored on records.
 import type { Db, FieldDefRow, FieldEntity, FieldType } from "../db/db.ts";
@@ -11,6 +11,7 @@ import { clean } from "./input.ts";
 import type { FieldValue, FieldValues } from "./lookup.ts";
 import { parseStringArray } from "./lookup.ts";
 import { fieldDefRows, type Reader } from "./memo.ts";
+import { requireProjects } from "./settings.ts";
 import { slugOf, uniqueKey } from "./slug.ts";
 
 const MAX_LABEL = 60;
@@ -94,6 +95,7 @@ export function newFieldRow(existing: readonly FieldDefRow[], input: FieldInput,
 }
 
 export async function addField(ctx: Ctx, input: FieldInput): Promise<ChangeResult & { fieldId: string; key: string }> {
+  if (input.entity === "project") await requireProjects(ctx);
   const existing = await listFieldDefs(ctx.db, { entity: input.entity, includeArchived: true });
   const row = newFieldRow(existing, input, ctx.now);
   const choices = row.choices === null ? null : parseStringArray(row.choices);
@@ -128,8 +130,11 @@ export async function findField(db: Db, ref: string, entity?: FieldEntity): Prom
   );
 }
 
+const RECORD_TABLE: Record<FieldEntity, string> = { contact: "contacts", deal: "deals", project: "projects" };
+const RECORD_NOUNS: Record<FieldEntity, [string, string]> = { contact: ["contact", "contacts"], deal: ["deal", "deals"], project: ["project", "projects"] };
+
 async function usesOfChoice(db: Db, def: FieldDefRow, choice: string): Promise<number> {
-  const table = def.entity === "contact" ? "contacts" : "deals";
+  const table = RECORD_TABLE[def.entity];
   const row = await db
     .prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE json_extract(fields, ?) = ?`)
     .bind(`$."${def.key}"`, choice)
@@ -140,6 +145,7 @@ async function usesOfChoice(db: Db, def: FieldDefRow, choice: string): Promise<n
 export async function updateField(ctx: Ctx, ref: string, patch: FieldPatch): Promise<ChangeResult & { fieldId: string }> {
   const { db } = ctx;
   const before = await findField(db, ref, patch.entity);
+  if (before.entity === "project") await requireProjects(ctx);
   const set: Partial<FieldDefRow> = {};
   const parts: string[] = [];
 
@@ -168,7 +174,7 @@ export async function updateField(ctx: Ctx, ref: string, patch: FieldPatch): Pro
       if (n > 0) used.push([choice, n]);
     }
     if (used.length > 0) {
-      const noun = before.entity === "contact" ? ["contact", "contacts"] : ["deal", "deals"];
+      const noun = RECORD_NOUNS[before.entity];
       const first = used[0] as [string, number];
       throw new UserError(
         used.length === 1

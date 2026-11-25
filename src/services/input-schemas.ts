@@ -12,7 +12,7 @@ export const shortText = (description: string) => z.string().max(500).describe(d
 
 export const longText = (description: string) => z.string().max(10_000).describe(description);
 
-export const fieldValues = (entity: "contact" | "deal") =>
+export const fieldValues = (entity: "contact" | "deal" | "project") =>
   z
     .record(z.string().max(100), z.union([z.string().max(2_000), z.number(), z.boolean(), z.null()]))
     .describe(

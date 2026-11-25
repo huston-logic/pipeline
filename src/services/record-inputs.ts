@@ -34,6 +34,7 @@ export const addProjectInput = z.strictObject({
   startAt: when("When the project starts").optional(),
   targetAt: when("When it should be done").optional(),
   notes: longText("Notes about the project.").optional(),
+  fields: fieldValues("project").optional(),
   moveOpenTasks: z
     .boolean()
     .optional()
@@ -51,6 +52,7 @@ export const updateProjectInput = z.strictObject({
   startAt: orNull(when("The new start, or null to clear it")).optional(),
   targetAt: orNull(when("The new target, or null to clear it")).optional(),
   notes: orNull(longText("The project's notes, or null to clear them.")).optional(),
+  fields: fieldValues("project").optional(),
   archived: z.boolean().optional().describe("true to archive the project, false to bring it back."),
 });
 

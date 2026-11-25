@@ -232,7 +232,7 @@ async function forWhom(names: Names, row: Row): Promise<string | null> {
 
 /** A custom field change per key: "Budget 100 -> 200". */
 function fieldChanges(names: Names, table: ChangeTable, before: Row | null, after: Row): Item["fields"] {
-  const entity = table === "contacts" ? "contact" : "deal";
+  const entity = table === "contacts" ? "contact" : table === "projects" ? "project" : "deal";
   const old = before === null ? {} : parseObject(String(before.fields ?? "{}"));
   const now = parseObject(String(after.fields ?? "{}"));
   const keys = [...new Set([...Object.keys(old), ...Object.keys(now)])].filter((key) => JSON.stringify(old[key]) !== JSON.stringify(now[key]));
@@ -331,6 +331,7 @@ async function addedProjectFields(names: Names, id: string, row: Row): Promise<I
     { field: "start", to: cell(names, "projects", row, "start_at", row.start_at) },
     { field: "target", to: cell(names, "projects", row, "target_at", row.target_at) },
   );
+  out.push(...fieldChanges(names, "projects", null, row));
   if (row.notes !== null && row.notes !== "") out.push({ field: "notes", to: cell(names, "projects", row, "notes", row.notes) });
   return out;
 }

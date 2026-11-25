@@ -56,6 +56,7 @@ test("listProjects: soonest target first, none last, then name; archived left ou
     startAt: null,
     targetAt: first?.targetAt,
     archived: false,
+    fields: {},
     openTasks: 0,
     untrusted_fields: [],
   });

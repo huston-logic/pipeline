@@ -6,11 +6,23 @@ import type { ContactRow, ProjectRow, ProjectStatusRow } from "../db/db.ts";
 import { newId } from "../ids.ts";
 import { formatLocal } from "../time.ts";
 import { type ChangeResult, commitChange, type Ctx, type RowChange, updatedRow } from "./change.ts";
-import { capitalize } from "./describe.ts";
+import { capitalize, fieldsLabel } from "./describe.ts";
 import { UserError } from "./errors.ts";
-import { clean, whenOrNull } from "./input.ts";
+import { checkFieldValues } from "./fields.ts";
+import { clean, whenOrNull, withoutNulls } from "./input.ts";
 import { contactName, dealLabel, dealTitle, isTrusted, projectLabel, projectTitle } from "./labels.ts";
-import { contactById, findSubject, openTasksOfDeal, ownerTimezone, projectById, type Source, sourceOf } from "./lookup.ts";
+import {
+  contactById,
+  type FieldValues,
+  findSubject,
+  mergeFields,
+  openTasksOfDeal,
+  ownerTimezone,
+  parseObject,
+  projectById,
+  type Source,
+  sourceOf,
+} from "./lookup.ts";
 import { projectStatusRows } from "./memo.ts";
 import { defaultProjectStatus, projectStatusLabels } from "./project-statuses.ts";
 import { requireProjects } from "./settings.ts";
@@ -27,6 +39,8 @@ export interface ProjectInput {
   startAt?: string;
   targetAt?: string;
   notes?: string;
+  /** Custom project field values by key; checked against the live project fields. */
+  fields?: FieldValues;
   /** Moves every open task of the deal onto the project; needs a deal. */
   moveOpenTasks?: boolean;
   /** Marks every open task of the deal done, leaving them on the deal; needs a deal, and wins over moveOpenTasks. */
@@ -39,6 +53,8 @@ export interface ProjectPatch {
   startAt?: string | null;
   targetAt?: string | null;
   notes?: string | null;
+  /** Only the keys given change; null clears one. */
+  fields?: FieldValues;
   archived?: boolean;
 }
 
@@ -110,6 +126,8 @@ export async function addProject(ctx: Ctx, input: ProjectInput): Promise<ChangeR
   const startAt = whenOrNull(input.startAt ?? null, tz);
   const targetAt = whenOrNull(input.targetAt ?? null, tz);
   checkDates(startAt, targetAt);
+  const fields = withoutNulls(input.fields ?? {});
+  await checkFieldValues(ctx, "project", fields);
 
   const now = ctx.now.toISOString();
   const project: ProjectRow = {
@@ -121,7 +139,7 @@ export async function addProject(ctx: Ctx, input: ProjectInput): Promise<ChangeR
     start_at: startAt,
     target_at: targetAt,
     notes: clean(input.notes),
-    fields: "{}",
+    fields: JSON.stringify(fields),
     archived: 0,
     untrusted_fields: "[]",
     version: 1,
@@ -186,6 +204,15 @@ export async function updateProject(ctx: Ctx, ref: string, patch: ProjectPatch):
     if (notes !== before.notes) {
       set.notes = notes;
       parts.push(notes === null ? "notes cleared" : "notes updated");
+    }
+  }
+  if (patch.fields !== undefined) {
+    await checkFieldValues(ctx, "project", patch.fields);
+    const merged = mergeFields(before.fields, patch.fields);
+    const [was, now] = [parseObject(before.fields), parseObject(merged)];
+    if (JSON.stringify(now) !== JSON.stringify(was)) {
+      set.fields = merged;
+      parts.push(fieldsLabel(was, now));
     }
   }
   if (patch.archived !== undefined && (patch.archived ? 1 : 0) !== before.archived) {

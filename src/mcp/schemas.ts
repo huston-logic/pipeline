@@ -18,7 +18,7 @@ export {
   WHEN_FORMATS,
 } from "../services/input-schemas.ts";
 
-export const FIELD_ENTITIES = ["contact", "deal"] as const;
+export const FIELD_ENTITIES = ["contact", "deal", "project"] as const;
 export const FIELD_TYPES = ["text", "number", "date", "choice"] as const;
 
 export const RULE_TYPES = ["stage_followup", "on_stage_enter", "gone_quiet", "lead_followup"] as const;

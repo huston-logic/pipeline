@@ -20,7 +20,7 @@ const SETUP = [
   "INSERT INTO projects (id, name, contact_id, status_key) VALUES ('pj_seed01', 'Retrofit', 'ct_seed01', 'active')",
   WORK_TYPES_SQL,
   "INSERT INTO field_defs (id, entity, key, label, type) VALUES ('fd_budget', 'deal', 'budget', 'Budget', 'number'), " +
-    "('fd_size', 'contact', 'size', 'Team size', 'text')",
+    "('fd_size', 'contact', 'size', 'Team size', 'text'), ('fd_scope', 'project', 'scope', 'Scope', 'text')",
   // Sam is a lead, with a lost deal and no open one.
   "UPDATE contacts SET person_status = 'lead', sub_status = 'new', lead_status = 'new', lead_status_at = '2026-11-19T18:00:00.000Z' WHERE id = 'ct_seed08'",
   // A finished hour on Pat's deal and task.
@@ -137,10 +137,12 @@ const VARIANTS: Record<RecordActionName, Variant[]> = {
     { input: { name: "Office move" } },
     { input: { deal: "dl_seed07", name: "Salon launch", completeOpenTasks: true }, setup: OPEN_TASK_ON_WON_DEAL },
     { input: { deal: "dl_seed07", name: "Salon launch", moveOpenTasks: true, completeOpenTasks: true }, setup: OPEN_TASK_ON_WON_DEAL },
+    { input: { name: "Office move", fields: { scope: "Two floors" } } },
   ],
   update_project: [
     { input: { project: "Retrofit", name: "Retrofit phase 2", status: "done", startAt: "2026-12-02", targetAt: "2027-02-01", notes: "Anchors ordered." } },
     { input: { project: "pj_seed01", startAt: null, targetAt: null, notes: null }, setup: PROJECT_WITH_DATES },
+    { input: { project: "pj_seed01", fields: { scope: "Three floors" } } },
     { input: { project: "pj_seed01", archived: true } },
     { input: { project: "pj_seed01", status: "on_hold", archived: false } },
   ],

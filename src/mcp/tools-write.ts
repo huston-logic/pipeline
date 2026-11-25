@@ -506,10 +506,10 @@ export function registerWriteTools(server: McpServer, deps: ToolDeps): void {
       title: "Add a custom field",
       kind: "write",
       description:
-        "Adds a custom field to contacts or deals. Types: text, number, date (YYYY-MM-DD) or choice (give the choices). " +
+        "Adds a custom field to contacts, deals or projects. Types: text, number, date (YYYY-MM-DD) or choice (give the choices). " +
         "Its key is made from the label; use the key when setting values.",
       input: z.strictObject({
-        entity: z.enum(FIELD_ENTITIES).describe("Whether the field is on contacts or on deals."),
+        entity: z.enum(FIELD_ENTITIES).describe("Whether the field is on contacts, deals or projects (projects only while Projects is on)."),
         label: shortText("The field's name, for example \"Budget\"."),
         type: z.enum(FIELD_TYPES).describe("text, number, date or choice."),
         choices: z.array(z.string().max(100)).max(50).optional().describe("The options of a choice field; only for choice."),
