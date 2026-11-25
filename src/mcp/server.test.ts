@@ -21,9 +21,11 @@ const NOW = new Date("2026-11-19T18:00:00.000Z");
 
 // The spec's tool lists (docs/SPEC.md, "MCP tools").
 const READ_TOOLS = [
+  "get_campaign",
   "get_deal",
   "get_rulebook",
   "get_settings",
+  "list_campaigns",
   "list_deals",
   "list_fields",
   "list_leads",
@@ -35,12 +37,14 @@ const READ_TOOLS = [
   "list_views",
   "list_work_types",
   "pipeline_summary",
+  "preview_campaign_recipients",
   "preview_rule",
   "recent_changes",
   "search_contacts",
   "whats_due",
 ];
 const WRITE_TOOLS = [
+  "add_campaign_draft",
   "add_contact",
   "add_deal",
   "add_field",
@@ -70,6 +74,7 @@ const WRITE_TOOLS = [
   "start_timer",
   "stop_timer",
   "undo_change",
+  "update_campaign_draft",
   "update_contact",
   "update_deal",
   "update_field",
@@ -122,6 +127,7 @@ const DESTRUCTIVE = [
   "archive_view",
   "set_client_rate",
   "undo_change",
+  "update_campaign_draft",
   "update_contact",
   "update_deal",
   "update_field",
