@@ -1003,7 +1003,7 @@ export function devSeed(now: Date, tz: string): DevSeed {
     return {
       id: `te_seed${n2(n)}`,
       contact_id: "ct_seed07",
-      deal_id: "dl_seed07",
+      deal_id: null,
       task_id: null,
       project_id: "pj_seed01",
       started_at: started,

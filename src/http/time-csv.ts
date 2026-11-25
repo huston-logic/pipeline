@@ -16,6 +16,9 @@ export const TIME_CSV_PATH = "/time/export.csv";
 
 export const COLUMNS = ["client", "work type", "hours", "billable hours", "rate", "amount"] as const;
 
+/** With projects on, a project column follows the client (ruling 10 of the projects design). */
+export const PROJECT_COLUMNS = ["client", "project", "work type", "hours", "billable hours", "rate", "amount"] as const;
+
 const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
 
 export const isMonth = (value: string): boolean => MONTH.test(value);
@@ -33,7 +36,7 @@ function monthPeriod(month: string): { from: string; to: string } {
   return { from, to: addDays(next, -1) };
 }
 
-type Group = { contactId: string | null; workType: string | null; minutes: number; billableMinutes: number; amount: number; rates: Set<number | null> };
+type Group = { contactId: string | null; project: { id: string; name: string } | null; workType: string | null; minutes: number; billableMinutes: number; amount: number; rates: Set<number | null> };
 
 const hours = (minutes: number): string => (minutes / 60).toFixed(2);
 
@@ -48,14 +51,30 @@ async function namesOf(db: Db, entries: readonly TimeEntryView[]): Promise<Map<s
   return new Map(found.results.map((row) => [row.id, row.name]));
 }
 
+/** Each entry's project, in one read (a LEFT JOIN, so an entry with none is simply absent). */
+async function projectsOf(db: Db, entries: readonly TimeEntryView[]): Promise<Map<string, { id: string; name: string }>> {
+  if (entries.length === 0) return new Map();
+  const found = await db
+    .prepare(
+      `SELECT te.id AS entry, p.id AS id, p.name AS name FROM time_entries te LEFT JOIN projects p ON p.id = te.project_id
+       WHERE te.id IN (SELECT value FROM json_each(?)) AND p.id IS NOT NULL`,
+    )
+    .bind(JSON.stringify(entries.map((entry) => entry.id)))
+    .all<{ entry: string; id: string; name: string }>();
+  return new Map(found.results.map((row) => [row.entry, { id: row.id, name: row.name }]));
+}
+
 /** The CSV for a month, header always. The month must be "YYYY-MM" (the caller checks); time tracking must be on. */
 export async function timeCsv(db: Db, month: string, tz: string): Promise<string> {
   const { entries } = await listTime(db, { period: monthPeriod(month) }, tz);
   const names = await namesOf(db, entries);
+  const withProjects = (await getSettings(db)).projects === 1;
+  const projects = withProjects ? await projectsOf(db, entries) : new Map<string, { id: string; name: string }>();
   const groups = new Map<string, Group>();
   for (const entry of entries) {
-    const key = `${entry.contactId ?? ""}|${entry.workTypeId ?? ""}`;
-    const group = groups.get(key) ?? { contactId: entry.contactId, workType: entry.workType, minutes: 0, billableMinutes: 0, amount: 0, rates: new Set() };
+    const project = projects.get(entry.id) ?? null;
+    const key = `${entry.contactId ?? ""}|${project?.id ?? ""}|${entry.workTypeId ?? ""}`;
+    const group = groups.get(key) ?? { contactId: entry.contactId, project, workType: entry.workType, minutes: 0, billableMinutes: 0, amount: 0, rates: new Set() };
     const minutes = entry.minutes ?? 0;
     group.minutes += minutes;
     if (entry.billable) {
@@ -71,13 +90,16 @@ export async function timeCsv(db: Db, month: string, tz: string): Promise<string
       Number(a.contactId === null) - Number(b.contactId === null) ||
       client(a).localeCompare(client(b)) ||
       Number(a.workType === null) - Number(b.workType === null) ||
-      (a.workType ?? "").localeCompare(b.workType ?? ""),
+      (a.workType ?? "").localeCompare(b.workType ?? "") ||
+      Number(a.project !== null) - Number(b.project !== null) ||
+      (a.project?.name ?? "").localeCompare(b.project?.name ?? ""),
   );
   const rows = sorted.map((group) => {
     // One rate when every billable entry was saved at the same one; blank when they differ or none was billable.
     const [only] = group.rates.size === 1 ? [...group.rates] : [null];
     return {
       client: client(group),
+      project: group.project?.name ?? "",
       "work type": group.workType ?? NO_WORK_TYPE,
       hours: hours(group.minutes),
       "billable hours": hours(group.billableMinutes),
@@ -85,7 +107,7 @@ export async function timeCsv(db: Db, month: string, tz: string): Promise<string
       amount: group.amount.toFixed(2),
     };
   });
-  return toCsv(rows, COLUMNS);
+  return toCsv(rows, withProjects ? PROJECT_COLUMNS : COLUMNS);
 }
 
 /**

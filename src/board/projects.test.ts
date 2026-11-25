@@ -90,6 +90,12 @@ test("status picks which projects show; archived lists archived ones of every st
   assert.match(await at("?status=on_hold"), /<option value="on_hold" selected>/);
 });
 
+test("the filter's last choice says it leaves archived projects out: All statuses", async () => {
+  const { body } = await load(devEnv(await projectsDb()), "/projects");
+  assert.match(body, /<option value="all">All statuses<\/option>/);
+  assert.doesNotMatch(body, /<option value="all">All<\/option>/);
+});
+
 test("sort picks the order; unknown is by target", async () => {
   const env = devEnv(await projectsDb());
   const at = async (query: string) => (await load(env, `/projects?status=all${query}`)).body;

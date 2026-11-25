@@ -123,6 +123,19 @@ test("a week of the Monday-to-Sunday kind: an entry late on Sunday is in that we
   assert.doesNotMatch((await load(env, "/time")).body, /te_sun001/);
 });
 
+test("the export page lists the project CSVs only while projects are on", async () => {
+  const offDb = await timeDb(new Date());
+  const onDb = await timeDb(new Date());
+  onDb.exec("UPDATE settings SET projects = 1");
+  const on = (await load(devEnv(onDb), "/export")).body;
+  const off = (await load(devEnv(offDb), "/export")).body;
+  for (const table of ["projects", "project_statuses"]) {
+    assert.match(on, new RegExp(`href="/api/export/${table}\\.csv"`), table);
+    assert.doesNotMatch(off, new RegExp(`href="/api/export/${table}\\.csv"`), table);
+  }
+  assert.equal(on.match(/class="download-row"/g)?.length, 22);
+});
+
 test("the export page lists the three time CSVs only while time tracking is on", async () => {
   const on = (await load(devEnv(await timeDb(new Date())), "/export")).body;
   const off = (await load(devEnv(await timeDb(new Date(), { on: false })), "/export")).body;

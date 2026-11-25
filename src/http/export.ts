@@ -10,6 +10,8 @@ import { toCsv } from "./csv.ts";
 export const EXPORT_TABLES = [
   "contacts",
   "deals",
+  "project_statuses",
+  "projects",
   "activities",
   "tasks",
   "time_entries",

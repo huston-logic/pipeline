@@ -94,7 +94,7 @@ function tasksSection(project: ProjectDetail, now: Date, tz: string, form: FormC
     html`${
       project.openTasks.length === 0
         ? empty("No open tasks.")
-        : html`<ul class="cards cards-single">${project.openTasks.map((task) => taskCard(task, now, tz, false, form))}</ul>`
+        : html`<ul class="cards cards-single">${project.openTasks.map((task) => taskCard(task, now, tz, false, form, true))}</ul>`
     }
 ${addTaskForm(subject, form)}`,
   );

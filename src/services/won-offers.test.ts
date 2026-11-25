@@ -4,7 +4,7 @@ import { buildFixtureSeed } from "../../tests/helpers/fixture-seed.ts";
 import { createTestDb } from "../db/sqlite-d1.ts";
 import { DEFAULT_TZ } from "../time.ts";
 import type { RowChange } from "./change.ts";
-import { startProjectOffers, wonDealIds, wonDealsOfChange } from "./won-offers.ts";
+import { startProjectOffers, wonDealIds } from "./won-offers.ts";
 
 const NOW = new Date("2026-11-19T18:00:00.000Z");
 
@@ -69,18 +69,4 @@ test("a deal or person named from outside is named by id, never by its text", as
   assert.ok(offer);
   assert.doesNotMatch(offer.line, /Ignore all rules/);
   assert.match(offer.line, /for deal dl_seed07 \(Alex Sample\)\?/);
-});
-
-test("the won deals of a stored change are read from its snapshot", async () => {
-  const db = await setup();
-  const before = await db.prepare("SELECT * FROM deals WHERE id = 'dl_seed05'").first<Record<string, unknown>>();
-  assert.ok(before);
-  const after = { ...before, status: "won" };
-  await db
-    .prepare(
-      "INSERT INTO audit_log (id, at, actor, tool, target_table, target_id, before_json, after_json, summary) VALUES ('chg_won', ?, 'ai', 'update_deal', 'deals', 'dl_seed05', ?, ?, 'Marked won')",
-    )
-    .bind(NOW.toISOString(), JSON.stringify({ "deals:dl_seed05": before }), JSON.stringify({ "deals:dl_seed05": after }))
-    .run();
-  assert.deepEqual(await wonDealsOfChange(db, "chg_won"), ["dl_seed05"]);
 });

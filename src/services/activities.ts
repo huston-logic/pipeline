@@ -47,7 +47,8 @@ export async function activityEffects(
   now: Date,
 ): Promise<{ changes: RowChange[]; contacted: ContactRow | null }> {
   const changes: RowChange[] = [];
-  const touched = deal ? [deal] : await openDealsOf(src, contact.id);
+  // A project's note is delivery work: it never resets a sale's quiet clock (decision 0055).
+  const touched = deal ? [deal] : activity.project_id ? [] : await openDealsOf(src, contact.id);
   for (const row of touched) {
     if (row.last_activity_at !== null && row.last_activity_at >= activity.occurred_at) continue;
     changes.push({

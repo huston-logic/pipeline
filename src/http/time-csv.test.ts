@@ -49,6 +49,51 @@ test("one row per client and work type", async () => {
   ]);
 });
 
+const OLD_HEADER = ["client", "work type", "hours", "billable hours", "rate", "amount"];
+
+/** Pat has Design time on two projects and on none; projects are on only when asked. */
+async function projectDb(on: boolean): Promise<SqliteD1> {
+  const db = await monthDb();
+  db.exec("INSERT INTO projects (id, name, contact_id) VALUES ('pj_web001', 'Website', 'ct_seed01'), ('pj_bro001', 'Brochure', 'ct_seed01')");
+  entry(db, "te_csv010", "2026-11-07", "09:00", 30, "ct_seed01", "wt_design", 1, 95);
+  db.exec("UPDATE time_entries SET project_id = 'pj_web001' WHERE id = 'te_csv001'");
+  db.exec("UPDATE time_entries SET project_id = 'pj_bro001' WHERE id = 'te_csv010'");
+  if (on) db.exec("UPDATE settings SET projects = 1");
+  return db;
+}
+
+test("with projects on, a project column follows client and a client's work type splits by project, none first", async () => {
+  const rows = parseCsv(await timeCsv(await projectDb(true), "2026-11", DEFAULT_TZ));
+  assert.deepEqual(rows[0], ["client", "project", "work type", "hours", "billable hours", "rate", "amount"]);
+  assert.deepEqual(rows.slice(1), [
+    ["Pat Example", "", "Admin", "0.50", "0.00", "", "0.00"],
+    ["Pat Example", "", "Design", "1.00", "1.00", "95.00", "95.00"],
+    ["Pat Example", "Brochure", "Design", "0.50", "0.50", "95.00", "47.50"],
+    ["Pat Example", "Website", "Design", "1.50", "1.50", "95.00", "142.50"],
+    ["Robin Sample", "", "Design", "0.75", "0.75", "100.00", "75.00"],
+    ["No person", "", "No work type", "0.33", "0.00", "", "0.00"],
+  ]);
+});
+
+test("a project name is guarded like a client name", async () => {
+  const db = await projectDb(true);
+  db.exec("UPDATE projects SET name = '=SUM(1)' WHERE id = 'pj_web001'");
+  const cells = parseCsv(await timeCsv(db, "2026-11", DEFAULT_TZ)).slice(1).flat();
+  assert.ok(cells.includes("'=SUM(1)"));
+  for (const cell of cells) assert.doesNotMatch(cell, /^[=+\-@\t\r]/, cell);
+});
+
+test("with projects off the CSV is exactly as before, though entries carry a project", async () => {
+  const rows = parseCsv(await timeCsv(await projectDb(false), "2026-11", DEFAULT_TZ));
+  assert.deepEqual(rows[0], OLD_HEADER);
+  assert.deepEqual(rows.slice(1), [
+    ["Pat Example", "Admin", "0.50", "0.00", "", "0.00"],
+    ["Pat Example", "Design", "3.00", "3.00", "95.00", "285.00"],
+    ["Robin Sample", "Design", "0.75", "0.75", "100.00", "75.00"],
+    ["No person", "No work type", "0.33", "0.00", "", "0.00"],
+  ]);
+});
+
 test("a group whose billable entries were saved at different rates leaves the rate blank", async () => {
   const db = await monthDb();
   db.exec("UPDATE time_entries SET rate = 110 WHERE id = 'te_csv002'");
