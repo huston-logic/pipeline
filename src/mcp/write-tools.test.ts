@@ -342,6 +342,7 @@ test("settings tools: get shows the owner emails, update changes the rest and re
     aiEdits: "review_first",
     timeTracking: false,
     campaigns: false,
+    projects: false,
     postalAddress: null,
     campaignDailyLimit: 90,
     lastBriefAt: "2026-11-18T17:30:00.000Z",

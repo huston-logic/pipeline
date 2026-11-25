@@ -593,6 +593,7 @@ export function registerWriteTools(server: McpServer, deps: ToolDeps): void {
           .describe("review_first (the default: record changes wait for the owner's yes) or apply_small (small changes apply at once)."),
         timeTracking: z.boolean().optional().describe("true to turn on time tracking (the timer, time entries, work types and rates), false to turn it off."),
         campaigns: z.boolean().optional().describe("true to turn on campaigns (email to a list of people), false to turn them off."),
+        projects: z.boolean().optional().describe("true to turn on projects (delivery work after a sale), false to turn them off."),
         postalAddress: z
           .string()
           .nullable()

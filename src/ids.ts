@@ -5,7 +5,7 @@ export const ID_PREFIXES = ["ct", "dl", "ac", "tk", "ru", "rf", "fd", "br", "chg
 /**
  * ct contact, dl deal, ac activity, tk task, ru rule, rf rule firing, fd field, br brief, chg change, ps push
  * subscription, im board import draft, vw saved view, pr proposal, wt work type, cr client rate, te time entry,
- * cp campaign, cs campaign step, rc campaign recipient, cb campaign batch, su email suppression.
+ * cp campaign, cs campaign step, rc campaign recipient, cb campaign batch, su email suppression, pj project.
  */
 export type IdPrefix = (typeof ID_PREFIXES)[number];
 

@@ -6,7 +6,7 @@
 // Record rows (contacts, deals, tasks, time entries) are never kept here: they go through lookup.ts and the plan.
 // A plan never writes these tables (PlanCollector refuses a change to one while a memo is set), so the snapshot can't
 // go stale inside a plan.
-import type { Db, FieldDefRow, FieldEntity, PersonStatusRow, PersonSubstatusRow, SettingsRow, StageRow, WorkTypeRow } from "../db/db.ts";
+import type { Db, FieldDefRow, FieldEntity, PersonStatusRow, PersonSubstatusRow, ProjectStatusRow, SettingsRow, StageRow, WorkTypeRow } from "../db/db.ts";
 import { getSettings, listFieldDefs, listStages } from "../db/queries.ts";
 import type { ChangeTable } from "./change.ts";
 
@@ -17,10 +17,11 @@ interface Snapshot {
   subStatuses: PersonSubstatusRow[];
   fieldDefs: FieldDefRow[];
   workTypes: WorkTypeRow[];
+  projectStatuses: ProjectStatusRow[];
 }
 
 /** The tables the memo holds. A planned change to one of them, while a memo is set, is a programming error. */
-export const MEMO_TABLES: readonly ChangeTable[] = ["settings", "stages", "person_statuses", "person_substatuses", "field_defs", "work_types"];
+export const MEMO_TABLES: readonly ChangeTable[] = ["settings", "stages", "person_statuses", "person_substatuses", "field_defs", "work_types", "project_statuses"];
 
 /** Each table whole, in the order its own readers sort it, so a filter of it is what their query would answer. */
 const SNAPSHOT_SQL = [
@@ -30,6 +31,7 @@ const SNAPSHOT_SQL = [
   "SELECT * FROM person_substatuses ORDER BY status_key, archived, position, key",
   "SELECT * FROM field_defs ORDER BY entity, created_at, rowid",
   "SELECT * FROM work_types ORDER BY position, created_at, id",
+  "SELECT * FROM project_statuses ORDER BY position, key",
 ] as const;
 
 export class ReadMemo {
@@ -42,7 +44,7 @@ export class ReadMemo {
 
   async #load(): Promise<Snapshot> {
     const db = this.#db;
-    const [settings, stages, statuses, subStatuses, fieldDefs, workTypes] = await db.batch(SNAPSHOT_SQL.map((sql) => db.prepare(sql)));
+    const [settings, stages, statuses, subStatuses, fieldDefs, workTypes, projectStatuses] = await db.batch(SNAPSHOT_SQL.map((sql) => db.prepare(sql)));
     return {
       settings: (settings?.results[0] as SettingsRow | undefined) ?? null,
       stages: (stages?.results ?? []) as StageRow[],
@@ -50,6 +52,7 @@ export class ReadMemo {
       subStatuses: (subStatuses?.results ?? []) as PersonSubstatusRow[],
       fieldDefs: (fieldDefs?.results ?? []) as FieldDefRow[],
       workTypes: (workTypes?.results ?? []) as WorkTypeRow[],
+      projectStatuses: (projectStatuses?.results ?? []) as ProjectStatusRow[],
     };
   }
 
@@ -113,6 +116,13 @@ export async function subStatusRows(src: Reader, statusKey?: string): Promise<Pe
       ? await db.prepare(sql + order).all<PersonSubstatusRow>()
       : await db.prepare(`${sql} WHERE status_key = ?${order}`).bind(statusKey).all<PersonSubstatusRow>();
   return found.results;
+}
+
+/** The three project statuses in position order. */
+export async function projectStatusRows(src: Reader): Promise<ProjectStatusRow[]> {
+  const { db, memo } = readerOf(src);
+  if (memo !== undefined) return memo.get("projectStatuses");
+  return (await db.prepare(SNAPSHOT_SQL[6]).all<ProjectStatusRow>()).results;
 }
 
 /** The live work types in list order. */
