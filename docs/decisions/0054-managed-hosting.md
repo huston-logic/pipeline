@@ -61,9 +61,8 @@ need to change for that; only whose account a copy lives in does.
   copy may receive every client's delivery events. A copy matches an event by its email id or its own campaign id and
   ignores the rest (answers 200, writes nothing; `src/http/resend-webhook.ts`), so nothing is stored across clients.
   Check Resend before the first client campaign.
-- **Two prompts in `scripts/copies.mjs` still say "the client"**: the "not a member of account" message and "Which
-  account is the client's?". They are wrong under this decision but harmless (the answer is the hosting account). This
-  run is docs only, so INSTALL.md says the wording is old; a small code change fixes them (docs/STATUS.md, Queued).
+- **Two prompts in `scripts/copies.mjs` said "the client"** (the "not a member of account" message and "Which account
+  is the client's?"). A small follow-up changed both to say the hosting account; nothing else in the scripts changed.
 - **One account is one blast radius.** A mistake in Huston Logic's Cloudflare or Resend account reaches every client.
   Keep its login on a hardware key or passkey. Copies are still separate Workers with separate databases, secrets and
   Access applications.

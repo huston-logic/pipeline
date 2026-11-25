@@ -98,7 +98,7 @@ Judgment calls (one line each):
 - Handover date and terms go in the master's client record, never this public repo.
 - A fresh review of the diff found six real doc gaps (who receives the sign-in code, Access application names colliding across copies, the webhook, the suppression list, the sending switches, "owner" meaning two people); all are fixed here.
 
-Queued: nothing beyond Needs Grant 16, and one small code change: `scripts/copies.mjs` still says "Ask the client to invite your Cloudflare user" (`notMember`) and "Which account is the client's?" (decision 0054 makes both wrong). Left alone because this run is docs only; INSTALL.md says the wording is old. Its tests need the same edit.
+Queued: nothing beyond Needs Grant 16. The two stale prompts in `scripts/copies.mjs` ("Ask the client to invite your Cloudflare user", "Which account is the client's?") were fixed in a small follow-up PR, with their test.
 
 ## Changelog
 

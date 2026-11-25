@@ -295,8 +295,8 @@ export function loginAccounts(deps) {
 }
 
 const notMember = (accountId) =>
-  `This wrangler login isn't a member of account ${accountId}. Ask the client to invite your Cloudflare user to their ` +
-  "account (docs/INSTALL.md, step 2), accept the invitation, then try again.";
+  `This wrangler login isn't a member of account ${accountId}. Run "npx wrangler login" as the login that owns the ` +
+  "hosting account (docs/INSTALL.md, step 2), then try again.";
 
 function remote(cfg, { preview = false } = {}) {
   return ["--remote", "-c", cfg, ...(preview ? ["--preview"] : [])];
@@ -336,7 +336,7 @@ async function chooseAccount(options, deps) {
     deps.log("Accounts this wrangler login can use:");
     accounts.forEach((account, i) => deps.log(`  ${i + 1}. ${account.name || "(no name)"}  ${account.id}`));
   }
-  const answer = await askUntil(deps, "Which account is the client's? Type its number, or paste its account id: ", (text) => {
+  const answer = await askUntil(deps, "Which account is the hosting account? Type its number, or paste its account id: ", (text) => {
     const n = Number(text);
     if (Number.isInteger(n) && n >= 1 && n <= accounts.length) return null;
     return ACCOUNT_ID.test(text) ? null : "That isn't one of the numbers above or a 32-character account id.";
