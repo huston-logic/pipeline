@@ -191,7 +191,7 @@ test("apply equals running the actions one by one", async () => {
     for (const db of [one, both]) {
       db.exec(`UPDATE settings SET time_tracking = 1, projects = 1; ${WORK_TYPES_SQL}`);
       db.exec(
-        "INSERT INTO projects (id, name, contact_id, created_at, updated_at) VALUES ('pj_seed01', 'Retrofit', 'ct_seed01', '2026-11-01T00:00:00.000Z', '2026-11-01T00:00:00.000Z'); " +
+        "INSERT INTO projects (id, name, contact_id, status_key, created_at, updated_at) VALUES ('pj_seed01', 'Retrofit', 'ct_seed01', 'active', '2026-11-01T00:00:00.000Z', '2026-11-01T00:00:00.000Z'); " +
           "INSERT INTO tasks (id, deal_id, contact_id, title, created_at, updated_at) VALUES ('tk_won1', 'dl_seed07', 'ct_seed07', 'Hang the sign', '2026-11-01T00:00:00.000Z', '2026-11-01T00:00:00.000Z')",
       );
       if (actions.some((action) => action.action === "stop_timer")) db.exec(RUNNING_ON_PAT);

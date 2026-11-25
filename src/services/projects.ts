@@ -117,6 +117,7 @@ export async function addProject(ctx: Ctx, input: ProjectInput): Promise<ChangeR
     start_at: startAt,
     target_at: targetAt,
     notes: clean(input.notes),
+    fields: "{}",
     archived: 0,
     untrusted_fields: "[]",
     version: 1,
@@ -141,7 +142,7 @@ export async function addProject(ctx: Ctx, input: ProjectInput): Promise<ChangeR
 
 export async function updateProject(ctx: Ctx, ref: string, patch: ProjectPatch): Promise<ChangeResult & { projectId: string }> {
   const before = await findProject(ctx, ref);
-  const contact: ContactRow | null = await contactById(ctx, before.contact_id);
+  const contact: ContactRow | null = before.contact_id === null ? null : await contactById(ctx, before.contact_id);
   if (!contact) throw new Error(`Project ${before.id} points at a missing contact.`);
   const tz = await ownerTimezone(ctx);
   const set: Partial<ProjectRow> = {};

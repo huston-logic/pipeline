@@ -851,19 +851,20 @@ test("0020 from the previous version: settings keep their values, projects start
 test("0020: a project's name is 1 to 200 characters on one line, its status is one of the three, archived is 0 or 1", async () => {
   const db = await createTestDb();
   await addContact(db, "ct_a");
-  const add = (id: string, name: string, extra = "") => () =>
-    db.prepare(`INSERT INTO projects (id, name, contact_id${extra ? ", " + extra.split("=")[0] : ""}) VALUES (?, ?, 'ct_a'${extra ? ", " + extra.split("=")[1] : ""})`).bind(id, name).run();
+  // Every insert names its status (0021 removed the default).
+  const add = (id: string, name: string, status = "'active'", archived = "0") => () =>
+    db.prepare(`INSERT INTO projects (id, name, contact_id, status_key, archived) VALUES (?, ?, 'ct_a', ${status}, ${archived})`).bind(id, name).run();
   await add("pj_a", "Website refresh")();
-  const row = await db.prepare("SELECT status_key, deal_id, archived, untrusted_fields, version FROM projects").first();
-  assert.deepEqual({ ...row }, { status_key: "active", deal_id: null, archived: 0, untrusted_fields: "[]", version: 1 });
+  const row = await db.prepare("SELECT status_key, deal_id, archived, untrusted_fields, fields, version FROM projects").first();
+  assert.deepEqual({ ...row }, { status_key: "active", deal_id: null, archived: 0, untrusted_fields: "[]", fields: "{}", version: 1 });
   await add("pj_b", "x".repeat(200))();
   await assert.rejects(add("pj_c", "x".repeat(201))(), /CHECK/);
   await assert.rejects(add("pj_c", "")(), /CHECK/);
   await assert.rejects(add("pj_c", "Two\nlines")(), /CHECK/);
-  await assert.rejects(add("pj_c", "Fine", "archived=2")(), /CHECK/);
-  await assert.rejects(add("pj_c", "Fine", "status_key='gone'")(), /FOREIGN KEY/);
-  await assert.rejects(db.prepare("INSERT INTO projects (id, name, contact_id) VALUES ('pj_d', 'Fine', 'ct_none')").run(), /FOREIGN KEY/);
-  await assert.rejects(db.prepare("INSERT INTO projects (id, name) VALUES ('pj_d', 'Fine')").run(), /NOT NULL/);
+  await assert.rejects(add("pj_c", "Fine", "'active'", "2")(), /CHECK/);
+  await assert.rejects(add("pj_c", "Fine", "'gone'")(), /FOREIGN KEY/);
+  await assert.rejects(db.prepare("INSERT INTO projects (id, name, contact_id, status_key) VALUES ('pj_d', 'Fine', 'ct_none', 'active')").run(), /FOREIGN KEY/);
+  await assert.rejects(db.prepare("INSERT INTO projects (id, name, contact_id) VALUES ('pj_d', 'Fine', 'ct_a')").run(), /NOT NULL/);
   db.exec("INSERT INTO tasks (id, contact_id, title, project_id) VALUES ('tk_a', 'ct_a', 'Kickoff', 'pj_a')");
   await assert.rejects(db.prepare("INSERT INTO tasks (id, title, project_id) VALUES ('tk_b', 'Bad', 'pj_none')").run(), /FOREIGN KEY/);
 });
@@ -921,6 +922,67 @@ test("0019: one recipient per person and per address, a token on one row only, o
   await suppression("su_d", "pat@example.com", "2026-11-20T10:00:00.000Z")();
   assert.throws(() => db.exec("INSERT INTO email_suppressions (id, email, reason) VALUES ('su_e', 'z@example.com', 'rude')"), /CHECK/);
   await assert.rejects(db.prepare("UPDATE campaign_recipients SET contact_id = 'ct_none' WHERE id = 'rc_a'").run(), /FOREIGN KEY/);
+});
+
+test("0021 shapes projects: statuses get a kind, ids, versions and links survive, and the new shapes insert", async () => {
+  const db = new SqliteD1();
+  await applyMigrations(db, 20);
+  applySqlFile(db, "seed/defaults.sql");
+  db.exec(`INSERT INTO contacts (id, name) VALUES ('ct_a', 'Pat Example');
+    INSERT INTO deals (id, contact_id, title, stage_key, stage_entered_at)
+      VALUES ('dl_a', 'ct_a', 'Example website', 'won', '2026-11-18T17:00:00.000Z');
+    INSERT INTO field_defs (id, entity, key, label, type, version) VALUES ('fd_a', 'deal', 'budget', 'Budget', 'number', 3);
+    INSERT INTO views (id, name, module, sort, position, version) VALUES ('vw_a', 'Partners', 'people', 'name-asc', 1, 2);
+    INSERT INTO projects (id, name, contact_id, deal_id, status_key, version) VALUES
+      ('pj_a', 'Website refresh', 'ct_a', 'dl_a', 'active', 4), ('pj_b', 'Logo', 'ct_a', NULL, 'done', 2);
+    INSERT INTO activities (id, deal_id, contact_id, project_id, type, summary, occurred_at, actor, version)
+      VALUES ('ac_a', NULL, 'ct_a', 'pj_a', 'note', 'Kickoff', '2026-11-19T10:00:00.000Z', 'owner', 5),
+             ('ac_b', 'dl_a', NULL, NULL, 'note', 'Won', '2026-11-18T10:00:00.000Z', 'owner', 1);
+    INSERT INTO tasks (id, contact_id, project_id, title) VALUES ('tk_a', 'ct_a', 'pj_a', 'Send brief');
+    INSERT INTO time_entries (id, contact_id, project_id, started_at, ended_at, minutes, billable, activity_id)
+      VALUES ('te_a', 'ct_a', 'pj_a', '2026-11-19T10:00:00.000Z', '2026-11-19T11:00:00.000Z', 60, 0, 'ac_a');`);
+  const tables = ["project_statuses", "projects", "activities", "field_defs", "views", "tasks", "time_entries"];
+  const before = await snapshot(db, tables);
+
+  assert.deepEqual(await applyMigrations(db, 21), ["0021_projects_shaped.sql"]);
+
+  const after = await snapshot(db, tables);
+  for (const table of tables) {
+    assert.equal(after[table]?.length, before[table]?.length, `${table} keeps its rows`);
+    (before[table] ?? []).forEach((row, i) => {
+      const kept = (after[table] ?? [])[i] ?? {};
+      assert.deepEqual(Object.fromEntries(Object.keys(row).map((c) => [c, kept[c]])), row, `${table} row ${i + 1}`);
+    });
+  }
+  assert.deepEqual((after.projects ?? []).map((row) => row.fields), ["{}", "{}"]);
+  const kinds = (await db.prepare("SELECT key, kind, archived FROM project_statuses ORDER BY position").all()).results;
+  assert.deepEqual(kinds.map((row) => ({ ...row })), [
+    { key: "active", kind: "open", archived: 0 },
+    { key: "on_hold", kind: "open", archived: 0 },
+    { key: "done", kind: "closed", archived: 0 },
+  ]);
+  assert.deepEqual((await db.prepare("PRAGMA foreign_key_check").all()).results, []);
+  assert.equal(await db.prepare("PRAGMA integrity_check").first("integrity_check"), "ok");
+
+  // A project with no person, an activity with only a project, and the two new kinds.
+  db.exec(`INSERT INTO projects (id, name, status_key) VALUES ('pj_c', 'Tidy the office', 'active');
+    INSERT INTO activities (id, project_id, type, summary, occurred_at, actor) VALUES ('ac_c', 'pj_c', 'note', 'x', '2026-11-20T10:00:00.000Z', 'owner');
+    INSERT INTO field_defs (id, entity, key, label, type) VALUES ('fd_b', 'project', 'phase', 'Phase', 'text');
+    INSERT INTO views (id, name, module, sort, position) VALUES ('vw_b', 'Open work', 'projects', 'name-asc', 1);`);
+  assert.throws(() => db.exec("INSERT INTO projects (id, name, status_key) VALUES ('pj_d', 'No status', NULL)"), /NOT NULL/);
+  assert.throws(() => db.exec("INSERT INTO projects (id, name) VALUES ('pj_d', 'No status')"), /NOT NULL/);
+  assert.throws(() => db.exec("INSERT INTO projects (id, name, status_key, fields) VALUES ('pj_d', 'x', 'active', '[]')"), /CHECK/);
+  assert.throws(() => db.exec("INSERT INTO activities (id, type, summary, occurred_at, actor) VALUES ('ac_d', 'note', 'x', '2026-11-20T10:00:00.000Z', 'owner')"), /CHECK/);
+  assert.throws(() => db.exec("INSERT INTO field_defs (id, entity, key, label, type) VALUES ('fd_c', 'task', 'k', 'K', 'text')"), /CHECK/);
+  assert.throws(() => db.exec("INSERT INTO views (id, name, module, sort, position) VALUES ('vw_c', 'X', 'tasks', 'name-asc', 1)"), /CHECK/);
+  assert.throws(() => db.exec("INSERT INTO project_statuses (key, label, position, kind) VALUES ('x', 'X', 9, 'half')"), /CHECK/);
+  const indexes = async (table: string) =>
+    (await db.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = ? AND name NOT LIKE 'sqlite_%' ORDER BY name").bind(table).all<{ name: string }>()).results.map((r) => r.name);
+  assert.deepEqual(await indexes("projects"), ["projects_contact", "projects_deal", "projects_status"]);
+  assert.deepEqual(await indexes("activities"), ["activities_contact", "activities_deal", "activities_occurred", "activities_project"]);
+  assert.deepEqual(await indexes("views"), ["views_module"]);
+  const links = await db.prepare("SELECT sql FROM sqlite_master WHERE name IN ('time_entries', 'tasks')").all<{ sql: string }>();
+  assert.ok(links.results.every((row) => /REFERENCES "?(activities|projects)"? \(id\)/.test(row.sql)), "links still name the rebuilt tables");
 });
 
 /**

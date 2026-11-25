@@ -130,6 +130,7 @@ export type ViewRow = {
   /** "vw_..." */
   id: string;
   name: string;
+  /** The table also accepts "projects" since migration 0021; the type widens with the views task (A5). */
   module: ViewModule;
   /** JSON object: person_status, sub_status, source, q, fields { <key>: value } and, for deals, stage. */
   filters: string;
@@ -148,6 +149,7 @@ export type ViewRow = {
 
 export type FieldDefRow = {
   id: string;
+  /** The table also accepts "project" since migration 0021; the type widens with the fields task (A4). */
   entity: FieldEntity;
   key: string;
   label: string;
@@ -414,10 +416,13 @@ export type ClientRateRow = {
   updated_at: string;
 };
 
-/** One of the three fixed project statuses: active, on_hold, done. Only the label can change (migration 0020). */
+/** A project status (migrations 0020, 0021): the three starting keys are active, on_hold and done (closed). */
 export type ProjectStatusRow = {
   key: string;
   label: string;
+  /** A project in a closed status is finished. */
+  kind: "open" | "closed";
+  archived: Flag;
   /** 1-based. */
   position: number;
   version: number;
@@ -431,7 +436,8 @@ export type ProjectRow = {
   id: string;
   /** 1 to 200 characters on one line. */
   name: string;
-  contact_id: string;
+  /** Null for an internal project, with no person (migration 0021). */
+  contact_id: string | null;
   /** The won deal it came from; null for a project made by hand. */
   deal_id: string | null;
   status_key: string;
@@ -439,6 +445,8 @@ export type ProjectRow = {
   start_at: string | null;
   target_at: string | null;
   notes: string | null;
+  /** JSON object of custom field values, as contacts and deals have. */
+  fields: string;
   archived: Flag;
   /** JSON array, always "[]" for now; kept for a later import. */
   untrusted_fields: string;

@@ -54,7 +54,7 @@ test("the offer has no parenthesis when the deal has no open task, and says one 
 
 test("no offer while projects are off, or when the deal already has a live project; an archived one doesn't count", async () => {
   const db = await setup();
-  db.exec("INSERT INTO projects (id, name, contact_id, deal_id) VALUES ('pj_a', 'Salon launch', 'ct_seed07', 'dl_seed07')");
+  db.exec("INSERT INTO projects (id, name, contact_id, deal_id, status_key) VALUES ('pj_a', 'Salon launch', 'ct_seed07', 'dl_seed07', 'active')");
   assert.deepEqual(await startProjectOffers(db, ["dl_seed07"]), []);
   db.exec("UPDATE projects SET archived = 1 WHERE id = 'pj_a'");
   assert.equal((await startProjectOffers(db, ["dl_seed07"])).length, 1);

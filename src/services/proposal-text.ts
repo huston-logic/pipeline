@@ -320,7 +320,7 @@ async function projectRecord(names: Names, row: Row, withPerson: boolean): Promi
 
 /** What an added project sets: its person, the deal it comes from, status, dates and notes. */
 async function addedProjectFields(names: Names, id: string, row: Row): Promise<Item["fields"]> {
-  show(names, "projects", id, ["name", "contact_id", "deal_id", "status_key", "start_at", "target_at", "notes", "archived"]);
+  show(names, "projects", id, ["name", "contact_id", "deal_id", "status_key", "start_at", "target_at", "notes", "fields", "archived"]);
   const owner = await planned<ContactRow>(names, "contacts", String(row.contact_id));
   const deal = await planned<DealRow>(names, "deals", (row.deal_id as string | null) ?? null);
   const out: Item["fields"] = [{ field: "person", to: owner ? contactName(owner) : String(row.contact_id) }];

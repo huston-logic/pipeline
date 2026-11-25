@@ -22,7 +22,7 @@ async function setup(more = "") {
   return { db, c, count };
 }
 
-const RETROFIT = "INSERT INTO projects (id, name, contact_id, target_at) VALUES ('pj_seed01', 'Retrofit', 'ct_seed01', '2026-12-04T08:00:00.000Z')";
+const RETROFIT = "INSERT INTO projects (id, name, contact_id, status_key, target_at) VALUES ('pj_seed01', 'Retrofit', 'ct_seed01', 'active', '2026-12-04T08:00:00.000Z')";
 
 test("add_project and update_project propose under Review first and under Apply small changes, and write nothing", async () => {
   const { c, count } = await setup(RETROFIT);
@@ -147,7 +147,7 @@ test("no Won question while projects are off, when the deal has a live project, 
   assert.doesNotMatch(offApplied.headline, /Ask the owner/);
   assert.equal("startProject" in (offApplied.data as object), false);
 
-  const covered = await setup("INSERT INTO projects (id, name, contact_id, deal_id) VALUES ('pj_a', 'Cafe launch', 'ct_seed05', 'dl_seed05')");
+  const covered = await setup("INSERT INTO projects (id, name, contact_id, deal_id, status_key) VALUES ('pj_a', 'Cafe launch', 'ct_seed05', 'dl_seed05', 'active')");
   const coveredApplied = await approved(covered.c, "update_deal", { deal: "dl_seed05", status: "won" });
   assert.doesNotMatch(coveredApplied.headline, /Ask the owner/);
   covered.db.exec("UPDATE projects SET archived = 1 WHERE id = 'pj_a'; UPDATE deals SET status = 'open' WHERE id = 'dl_seed05'");

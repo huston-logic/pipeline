@@ -17,7 +17,7 @@ const DEPS = { extraOwnerEmails: [] };
 
 const SETUP = [
   "UPDATE settings SET time_tracking = 1, projects = 1",
-  "INSERT INTO projects (id, name, contact_id) VALUES ('pj_seed01', 'Retrofit', 'ct_seed01')",
+  "INSERT INTO projects (id, name, contact_id, status_key) VALUES ('pj_seed01', 'Retrofit', 'ct_seed01', 'active')",
   WORK_TYPES_SQL,
   "INSERT INTO field_defs (id, entity, key, label, type) VALUES ('fd_budget', 'deal', 'budget', 'Budget', 'number'), " +
     "('fd_size', 'contact', 'size', 'Team size', 'text')",

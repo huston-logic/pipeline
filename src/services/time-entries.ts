@@ -124,7 +124,7 @@ export async function resolveLinks(
     }
     // A task of a project, given alone, puts the entry on that project.
     const project = await projectById(src, taskProject);
-    const owner = project === null ? null : await contactById(src, project.contact_id);
+    const owner = project === null || project.contact_id === null ? null : await contactById(src, project.contact_id);
     if (project === null || owner === null) throw new Error(`Task ${task.id} points at a missing project.`);
     await checkGiven(src, { project, contact: owner }, named);
     return { contact: owner, deal: null, task, project };
@@ -281,7 +281,7 @@ async function otherRunning(src: Source, id: string): Promise<TimeEntryRow | nul
  */
 async function keepsProject(src: Source, before: TimeEntryRow, patch: TimeEntryPatch): Promise<void> {
   const project = before.project_id == null ? null : await projectById(src, before.project_id);
-  const owner = project === null ? null : await contactById(src, project.contact_id);
+  const owner = project === null || project.contact_id === null ? null : await contactById(src, project.contact_id);
   if (project === null || owner === null) return;
   const label = projectLabel(project, owner);
   if (typeof patch.deal === "string" || typeof patch.contact === "string") {

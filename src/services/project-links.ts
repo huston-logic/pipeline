@@ -12,7 +12,7 @@ export async function projectLinks(src: Source, ref: string): Promise<{ project:
   if (project.archived === 1) {
     throw new UserError(`Project ${projectTitle(project)} is archived. Bring it back first (update_project archived false).`);
   }
-  const contact = await contactById(src, project.contact_id);
+  const contact = project.contact_id === null ? null : await contactById(src, project.contact_id);
   if (!contact) throw new Error(`Project ${project.id} points at a missing contact.`);
   return { project, contact };
 }

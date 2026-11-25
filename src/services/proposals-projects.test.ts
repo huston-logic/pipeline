@@ -21,8 +21,8 @@ async function setup(more = "") {
   db.exec(buildFixtureSeed(NOW, DEFAULT_TZ));
   db.exec(
     `UPDATE settings SET projects = 1, time_tracking = 1; ${WORK_TYPES_SQL}; ` +
-      "INSERT INTO projects (id, name, contact_id, deal_id, start_at, target_at) VALUES " +
-      "('pj_seed01', 'Retrofit', 'ct_seed01', NULL, '2026-12-01T08:00:00.000Z', NULL); " +
+      "INSERT INTO projects (id, name, contact_id, deal_id, status_key, start_at, target_at) VALUES " +
+      "('pj_seed01', 'Retrofit', 'ct_seed01', NULL, 'active', '2026-12-01T08:00:00.000Z', NULL); " +
       more,
   );
   return db;
@@ -86,7 +86,7 @@ test("a project named by an earlier add_project ('@n') takes a task, a note, a t
 
 test("a project by exact name, ignoring case, is used; several or none are questions; ids show only for the owner's own names", async () => {
   const db = await setup(
-    "INSERT INTO projects (id, name, contact_id) VALUES ('pj_two', 'RETROFIT', 'ct_seed02'), ('pj_arch', 'Old job', 'ct_seed01'), ('pj_out', 'Pergola', 'ct_seed01'); " +
+    "INSERT INTO projects (id, name, contact_id, status_key) VALUES ('pj_two', 'RETROFIT', 'ct_seed02', 'active'), ('pj_arch', 'Old job', 'ct_seed01', 'active'), ('pj_out', 'Pergola', 'ct_seed01', 'active'); " +
       "UPDATE projects SET archived = 1 WHERE id = 'pj_arch'; UPDATE projects SET untrusted_fields = '[\"name\"]' WHERE id = 'pj_out'",
   );
   const asked = await proposeChanges(
