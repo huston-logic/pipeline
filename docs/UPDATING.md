@@ -290,6 +290,7 @@ Say these one at a time. Each one makes a draft or answers a question. Only the 
 - **Ask who would get it.** "Who would get it?" It lists the people the draft would reach.
 - **Send it.** "Send it." The AI app says only you can send it, on the board, and gives you the link.
 
+## Before a release that has a new migration
 
 Migrations only go forward: there is no "undo" for a database change. Try a release on a copy's preview database
 first:
