@@ -1,15 +1,20 @@
 // The project page's posts (decision 0055): Save status and Archive or Bring back (update_project), Add a task
 // (add_task) and Log it (log_activity). Each calls the service the matching MCP tool calls, as the owner under that tool's
 // name. While projects are off, or for an id that is no project, every path here is a 404.
-import { getSettings } from "../db/queries.ts";
-import { isProjectId } from "../ids.ts";
-import { projectById } from "../services/lookup.ts";
+import { getContact, getSettings } from "../db/queries.ts";
+import { isContactId, isProjectId } from "../ids.ts";
+import { ownerTimezone, projectById } from "../services/lookup.ts";
 import { projectStatusRows } from "../services/memo.ts";
-import { updateProject } from "../services/projects.ts";
-import { type ActionContext, type ActionResult, asOwner, backTo, notFound, page, redirect, refusal, refusedPage, type Route } from "./action-kit.ts";
+import { addProject, type ProjectPatch, updateProject } from "../services/projects.ts";
+import { type ActionContext, type ActionResult, asOwner, backTo, notFound, page, pageContext, redirect, refusal, refusedPage, type Route, stateOf } from "./action-kit.ts";
+import type { PageContext } from "./context.ts";
 import { addTaskTo, logOn } from "./edit-actions.ts";
 import { projectHref } from "./parts.ts";
-import { statusForm } from "./pages/project.ts";
+import { projectEditPage } from "./pages/project-edit.ts";
+import { newProjectOfContactPage, newProjectOfDealPage, wonDeal } from "./pages/project-new.ts";
+import { projectEditPath, statusForm } from "./pages/project.ts";
+import { MOVE_TASKS, newProjectOfContactPath, newProjectOfDealPath, projectSpecs } from "./project-form.ts";
+import { collectEdit, collectNew } from "./record-form.ts";
 import { withChange } from "./return-to.ts";
 
 /** The project a post names, or null when projects are off or there is none with that id. */
@@ -47,7 +52,80 @@ async function archive(ctx: ActionContext, id: string): Promise<ActionResult> {
   }
 }
 
+const NOTHING_TO_SAVE = "Nothing to save: every field is as it was. Change a value, or cancel to go back.";
+
+/** A project form's page context: projects are on (the paths 404 otherwise), so More lists Projects on a refused form too. */
+const formContext = (ctx: ActionContext, here: string): PageContext => ({ ...pageContext(ctx, here), projects: true });
+
+const projectsOn = async (ctx: ActionContext): Promise<boolean> => (await getSettings(ctx.db)).projects === 1;
+
+type FormInput = { name?: string; status?: string; startAt?: string; targetAt?: string; notes?: string };
+
+/** POST /contacts/<id>/projects: add_project for that person. Then the new project's page. */
+async function addOfContact(ctx: ActionContext, id: string): Promise<ActionResult> {
+  if (!(await projectsOn(ctx)) || !isContactId(id)) return notFound(ctx);
+  const contact = await getContact(ctx.db, id);
+  if (contact === null || contact.archived === 1) return notFound(ctx);
+  const collected = collectNew(projectSpecs(await projectStatusRows(ctx.db)), ctx.form);
+  const refused = async (extra: string[] = []) =>
+    page(422, (await newProjectOfContactPage(formContext(ctx, newProjectOfContactPath(id)), id, stateOf(collected, extra))) ?? "");
+  if (collected.errors.length > 0) return refused();
+  try {
+    const result = await addProject(asOwner(ctx, "add_project"), { ...(collected.input as FormInput), contact: contact.id });
+    return redirect(withChange(projectHref(result.projectId), result.changeId));
+  } catch (error) {
+    return refused([refusal(error, "project")]);
+  }
+}
+
+/** POST /deals/<id>/projects: add_project from that won deal, moving its open tasks only when the box is ticked. */
+async function addOfDeal(ctx: ActionContext, id: string): Promise<ActionResult> {
+  if (!(await projectsOn(ctx))) return notFound(ctx);
+  const deal = await wonDeal(ctx, id);
+  if (deal === null) return notFound(ctx);
+  const move = ctx.form.get(MOVE_TASKS) === "yes";
+  const collected = collectNew(projectSpecs(await projectStatusRows(ctx.db)), ctx.form);
+  const refused = async (extra: string[] = []) =>
+    page(422, (await newProjectOfDealPage(formContext(ctx, newProjectOfDealPath(id)), id, { ...stateOf(collected, extra), move })) ?? "");
+  if (collected.errors.length > 0) return refused();
+  try {
+    const result = await addProject(asOwner(ctx, "add_project"), { ...(collected.input as FormInput), deal: deal.id, ...(move ? { moveOpenTasks: true } : {}) });
+    return redirect(withChange(projectHref(result.projectId), result.changeId));
+  } catch (error) {
+    return refused([refusal(error, "project")]);
+  }
+}
+
+/** POST /projects/<id>: update_project with only the fields the owner changed. */
+async function edit(ctx: ActionContext, id: string): Promise<ActionResult> {
+  const project = await projectOf(ctx, id);
+  if (project === null) return notFound(ctx);
+  const tz = await ownerTimezone(ctx.db);
+  const specs = projectSpecs(await projectStatusRows(ctx.db));
+  const collected = await collectEdit(specs, ctx.form, { ...project, fields: "{}" }, tz);
+  const refused = async (extra: string[] = []) =>
+    page(422, (await projectEditPage(formContext(ctx, projectEditPath(id)), id, stateOf(collected, extra))) ?? "");
+  if (collected.errors.length > 0) return refused();
+  const input = collected.input as { name?: string; status?: string; startAt?: string | null; targetAt?: string | null; notes?: string | null };
+  if (Object.keys(input).length === 0) return refused([NOTHING_TO_SAVE]);
+  const patch: ProjectPatch = {};
+  if (input.name !== undefined) patch.name = input.name;
+  if (input.status !== undefined) patch.status = input.status;
+  if (input.startAt !== undefined) patch.startAt = input.startAt;
+  if (input.targetAt !== undefined) patch.targetAt = input.targetAt;
+  if (input.notes !== undefined) patch.notes = input.notes;
+  try {
+    const result = await updateProject(asOwner(ctx, "update_project"), project.id, patch);
+    return redirect(withChange(projectHref(project.id), result.changeId));
+  } catch (error) {
+    return refused([refusal(error, "project")]);
+  }
+}
+
 export const PROJECT_ROUTES: Route[] = [
+  { path: /^\/contacts\/([^/]+)\/projects$/, handle: addOfContact, big: true },
+  { path: /^\/deals\/([^/]+)\/projects$/, handle: addOfDeal, big: true },
+  { path: /^\/projects\/([^/]+)$/, handle: edit, big: true },
   { path: /^\/projects\/([^/]+)\/status$/, handle: saveStatus },
   { path: /^\/projects\/([^/]+)\/archive$/, handle: archive },
   { path: /^\/projects\/([^/]+)\/tasks$/, handle: addTaskTo("project") },
