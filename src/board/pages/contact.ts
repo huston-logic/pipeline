@@ -18,6 +18,7 @@ import { customRows, outsideNote, STATUS, taskCard, timelineItem } from "../reco
 import { addTaskForm, type Subject } from "../task-forms.ts";
 import { startTimerForm } from "../timer-start.ts";
 import { leadAskSection } from "../ask-claude.ts";
+import { campaignEmailsSection } from "../campaign-emails.ts";
 import { qualifyPath, statusLine, statusMenu } from "../lead-forms.ts";
 import { contactEditPath } from "./contact-edit.ts";
 import { newDealPath } from "./deal-new.ts";
@@ -180,6 +181,7 @@ ${hasOutsideText(detail) ? outsideNote() : ""}
 <div>
 ${await leadSection(row, tz, ctx, await statusLabels(db))}
 ${detailsSection(detail, labels, tz, ctx, subject)}
+${await campaignEmailsSection(ctx, row, tz)}
 ${dealsSection(detail)}
 </div>
 <div>

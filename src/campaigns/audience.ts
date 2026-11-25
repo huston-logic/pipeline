@@ -78,32 +78,40 @@ async function peopleOf(db: Db, audience: Audience): Promise<ContactRow[]> {
   return found.results;
 }
 
-type Reason = EmailSuppressionRow["reason"];
+export type LiveSuppression = Pick<EmailSuppressionRow, "id" | "email" | "contact_id" | "reason" | "created_at" | "version">;
 
 /**
  * Live suppressions that apply to these people, in one read: by address (any reason), and by person for an unsubscribe
  * or a complaint, so a new address doesn't undo the person's choice. A bounce is the address's only.
  */
-async function suppressionsFor(db: Db, members: Member[]): Promise<{ byEmail: Map<string, Reason>; byPerson: Map<string, Reason> }> {
-  const byEmail = new Map<string, Reason>();
-  const byPerson = new Map<string, Reason>();
+export async function liveSuppressions(db: Db, members: Pick<Member, "email" | "contactId">[]): Promise<LiveSuppression[]> {
+  const found: LiveSuppression[] = [];
   const items = members.map((member) => ({ e: member.email, c: member.contactId }));
   for (const chunk of chunkBy(items, (item) => sqlBytes(JSON.stringify(item)))) {
     const json = JSON.stringify(chunk);
     const rows = await db
       .prepare(
-        "SELECT email, contact_id, reason FROM email_suppressions WHERE cleared_at IS NULL AND (" +
+        "SELECT id, email, contact_id, reason, created_at, version FROM email_suppressions WHERE cleared_at IS NULL AND (" +
           "email IN (SELECT json_extract(j.value, '$.e') FROM json_each(?) AS j) OR " +
           "(reason IN ('unsubscribed', 'complained') AND contact_id IN (SELECT json_extract(j.value, '$.c') FROM json_each(?) AS j)))",
       )
       .bind(json, json)
-      .all<Pick<EmailSuppressionRow, "email" | "contact_id" | "reason">>();
-    for (const row of rows.results) {
-      byEmail.set(row.email, row.reason);
-      if (row.contact_id !== null && row.reason !== "bounced") byPerson.set(row.contact_id, row.reason);
-    }
+      .all<LiveSuppression>();
+    found.push(...rows.results);
   }
-  return { byEmail, byPerson };
+  return found;
+}
+
+/** The suppression that stops this person: the one on their address first, else the one tied to them. */
+export function suppressionIn(rows: LiveSuppression[], member: Pick<Member, "email" | "contactId">): LiveSuppression | undefined {
+  const byEmail = rows.find((row) => row.email === member.email);
+  if (byEmail !== undefined) return byEmail;
+  return rows.findLast((row) => row.contact_id === member.contactId && row.reason !== "bounced");
+}
+
+/** The live suppression that applies to one person right now, or null. The same rule the audience uses. */
+export async function suppressionOf(db: Db, member: Pick<Member, "email" | "contactId">): Promise<LiveSuppression | null> {
+  return suppressionIn(await liveSuppressions(db, [member]), member) ?? null;
 }
 
 /** Parses a stored campaigns.audience. The draft checks wrote it, so a bad one is a bug, not the owner's mistake. */
@@ -119,7 +127,7 @@ export function parseAudience(json: string): Audience {
  */
 export async function resolveAudience(db: Db, _now: Date, audience: Audience): Promise<ResolvedAudience> {
   const members = (await peopleOf(db, audience)).map((row) => ({ member: memberOf(row), archived: row.archived === 1 }));
-  const suppressed = await suppressionsFor(db, members.map(({ member }) => member));
+  const suppressed = await liveSuppressions(db, members.map(({ member }) => member));
   const sendable: Member[] = [];
   const skipped: Skipped[] = [];
   for (const { member, archived } of members) {
@@ -129,7 +137,7 @@ export async function resolveAudience(db: Db, _now: Date, audience: Audience): P
         ? "no_email"
         : !isPlainAddress(member.email)
           ? "bad_email"
-          : (suppressed.byEmail.get(member.email) ?? suppressed.byPerson.get(member.contactId));
+          : suppressionIn(suppressed, member)?.reason;
     if (reason === undefined) sendable.push(member);
     else skipped.push({ ...member, reason });
   }

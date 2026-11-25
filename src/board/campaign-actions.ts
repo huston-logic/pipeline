@@ -1,10 +1,14 @@
 // The campaign posts (decision 0053). Each calls the service the matching MCP tool calls as the owner under that tool's
 // name. While campaigns are off every path here is a 404. A refused form is drawn again (422) with the values kept.
 import { addCampaignDraft, updateCampaignDraft } from "../campaigns/drafts.ts";
-import { getSettings } from "../db/queries.ts";
+import { clearSuppression, liveUnsubscribes } from "../campaigns/suppressions.ts";
+import { getContact, getSettings } from "../db/queries.ts";
+import { isContactId } from "../ids.ts";
+import { contactName } from "../services/labels.ts";
 import { ownerTimezone } from "../services/lookup.ts";
 import { updateSettings, type SettingsPatch } from "../services/settings.ts";
-import { type ActionContext, type ActionResult, asOwner, fieldError, notFound, page, redirect, refusal, type Route, stateOf } from "./action-kit.ts";
+import { type ActionContext, type ActionResult, asOwner, fieldError, notFound, page, redirect, refusal, refusedPage, type Route, stateOf } from "./action-kit.ts";
+import { confirmPage } from "./campaign-emails.ts";
 import { CAMPAIGN_SEND_ROUTES, campaignContext } from "./campaign-send-actions.ts";
 import { CAMPAIGN_SETTINGS_PATH, CAMPAIGNS_NEW_PATH, campaignPath } from "./pages/campaigns.ts";
 import {
@@ -159,7 +163,27 @@ async function removePerson(ctx: ActionContext, id: string): Promise<ActionResul
   return savePeople(ctx, id, picked.filter((one) => one !== person));
 }
 
+/** POST /contacts/<id>/campaign-emails/allow: asks first unless confirm=yes, then clear_suppression as the owner. */
+async function allowAgain(ctx: ActionContext, id: string): Promise<ActionResult> {
+  if (!isContactId(id) || !(await campaignsOn(ctx))) return notFound(ctx);
+  const contact = await getContact(ctx.db, id);
+  if (contact === null) return notFound(ctx);
+  const back = `/contacts/${id}`;
+  const refused = (message: string) => page(422, refusedPage(ctx, "Campaign emails weren't changed", message, back, "", back));
+  if (ctx.form.get("confirm") !== "yes") {
+    if ((await liveUnsubscribes(ctx.db, contact)).length === 0) return refused(`${contactName(contact)} has no unsubscribe to clear.`);
+    return page(200, confirmPage({ csrf: ctx.csrf, look: ctx.look, campaigns: true }, contact));
+  }
+  try {
+    const result = await clearSuppression(asOwner(ctx, "clear_suppression"), id);
+    return redirect(withChange(back, result.changeId));
+  } catch (error) {
+    return refused(refusal(error, "person"));
+  }
+}
+
 export const CAMPAIGN_ROUTES: Route[] = [
+  { path: /^\/contacts\/([^/]+)\/campaign-emails\/allow$/, handle: allowAgain },
   { path: /^\/campaigns\/(settings)$/, handle: (ctx) => saveSettings(ctx), big: true },
   { path: /^\/campaigns\/(new)$/, handle: (ctx) => createCampaign(ctx), big: true },
   { path: /^\/campaigns\/([^/]+)\/edit$/, handle: editCampaign, big: true },

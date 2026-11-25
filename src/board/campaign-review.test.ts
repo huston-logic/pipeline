@@ -306,7 +306,6 @@ test("Pause asks first, Resume does not, and neither can be undone", async () =>
   const env = envOf(db);
   const sent = await approved(env, id);
   const running = await load(env, `/campaigns/${id}`, sent.cookie);
-  // The results page (Task B4) draws the Pause button; here the post is made as that form would make it.
   const ask = await post(env, `/campaigns/${id}/pause`, new URLSearchParams(),{ cookie: running.cookie, token: running.token });
   assert.equal(ask.res.status, 200);
   assert.match(ask.body, /Pause Autumn news\? No new emails go out until you resume\. Emails already on their way may still arrive\./);
@@ -323,14 +322,15 @@ test("Pause asks first, Resume does not, and neither can be undone", async () =>
   assert.equal((await auditOf(db, changeIdOf(resumed.location)))?.tool, "campaign_resume");
 });
 
-test("sending, paused, sent and cancelled campaigns show a short placeholder with Duplicate", async () => {
+test("an approved campaign shows its results page, with Pause and Duplicate", async () => {
   const { db, id } = await reviewDb();
   const env = envOf(db);
   await approved(env, id);
   const { res, body } = await open(env, id);
   assert.equal(res.status, 200);
-  assert.match(body, /<title>Review: Autumn news/);
+  assert.match(body, /<title>Autumn news: results/);
   assert.match(body, /Sending/);
+  assert.match(body, /action="\/campaigns\/cp_[a-z0-9]+\/pause"/);
   assert.match(body, /action="\/campaigns\/cp_[a-z0-9]+\/duplicate"/);
   assert.doesNotMatch(body, />Approve and send/);
 });

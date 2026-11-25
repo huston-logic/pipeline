@@ -12,6 +12,7 @@ import { headerDate } from "../brief/compose.ts";
 import { addDays, DEFAULT_TZ, formatLocal, localDate, zonedToUtc } from "../time.ts";
 import { sourceToken } from "./pages/leads.ts";
 import { boardRoutes, moreItems, navItems } from "./routes.ts";
+import { addStandInCampaigns } from "../../tests/helpers/campaigns-seed.ts";
 import { addStandInDrafts } from "../../tests/helpers/import-drafts.ts";
 import { addStandInTime } from "../../tests/helpers/time-seed.ts";
 import { addStandInViews } from "../../tests/helpers/views.ts";
@@ -80,6 +81,7 @@ test("every board route answers 200 with the seed: one <h1>, landmarks, a unique
   await addStandInDrafts(db);
   addStandInViews(db);
   addStandInTime(db);
+  addStandInCampaigns(db);
   const titles = new Set<string>();
   const descriptions = new Set<string>();
   for (const path of boardRoutes) {
@@ -653,7 +655,7 @@ test("board pages answer GET and HEAD only: any other method is 405 (writes have
   // A record form page (Add a lead or a deal, Edit, New deal, Qualify) is posted back to its own path (decisions 0018,
   // 0028), and the import's first step to /import (decision 0036), behind the same checks as every board write: a bare
   // POST (no origin, no cookie, no token) is refused.
-  const formPage = (path: string) => /\/(?:edit|new|qualify)$/.test(path) || ["/import", "/timer/stop", "/campaigns/settings"].includes(path.split("?")[0] ?? "");
+  const formPage = (path: string) => /\/(?:edit|new|qualify|campaign-emails\/allow)$/.test(path) || ["/import", "/timer/stop", "/campaigns/settings"].includes(path.split("?")[0] ?? "");
   for (const path of boardRoutes) {
     for (const method of ["POST", "PUT", "DELETE", "PATCH"]) {
       if (method === "POST" && formPage(path)) {

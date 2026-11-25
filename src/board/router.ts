@@ -4,6 +4,7 @@
 import type { Db } from "../db/db.ts";
 import { getSettings } from "../db/queries.ts";
 import { changeBanner } from "./banner.ts";
+import { campaignAllowPage } from "./campaign-emails.ts";
 import { herePath, type PageContext } from "./context.ts";
 import { lookOf } from "./layout.ts";
 import { briefPage } from "./pages/brief.ts";
@@ -103,6 +104,7 @@ const RECORD_PATHS: { path: RegExp; isId: (id: string) => boolean; page: RecordP
   { path: /^\/deals\/([^/]+)\/edit$/, isId: isDealId, page: (ctx, id) => dealEditPage(ctx, id) },
   { path: /^\/contacts\/([^/]+)\/edit$/, isId: isContactId, page: (ctx, id) => contactEditPage(ctx, id) },
   { path: /^\/contacts\/([^/]+)\/deals\/new$/, isId: isContactId, page: (ctx, id) => newDealPage(ctx, id) },
+  { path: /^\/contacts\/([^/]+)\/campaign-emails\/allow$/, isId: isContactId, page: (ctx, id) => campaignAllowPage(ctx, id) },
   { path: /^\/contacts\/([^/]+)\/qualify$/, isId: isContactId, page: (ctx, id) => qualifyPage(ctx, id) },
   { path: /^\/time\/([^/]+)\/edit$/, isId: isTimeEntryId, page: (ctx, id) => timeEditPage(ctx, id) },
   { path: /^\/campaigns\/([^/]+)$/, isId: isCampaignId, page: (ctx, id) => campaignReviewPage(ctx, id) },

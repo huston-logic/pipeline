@@ -12,6 +12,9 @@
 // The timer pages (decision 0050): /timer/stop with no timer running (the seed starts none) and the seed's finished entry
 // te_seed01 on /timer/done.
 // The time pages (decision 0051): this week, another week by address, Add time and editing the seed's te_seed01.
+// The campaign pages (decision 0053) are the seed's three: cp_seed01 (a draft to Partners: its review page and edit form),
+// cp_seed02 (sent: its results, and the bounced filter) and cp_seed03 (a draft to people picked by hand: the picker).
+// ct_seed08 unsubscribed from cp_seed02: her page shows the block and its "Allow campaign emails again" confirm page.
 
 export type IconName =
   | "today"
@@ -83,6 +86,13 @@ export const boardRoutes: string[] = [
   "/campaigns",
   "/campaigns/settings",
   "/campaigns/new",
+  "/campaigns/cp_seed01",
+  "/campaigns/cp_seed01/edit",
+  "/campaigns/cp_seed02",
+  "/campaigns/cp_seed02?status=bounced",
+  "/campaigns/cp_seed03/people",
+  "/contacts/ct_seed08",
+  "/contacts/ct_seed08/campaign-emails/allow",
 ];
 
 /** At most this many pages go through Lighthouse, so the CI job's time stops growing with the board. */
@@ -114,7 +124,7 @@ export const lighthouseRoutes: string[] = [
   "/time",
   "/import",
   "/import/im_seed01",
-  "/import/im_seed02/preview",
+  "/campaigns/cp_seed01",
 ];
 
 /** The phone tab bar and the top of the side bar, in this order. */

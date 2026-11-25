@@ -158,6 +158,7 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
         CAMPAIGN_SENDING: env.CAMPAIGN_SENDING,
         CAMPAIGN_FROM: env.CAMPAIGN_FROM,
         CAMPAIGN_RESEND_API_KEY: env.CAMPAIGN_RESEND_API_KEY,
+        CAMPAIGN_WEBHOOK_SECRET: env.CAMPAIGN_WEBHOOK_SECRET,
         OWNER_EMAILS: env.OWNER_EMAILS,
       };
       const result = await page({ db: env.DB, now: new Date(), url, csrf, pushKey, emailLogAddress: logAddressOf(env), campaignEnv });
