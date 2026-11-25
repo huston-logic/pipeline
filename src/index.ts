@@ -13,6 +13,7 @@ import { logAddressOf } from "./email/address.ts";
 import type { Env } from "./env.ts";
 import { apiMethodNotAllowed, handleApi, isApiPath, json } from "./http/api.ts";
 import { handleIntake } from "./http/intake.ts";
+import { handleUnsubscribe, UNSUBSCRIBE_PREFIX } from "./http/unsubscribe.ts";
 import { TIME_CSV_PATH, timeCsvResponse } from "./http/time-csv.ts";
 import { htmlResponse, textResponse } from "./http/respond.ts";
 import { MCP_ROUTE } from "./mcp/route.ts";
@@ -65,6 +66,9 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
   const { pathname } = url;
   // /intake has its own secret instead of a sign-in, so it sits outside both sign-ins (decision 0012).
   if (pathname === INTAKE_ROUTE) return withSecurityHeaders(await handleIntake(request, env, new Date()));
+
+  // A campaign email's unsubscribe link is public: no sign-in in any mode, campaigns on or off (hard rule 3).
+  if (pathname.startsWith(UNSUBSCRIBE_PREFIX)) return handleUnsubscribe(request, env, new Date());
 
   if (mode.kind === "production" && isOAuthPath(pathname)) {
     // /mcp, /authorize, /callback, /token, /register and /.well-known/*: OAuth with Access as the upstream sign-in.

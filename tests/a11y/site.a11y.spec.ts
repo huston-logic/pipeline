@@ -1,6 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
-import { boardRoutes } from "../../src/board/routes.ts";
+import { boardRoutes, publicRoutes } from "../../src/board/routes.ts";
 import { KNOWN_ISSUES } from "./known-issues.ts";
 
 // WCAG 2.0, 2.1 and 2.2 levels A and AA (axe tags are not cumulative), plus axe's best-practice rules
@@ -9,7 +9,7 @@ const TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa", "best-prac
 
 const NOT_FOUND_PATH = "/this-page-does-not-exist";
 
-const pages = [...boardRoutes, NOT_FOUND_PATH];
+const pages = [...boardRoutes, ...publicRoutes, NOT_FOUND_PATH];
 
 type Violation = Awaited<ReturnType<AxeBuilder["analyze"]>>["violations"][number];
 

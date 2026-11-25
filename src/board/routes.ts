@@ -95,6 +95,10 @@ export const boardRoutes: string[] = [
   "/contacts/ct_seed08/campaign-emails/allow",
 ];
 
+// Pages anyone can open, with no sign-in (the unsubscribe page, decision 0053). GET only, so a scan writes nothing. The
+// token is the demo seed's fake one for rc_seed01, a delivered recipient of cp_seed02 (scripts/seed-dev.ts).
+export const publicRoutes: string[] = ["/unsubscribe/test", "/unsubscribe/rcseed01FakeSeedTokenFakeSeedTokenFakeSeedT"];
+
 /** At most this many pages go through Lighthouse, so the CI job's time stops growing with the board. */
 export const LIGHTHOUSE_MAX_ROUTES = 20;
 
