@@ -118,7 +118,7 @@ test("rule 7: record edits need the owner's yes, with the three replies quoted e
 
 test("the instructions say a view is how the board shows a kind of person, with the partners example (decision 0042)", () => {
   const line = SERVER_INSTRUCTIONS.split("\n").find((text) => text.startsWith("- A view is")) ?? "";
-  assert.match(line, /^- A view is how the board shows a kind of person or deal\. Every person status has a default view;/);
+  assert.match(line, /^- A view is how the board shows a kind of person, deal or project\. Every person status has a default view;/);
   assert.match(line, /"give me a view of all my partners": add_view with module people and filters personStatus partner/);
   for (const tool of ["list_views", "add_view", "update_view", "archive_view"]) assert.ok(line.includes(tool), tool);
 });

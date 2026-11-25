@@ -270,9 +270,9 @@ hooks and the commands are in `CLAUDE.md`.
   `projects` (`/projects?view=<vw id>`). A project may have no person (an internal project: its records have no person
   and no deal, so every reader of a project's person must allow none). `addProject` takes `completeOpenTasks` (the
   deal's open tasks are done, not moved). The board's Won confirm goes to Start a project when the deal has no live
-  project. Lighthouse allows 22 routes (`LIGHTHOUSE_MAX_ROUTES`). `project_id` on tasks, activities and time entries (migration 0020). The link rules live in
-  `src/services/project-links.ts`: a record on a project gets the project's person and no deal, a deal with a project is
-  refused, an archived project takes nothing new, and `update_time_entry` never moves an entry off its project unless
+  project. Lighthouse allows 22 routes (`LIGHTHOUSE_MAX_ROUTES`). `project_id` on tasks, activities and time entries
+  (migration 0020). The link rules live in `src/services/project-links.ts`: a record on a project gets the project's
+  person (none for an internal project) and no deal, a deal with a project is refused, an archived project takes nothing new, and `update_time_entry` never moves an entry off its project unless
   given `project: null`. `src/services/projects.ts` (`addProject`, `updateProject`, `findProject`; a project's deal must
   be Won; `moveOpenTasks` moves the deal's open tasks in the same change) and `src/services/project-read.ts`
   (`listProjects`, `getProject`). `add_project` and `update_project` are in `RECORD_ACTIONS` (proposed, never small);
