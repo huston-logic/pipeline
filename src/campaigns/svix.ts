@@ -24,7 +24,7 @@ function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
 }
 
 /** True when the timestamp is within five minutes of now and any `v1,` entry is the HMAC-SHA256 of `id.timestamp.body`. */
-export async function verifySvix(secret: string, headers: SvixHeaders, rawBody: string, now: Date): Promise<boolean> {
+export async function verifySvix(secret: string, headers: SvixHeaders, rawBody: string | Uint8Array, now: Date): Promise<boolean> {
   if (!secret.startsWith(SECRET_PREFIX)) return false;
   const keyBytes = fromBase64(secret.slice(SECRET_PREFIX.length));
   if (keyBytes === null || keyBytes.length === 0) return false;
@@ -32,8 +32,12 @@ export async function verifySvix(secret: string, headers: SvixHeaders, rawBody: 
   if (Math.abs(now.getTime() / 1000 - Number(headers.timestamp)) > TOLERANCE_SECONDS) return false;
 
   const key = await crypto.subtle.importKey("raw", keyBytes, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-  const signed = `${headers.id}.${headers.timestamp}.${rawBody}`;
-  const expected = new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(signed)));
+  const prefix = new TextEncoder().encode(`${headers.id}.${headers.timestamp}.`);
+  const bodyBytes = typeof rawBody === "string" ? new TextEncoder().encode(rawBody) : rawBody;
+  const signed = new Uint8Array(prefix.length + bodyBytes.length);
+  signed.set(prefix);
+  signed.set(bodyBytes, prefix.length);
+  const expected = new Uint8Array(await crypto.subtle.sign("HMAC", key, signed));
 
   let matched = false;
   for (const entry of headers.signature.split(" ")) {

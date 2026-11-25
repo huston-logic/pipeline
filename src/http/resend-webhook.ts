@@ -5,7 +5,7 @@ import { blockAddress } from "../campaigns/suppressions.ts";
 import { verifySvix } from "../campaigns/svix.ts";
 import type { CampaignRecipientRow } from "../db/db.ts";
 import type { Env } from "../env.ts";
-import { readCappedBody } from "./limits.ts";
+import { readCappedBytes } from "./limits.ts";
 import { textResponse } from "./respond.ts";
 
 const BODY_MAX_BYTES = 64 * 1024;
@@ -40,15 +40,14 @@ function move(env: Env, now: Date, id: string, status: string, from: readonly st
 }
 
 async function apply(env: Env, now: Date, event: ResendEvent, row: CampaignRecipientRow): Promise<void> {
+  // The address is always blocked (hard rule 4); only the status move is forward-only, by its WHERE on the status.
   const block = (reason: "bounced" | "complained", status: string, from: readonly string[], column: string | null, why: string) =>
-    from.includes(row.status)
-      ? blockAddress(env.DB, now, row, {
-          reason,
-          tool: "campaign_webhook",
-          summary: `Stopped campaign emails to contact ${row.contact_id}: ${why}`,
-          mark: move(env, now, row.id, status, from, column),
-        })
-      : Promise.resolve();
+    blockAddress(env.DB, now, row, {
+      reason,
+      tool: "campaign_webhook",
+      summary: `Stopped campaign emails to contact ${row.contact_id}: ${why}`,
+      mark: move(env, now, row.id, status, from, column),
+    });
 
   switch (event.type) {
     case "email.delivered":
@@ -75,16 +74,16 @@ async function handle(request: Request, env: Env, now: Date): Promise<Response> 
   const secret = env.CAMPAIGN_WEBHOOK_SECRET;
   if (!secret) return textResponse("Not set up.", 503);
 
-  const body = await readCappedBody(request, BODY_MAX_BYTES);
-  if (body === null) return textResponse("That is too large.", 413);
+  const bytes = await readCappedBytes(request, BODY_MAX_BYTES);
+  if (bytes === null) return textResponse("That is too large.", 413);
 
   const id = request.headers.get("svix-id");
   const timestamp = request.headers.get("svix-timestamp");
   const signature = request.headers.get("svix-signature");
   if (!id || !timestamp || !signature) return textResponse("Missing signature headers.", 400);
-  if (!(await verifySvix(secret, { id, timestamp, signature }, body, now))) return textResponse("Signature not accepted.", 401);
+  if (!(await verifySvix(secret, { id, timestamp, signature }, bytes, now))) return textResponse("Signature not accepted.", 401);
 
-  const event = parseEvent(body);
+  const event = parseEvent(new TextDecoder("utf-8", { fatal: false, ignoreBOM: true }).decode(bytes));
   if (event === null) return textResponse("That is not a delivery event.", 400);
 
   const row = await env.DB.prepare("SELECT * FROM campaign_recipients WHERE resend_id = ?").bind(event.emailId).first<CampaignRecipientRow>();

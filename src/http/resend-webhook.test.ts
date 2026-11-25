@@ -156,6 +156,43 @@ test("suppressed fails the row and blocks the address; failed only fails it", as
   assert.equal(await count(other.db, "SELECT COUNT(*) AS n FROM email_suppressions"), 0);
 });
 
+test("a permanent bounce on a failed row still blocks the address, and a repeat adds nothing", async () => {
+  const { db, env } = await setup(SECRET, "failed");
+  await post(env, event("email.bounced", { bounce: { type: "Permanent" } }));
+  assert.equal((await recipient(db))?.status, "failed");
+  assert.equal(await count(db, "SELECT COUNT(*) AS n FROM email_suppressions WHERE reason = 'bounced'"), 1);
+  await post(env, event("email.bounced", { bounce: { type: "Permanent" } }));
+  assert.equal(await count(db, "SELECT COUNT(*) AS n FROM email_suppressions"), 1);
+  assert.equal(await count(db, "SELECT COUNT(*) AS n FROM audit_log WHERE tool = 'campaign_webhook'"), 1);
+});
+
+test("a complaint on an already bounced row blocks the address when no block stands", async () => {
+  const { db, env } = await setup(SECRET, "bounced");
+  assert.equal(await count(db, "SELECT COUNT(*) AS n FROM email_suppressions"), 0);
+  await post(env, event("email.complained"));
+  assert.equal((await recipient(db))?.status, "bounced");
+  assert.equal(await count(db, "SELECT COUNT(*) AS n FROM email_suppressions WHERE reason = 'complained'"), 1);
+});
+
+test("the signature covers the raw bytes: a BOM or invalid UTF-8 verifies, then is a 400", async () => {
+  const { db, env } = await setup();
+  for (const body of [Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from(event("email.delivered"))]), Buffer.from([0x7b, 0xff, 0xfe, 0x7d])]) {
+    const timestamp = stamp(NOW);
+    const signature = `v1,${createHmac("sha256", SECRET_BYTES).update(Buffer.concat([Buffer.from(`msg_1.${timestamp}.`), body])).digest("base64")}`;
+    const res = await handleResendWebhook(
+      new Request("https://pipeline.example.com/hooks/resend", {
+        method: "POST",
+        headers: { "svix-id": "msg_1", "svix-timestamp": timestamp, "svix-signature": signature },
+        body,
+      }),
+      env,
+      NOW,
+    );
+    assert.equal(res.status, 400);
+  }
+  assert.equal((await recipient(db))?.status, "sent");
+});
+
 test("an unknown id and an ignored event type are 200 and write nothing", async () => {
   const { db, env } = await setup();
   assert.equal((await post(env, event("email.delivered", {}, "em_unknown"))).status, 200);
