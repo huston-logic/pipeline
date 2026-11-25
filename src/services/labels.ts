@@ -40,6 +40,14 @@ export const dealTitle = (deal: TitledLike) => (isTrusted(deal, "title") ? `"${d
 /** "\"Website refresh\" (Pat Example)", with each part safe on its own. */
 export const dealLabel = (deal: TitledLike, contact: ContactLike) => `${dealTitle(deal)} (${contactName(contact)})`;
 
+/** "\"Website refresh\"", or "project pj_…" when the name came from outside. */
+export const projectTitle = (project: WithProvenance & { id: string; name: string }) =>
+  isTrusted(project, "name") ? `"${project.name}"` : `project ${project.id}`;
+
+/** "\"Website refresh\" (Pat Example)", with each part safe on its own. */
+export const projectLabel = (project: WithProvenance & { id: string; name: string }, contact: ContactLike) =>
+  `${projectTitle(project)} (${contactName(contact)})`;
+
 /** "\"Call back\"", or "task tk_…" when the title came from outside. */
 export const taskTitle = (task: TitledLike) => (isTrusted(task, "title") ? `"${task.title}"` : `task ${task.id}`);
 

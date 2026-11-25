@@ -2,7 +2,7 @@
 // that matches more than one record is refused with every match's id, so the caller can pick.
 // The reads by id a record service makes take a Source: a database, or a ctx that may carry a plan (decision 0044).
 // In collect mode a row the plan already has is read from the plan, so each action sees what the earlier ones planned.
-import type { ContactRow, Db, DealRow, StageKind, StageRow, TaskRow, TimeEntryRow, WorkTypeRow } from "../db/db.ts";
+import type { ContactRow, Db, DealRow, ProjectRow, StageKind, StageRow, TaskRow, TimeEntryRow, WorkTypeRow } from "../db/db.ts";
 import { findContactByEmail } from "../db/queries.ts";
 import type { ChangeTable, Row } from "./change.ts";
 import { UserError } from "./errors.ts";
@@ -23,7 +23,7 @@ export function sourceOf(src: Source): { db: Db; plan: PlanCollector | undefined
   return "prepare" in src ? { db: src, plan: undefined } : { db: src.db, plan: src.plan };
 }
 
-type ById = "contacts" | "deals" | "tasks" | "time_entries" | "work_types";
+type ById = "contacts" | "deals" | "tasks" | "time_entries" | "work_types" | "projects";
 
 async function rowById<T>(src: Source, table: ById, id: string): Promise<T | null> {
   const { db, plan } = sourceOf(src);
@@ -40,6 +40,7 @@ export const dealById = (src: Source, id: string) => rowById<DealRow>(src, "deal
 export const taskById = (src: Source, id: string) => rowById<TaskRow>(src, "tasks", id);
 export const timeEntryById = (src: Source, id: string) => rowById<TimeEntryRow>(src, "time_entries", id);
 export const workTypeById = (src: Source, id: string) => rowById<WorkTypeRow>(src, "work_types", id);
+export const projectById = (src: Source, id: string) => rowById<ProjectRow>(src, "projects", id);
 
 /** A row the plan has (null: planned deleted), else the one read with it, if it is that row, else a read of its own. */
 async function plannedOr<T extends { id: string }>(src: Source, table: ById, id: string, read: T | undefined): Promise<T | null> {

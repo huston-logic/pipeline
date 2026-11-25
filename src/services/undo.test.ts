@@ -4,7 +4,7 @@ import type { AuditRow, Db, DealRow } from "../db/db.ts";
 import { racing } from "../../tests/helpers/race-db.ts";
 import { openTestDb } from "../db/sqlite-d1.ts";
 import { logActivity } from "./activities.ts";
-import type { Ctx } from "./change.ts";
+import { commitChange, type Ctx } from "./change.ts";
 import { updateDeal } from "./deals.ts";
 import { UserError } from "./errors.ts";
 import { addDeal } from "./add-deal.ts";
@@ -120,6 +120,39 @@ test("undo of add_deal after a task was added counts the task too", async () => 
   await addTask(ctxAt(db, NOW, "add_task"), { contactId, title: "Find card" });
   const message = await refusal(undoChange(undoCtx(db), changeId));
   assert.match(message, /other records now depend on it \(2 tasks\)/);
+});
+
+test("undo of a project's add is refused while a task points at it, and works once nothing does", async () => {
+  const { db, contactId } = await setup();
+  const now = CREATED.toISOString();
+  const project = {
+    id: "pj_fake",
+    name: "Website refresh",
+    contact_id: contactId,
+    deal_id: null,
+    status_key: "active",
+    start_at: null,
+    target_at: null,
+    notes: null,
+    archived: 0,
+    untrusted_fields: "[]",
+    version: 1,
+    created_at: now,
+    updated_at: now,
+  };
+  const { changeId } = await commitChange(ctxAt(db, CREATED, "add_project"), {
+    target: { table: "projects", id: "pj_fake" },
+    summary: "Added a project",
+    changes: [{ table: "projects", id: "pj_fake", before: null, after: project }],
+  });
+  assert.equal(await count(db, "projects"), 1);
+  await db.prepare("INSERT INTO tasks (id, contact_id, title, project_id) VALUES ('tk_pj', ?, 'Kickoff', 'pj_fake')").bind(contactId).run();
+  const message = await refusal(undoChange(undoCtx(db), changeId));
+  assert.match(message, /other records now depend on it \(1 task\)/);
+  assert.equal(await count(db, "projects"), 1);
+  await db.prepare("DELETE FROM tasks WHERE id = 'tk_pj'").run();
+  await undoChange(undoCtx(db), changeId);
+  assert.equal(await count(db, "projects"), 0);
 });
 
 test("undo of add_deal with nothing added since removes the contact, the deal and the note", async () => {

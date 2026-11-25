@@ -54,6 +54,8 @@ const EMAIL_BLOCK = { table: "email_suppressions", one: "campaign email block", 
 /** Rows that point at a row of each table, so deleting it would break them. ON DELETE SET NULL links are left out. */
 const TIME_ENTRY = { table: "time_entries", one: "time entry", many: "time entries" } as const;
 
+const PROJECT = { table: "projects", one: "project", many: "projects" } as const;
+
 const DEPENDENTS: Partial<Record<ChangeTable, Dependent[]>> = {
   contacts: [
     { table: "deals", column: "contact_id", one: "deal", many: "deals" },
@@ -64,7 +66,15 @@ const DEPENDENTS: Partial<Record<ChangeTable, Dependent[]>> = {
     { table: "client_rates", column: "contact_id", one: "client rate", many: "client rates" },
     { ...CAMPAIGN_RECIPIENT, column: "contact_id" },
     { ...EMAIL_BLOCK, column: "contact_id" },
+    { ...PROJECT, column: "contact_id" },
   ],
+  // Delivery work after a sale (migration 0020): what points at a project, and the status it is in.
+  projects: [
+    { table: "tasks", column: "project_id", one: "task", many: "tasks" },
+    { table: "activities", column: "project_id", one: "activity", many: "activities" },
+    { ...TIME_ENTRY, column: "project_id" },
+  ],
+  project_statuses: [{ ...PROJECT, column: "status_key" }],
   // Delivery records and address blocks of a campaign (migration 0019).
   campaigns: [
     { ...CAMPAIGN_RECIPIENT, column: "campaign_id" },
@@ -77,6 +87,7 @@ const DEPENDENTS: Partial<Record<ChangeTable, Dependent[]>> = {
     { table: "tasks", column: "deal_id", one: "task", many: "tasks" },
     { table: "rule_firings", column: "deal_id", one: "rule firing", many: "rule firings" },
     { ...TIME_ENTRY, column: "deal_id" },
+    { ...PROJECT, column: "deal_id" },
   ],
   // Time entries (decision 0049): the task or note they point at, and the work type they used.
   tasks: [{ ...TIME_ENTRY, column: "task_id" }],
@@ -620,6 +631,8 @@ const NOUNS: Record<ChangeTable, [string, string]> = {
   work_types: ["work type", "work types"],
   client_rates: ["client rate", "client rates"],
   time_entries: ["time entry", "time entries"],
+  project_statuses: ["project status", "project statuses"],
+  projects: ["project", "projects"],
   campaigns: ["campaign", "campaigns"],
   campaign_steps: ["campaign email", "campaign emails"],
   email_suppressions: ["campaign email block", "campaign email blocks"],

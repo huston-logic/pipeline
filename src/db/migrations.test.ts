@@ -820,6 +820,54 @@ test("0019 from the previous version: settings keep their values and gain campai
   }
 });
 
+test("0020 from the previous version: settings keep their values, projects start off, three statuses, project_id null on old rows", async () => {
+  const db = new SqliteD1();
+  await applyMigrations(db, 19);
+  applySqlFile(db, "seed/defaults.sql");
+  db.exec("UPDATE settings SET timezone = 'Europe/London', campaigns = 1, version = 7");
+  db.exec("INSERT INTO contacts (id, name, email) VALUES ('ct_old', 'Pat Example', 'pat@example.com')");
+  db.exec("INSERT INTO tasks (id, contact_id, title) VALUES ('tk_old', 'ct_old', 'Call back')");
+  db.exec("INSERT INTO activities (id, contact_id, type, summary, actor, occurred_at) VALUES ('ac_old', 'ct_old', 'note', 'Hi', 'owner', '2026-11-18T17:00:00.000Z')");
+  db.exec("INSERT INTO time_entries (id, started_at, ended_at, minutes) VALUES ('te_old', '2026-11-18T17:00:00.000Z', '2026-11-18T18:00:00.000Z', 60)");
+  assert.deepEqual(await applyMigrations(db, 20), ["0020_projects.sql"]);
+  const row = await db.prepare("SELECT timezone, campaigns, version, projects FROM settings").first();
+  assert.deepEqual({ ...row }, { timezone: "Europe/London", campaigns: 1, version: 7, projects: 0 });
+  assert.throws(() => db.exec("UPDATE settings SET projects = 2"), /CHECK/);
+  const statuses = (await db.prepare("SELECT key, label, position, version FROM project_statuses ORDER BY position").all()).results;
+  assert.deepEqual(
+    statuses.map((s) => ({ ...s })),
+    [
+      { key: "active", label: "Active", position: 1, version: 1 },
+      { key: "on_hold", label: "On hold", position: 2, version: 1 },
+      { key: "done", label: "Done", position: 3, version: 1 },
+    ],
+  );
+  for (const table of ["tasks", "activities", "time_entries"]) {
+    assert.equal(await db.prepare(`SELECT project_id FROM ${table}`).first("project_id"), null, table);
+  }
+  assert.equal(await count(db, "projects"), 0);
+});
+
+test("0020: a project's name is 1 to 200 characters on one line, its status is one of the three, archived is 0 or 1", async () => {
+  const db = await createTestDb();
+  await addContact(db, "ct_a");
+  const add = (id: string, name: string, extra = "") => () =>
+    db.prepare(`INSERT INTO projects (id, name, contact_id${extra ? ", " + extra.split("=")[0] : ""}) VALUES (?, ?, 'ct_a'${extra ? ", " + extra.split("=")[1] : ""})`).bind(id, name).run();
+  await add("pj_a", "Website refresh")();
+  const row = await db.prepare("SELECT status_key, deal_id, archived, untrusted_fields, version FROM projects").first();
+  assert.deepEqual({ ...row }, { status_key: "active", deal_id: null, archived: 0, untrusted_fields: "[]", version: 1 });
+  await add("pj_b", "x".repeat(200))();
+  await assert.rejects(add("pj_c", "x".repeat(201))(), /CHECK/);
+  await assert.rejects(add("pj_c", "")(), /CHECK/);
+  await assert.rejects(add("pj_c", "Two\nlines")(), /CHECK/);
+  await assert.rejects(add("pj_c", "Fine", "archived=2")(), /CHECK/);
+  await assert.rejects(add("pj_c", "Fine", "status_key='gone'")(), /FOREIGN KEY/);
+  await assert.rejects(db.prepare("INSERT INTO projects (id, name, contact_id) VALUES ('pj_d', 'Fine', 'ct_none')").run(), /FOREIGN KEY/);
+  await assert.rejects(db.prepare("INSERT INTO projects (id, name) VALUES ('pj_d', 'Fine')").run(), /NOT NULL/);
+  db.exec("INSERT INTO tasks (id, contact_id, title, project_id) VALUES ('tk_a', 'ct_a', 'Kickoff', 'pj_a')");
+  await assert.rejects(db.prepare("INSERT INTO tasks (id, title, project_id) VALUES ('tk_b', 'Bad', 'pj_none')").run(), /FOREIGN KEY/);
+});
+
 test("0019: one recipient per person and per address, a token on one row only, one live suppression per address", async () => {
   const db = await createTestDb();
   await addContact(db, "ct_a", "pat@example.com");
@@ -930,6 +978,9 @@ const FAKE_ROWS: Record<string, string> = {
     "INSERT INTO campaign_recipients (id, campaign_id, step_id, contact_id, email, first_name, status, unsub_token, batch_id) VALUES ('rc_fake', 'cp_fake', 'cs_fake', 'ct_fake', 'pat@example.com', 'Pat', 'queued', 'fake-token', 'cb_fake')",
   email_suppressions:
     "INSERT INTO email_suppressions (id, email, reason, contact_id, campaign_id) VALUES ('su_fake', 'gone@example.com', 'unsubscribed', 'ct_fake', 'cp_fake')",
+  project_statuses: "INSERT INTO project_statuses (key, label, position) VALUES ('fake', 'Fake', 4)",
+  projects:
+    "INSERT INTO projects (id, name, contact_id, deal_id, status_key, start_at, target_at, notes) VALUES ('pj_fake', 'Website refresh', 'ct_fake', 'dl_fake', 'active', '2026-11-18T08:00:00.000Z', '2026-12-18T08:00:00.000Z', 'Notes')",
 };
 
 /**

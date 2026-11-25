@@ -1,6 +1,6 @@
 // Text primary keys: <prefix>_<12 lowercase base32 characters> (60 random bits).
 
-export const ID_PREFIXES = ["ct", "dl", "ac", "tk", "ru", "rf", "fd", "br", "chg", "ps", "im", "vw", "pr", "wt", "cr", "te", "cp", "cs", "rc", "cb", "su"] as const;
+export const ID_PREFIXES = ["ct", "dl", "ac", "tk", "ru", "rf", "fd", "br", "chg", "ps", "im", "vw", "pr", "wt", "cr", "te", "cp", "cs", "rc", "cb", "su", "pj"] as const;
 
 /**
  * ct contact, dl deal, ac activity, tk task, ru rule, rf rule firing, fd field, br brief, chg change, ps push
