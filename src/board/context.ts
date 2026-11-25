@@ -1,4 +1,5 @@
 // What a board page gets for one request (decision 0017), instead of a growing list of positional arguments.
+import type { CampaignEnv } from "../campaigns/readiness.ts";
 import type { Db } from "../db/db.ts";
 import type { Html } from "./html.ts";
 import type { Look, PageFrame } from "./layout.ts";
@@ -17,6 +18,10 @@ export interface PageContext extends PageFrame {
   banner: Html | "";
   /** Start timer buttons are offered: time tracking is on and no timer runs (decision 0050). The running timer itself is `timer`. */
   startTimer?: boolean;
+  /** The Worker's campaign switches, for the review page's readiness check only (decision 0053). Never drawn. */
+  campaignEnv?: CampaignEnv;
+  /** The board's origin, for the address in a campaign preview's text version. */
+  origin?: string;
 }
 
 /** The page's path and query without `change`, as a return_to value. */

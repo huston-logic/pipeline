@@ -6,7 +6,7 @@ import { renderPage } from "../layout.ts";
 import { moreItemsFor } from "../routes.ts";
 
 export async function morePage(ctx: PageContext): Promise<string> {
-  const items = moreItemsFor(ctx.timeTracking === true);
+  const items = moreItemsFor({ timeTracking: ctx.timeTracking === true, campaigns: ctx.campaigns === true });
   return renderPage({
     title: "More",
     description: "Your rules, the change log, the export download, the import, phone notifications and the email logging address.",

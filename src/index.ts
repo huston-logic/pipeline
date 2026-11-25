@@ -154,7 +154,14 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
       const cookie = csrfFromCookies(request, csrfMode);
       const csrf = cookie ?? newCsrfToken();
       const pushKey = vapidKeys(env)?.publicKey ?? null;
-      const result = await page({ db: env.DB, now: new Date(), url, csrf, pushKey, emailLogAddress: logAddressOf(env) });
+      const campaignEnv = {
+        CAMPAIGN_SENDING: env.CAMPAIGN_SENDING,
+        CAMPAIGN_FROM: env.CAMPAIGN_FROM,
+        CAMPAIGN_RESEND_API_KEY: env.CAMPAIGN_RESEND_API_KEY,
+        CAMPAIGN_WEBHOOK_SECRET: env.CAMPAIGN_WEBHOOK_SECRET,
+        OWNER_EMAILS: env.OWNER_EMAILS,
+      };
+      const result = await page({ db: env.DB, now: new Date(), url, csrf, pushKey, emailLogAddress: logAddressOf(env), campaignEnv });
       const headers: Record<string, string> = cookie === null ? { "Set-Cookie": csrfCookie(csrf, csrfMode) } : {};
       return htmlResponse(result.body, result.status, headers);
     } catch {

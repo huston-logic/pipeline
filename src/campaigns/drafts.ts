@@ -101,10 +101,10 @@ async function checkAudience(db: Db, input: unknown): Promise<string> {
   }
   if (audience.kind === "people" && Array.isArray(audience.people) && audience.people.every((id) => typeof id === "string")) {
     const ids = [...new Set((audience.people as string[]).map((id) => id.trim()))];
-    if (ids.length < 1 || ids.length > LIMITS.people) {
-      throw new UserError(`A list of people needs 1 to ${LIMITS.people} people, each once (got ${ids.length}).`);
+    if (ids.length > LIMITS.people) {
+      throw new UserError(`A list of people can hold at most ${LIMITS.people} people, each once (got ${ids.length}).`);
     }
-    const live = await livePeople(db, ids);
+    const live = ids.length === 0 ? new Set<string>() : await livePeople(db, ids);
     const missing = ids.filter((id) => !live.has(id));
     if (missing.length > 0) {
       const shown = missing.slice(0, 5).map((id) => short(id, 40)).join(", ");

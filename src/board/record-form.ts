@@ -23,6 +23,8 @@ export type Spec = {
   options?: { value: string; label: string }[];
   /** Options in labelled groups, after None (a sub-status under its person status). */
   groups?: OptionGroup[];
+  /** The blank option's words for a grouped choice (default "None"). */
+  blank?: string;
   maxlength: number;
   /** A number that must be 0 or more (a deal's value). */
   min0?: boolean;

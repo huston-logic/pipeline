@@ -4,11 +4,12 @@
 import type { Db } from "../db/db.ts";
 import { getSettings } from "../db/queries.ts";
 import { changeBanner } from "./banner.ts";
+import { campaignAllowPage } from "./campaign-emails.ts";
 import { herePath, type PageContext } from "./context.ts";
 import { lookOf } from "./layout.ts";
 import { briefPage } from "./pages/brief.ts";
 import { changesPage } from "./pages/changes.ts";
-import { isContactId, isDealId, isImportId, isTimeEntryId } from "../ids.ts";
+import { isCampaignId, isContactId, isDealId, isImportId, isTimeEntryId } from "../ids.ts";
 import { companiesPage } from "./pages/companies.ts";
 import { contactPage } from "./pages/contact.ts";
 import { contactEditPage } from "./pages/contact-edit.ts";
@@ -37,6 +38,12 @@ import { timerStopPage, TIMER_STOP_PATH } from "./pages/timer-stop.ts";
 import { timePage, TIME_PATH } from "./pages/time.ts";
 import { timeEditPage, timeNewPage } from "./pages/time-entry.ts";
 import { TIME_NEW_PATH } from "./time-form.ts";
+import { CAMPAIGN_SETTINGS_PATH, CAMPAIGNS_NEW_PATH, CAMPAIGNS_PATH, campaignsPage } from "./pages/campaigns.ts";
+import { campaignEditPage, campaignNewPage } from "./pages/campaign-form.ts";
+import { campaignPeoplePage } from "./pages/campaign-people.ts";
+import { campaignReviewPage } from "./pages/campaign-review.ts";
+import type { CampaignEnv } from "../campaigns/readiness.ts";
+import { campaignSettingsPage } from "./pages/campaign-settings.ts";
 import { timerState } from "./timer-bar.ts";
 
 export type PageResult = { status: 200 | 404; body: string };
@@ -45,7 +52,16 @@ export type PageResult = { status: 200 | 404; body: string };
  * (public by design; null until push is set up, decision 0030) and its email logging address (null when it has none;
  * decision 0031).
  */
-export type PageRequest = { db: Db; now: Date; url: URL; csrf: string; pushKey: string | null; emailLogAddress: string | null };
+export type PageRequest = {
+  db: Db;
+  now: Date;
+  url: URL;
+  csrf: string;
+  pushKey: string | null;
+  emailLogAddress: string | null;
+  /** The Worker's campaign switches, for the review page's readiness check (decision 0053). */
+  campaignEnv?: CampaignEnv;
+};
 export type BoardPage = (request: PageRequest) => Promise<PageResult>;
 /** A page answers its markup, or null for the plain 404 (an unknown view, decision 0042). */
 type Page = (ctx: PageContext, request: PageRequest) => Promise<string | null>;
@@ -73,6 +89,9 @@ const PAGES = new Map<string, Page>([
   [TIMER_DONE_PATH, (ctx) => timerDonePage(ctx)],
   [TIME_PATH, (ctx) => timePage(ctx)],
   [TIME_NEW_PATH, (ctx) => timeNewPage(ctx)],
+  [CAMPAIGNS_PATH, (ctx) => campaignsPage(ctx)],
+  [CAMPAIGN_SETTINGS_PATH, (ctx) => campaignSettingsPage(ctx)],
+  [CAMPAIGNS_NEW_PATH, (ctx) => campaignNewPage(ctx)],
 ]);
 
 /**
@@ -85,8 +104,12 @@ const RECORD_PATHS: { path: RegExp; isId: (id: string) => boolean; page: RecordP
   { path: /^\/deals\/([^/]+)\/edit$/, isId: isDealId, page: (ctx, id) => dealEditPage(ctx, id) },
   { path: /^\/contacts\/([^/]+)\/edit$/, isId: isContactId, page: (ctx, id) => contactEditPage(ctx, id) },
   { path: /^\/contacts\/([^/]+)\/deals\/new$/, isId: isContactId, page: (ctx, id) => newDealPage(ctx, id) },
+  { path: /^\/contacts\/([^/]+)\/campaign-emails\/allow$/, isId: isContactId, page: (ctx, id) => campaignAllowPage(ctx, id) },
   { path: /^\/contacts\/([^/]+)\/qualify$/, isId: isContactId, page: (ctx, id) => qualifyPage(ctx, id) },
   { path: /^\/time\/([^/]+)\/edit$/, isId: isTimeEntryId, page: (ctx, id) => timeEditPage(ctx, id) },
+  { path: /^\/campaigns\/([^/]+)$/, isId: isCampaignId, page: (ctx, id) => campaignReviewPage(ctx, id) },
+  { path: /^\/campaigns\/([^/]+)\/edit$/, isId: isCampaignId, page: (ctx, id) => campaignEditPage(ctx, id) },
+  { path: /^\/campaigns\/([^/]+)\/people$/, isId: isCampaignId, page: (ctx, id) => campaignPeoplePage(ctx, id) },
   { path: /^\/import\/([^/]+)$/, isId: isImportId, page: importDraft, gone: importGonePage },
   { path: /^\/import\/([^/]+)\/preview$/, isId: isImportId, page: importPreview, gone: importGonePage },
 ];
@@ -94,7 +117,7 @@ const RECORD_PATHS: { path: RegExp; isId: (id: string) => boolean; page: RecordP
 /** /import: the start of the board import, for the module its `module=` names (decisions 0036, 0037). */
 const IMPORT_START = "/import";
 
-async function contextFor({ db, now, url, csrf }: Omit<PageRequest, "pushKey" | "emailLogAddress">): Promise<PageContext> {
+async function contextFor({ db, now, url, csrf, campaignEnv }: Omit<PageRequest, "pushKey" | "emailLogAddress">): Promise<PageContext> {
   const here = herePath(url);
   const settings = await getSettings(db);
   return {
@@ -106,6 +129,9 @@ async function contextFor({ db, now, url, csrf }: Omit<PageRequest, "pushKey" | 
     look: lookOf(settings),
     banner: await changeBanner(db, url.searchParams, { csrf, here }),
     timeTracking: settings.time_tracking === 1,
+    campaigns: settings.campaigns === 1,
+    origin: url.origin,
+    ...(campaignEnv === undefined ? {} : { campaignEnv }),
     ...(await timerState(db, now, settings)),
   };
 }

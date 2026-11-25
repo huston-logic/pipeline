@@ -16,6 +16,8 @@ export type FieldProps = {
   /** As the form shows it. A "when" value is "YYYY-MM-DD" or "YYYY-MM-DDTHH:mm", or "". */
   value: string;
   required?: boolean;
+  /** A "when" field whose time is needed too: both parts are required and say so in their labels. */
+  timeRequired?: boolean;
   hint?: string;
   error?: string;
   /** The value shown came from outside (a website form or an import). */
@@ -27,11 +29,14 @@ export type FieldProps = {
   options?: { value: string; label: string }[];
   /** A choice of options in labelled groups, after a blank option called None (a sub-status under its status). */
   groups?: OptionGroup[];
+  /** The blank option's words with groups (default "None"). */
+  blank?: string;
   maxlength?: number;
 };
 
 export type FieldError = { id?: string; message: string };
 
+/** A group with no label draws its options plain, after the others. */
 export type OptionGroup = { label: string; options: { value: string; label: string }[] };
 
 export const WAS_PREFIX = "was.";
@@ -77,8 +82,8 @@ function control(props: FieldProps): Html {
       if (props.groups !== undefined) {
         const option = (o: { value: string; label: string }) => html`<option value="${o.value}"${o.value === props.value ? " selected" : ""}>${o.label}</option>\n`;
         return html`<select id="${props.id}" name="${props.name}"${required}${aria}>
-<option value=""${props.value === "" ? " selected" : ""}>None</option>
-${props.groups.map((group) => html`<optgroup label="${group.label}">\n${group.options.map(option)}</optgroup>\n`)}</select>`;
+<option value=""${props.value === "" ? " selected" : ""}>${props.blank ?? "None"}</option>
+${props.groups.map((group) => (group.label === "" ? html`${group.options.map(option)}` : html`<optgroup label="${group.label}">\n${group.options.map(option)}</optgroup>\n`))}</select>`;
       }
       if (props.options !== undefined) {
         return html`<select id="${props.id}" name="${props.name}"${required}${aria}>
@@ -108,16 +113,18 @@ function whenField(props: FieldProps): Html {
   const [date = "", time = ""] = props.value.split("T");
   const aria = html`${describedBy(described(props))}${props.error === undefined ? "" : html` aria-invalid="true"`}`;
   const required = props.required ? html` required` : "";
+  const both = props.timeRequired === true;
+  const inLabel = both ? html` <span class="field-required">(required)</span>` : "";
   return html`<fieldset class="field field-when${props.error === undefined ? "" : " field-invalid"}">
-<legend>${props.label}${props.required ? html` <span class="field-required">(required)</span>` : ""}${outsideOf(props)}</legend>
+<legend>${props.label}${props.required && !both ? html` <span class="field-required">(required)</span>` : ""}${outsideOf(props)}</legend>
 ${hintOf(props)}${errorOf(props)}<div class="when-row">
 <div class="when-part">
-<label for="${props.id}-date">Date</label>
+<label for="${props.id}-date">Date${inLabel}</label>
 <input id="${props.id}-date" name="${props.name}.date" type="date" value="${date}"${required}${aria}>
 </div>
 <div class="when-part">
-<label for="${props.id}-time">Time</label>
-<input id="${props.id}-time" name="${props.name}.time" type="time" value="${time}"${aria}>
+<label for="${props.id}-time">Time${inLabel}</label>
+<input id="${props.id}-time" name="${props.name}.time" type="time" value="${time}"${both ? " required" : ""}${aria}>
 </div>
 </div>
 ${wasField(props)}</fieldset>`;

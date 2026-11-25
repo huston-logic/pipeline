@@ -41,6 +41,13 @@ export interface DevSeed {
   workTypes: Row[];
   clientRates: Row[];
   timeEntries: Row[];
+  /** Campaigns (decision 0053): a draft to Partners, a sent one with every kind of result, a draft to people picked by hand. */
+  campaigns: Row[];
+  campaignSteps: Row[];
+  campaignRecipients: Row[];
+  emailSuppressions: Row[];
+  /** The email activity on each person the sent campaign reached (not counted as a reach). */
+  campaignActivities: Row[];
 }
 
 /** The seed's drafts never expire, so the import pages in boardRoutes always have one to show. */
@@ -256,6 +263,8 @@ export function devSeed(now: Date, tz: string): DevSeed {
       version: 3,
     }),
   );
+  // Someone with no email address: a campaign skips them (no_email).
+  contacts.push(contact(19, "Tessa Wynn", "", null, "trade show", day(-20, "10:00"), { email: null }));
 
   /** A contact id: a number is a ct_seedNN person, a string is the id itself (a lead). */
   const cid = (contact: number | string) => (typeof contact === "string" ? contact : `ct_seed${n2(contact)}`);
@@ -935,7 +944,182 @@ export function devSeed(now: Date, tz: string): DevSeed {
     updated_at: fixedEnd,
   });
 
-  return { fieldDefs, contacts, deals, activities, tasks, rules, briefs, audit, importDrafts, importDraftParts, views, workTypes, clientRates, timeEntries };
+  // Campaigns (decision 0053). cp_seed01 is a draft to Partners; cp_seed02 went out a week ago and shows delivered emails, a
+  // bounce and an unsubscribe (each with its block) and a skipped person; cp_seed03 is a draft to two people picked by hand.
+  // The tokens are fake. The sent campaign's approval and its blocks are audited as the real ones are, so they can't be undone.
+  const campaignRow = (n: number, name: string, audience: unknown, created: string, extra: Row = {}): Row => ({
+    id: `cp_seed${n2(n)}`,
+    name,
+    status: "draft",
+    audience: JSON.stringify(audience),
+    first_name_fallback: "there",
+    suggested_send_at: null,
+    send_after: null,
+    approved_at: null,
+    base_url: null,
+    send_error: null,
+    completed_at: null,
+    archived: 0,
+    version: 1,
+    created_at: created,
+    updated_at: created,
+    ...extra,
+  });
+  const stepRow = (n: number, subject: string, body: string, button: boolean, created: string): Row => ({
+    id: `cs_seed${n2(n)}`,
+    campaign_id: `cp_seed${n2(n)}`,
+    position: 1,
+    subject,
+    body,
+    button_label: button ? "RSVP" : null,
+    button_url: button ? "https://example.com/rsvp" : null,
+    delay_days: null,
+    stop_when: null,
+    version: 1,
+    created_at: created,
+    updated_at: created,
+  });
+  const reached = ["ct_seed04", "ct_seed05", "ct_seed07", "ct_seed08", "ct_seed19"];
+  const campaigns: Row[] = [
+    campaignRow(1, "Spring open house", { kind: "status", status: "partner" }, day(-1, "10:00"), { suggested_send_at: day(3, "09:00") }),
+    campaignRow(2, "November newsletter", { kind: "people", people: reached }, day(-10, "09:00"), {
+      status: "sent",
+      approved_at: day(-7, "10:00"),
+      base_url: "http://localhost:4821",
+      completed_at: day(-6, "10:00"),
+      version: 3,
+      updated_at: day(-6, "10:00"),
+    }),
+    campaignRow(3, "Thank you to referrers", { kind: "people", people: ["ct_seed01", "ct_seed03"] }, day(-1, "10:30")),
+  ];
+  const campaignSteps: Row[] = [
+    stepRow(
+      1,
+      "You're invited, {{first_name}}",
+      "Hi {{first_name}},\n\nWe're holding an open house this spring and would love to see you there. Details are at https://example.com/open-house.\n\nThank you for sending us such good work.",
+      true,
+      day(-1, "10:00"),
+    ),
+    stepRow(2, "November news from the firm", "Hi {{first_name}},\n\nHere is what we finished this month.\n\nThank you for your trust.", false, day(-10, "09:00")),
+    stepRow(3, "Thank you, {{first_name}}", "Hi {{first_name}},\n\nThank you for the introduction. It meant a lot.\n\nWith thanks.", false, day(-1, "10:30")),
+  ];
+  const fakeToken = (id: string) => `${id.replace(/[^A-Za-z0-9]/g, "")}FakeSeedTokenFakeSeedTokenFakeSeedToken`.slice(0, 43);
+  const recipientOf = (n: number, contactId: string, status: string, extra: Row = {}): Row => {
+    const person = C(contactId);
+    const id = `rc_seed${n2(n)}`;
+    return {
+      id,
+      campaign_id: "cp_seed02",
+      step_id: "cs_seed02",
+      contact_id: contactId,
+      email: String(person.email).toLowerCase(),
+      first_name: String(person.name).split(" ")[0] ?? null,
+      status,
+      skip_reason: null,
+      unsub_token: fakeToken(id),
+      batch_id: null,
+      claimed_at: null,
+      resend_id: null,
+      sent_at: null,
+      delivered_at: null,
+      bounced_at: null,
+      complained_at: null,
+      unsubscribed_at: null,
+      version: 1,
+      ...extra,
+    };
+  };
+  const sentOn = day(-7, "10:30");
+  const campaignRecipients: Row[] = [
+    recipientOf(1, "ct_seed04", "delivered", { sent_at: sentOn, delivered_at: day(-7, "10:31") }),
+    recipientOf(2, "ct_seed05", "delivered", { sent_at: sentOn, delivered_at: day(-7, "10:31") }),
+    recipientOf(3, "ct_seed07", "bounced", { sent_at: sentOn, bounced_at: day(-7, "10:32") }),
+    recipientOf(4, "ct_seed08", "delivered", { sent_at: sentOn, delivered_at: day(-7, "10:31"), unsubscribed_at: day(-5, "09:00") }),
+    // Skipped: this person has no email address.
+    recipientOf(5, "ct_seed19", "skipped", { email: "", skip_reason: "no_email", unsub_token: null }),
+  ];
+  const emailSuppressions: Row[] = [
+    {
+      id: "su_seed01",
+      email: String(C("ct_seed07").email).toLowerCase(),
+      reason: "bounced",
+      contact_id: "ct_seed07",
+      campaign_id: "cp_seed02",
+      created_at: day(-7, "10:32"),
+      cleared_at: null,
+      version: 1,
+    },
+    {
+      id: "su_seed02",
+      email: String(C("ct_seed08").email).toLowerCase(),
+      reason: "unsubscribed",
+      contact_id: "ct_seed08",
+      campaign_id: "cp_seed02",
+      created_at: day(-5, "09:00"),
+      cleared_at: null,
+      version: 1,
+    },
+  ];
+  const campaignActivities: Row[] = campaignRecipients
+    .filter((row) => row.sent_at !== null)
+    .map((row, i) => ({
+      id: `ac_seedcp${n2(i + 1)}`,
+      deal_id: null,
+      contact_id: row.contact_id ?? null,
+      type: "email",
+      summary: "Campaign: November newsletter",
+      untrusted_text: null,
+      data: '{"via":"campaign","campaign":"cp_seed02"}',
+      occurred_at: sentOn,
+      actor: "system",
+      version: 1,
+      created_at: sentOn,
+    }));
+  const draftOne = { campaign: campaigns[0] as Row, step: campaignSteps[0] as Row };
+  const draftThree = { campaign: campaigns[2] as Row, step: campaignSteps[2] as Row };
+  for (const [n, draft, at, actor] of [
+    [20, draftOne, day(-1, "10:00"), "ai"],
+    [21, draftThree, day(-1, "10:30"), "owner"],
+  ] as const) {
+    change(n, at, actor, "add_campaign_draft", ["campaigns", String(draft.campaign.id)], `Added campaign draft ${String(draft.campaign.id)}`, [
+      { table: "campaigns", id: String(draft.campaign.id), before: null, after: draft.campaign },
+      { table: "campaign_steps", id: String(draft.step.id), before: null, after: draft.step },
+    ]);
+  }
+  const approvedOne = campaigns[1] as Row;
+  change(22, day(-7, "10:00"), "owner", "campaign_approve", ["campaigns", "cp_seed02"], "Approved campaign cp_seed02: 4 people (1 skipped)", [
+    { table: "campaigns", id: "cp_seed02", before: { ...approvedOne, status: "draft", approved_at: null, base_url: null, completed_at: null, version: 1, updated_at: day(-10, "09:00") }, after: approvedOne },
+  ]);
+  for (const [n, suppression, tool, at] of [
+    [23, emailSuppressions[0] as Row, "campaign_webhook", day(-7, "10:32")],
+    [24, emailSuppressions[1] as Row, "unsubscribe", day(-5, "09:00")],
+  ] as const) {
+    change(n, at, "system", tool, ["email_suppressions", String(suppression.id)], `Stopped campaign emails to contact ${String(suppression.contact_id)}`, [
+      { table: "email_suppressions", id: String(suppression.id), before: null, after: suppression },
+    ]);
+  }
+
+  return {
+    fieldDefs,
+    contacts,
+    deals,
+    activities,
+    tasks,
+    rules,
+    briefs,
+    audit,
+    importDrafts,
+    importDraftParts,
+    views,
+    workTypes,
+    clientRates,
+    timeEntries,
+    campaigns,
+    campaignSteps,
+    campaignRecipients,
+    emailSuppressions,
+    campaignActivities,
+  };
 }
 
 export function buildDevSeed(now: Date, tz: string): string {
@@ -956,9 +1140,15 @@ export function buildDevSeed(now: Date, tz: string): string {
     ...seed.importDraftParts.map((row) => insert("import_draft_parts", row)),
     ...seed.views.map((row) => insert("views", row)),
     "UPDATE settings SET time_tracking = 1 WHERE id = 1;",
+    "UPDATE settings SET campaigns = 1, postal_address = '100 Example Street, Springfield' WHERE id = 1;",
     ...seed.workTypes.map((row) => insert("work_types", row)),
     ...seed.clientRates.map((row) => insert("client_rates", row)),
     ...seed.timeEntries.map((row) => insert("time_entries", row)),
+    ...seed.campaigns.map((row) => insert("campaigns", row)),
+    ...seed.campaignSteps.map((row) => insert("campaign_steps", row)),
+    ...seed.campaignRecipients.map((row) => insert("campaign_recipients", row)),
+    ...seed.emailSuppressions.map((row) => insert("email_suppressions", row)),
+    ...seed.campaignActivities.map((row) => insert("activities", row)),
     "",
   ].join("\n");
 }

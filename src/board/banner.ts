@@ -4,14 +4,19 @@
 import type { Db } from "../db/db.ts";
 import { isChangeId } from "../ids.ts";
 import { type ChangeItem, getChange } from "../services/read.ts";
+import { CAMPAIGN_FINAL_TOOLS } from "../services/undo.ts";
 import type { FormContext } from "./forms.ts";
 import { postForm } from "./forms.ts";
 import { type Html, html } from "./html.ts";
 
 export const undoAction = (changeId: string): string => `/changes/${encodeURIComponent(changeId)}/undo`;
 
-/** Undo can be tried on this change (it may still refuse, for example when the record changed since). */
-export const canUndo = (change: Pick<ChangeItem, "undone" | "undoOf">): boolean => !change.undone && change.undoOf === null;
+/**
+ * Undo can be tried on this change (it may still refuse, for example when the record changed since). A campaign's
+ * sending steps and an unsubscribe never offer it: undo_change refuses them (CAMPAIGN_FINAL_TOOLS).
+ */
+export const canUndo = (change: Pick<ChangeItem, "undone" | "undoOf" | "tool">): boolean =>
+  !change.undone && change.undoOf === null && !(CAMPAIGN_FINAL_TOOLS as readonly string[]).includes(change.tool);
 
 /** The Undo button as its own form. The hidden words tell a screen reader which change it undoes. */
 export function undoForm(changeId: string, form: FormContext, className: string): Html {

@@ -26,6 +26,7 @@ export function specField(spec: Spec, shown: Shown | undefined, prefix: string):
     choices: spec.choices,
     options: spec.options,
     groups: spec.groups,
+    blank: spec.blank,
     maxlength: spec.maxlength,
   });
 }

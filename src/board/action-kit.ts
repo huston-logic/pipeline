@@ -23,6 +23,10 @@ export interface ActionContext {
   /** The parsed multipart body, on the one upload route (decision 0036); its text fields are in `form` too. */
   upload?: FormData;
   look: Look;
+  /** The signed-in owner's email (from the sign-in check). */
+  email: string;
+  /** The request's origin, for links a handler writes into stored data (an approved campaign's base URL). */
+  origin: string;
 }
 
 export type ActionResult = { kind: "redirect"; location: string } | { kind: "page"; status: 200 | 404 | 422; body: string };

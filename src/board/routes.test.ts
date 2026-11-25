@@ -6,10 +6,12 @@ import { boardRoutes, LIGHTHOUSE_MAX_ROUTES, lighthouseRoutes, moreItems, moreIt
 
 test("Time is in More only when time tracking is on", async () => {
   assert.ok(!moreItems.some((item) => item.href === "/time"), "the fixed list has no Time");
-  assert.ok(moreItemsFor(true).some((item) => item.href === "/time" && item.label === "Time"));
-  assert.ok(!moreItemsFor(false).some((item) => item.href === "/time"));
-  assert.deepEqual(moreItemsFor(false), moreItems);
-  assert.deepEqual(moreItemsFor(true).filter((item) => item.href !== "/time"), moreItems);
+  const time = { timeTracking: true, campaigns: false };
+  const none = { timeTracking: false, campaigns: false };
+  assert.ok(moreItemsFor(time).some((item) => item.href === "/time" && item.label === "Time"));
+  assert.ok(!moreItemsFor(none).some((item) => item.href === "/time"));
+  assert.deepEqual(moreItemsFor(none), moreItems);
+  assert.deepEqual(moreItemsFor(time).filter((item) => item.href !== "/time"), moreItems);
 
   const on = await timeDb(new Date());
   const off = await timeDb(new Date(), { on: false });

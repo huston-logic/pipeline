@@ -12,6 +12,9 @@
 // The timer pages (decision 0050): /timer/stop with no timer running (the seed starts none) and the seed's finished entry
 // te_seed01 on /timer/done.
 // The time pages (decision 0051): this week, another week by address, Add time and editing the seed's te_seed01.
+// The campaign pages (decision 0053) are the seed's three: cp_seed01 (a draft to Partners: its review page and edit form),
+// cp_seed02 (sent: its results, and the bounced filter) and cp_seed03 (a draft to people picked by hand: the picker).
+// ct_seed08 unsubscribed from cp_seed02: her page shows the block and its "Allow campaign emails again" confirm page.
 
 export type IconName =
   | "today"
@@ -26,7 +29,8 @@ export type IconName =
   | "import"
   | "notifications"
   | "email"
-  | "time";
+  | "time"
+  | "campaigns";
 
 /** `hint` is read out after the label but not shown, where the label alone says too little ("More" alone fails
  * Lighthouse's descriptive-link-text audit). */
@@ -79,6 +83,16 @@ export const boardRoutes: string[] = [
   "/time?week=2026-11-16",
   "/time/new",
   "/time/te_seed01/edit",
+  "/campaigns",
+  "/campaigns/settings",
+  "/campaigns/new",
+  "/campaigns/cp_seed01",
+  "/campaigns/cp_seed01/edit",
+  "/campaigns/cp_seed02",
+  "/campaigns/cp_seed02?status=bounced",
+  "/campaigns/cp_seed03/people",
+  "/contacts/ct_seed08",
+  "/contacts/ct_seed08/campaign-emails/allow",
 ];
 
 /** At most this many pages go through Lighthouse, so the CI job's time stops growing with the board. */
@@ -110,7 +124,7 @@ export const lighthouseRoutes: string[] = [
   "/time",
   "/import",
   "/import/im_seed01",
-  "/import/im_seed02/preview",
+  "/campaigns/cp_seed01",
 ];
 
 /** The phone tab bar and the top of the side bar, in this order. */
@@ -147,9 +161,18 @@ export const timeItem: NavItem = {
   description: "The week's time entries and totals, adding time by hand, and the month's CSV.",
 };
 
-/** The More items for this copy: Time sits after "What it caught" when time tracking is on. */
-export function moreItemsFor(timeTracking: boolean): NavItem[] {
-  if (!timeTracking) return moreItems;
+/** Campaigns, under More only while campaigns are on (decision 0053). */
+export const campaignsItem: NavItem = {
+  href: "/campaigns",
+  label: "Campaigns",
+  icon: "campaigns",
+  description: "Email newsletters and invites: drafts, review, sending and results.",
+};
+
+/** The More items for this copy: Time, then Campaigns, sit after "What it caught" when each is on. */
+export function moreItemsFor(on: { timeTracking: boolean; campaigns: boolean }): NavItem[] {
+  const extra = [...(on.timeTracking ? [timeItem] : []), ...(on.campaigns ? [campaignsItem] : [])];
+  if (extra.length === 0) return moreItems;
   const at = moreItems.findIndex((item) => item.href === "/report") + 1;
-  return [...moreItems.slice(0, at), timeItem, ...moreItems.slice(at)];
+  return [...moreItems.slice(0, at), ...extra, ...moreItems.slice(at)];
 }

@@ -60,7 +60,8 @@ test("15 to 20 made-up contacts at 8 to 12 companies, several with two or three 
   assert.ok(contacts.length >= 15 && contacts.length <= 20, `${contacts.length} contacts`);
   assert.equal(contacts[0]?.id, "ct_seed01");
   for (const contact of contacts) {
-    assert.match(contact.email ?? "", /@example\.(com|org|net)$/, contact.name);
+    // Only the campaign seed's skipped person (ct_seed19) has no address.
+    if (contact.email !== null || contact.id !== "ct_seed19") assert.match(contact.email ?? "", /@example\.(com|org|net)$/, contact.name);
     assert.match(contact.phone ?? "", /^555-01\d\d$/, contact.name);
   }
   const companies = new Map<string, number>();
@@ -145,7 +146,8 @@ test("activities are in the past, cover every type, and the deals' dates follow 
     for (const a of own) assert.equal(a.contact_id, deal.contact_id, `${a.id}: the deal's contact`);
   }
   // A note on a contact alone counts for their open deals, so the seed only has one from before their deal existed.
-  for (const note of activities.filter((a) => a.deal_id === null)) {
+  // A campaign's email is not a reach (ruling 8), so it may be later.
+  for (const note of activities.filter((a) => a.deal_id === null && !(a.data ?? "").includes('"via":"campaign"'))) {
     for (const deal of deals.filter((d) => d.contact_id === note.contact_id)) {
       assert.ok(note.occurred_at < deal.created_at, `${note.id} predates ${deal.id}`);
     }
@@ -320,12 +322,17 @@ test("every seeded change either undoes cleanly or is refused in plain English; 
   assert.deepEqual(
     (await Promise.all(undoable.map(toolOf))).sort(),
     [
-      "add_lead", "add_rule", "add_rule", "add_task", "complete_task", "import", "intake", "log_activity", "log_activity",
+      "add_campaign_draft", "add_campaign_draft", "add_lead", "add_rule", "add_rule", "add_task", "complete_task", "import", "intake", "log_activity", "log_activity",
       "pause_rule", "qualify_lead", "snooze_task", "update_contact", "update_contact", "update_deal",
     ],
   );
   // What each refused one answers, as the comments in seed-dev.ts and decision 0016 say.
-  assert.deepEqual([...refused.keys()].sort(), ["chg_seed00000003", "chg_seed00000006", "chg_seed00000007", "chg_seed00000013"]);
+  assert.deepEqual(
+    [...refused.keys()].sort(),
+    ["chg_seed00000003", "chg_seed00000006", "chg_seed00000007", "chg_seed00000013", "chg_seed00000022", "chg_seed00000023", "chg_seed00000024"],
+  );
+  assert.match(refused.get("chg_seed00000022") ?? "", /sending steps can't be undone/);
+  assert.match(refused.get("chg_seed00000024") ?? "", /unsubscribe can't be undone/);
   assert.match(refused.get("chg_seed00000003") ?? "", /^Can't undo chg_seed00000003: other records now depend on it \(5 activities and 1 task\)/);
   assert.match(
     refused.get("chg_seed00000013") ?? "",
@@ -413,4 +420,33 @@ test("the time entries sit in this week and the previous one, whatever day the s
     assert.ok(dates.filter((d) => d >= last.from && d <= last.to).length >= 3, `last week at ${now.toISOString()}`);
     assert.equal(dates.filter((d) => d === week.from).length, 3, "three on this week's Monday");
   }
+});
+
+test("campaigns (decision 0053): a draft to Partners, a sent one with every kind of result, a draft to people picked", async () => {
+  const db = await seeded();
+  const campaigns = await rows<{ id: string; name: string; status: string }>(db, "SELECT id, name, status FROM campaigns ORDER BY id");
+  assert.deepEqual(campaigns.map((c) => [c.id, c.name, c.status]), [
+    ["cp_seed01", "Spring open house", "draft"],
+    ["cp_seed02", "November newsletter", "sent"],
+    ["cp_seed03", "Thank you to referrers", "draft"],
+  ]);
+  const step = await db.prepare("SELECT * FROM campaign_steps WHERE campaign_id = 'cp_seed01'").first<{ subject: string; body: string; button_label: string; button_url: string }>();
+  assert.match(step?.subject ?? "", /\{\{first_name\}\}/);
+  assert.equal((step?.body.match(/https:\/\//g) ?? []).length, 1);
+  assert.deepEqual([step?.button_label, step?.button_url], ["RSVP", "https://example.com/rsvp"]);
+  assert.ok(((await db.prepare("SELECT suggested_send_at AS at FROM campaigns WHERE id = 'cp_seed01'").first<{ at: string }>())?.at ?? "") > NOW.toISOString());
+  const results = await rows<{ status: string; n: number }>(db, "SELECT status, COUNT(*) AS n FROM campaign_recipients WHERE campaign_id = 'cp_seed02' GROUP BY status ORDER BY status");
+  assert.deepEqual(results.map((r) => [r.status, r.n]), [["bounced", 1], ["delivered", 3], ["skipped", 1]]);
+  assert.equal(await db.prepare("SELECT COUNT(*) AS n FROM campaign_recipients WHERE unsubscribed_at IS NOT NULL").first("n"), 1);
+  for (const row of await rows<{ unsub_token: string | null; email: string }>(db, "SELECT unsub_token, email FROM campaign_recipients")) {
+    if (row.unsub_token !== null) assert.match(row.unsub_token, /^[A-Za-z0-9_-]{43}$/);
+    assert.doesNotMatch(row.email, /@(?!example\.(com|org|net|test)$)/);
+  }
+  const blocks = await rows<{ reason: string; contact_id: string }>(db, "SELECT reason, contact_id FROM email_suppressions ORDER BY id");
+  assert.deepEqual(blocks.map((b) => [b.reason, b.contact_id]), [["bounced", "ct_seed07"], ["unsubscribed", "ct_seed08"]]);
+  const mails = await rows<ActivityRow>(db, "SELECT * FROM activities WHERE data LIKE '%\"via\":\"campaign\"%'");
+  assert.equal(mails.length, 4);
+  for (const mail of mails) assert.deepEqual([mail.type, mail.summary, mail.actor, mail.deal_id], ["email", "Campaign: November newsletter", "system", null]);
+  const picked = await db.prepare("SELECT audience FROM campaigns WHERE id = 'cp_seed03'").first<{ audience: string }>();
+  assert.equal((JSON.parse(picked?.audience ?? "{}") as { people: string[] }).people.length, 2);
 });
