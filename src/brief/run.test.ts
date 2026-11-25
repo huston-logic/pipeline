@@ -58,6 +58,21 @@ test("the stored brief lists a standalone overdue task", async (t) => {
   assert.equal(row?.text, ["Pipeline brief for Thursday Nov 19", "", "Overdue", "- Buy printer ink, was due Wed Nov 18, 9:00 AM"].join("\n"));
 });
 
+test("the stored brief names a project task's project", async (t) => {
+  mockFetch(t);
+  const db = await openTestDb();
+  await db.prepare("UPDATE settings SET projects = 1").run();
+  const contact = await addLead(ctxFor(db, SEVEN, "add_lead"), { name: "Pat Example", email: "pat@example.com" });
+  await db
+    .prepare("INSERT INTO projects (id, name, contact_id, status_key, created_at, updated_at) VALUES ('pj_retro', 'Retrofit', ?1, 'active', ?2, ?2)")
+    .bind(contact.contactId, SEVEN.toISOString())
+    .run();
+  await addTask(ctxFor(db, SEVEN, "add_task"), { project: "pj_retro", title: "Order anchors", dueAt: "2026-11-18T09:00" });
+  await runBrief(envFor(db), SEVEN);
+  const [row] = await briefs(db);
+  assert.match(row?.text ?? "", /- Order anchors \(Pat Example, project "Retrofit"\), was due Wed Nov 18, 9:00 AM/);
+});
+
 test("the brief is composed and stored at the brief hour, whatever brief_enabled says, and sends nothing", async (t) => {
   const calls = mockFetch(t);
   const db = await openTestDb();

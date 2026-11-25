@@ -29,6 +29,12 @@ export function contactLink(id: string, name: string, outside: boolean): Html {
 
 export const projectHref = (id: string) => `/projects/${encodeURIComponent(id)}`;
 
+/** A link to the project page. Its text is the name only when the name did not come from outside. */
+export function projectLink(id: string, name: string, outside: boolean): Html {
+  if (!outside) return html`<a href="${projectHref(id)}">${name}</a>`;
+  return html`<a href="${projectHref(id)}">Project ${id}</a> ${outsideLabel()} <span class="outside-value">${name}</span>`;
+}
+
 const ADD = {
   deal: { path: "/deals/new", label: "Add a deal" },
   lead: { path: "/leads/new", label: "Add a lead" },

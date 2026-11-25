@@ -10,7 +10,9 @@ import { formatLocal } from "../../time.ts";
 import { type Html, html } from "../html.ts";
 import type { PageContext } from "../context.ts";
 import { renderPage } from "../layout.ts";
-import { dealLink, empty, formatNumber, labelled, type Pair, pairs, section, tag, when } from "../parts.ts";
+import { listProjects, type ProjectItem } from "../../services/project-read.ts";
+import { dealLink, empty, formatNumber, labelled, type Pair, pairs, projectLink, section, tag, when } from "../parts.ts";
+import { newProjectOfContactPath } from "../project-form.ts";
 import type { FormContext } from "../forms.ts";
 import { logForm } from "../log-form.ts";
 import { reachActions } from "../reach.ts";
@@ -106,6 +108,26 @@ ${detail.contact.archived ? "" : html`<p class="section-action"><a href="${newDe
   );
 }
 
+function projectsSection(contact: ContactDetail["contact"], projects: ProjectItem[]): Html {
+  return section(
+    "projects-heading",
+    "Projects",
+    html`${
+      projects.length === 0
+        ? empty("No projects yet.")
+        : html`<ul class="cards cards-single">${projects.map(
+            (project) => html`<li class="card">
+<div class="card-head">
+<h3 class="card-title">${projectLink(project.id, project.name, project.untrusted_fields.includes("name"))}</h3>
+${tag(project.statusLabel)}
+</div>
+</li>`,
+          )}</ul>`
+    }
+${contact.archived ? "" : html`<p class="section-action"><a href="${newProjectOfContactPath(contact.id)}">Start a project</a></p>`}`,
+  );
+}
+
 function tasksSection(detail: ContactDetail, now: Date, tz: string, form: FormContext, subject: Subject): Html {
   return section(
     "tasks-heading",
@@ -161,6 +183,7 @@ export async function contactPage(ctx: PageContext, id: string): Promise<string 
   const { contact } = detail;
   const outside = new Set(contact.untrusted_fields);
   const subject: Subject = { kind: "contact", id: contact.id };
+  const projects = ctx.projects === true ? (await listProjects(db, { contact: contact.id })).items : null;
   // The <title> and meta description can't show the label, so outside text never goes there.
   const name = outside.has("name") ? `Contact ${contact.id}` : contact.name;
   const company =
@@ -176,13 +199,14 @@ export async function contactPage(ctx: PageContext, id: string): Promise<string 
     body: html`${canQualify(row) ? html`<p class="back"><a href="/leads">Back to leads</a></p>` : html`<p class="back"><a href="/contacts">Back to contacts</a></p>`}
 <h1>${labelled(contact.name, outside.has("name"))}</h1>
 ${company}
-${hasOutsideText(detail) ? outsideNote() : ""}
+${hasOutsideText(detail) || (projects ?? []).some((project) => project.untrusted_fields.includes("name")) ? outsideNote() : ""}
 <div class="detail-columns">
 <div>
 ${await leadSection(row, tz, ctx, await statusLabels(db))}
 ${detailsSection(detail, labels, tz, ctx, subject)}
 ${await campaignEmailsSection(ctx, row, tz)}
 ${dealsSection(detail)}
+${projects === null ? "" : projectsSection(contact, projects)}
 </div>
 <div>
 ${canQualify(row) ? leadAskSection(row.id) : ""}

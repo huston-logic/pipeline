@@ -7,7 +7,7 @@ import { formatLocal } from "../../time.ts";
 import type { PageContext } from "../context.ts";
 import { type Html, html } from "../html.ts";
 import { renderPage } from "../layout.ts";
-import { contactLink, empty, outsideLabel, pairs, projectHref, tag, when } from "../parts.ts";
+import { contactLink, empty, pairs, projectLink, tag, when } from "../parts.ts";
 import { dataTable, type Layout, layoutDescription, layoutSwitch, layoutTitle, pickLayout, type TableColumn, withParams } from "../table.ts";
 import { countLine } from "../view-parts.ts";
 
@@ -26,11 +26,7 @@ const LEDE = "To start a project, open the person's page or a won deal.";
 const statusOf = (query: URLSearchParams): StatusChoice => STATUS_CHOICES.find((s) => s === query.get("status")) ?? "active";
 const sortOf = (query: URLSearchParams): ProjectSort => SORTS.find((s) => s === query.get("sort")) ?? "target";
 
-/** A link to the project page. Its text is the name only when the name did not come from outside. */
-function projectLink(project: ProjectItem): Html {
-  if (!project.untrusted_fields.includes("name")) return html`<a href="${projectHref(project.id)}">${project.name}</a>`;
-  return html`<a href="${projectHref(project.id)}">Project ${project.id}</a> ${outsideLabel()} <span class="outside-value">${project.name}</span>`;
-}
+const itemLink = (project: ProjectItem): Html => projectLink(project.id, project.name, project.untrusted_fields.includes("name"));
 
 /** A stored midnight as the day only: "Sat Dec 5". */
 export const dateOr = (iso: string | null, tz: string): Html | string =>
@@ -42,7 +38,7 @@ const personOf = (project: ProjectItem): Html => contactLink(project.contactId, 
 function card(project: ProjectItem, tz: string): Html {
   return html`<li class="card">
 <div class="card-head">
-<h3 class="card-title">${projectLink(project)}</h3>
+<h3 class="card-title">${itemLink(project)}</h3>
 ${tag(statusText(project))}
 </div>
 ${pairs([
@@ -59,7 +55,7 @@ function table(items: ProjectItem[], view: { path: string; query: URLSearchParam
     ...(view.sort === key ? { now: "asc" as const } : {}),
   });
   const columns: TableColumn<ProjectItem>[] = [
-    { key: "project", header: "Project", sort: sorted("name"), cell: projectLink },
+    { key: "project", header: "Project", sort: sorted("name"), cell: itemLink },
     { key: "status", header: "Status", cell: statusText },
     { key: "person", header: "Person", cell: personOf },
     { key: "start", header: "Start", cell: (p) => dateOr(p.startAt, view.tz) },

@@ -14,6 +14,8 @@ export interface BriefTask {
   dueAt: string | null;
   dealTitle: string | null;
   contactName: string | null;
+  /** The task's project; null or missing for none, and always null while projects are off. */
+  projectName?: string | null;
   untrusted_fields: readonly string[];
 }
 
@@ -107,7 +109,10 @@ export function composeBrief(input: BriefInput): ComposedBrief {
     items.push({ section, id, line: `- ${line}`, untrusted: fields.length > 0 });
 
   const taskLine = (task: BriefTask, when: string) => {
-    const who = [task.contactName, task.dealTitle].filter((part): part is string => part !== null).map(flat);
+    const project = task.projectName == null ? null : `project "${flat(task.projectName)}"`;
+    const who = [task.contactName === null ? null : flat(task.contactName), task.dealTitle === null ? null : flat(task.dealTitle), project].filter(
+      (part): part is string => part !== null,
+    );
     const context = who.length > 0 ? ` (${who.join(", ")})` : "";
     return `${flat(task.title)}${context}${task.dueAt === null ? "" : `, ${when} ${formatLocal(task.dueAt, tz)}`}`;
   };
