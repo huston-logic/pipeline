@@ -1,7 +1,7 @@
 # Acceptance
 
-The twenty sentences from the spec's "Acceptance" section, plus five added in run 5 (21 to 25) and five in run 6 (26 to 30). Sentences 1 to 25 are each proven end to end by `tests/e2e/acceptance.test.ts`; 26 by
-`tests/e2e/capture.test.ts`; 27 to 30 are covered by the tests named under them.
+The twenty sentences from the spec's "Acceptance" section, plus five added in run 5 (21 to 25), five in run 6 (26 to 30) and four in run 8 (31 to 34). Sentences 1 to 25 are each proven end to end by `tests/e2e/acceptance.test.ts`; 26 by
+`tests/e2e/capture.test.ts`; 27 to 30 are covered by the tests named under them; 31 to 34 by `tests/e2e/campaigns.test.ts`.
 The test starts the real Worker with `wrangler dev --local` and a real local D1 database holding the fake seed
 (`scripts/seed-dev.ts`), connects an MCP client over Streamable HTTP the way an AI app would, and runs the sentences in
 order. Later sentences build on earlier ones: 8 undoes the change from 7, 9 sees the changes from 4 to 8.
@@ -253,3 +253,41 @@ tests cover its parts and what is not tested; no test runs any of them end to en
 - Covered by unit tests in `src/services/work-types.test.ts` ("work type names are unique among live ones, ignoring case",
   "undo of a work type in use is refused; undo of a client rate is not") and `src/mcp/tools-time.test.ts` ("work types
   and client rates write at once, and list_work_types lists them"). Not automated end to end.
+
+## The run 8 sentences (31 to 34)
+
+Run 8 added campaigns, step 1 (decision 0053). Sentences 31 to 34 run in `tests/e2e/campaigns.test.ts`, against its own
+server started with fake campaign switches (`CAMPAIGN_SENDING`, `CAMPAIGN_FROM`, `CAMPAIGN_RESEND_API_KEY`,
+`OWNER_EMAILS`, all `example.*` values). The test never runs the campaign cron, and Resend's address is fixed in
+`src/campaigns/resend.ts`, so no email is ever sent: the actual send is proven by the unit tests below.
+
+## 31. Set up a newsletter to my Partners about the open house, with a button to RSVP.
+- Tools: `add_campaign_draft` (recipients: status partner, a button to https://example.com/rsvp), then a GET of the
+  `review_url` on the board.
+- Asserts: the answer ends with a change id and gives a `review_url` ending `/campaigns/cp_...`; the page answers 200 and
+  shows the subject and "Approve and send". The draft is written at once as the `ai` actor and sends nothing.
+- Test: `31. "Set up a newsletter to my Partners about the open house, with a button to RSVP."`
+- Also covered: "approving a small hand-picked draft freezes its recipients and leaves it sending, with nothing sent" (the
+  board's Approve post with its csrf token and fingerprint: 303, status `sending`, two recipient rows), and
+  `src/campaigns/send.test.ts` for the send itself, which never sends a person the same email twice.
+
+## 32. Who would get it?
+- Tools: `preview_campaign_recipients`.
+- Asserts: a count of sendable people and the skipped ones by reason; no "@" appears anywhere in the answer.
+- Test: `32. "Who would get it?"`
+
+## 33. Send it.
+- Tools: none. There is no tool to send, schedule, approve, pause, cancel or clear an unsubscribe: the owner taps
+  Approve on the board.
+- Asserts: no tool name matches send, schedule, approve, unsubscribe or suppress; the only campaign tools are the five
+  that read or save drafts; the campaign is still a `draft` in `get_campaign`.
+- Test: `33. "Send it." has no tool: the AI app can only save drafts`
+- Also covered: the public paths in "the public paths" (`/unsubscribe/test` says it is from a test email, a malformed
+  token is a 404, `/hooks/resend` is a 503 without its secret and a 405 for a GET), and the unit tests
+  `src/http/unsubscribe.test.ts` and `src/http/resend-webhook.test.ts`.
+
+## 34. Is anyone skipped because they unsubscribed?
+- Tools: `add_campaign_draft` (two people picked by id, one of them the seed's unsubscribed person), then
+  `preview_campaign_recipients`.
+- Asserts: one person is skipped as `unsubscribed`, one is sendable, and no address is shown.
+- Test: `34. "Is anyone skipped because they unsubscribed?"`

@@ -250,8 +250,9 @@ hooks and the commands are in `CLAUDE.md`.
   `/export` lists the three time CSVs only then.
 - **Campaigns** (decision 0053): off until `settings.campaigns`; while off, no Campaigns item in More, every `/campaigns*`
   path is a 404 and the campaign tools refuse (`CAMPAIGNS_OFF`). `src/campaigns/` holds `drafts.ts`, `body.ts`,
-  `render.ts`, `first-name.ts`, `audience.ts`, `freeze.ts` and `readiness.ts` (later `send.ts`, `resend.ts`,
-  `suppressions.ts`, `svix.ts`). Tables `campaigns`, `campaign_steps` and `email_suppressions` are change tables;
+  `render.ts`, `first-name.ts`, `audience.ts`, `freeze.ts` and `readiness.ts`, and `send.ts`, `resend.ts`,
+  `test-send.ts`, `activities.ts`, `suppressions.ts` and `svix.ts`, plus `src/http/unsubscribe.ts` and
+  `src/http/resend-webhook.ts`. Tables `campaigns`, `campaign_steps` and `email_suppressions` are change tables;
   `campaign_recipients` and `campaign_batches` are delivery records, written beside an audited change and never undone
   (ruling 1). The recipient list is frozen at approve, one row per person per step, and the approve form's fingerprint
   must still match (else a 422). No MCP tool sends, schedules, approves, pauses, cancels or clears a suppression;

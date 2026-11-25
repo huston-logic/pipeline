@@ -173,10 +173,11 @@ async function actions(status: string) {
   return { has, body, db, id };
 }
 
-test("sending shows Pause and Duplicate; paused shows Resume, Cancel and Duplicate; sent and cancelled only Duplicate", async () => {
+test("sending shows Pause, Cancel and Duplicate; paused shows Resume, Cancel and Duplicate; sent and cancelled only Duplicate", async () => {
   const sending = await actions("sending");
-  assert.deepEqual(["pause", "resume", "cancel", "duplicate"].map(sending.has), [true, false, false, true]);
+  assert.deepEqual(["pause", "resume", "cancel", "duplicate"].map(sending.has), [true, false, true, true]);
   assert.match(sending.body, />Pause campaign</);
+  assert.match(sending.body, />Cancel campaign</);
   const paused = await actions("paused");
   assert.deepEqual(["pause", "resume", "cancel", "duplicate"].map(paused.has), [false, true, true, true]);
   assert.match(paused.body, />Resume</);

@@ -87,9 +87,10 @@ ${item(null, "All", counts.all)}${KINDS.filter((kind) => (counts.by.get(kind.key
 
 function actions(ctx: PageContext, campaign: CampaignRow): Html {
   const id = campaign.id;
-  return html`<div class="page-action">${campaign.status === "sending" ? smallForm(ctx, id, "pause", "Pause campaign") : ""}${
-    campaign.status === "paused" ? html`${smallForm(ctx, id, "resume", "Resume")}${smallForm(ctx, id, "cancel", "Cancel campaign")}` : ""
-  }${smallForm(ctx, id, "duplicate", "Duplicate")}</div>`;
+  const { status } = campaign;
+  return html`<div class="page-action">${status === "sending" ? smallForm(ctx, id, "pause", "Pause campaign") : ""}${
+    status === "paused" ? smallForm(ctx, id, "resume", "Resume") : ""
+  }${status === "sending" || status === "paused" ? smallForm(ctx, id, "cancel", "Cancel campaign") : ""}${smallForm(ctx, id, "duplicate", "Duplicate")}</div>`;
 }
 
 /** The results of an approved campaign: sending, paused, sent or cancelled. */

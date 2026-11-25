@@ -244,6 +244,68 @@ test("Schedule reads the date and time in the owner's timezone and stores UTC", 
   assert.doesNotMatch(after.body, />Approve and send/);
 });
 
+test("a scheduled campaign's page shows the list as it was fixed, not the people on file now", async () => {
+  const { db, id } = await reviewDb();
+  const env = envOf(db);
+  const page = await open(env, id);
+  const sent = await post(env, `/campaigns/${id}/schedule`, scheduleFields(page, id, nextMonth()), { cookie: page.cookie, token: page.token });
+  assert.equal(sent.res.status, 303);
+  db.exec("INSERT INTO email_suppressions (id, email, reason) VALUES ('su_amy', 'amy@example.com', 'unsubscribed'); UPDATE contacts SET archived = 1 WHERE id = 'ct_bob'");
+  const { res, body } = await load(env, sent.location, sent.cookie);
+  assert.equal(res.status, 200);
+  assert.match(body, /<dt>To<\/dt>\s*<dd>2 people, from people you picked<\/dd>/);
+  assert.match(body, /The list was fixed when you scheduled it\./);
+  assert.match(body, /Skipped: 4/);
+  for (const [heading, who] of [
+    ["No email address", "ct_cy"],
+    ["Email address can&#39;t be used", "ct_eve"],
+    ["Unsubscribed", "ct_dee"],
+    ["Archived", "ct_fay"],
+  ] as const) {
+    assert.match(body, new RegExp(`${heading}[\\s\\S]*?<a href="/contacts/${who}">`), heading);
+  }
+  assert.match(body, /Preview, as Amy Example will see it/);
+  assert.doesNotMatch(body, /1 of them is a lead/);
+});
+
+test("a draft's page still shows the live list", async () => {
+  const { db, id } = await reviewDb();
+  db.exec("INSERT INTO email_suppressions (id, email, reason) VALUES ('su_amy', 'amy@example.com', 'unsubscribed')");
+  const { body } = await open(envOf(db), id);
+  assert.match(body, /<dd>1 person, from people you picked<\/dd>/);
+  assert.doesNotMatch(body, /The list was fixed/);
+});
+
+test("a scheduled campaign still opens after its view is archived", async () => {
+  const { db, id: first } = await reviewDb();
+  db.exec("INSERT INTO views (id, name, module, sort, position) VALUES ('vw_folks', 'Folks', 'people', 'name-asc', 1)");
+  const added = await addCampaignDraft(
+    { db, now: new Date(), actor: "ai", tool: "add_campaign_draft" },
+    { name: "View news", recipients: { kind: "view", view: "vw_folks" }, subject: "News", body: "Hello." },
+  );
+  assert.ok(first);
+  const env = envOf(db);
+  const page = await open(env, added.campaignId);
+  const sent = await post(env, `/campaigns/${added.campaignId}/schedule`, scheduleFields(page, added.campaignId, nextMonth()), { cookie: page.cookie, token: page.token });
+  assert.equal(sent.res.status, 303);
+  db.exec("UPDATE views SET archived = 1 WHERE id = 'vw_folks'");
+  const after = await load(env, sent.location, sent.cookie);
+  assert.equal(after.res.status, 200);
+  assert.match(after.body, /from view Folks/);
+  assert.doesNotMatch(after.body, /gone or archived/);
+});
+
+test("a Schedule refused because sending isn't set up announces one alert, not two", async () => {
+  const { db, id } = await reviewDb();
+  const page = await open(envOf(db), id);
+  const refused = await post(envOf(db, { CAMPAIGN_SENDING: undefined }), `/campaigns/${id}/schedule`, scheduleFields(page, id, nextMonth()), {
+    cookie: page.cookie,
+    token: page.token,
+  });
+  assert.equal(refused.res.status, 422);
+  assert.equal(refused.body.match(/role="alert"/g)?.length, 1);
+});
+
 test("Schedule refuses a past time, one over 90 days away, and a missing date, writing nothing", async () => {
   const { db, id } = await reviewDb();
   const env = envOf(db);

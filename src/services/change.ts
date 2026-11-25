@@ -251,6 +251,9 @@ export const isWorkTypeNameFailure = (error: unknown) => /UNIQUE constraint fail
 export const isClientRatePairFailure = (error: unknown) =>
   /UNIQUE constraint failed: client_rates\.work_type_id, client_rates\.contact_id/.test(errorText(error));
 
+/** A second live block on one address (an undo of clearing a block, after a newer block was made). */
+export const isSuppressionEmailFailure = (error: unknown) => /UNIQUE constraint failed: email_suppressions\.email/.test(errorText(error));
+
 /** A change as statements: the guards and row writes, then (after any extra statements) the audit row and cleanup. */
 export interface BuiltChange {
   changeId: string;
