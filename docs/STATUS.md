@@ -96,7 +96,7 @@ Plan: `docs/superpowers/plans/2026-11-25-run11-board-approval-strict.md`. Decisi
 
 | PR | What | Work window | Commits | Checks | CI |
 |---|---|---|---|---|---|
-| A (this PR) | small changes and rule tools wait on the board; docs | first commit 23:42 to open (see the PR) | see the PR | check:fast per commit; full check before push | see the PR |
+| A #92 | small changes and rule tools wait on the board; docs | 23:42 (first commit) to 23:53 (PR opened), 11 min of build and review after planning | 4 (5 with this row) | check:fast per commit (3 to 11 s); full check 30 s before push; 2 reviewers per task | auto-merge queued at open; CI result not known when this was written |
 
 Judgment calls (one line each):
 
