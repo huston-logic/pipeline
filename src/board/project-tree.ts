@@ -6,7 +6,7 @@ import { type FormContext, postForm } from "./forms.ts";
 import { type Html, html } from "./html.ts";
 import { count, labelled, tag, when } from "./parts.ts";
 import { specFields } from "./record-fields.ts";
-import { taskActions, taskName, taskSpecs } from "./task-forms.ts";
+import { descriptionLine, taskActions, taskName, taskSpecs } from "./task-forms.ts";
 
 export const MAX_LEVEL = 3;
 
@@ -38,7 +38,7 @@ function subTaskForm(node: TaskNode, form: FormContext): Html {
     html`<fieldset class="field field-when">
 <legend>Add a sub-task</legend>
 ${specFields(taskSpecs(), new Map(), `subtask-${node.id}`)}
-<button class="button button-small" type="submit">Add the sub-task${hiddenName(taskName(node))}</button>
+<button class="button button-small" type="submit">Add sub-task${hiddenName(taskName(node))}</button>
 </fieldset>`,
     { novalidate: true },
   );
@@ -71,7 +71,8 @@ function row(node: TaskNode, level: number, first: boolean, last: boolean, now: 
         : "No due date"
   }${total > 0 ? html` · ${node.subTasks.done} of ${total} done` : ""}</p>
 ${level === MAX_LEVEL && deeper > 0 ? html`<p class="field-hint">Has ${count(deeper, "more level")} below. Your AI app can show them.</p>` : ""}
-${done ? "" : taskActions(node, form)}
+${descriptionLine(node)}
+${done ? "" : taskActions(node, form, tz)}
 ${done ? "" : changeControls(node, level, first, last, form)}
 </div>
 ${level < MAX_LEVEL ? taskList(node.children, level + 1, now, tz, form) : ""}

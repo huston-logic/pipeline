@@ -96,7 +96,7 @@ async function addTask(ctx: ActionContext, id: string): Promise<ActionResult> {
     return page(422, refusedFormPage(ctx, "The task wasn't added", form, back, "/templates"));
   };
   if (collected.errors.length > 0) return refused();
-  const input = collected.input as { title: string; dueDays?: number; workType?: string };
+  const input = collected.input as { title: string; description?: string; dueDays?: number; workType?: string };
   try {
     const result = await addTemplateTask(asOwner(ctx, "add_template_task"), id, { ...input, ...(under === "" ? {} : { parent: under }) });
     return redirect(withChange(back, result.changeId));
@@ -116,7 +116,7 @@ async function editTask(ctx: ActionContext, id: string): Promise<ActionResult> {
   if (collected.errors.length > 0) return refused();
   if (Object.keys(collected.input).length === 0) return refused([NOTHING_TO_SAVE]);
   try {
-    const result = await updateTemplateTask(asOwner(ctx, "update_template_task"), id, collected.input as { title?: string; dueDays?: number | null; workType?: string | null });
+    const result = await updateTemplateTask(asOwner(ctx, "update_template_task"), id, collected.input as { title?: string; description?: string | null; dueDays?: number | null; workType?: string | null });
     return redirect(withChange(templateHref(task.template_id), result.changeId));
   } catch (error) {
     return refused([refusal(error, "template")]);

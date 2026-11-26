@@ -1894,6 +1894,33 @@ button.button {
   cursor: pointer;
 }
 
+.task-edit {
+  flex: 1 1 12rem;
+}
+
+.task-edit summary {
+  display: list-item;
+  min-height: 44px;
+  padding: 0.625rem 0 0;
+  color: var(--ink-2);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.task-edit summary:hover {
+  text-decoration: underline;
+  text-decoration-color: var(--rust);
+  text-underline-offset: 0.25em;
+}
+
+/* A task's description: the owner's line breaks are kept, a long address wraps. */
+.task-description {
+  margin: 0.5rem 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .task-snooze summary:hover {
   text-decoration: underline;
   text-decoration-color: var(--rust);

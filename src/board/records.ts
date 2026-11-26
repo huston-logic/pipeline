@@ -5,7 +5,7 @@ import type { TaskItem, TimelineItem } from "../services/read.ts";
 import { formatLocal } from "../time.ts";
 import type { FormContext } from "./forms.ts";
 import { type Html, html } from "./html.ts";
-import { taskActions } from "./task-forms.ts";
+import { descriptionLine, taskActions } from "./task-forms.ts";
 import { dealLink, labelled, OUTSIDE_LABEL, outsideLabel, type Pair, pairs, projectLink, tag, when } from "./parts.ts";
 
 export const STATUS: Record<DealStatus, string> = { open: "Open", won: "Won", lost: "Lost", not_now: "Not now" };
@@ -57,7 +57,8 @@ ${pairs([
     task.dealTitle !== null && { name: "Deal", value: dealLink(task.dealId, task.dealTitle, outside.includes("dealTitle")) },
   task.source !== "owner" && { name: "Added by", value: `rule ${task.source}` },
 ])}
-${form === undefined ? "" : taskActions(task, form)}
+${descriptionLine(task)}
+${form === undefined ? "" : taskActions(task, form, tz)}
 </li>`;
 }
 

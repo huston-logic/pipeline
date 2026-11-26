@@ -98,9 +98,10 @@ test("whats_due counts overdue and today's tasks and deals in the owner's timezo
     answer.headline,
     "Due by the end of today (2026-11-19): 1 overdue task, 1 task due today, 0 overdue deals, 0 deals with a next step today.",
   );
-  const due = answer.data as { overdueTasks: { id: string }[]; todayTasks: { id: string }[] };
+  const due = answer.data as { overdueTasks: { id: string }[]; todayTasks: { id: string; description: string | null }[] };
   assert.deepEqual(due.overdueTasks.map((t) => t.id), ["tk_seed02"]);
   assert.deepEqual(due.todayTasks.map((t) => t.id), ["tk_seed01"]);
+  assert.equal(due.todayTasks[0]?.description, null, "every task item carries its description (null for none)");
 });
 
 test("recent_changes takes an optional since date and explains a bad one", async () => {
@@ -229,7 +230,7 @@ test("list_tasks: undated standalone tasks, standalone filter, contact filter, d
   await db.prepare("UPDATE tasks SET done_at = ? WHERE id = ?").bind(NOW.toISOString(), done.taskId).run();
   await db.prepare("UPDATE tasks SET untrusted_fields = '[\"title\"]' WHERE title = 'Email Bo'").run();
   await db.prepare("UPDATE tasks SET description = 'Ask about the quote.', untrusted_fields = '[\"title\",\"description\"]' WHERE title = 'Email Bo'").run();
-  const c =await connectInMemory(createMcpServer({ db, now: () => NOW }));
+  const c = await connectInMemory(createMcpServer({ db, now: () => NOW }));
   type Item = { id: string; title: string; dueAt: string | null; snoozedUntil: string | null; doneAt: string | null; dealId: string | null; contactId: string | null; untrusted_fields: string[] };
 
   const open = await ok(c, "list_tasks");

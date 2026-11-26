@@ -165,7 +165,7 @@ test("the deal page offers Edit deal, Add a task and Log, and each task card has
     assert.match(formOf(body, action, "inline-form"), new RegExp(`action="${action}" novalidate>`), action);
   }
   assert.match(body, /<form class="snooze-until" method="post" action="\/tasks\/tk_seed01\/snooze" novalidate>/);
-  assert.match(task, /<button class="button button-small" type="submit">Add the task<\/button>/);
+  assert.match(task, /<button class="button button-small" type="submit">Add task<\/button>/);
   const log = formOf(body, "/deals/dl_seed01/log", "inline-form");
   assertLabelled(log, "log");
   assert.match(log, /<select id="log-dl_seed01-type" name="type">\n<option value="note" selected>Note<\/option>\n<option value="call">Call<\/option>/);

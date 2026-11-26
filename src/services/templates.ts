@@ -313,11 +313,18 @@ export async function addTemplateTask(
 export async function updateTemplateTask(
   ctx: Ctx,
   id: string,
-  patch: { title?: string; dueDays?: number | null; workType?: string | null },
+  patch: { title?: string; description?: string | null; dueDays?: number | null; workType?: string | null },
 ): Promise<ChangeResult & { taskId: string }> {
   const { task: before, template } = await liveTask(ctx, id);
   const set: Partial<TemplateTaskRow> = {};
   const parts: string[] = [];
+  if (patch.description !== undefined) {
+    const description = taskDescription(patch.description);
+    if (description !== (before.description ?? null)) {
+      set.description = description;
+      parts.push(description === null ? "description cleared" : "description changed");
+    }
+  }
   if (patch.title !== undefined) {
     const title = checkText(patch.title, "task title");
     if (title !== before.title) {

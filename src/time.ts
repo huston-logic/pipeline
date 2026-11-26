@@ -171,3 +171,9 @@ export function formatLocal(at: Date | string, tz: string): string {
   }
   return `${parts.weekday} ${parts.month} ${parts.day}, ${parts.hour}:${parts.minute} ${parts.dayPeriod}`;
 }
+
+/** A due time for people: the day alone ("Fri Nov 27") when it is local midnight (a due date), else `formatLocal`. */
+export function dueText(iso: string, tz: string): string {
+  const text = formatLocal(iso, tz);
+  return localWhen(iso, tz).includes("T") ? text : text.slice(0, text.indexOf(","));
+}

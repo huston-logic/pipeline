@@ -51,7 +51,7 @@ test("empty quick add is 422 with the value kept", async () => {
   assert.equal(res.status, 422);
   assert.equal(await auditCount(db), before);
   assert.equal(h1Count(body), 1);
-  assert.match(body, /Say in a few words what to do\./);
+  assert.match(body, /Give the task a title\./);
   assert.match(body, /<input id="quick-due" name="due" type="date" value="2027-01-15"/);
 });
 
@@ -136,8 +136,8 @@ test("no Showing line at 50 or fewer", async () => {
 
 test("the quick-add title is required in words, the date is optional", async () => {
   const body = (await load(devEnv(await seededDb()), "/")).body;
-  assert.match(body, /<label for="quick-title">Add a to-do <span class="field-required">\(required\)<\/span><\/label>/);
-  assert.match(body, /<label for="quick-due">Due \(optional\)<\/label>/);
+  assert.match(body, /<label for="quick-title">Title <span class="field-required">\(required\)<\/span><\/label>/);
+  assert.match(body, /<label for="quick-due">Due<\/label>/);
 });
 
 test("Done in a non-default view comes back to that same address", async () => {

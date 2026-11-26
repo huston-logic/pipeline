@@ -28,7 +28,7 @@ export async function templateTaskEditPage(ctx: PageContext, templateId: string,
   const back = templateHref(templateId);
   return recordFormPage(ctx, {
     title: "Edit template task",
-    description: "Change a template task's title, days after the start or work type.",
+    description: "Change a template task's title, description, days after the start or work type.",
     heading: "Edit template task",
     lede: "Change what you need and save.",
     current: "/templates",

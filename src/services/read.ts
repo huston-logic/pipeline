@@ -19,7 +19,7 @@ import type {
 } from "../db/db.ts";
 import { countDealsByStage, getAudit, listAudit, listStages, searchContacts as searchContactRows } from "../db/queries.ts";
 import { isQuiet } from "../rules/engine.ts";
-import { addDays, dayBoundsUtc, formatLocal, localDate } from "../time.ts";
+import { addDays, dayBoundsUtc, dueText, formatLocal, localDate } from "../time.ts";
 import { UserError } from "./errors.ts";
 import { untrustedFields } from "./labels.ts";
 import { businessKey } from "./lead-change.ts";
@@ -179,7 +179,7 @@ function toTaskItem(row: TaskJoin, tz: string): TaskItem {
     title: row.title,
     description: row.description ?? null,
     dueAt: row.due_at,
-    dueAtLocal: row.due_at === null ? null : formatLocal(row.due_at, tz),
+    dueAtLocal: row.due_at === null ? null : dueText(row.due_at, tz),
     snoozedUntil: row.snoozed_until,
     source: row.source,
     dealId: row.deal_id,

@@ -145,7 +145,7 @@ test("getProject: notes, open and done tasks, the timeline and the time totals",
   assert.equal(detail.id, retrofit);
   assert.equal(detail.notes, "Permit pending.");
   assert.deepEqual(detail.openTasks.map((t) => [t.title, t.projectId, t.projectName, t.contactName]), [["Order anchors", retrofit, "Retrofit", "Pat Example"]]);
-  assert.equal(detail.openTasks[0]?.dueAtLocal, "Fri Nov 20, 12:00 AM");
+  assert.equal(detail.openTasks[0]?.dueAtLocal, "Fri Nov 20");
   assert.deepEqual(detail.doneTasks.map((t) => t.title), ["Pour footing"]);
   assert.equal(detail.openTasks.length, (await listProjects(db, {})).items.find((i) => i.id === retrofit)?.openTasks);
   assert.deepEqual(ids(detail.timeline), [note.activityId]);

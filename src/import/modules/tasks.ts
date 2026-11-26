@@ -50,7 +50,7 @@ export interface TaskCreate {
 export interface TaskMerge {
   id: string;
   line: number;
-  changes: Partial<{ due_at: string }>;
+  changes: Partial<{ due_at: string; description: string }>;
 }
 
 export interface TasksPlan extends PlanBase {
@@ -140,9 +140,11 @@ export function planTasks(rows: readonly MappedRow[], ctx: TasksCtx): TasksPlan 
     }
     const match = id === null ? undefined : tasksById.get(id);
     if (match) {
-      // A merge fills an empty due date only: it never completes, moves or renames a task.
+      // A merge fills an empty due date or description only: it never completes, moves or renames a task.
       const changes: TaskMerge["changes"] = {};
       if (dueAt !== null && match.due_at === null) changes.due_at = dueAt;
+      const description = values.description ?? null;
+      if (description !== null && (match.description ?? null) === null) changes.description = description;
       if (Object.keys(changes).length > 0) plan.merge.push({ id: match.id, line, changes });
       else plan.unchanged.push({ line, id: match.id });
       continue;

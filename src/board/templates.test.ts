@@ -198,7 +198,7 @@ test("Add a task puts the task under the chosen one; a refusal is a 422 that kee
   assert.match(refused.body, /value="Late"/);
   const blank = await post(env, `${page}/tasks`, { title: " ", return_to: page });
   assert.equal(blank.res.status, 422);
-  assert.match(blank.body, /Say in a few words what to do\./);
+  assert.match(blank.body, /Give the task a title\./);
 });
 
 test("the Under choices carry outline numbers, so equal titles differ; the controls say what Remove and Archive do", async () => {

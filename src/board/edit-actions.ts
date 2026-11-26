@@ -14,7 +14,7 @@ import { DuplicateLeadError } from "../services/leads.ts";
 import { ownerTimezone, projectById } from "../services/lookup.ts";
 import { CONTACT } from "../services/person-move.ts";
 import { listPersonStatuses } from "../services/person-status.ts";
-import { addTask, completeTask, snoozeTask } from "../services/tasks.ts";
+import { addTask, completeTask, snoozeTask, updateTask } from "../services/tasks.ts";
 import {
   type ActionContext,
   type ActionResult,
@@ -49,7 +49,7 @@ import { collectEdit, collectNew, dealSpecs, line, parseValue, personDealSpecs, 
 import { fieldId } from "./record-fields.ts";
 import { withChange } from "./return-to.ts";
 import { MORNING, snoozePresets } from "./snooze.ts";
-import { addTaskForm, quickSpecs, refusedQuickAdd, snoozeForms, type Subject, subjectHref, taskName, taskSpecs } from "./task-forms.ts";
+import { addTaskForm, quickSpecs, refusedQuickAdd, snoozeForms, type Subject, subjectHref, taskEditForm, taskEditSpecs, taskName, taskSpecs } from "./task-forms.ts";
 
 const NOTHING_TO_SAVE = "Nothing to save: every field is as it was. Change a value, or cancel to go back.";
 
@@ -175,8 +175,8 @@ export const addTaskTo = (kind: Subject["kind"]) =>
       );
     if (collected.errors.length > 0) return refused();
     try {
-      const input = collected.input as { title: string; dueAt?: string };
-      const result = await addTask(asOwner(ctx, "add_task"), { ...subjectRefs(subject), title: input.title, dueAt: input.dueAt });
+      const input = collected.input as { title: string; dueAt?: string; description?: string };
+      const result = await addTask(asOwner(ctx, "add_task"), { ...subjectRefs(subject), ...input });
       return redirect(withChange(back, result.changeId));
     } catch (error) {
       return refused([refusal(error, "task")]);
@@ -318,6 +318,28 @@ async function snooze(ctx: ActionContext, id: string): Promise<ActionResult> {
   }
 }
 
+/** POST /tasks/<id>/edit: update_task with only the fields the owner changed (a cleared Due or Description is null). */
+async function editTask(ctx: ActionContext, id: string): Promise<ActionResult> {
+  const home = await taskHome(ctx, id);
+  const row = home.found ? await getTask(ctx.db, id) : null;
+  if (row === null) return notFound(ctx);
+  const tz = await ownerTimezone(ctx.db);
+  const collected = await collectEdit(taskEditSpecs(), ctx.form, { ...row, fields: "{}" }, tz);
+  const refused = (extra: string[] = []) => {
+    const state = stateOf(collected, extra);
+    const form = taskEditForm({ id, title: row.title, dueAt: row.due_at, description: row.description ?? null, untrusted_fields: row.untrusted_fields }, { csrf: ctx.csrf, here: home.back }, tz, state);
+    return page(422, refusedFormPage(ctx, "The task wasn't saved", form, home.back, "/"));
+  };
+  if (collected.errors.length > 0) return refused();
+  if (Object.keys(collected.input).length === 0) return refused([NOTHING_TO_SAVE]);
+  try {
+    const result = await updateTask(asOwner(ctx, "update_task"), id, collected.input as { title?: string; dueAt?: string | null; description?: string | null });
+    return redirect(withChange(home.back, result.changeId));
+  } catch (error) {
+    return refused([refusal(error, "task")]);
+  }
+}
+
 export const EDIT_ROUTES: Route[] = [
   { path: /^\/deals\/(new)$/, handle: (ctx) => newPersonDeal(ctx), big: true },
   { path: /^\/contacts\/([^/]+)\/deals\/new$/, handle: newDeal, big: true },
@@ -331,5 +353,6 @@ export const EDIT_ROUTES: Route[] = [
   { path: /^\/contacts\/([^/]+)\/log$/, handle: logOn("contact"), big: true },
   { path: /^\/tasks\/([^/]+)\/complete$/, handle: complete },
   { path: /^\/tasks\/([^/]+)\/snooze$/, handle: snooze },
+  { path: /^\/tasks\/([^/]+)\/edit$/, handle: editTask, big: true },
 ];
 

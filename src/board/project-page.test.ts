@@ -164,7 +164,7 @@ test("Add the task calls add_task with the project, and a missing title is a 422
   const before = await auditCount(db);
   const refused = await posted(db, "/projects/pj_retro/tasks", { title: "", "due.date": "2026-11-26" });
   assert.equal(refused.res.status, 422);
-  assert.match(refused.body, /Say in a few words what to do\./);
+  assert.match(refused.body, /Give the task a title\./);
   assert.match(refused.body, /value="2026-11-26"/);
   assert.equal(await auditCount(db), before);
 });
