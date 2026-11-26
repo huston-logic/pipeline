@@ -43,14 +43,13 @@ test("a new project task goes last among its siblings, per project and per paren
   assert.equal(await nextPosition(db, "pj_a", b), 1);
 });
 
-test("a sub-task gets the parent's project and person and no deal, at any depth", async () => {
+test("a sub-task gets the parent's project and person and no deal, down to the third level", async () => {
   const db = await setup();
   const a = await top(db, "A");
   const a1 = await sub(db, a, "A1");
   const a11 = await sub(db, a1, "A11");
-  const a111 = await sub(db, a11, "A111");
-  const made = await row(db, a111);
-  assert.deepEqual([made?.project_id, made?.contact_id, made?.deal_id, made?.parent_id], ["pj_a", "ct_seed01", null, a11]);
+  const made = await row(db, a11);
+  assert.deepEqual([made?.project_id, made?.contact_id, made?.deal_id, made?.parent_id], ["pj_a", "ct_seed01", null, a1]);
   assert.match((await addTask(ctxFor(db), { parent: a, title: "Plain" })).summary, /^Added task "Plain" for "Retrofit"/);
   const internal = await top(db, "Internal", "pj_b");
   const child = await row(db, await sub(db, internal, "Child"));

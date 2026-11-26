@@ -246,6 +246,8 @@ export type TaskRow = {
   work_type_id?: string | null;
   contact_id: string | null;
   title: string;
+  /** Steps and detail (migration 0026), 1 to 10,000 characters with line breaks, else null. */
+  description?: string | null;
   due_at: string | null;
   done_at: string | null;
   snoozed_until: string | null;
@@ -489,6 +491,8 @@ export type TemplateTaskRow = {
   position: number;
   /** 1 to 200 characters on one line. */
   title: string;
+  /** Steps and detail (migration 0026), 1 to 10,000 characters with line breaks, else null. */
+  description?: string | null;
   /** Days after the project's start, 0 to 3650, or null. */
   due_days: number | null;
   work_type_id: string | null;

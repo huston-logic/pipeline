@@ -1078,6 +1078,51 @@ test("0025 from the previous version: settings keep their values and approval st
   assert.throws(() => db.exec("UPDATE settings SET ai_approval = NULL"), /NOT NULL/);
 });
 
+test("0026 adds task and template task descriptions: old rows start empty, the column enforces 1 to 10,000 characters", async () => {
+  const db = new SqliteD1();
+  await applyMigrations(db, 25);
+  applySqlFile(db, "seed/defaults.sql");
+  db.exec(`INSERT INTO tasks (id, title) VALUES ('tk_old', 'Buy ink');
+    INSERT INTO project_templates (id, name) VALUES ('tp_a', 'Launch');
+    INSERT INTO template_tasks (id, template_id, position, title) VALUES ('tt_a', 'tp_a', 1, 'Plan')`);
+
+  assert.deepEqual(await applyMigrations(db, 26), ["0026_task_descriptions.sql"]);
+
+  assert.equal((await db.prepare("SELECT description FROM tasks WHERE id = 'tk_old'").first<string | null>("description")), null);
+  assert.equal((await db.prepare("SELECT description FROM template_tasks WHERE id = 'tt_a'").first<string | null>("description")), null);
+  db.exec("UPDATE tasks SET description = 'a' || char(10) || 'b'; UPDATE template_tasks SET description = 'a'");
+  db.exec("UPDATE tasks SET description = NULL");
+  for (const table of ["tasks", "template_tasks"]) {
+    assert.throws(() => db.exec(`UPDATE ${table} SET description = ''`), /CHECK/, table);
+    assert.throws(() => db.exec(`UPDATE ${table} SET description = hex(zeroblob(5001))`), /CHECK/, table);
+  }
+  assert.deepEqual((await db.prepare("PRAGMA foreign_key_check").all()).results, []);
+});
+
+test("0026 adds the title line to an unchanged capture document and keeps an edited one, the defaults say the same", async () => {
+  const text = (d: SqliteD1) => d.prepare("SELECT markdown FROM rulebook WHERE name = 'capture'").first<string>("markdown");
+  const unchanged = new SqliteD1();
+  await applyMigrations(unchanged, 25);
+  const old = await text(unchanged);
+  assert.deepEqual(await applyMigrations(unchanged, 26), ["0026_task_descriptions.sql"]);
+  const fresh = new SqliteD1();
+  await applyMigrations(fresh, 26);
+  applySqlFile(fresh, "seed/defaults.sql");
+  assert.equal(await text(unchanged), await text(fresh));
+  assert.notEqual(await text(unchanged), old);
+  assert.match(
+    String(await text(unchanged)),
+    /- Keep a task's title short, about 80 characters at most, and put steps and detail in its description\.\n\n## Planning a project/,
+  );
+
+  const edited = new SqliteD1();
+  await applyMigrations(edited, 25);
+  edited.exec("UPDATE rulebook SET markdown = markdown || char(10) || 'Also: my own line.', version = 3 WHERE name = 'capture'");
+  const before = await snapshot(edited, ["rulebook"]);
+  await applyMigrations(edited, 26);
+  assert.deepEqual(await snapshot(edited, ["rulebook"]), before);
+});
+
 /**
  * Fake rows for every table, with only the columns the table had when it was created, so they load at any later
  * version. A migration that adds a table must add its rows here (the test below fails until it does).
@@ -1148,6 +1193,7 @@ const FAKE_ROWS: Record<string, string> = {
 const MEANT_TO_CHANGE: Record<string, { table: string; row: (row: Record<string, unknown>) => boolean; columns: string[] }[]> = {
   "0012_leads_rulebook.sql": [{ table: "rulebook", row: (row) => row.name === "leads", columns: ["markdown", "version", "updated_at"] }],
   "0023_capture_plans.sql": [{ table: "rulebook", row: (row) => row.name === "capture", columns: ["markdown", "version", "updated_at"] }],
+  "0026_task_descriptions.sql": [{ table: "rulebook", row: (row) => row.name === "capture", columns: ["markdown", "version", "updated_at"] }],
 };
 
 /** Tables that hold no rows between batches or belong to SQLite or wrangler. */

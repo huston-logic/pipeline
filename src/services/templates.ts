@@ -7,9 +7,10 @@ import { newId } from "../ids.ts";
 import { type ChangeInput, type ChangeResult, commitChange, type Ctx, isTemplateNameFailure, needsBulk, type RowChange, updatedRow } from "./change.ts";
 import { rowLabel, short } from "./describe.ts";
 import { UserError } from "./errors.ts";
-import { clean } from "./input.ts";
+import { clean, taskDescription } from "./input.ts";
 import { sourceOf, type Source, templateById, templateTaskById, templateTasksOf, withPlanned } from "./lookup.ts";
 import { requireProjects, requireTimeTracking } from "./settings.ts";
+import { listLevels, MAX_TASK_LEVEL, TOO_DEEP } from "./task-depth.ts";
 import { checkTree } from "./task-plan.ts";
 import { findWorkType } from "./work-types.ts";
 
@@ -20,6 +21,8 @@ const DUE_DAYS_MAX = 3650;
 
 export interface TemplateTaskInput {
   title: string;
+  /** Steps and detail, at most 10,000 characters. */
+  description?: string;
   /** Days after the project's start, 0 to 3650. */
   dueDays?: number;
   /** A work type's id or name; needs time tracking on. */
@@ -152,6 +155,7 @@ async function taskRowsFor(ctx: Ctx, templateId: string, items: readonly Templat
   const known = new Map<string, string>();
   const next = new Map<string | null, number>();
   const rows: TemplateTaskRow[] = [];
+  if (listLevels(items).some((level) => level > MAX_TASK_LEVEL)) throw new UserError(TOO_DEEP);
   for (const [i, item] of items.entries()) {
     let workType: string | null = null;
     if (item.workType !== undefined) {
@@ -169,6 +173,7 @@ async function taskRowsFor(ctx: Ctx, templateId: string, items: readonly Templat
       parent_id: parent,
       position,
       title,
+      description: taskDescription(item.description),
       due_days: item.dueDays === undefined ? null : checkDueDays(item.dueDays),
       work_type_id: workType,
       archived: 0,
@@ -250,16 +255,25 @@ export async function updateTemplate(
   return { ...result, templateId: before.id };
 }
 
-const lastPosition = (tasks: TemplateTaskRow[], parent: string | null) =>
+/** A template task's level: 1 at the top, one more for each parent above it. */
+function templateLevel(tasks: readonly TemplateTaskRow[], id: string): number {
+  const byId = new Map(tasks.map((task) => [task.id, task]));
+  let level = 1;
+  for (let at = byId.get(id)?.parent_id; at != null && level <= tasks.length; at = byId.get(at)?.parent_id) level += 1;
+  return level;
+}
+
+const lastPosition =(tasks: TemplateTaskRow[], parent: string | null) =>
   tasks.filter((t) => t.parent_id === parent).reduce((most, t) => Math.max(most, t.position), 0);
 
 export async function addTemplateTask(
   ctx: Ctx,
   templateRef: string,
-  input: { title: string; dueDays?: number; workType?: string; parent?: string },
+  input: { title: string; description?: string; dueDays?: number; workType?: string; parent?: string },
 ): Promise<ChangeResult & { taskId: string }> {
   const template = await findLiveTemplate(ctx, templateRef);
   const title = checkText(input.title, "task title");
+  const description = taskDescription(input.description);
   const dueDays = input.dueDays === undefined ? null : checkDueDays(input.dueDays);
   const work = input.workType === undefined ? null : await workTypeId(ctx, input.workType);
   const tasks = await templateTasksOf(ctx, template.id);
@@ -268,12 +282,14 @@ export async function addTemplateTask(
   if (parentId !== null && !tasks.some((t) => t.id === parentId)) {
     throw new UserError(`No task "${short(parentId, 40)}" in ${templateText(template)} to put this under. Use get_template to find the parent's id.`);
   }
+  if (parentId !== null && templateLevel(tasks, parentId) >= MAX_TASK_LEVEL) throw new UserError(TOO_DEEP);
   const row: TemplateTaskRow = {
     id: newId("tt"),
     template_id: template.id,
     parent_id: parentId,
     position: lastPosition(tasks, parentId) + 1,
     title,
+    description,
     due_days: dueDays,
     work_type_id: work,
     archived: 0,

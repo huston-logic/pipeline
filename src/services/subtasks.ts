@@ -9,8 +9,10 @@ import { siblingTasks, sourceOf, type Source, taskById, withPlanned } from "./lo
 import { checkGiven, type ProjectLinks, projectLinks } from "./project-links.ts";
 import { findProject } from "./projects.ts";
 import { requireProjects } from "./settings.ts";
+import { MAX_TASK_LEVEL, taskLevel, TOO_DEEP } from "./task-depth.ts";
 
 export { nextPosition } from "./lookup.ts";
+export { listLevels, MAX_TASK_LEVEL, TOO_DEEP, taskLevel } from "./task-depth.ts";
 
 const taskName = (task: TaskRow) => rowLabel("tasks", task as Row);
 
@@ -22,7 +24,7 @@ export async function parentLinks(
   src: Source,
   parentId: string,
   given: { project?: string | undefined; dealId?: string | undefined; contactId?: string | undefined },
-): Promise<{ parent: TaskRow; links: ProjectLinks }> {
+): Promise<{ parent: TaskRow; links: ProjectLinks; level: number }> {
   await requireProjects(src);
   const id = parentId.trim();
   const parent = id === "" ? null : await taskById(src, id);
@@ -38,7 +40,9 @@ export async function parentLinks(
     throw new UserError("A sub-task is on its parent's project. Leave out the project, or give the parent's own.");
   }
   await checkGiven(src, links, given);
-  return { parent, links };
+  const level = await taskLevel(src, parent.id);
+  if (level >= MAX_TASK_LEVEL) throw new UserError(TOO_DEEP);
+  return { parent, links, level };
 }
 
 /** Every task under this one, at every level, in tree order (siblings by position). Empty for a task not on a project. */

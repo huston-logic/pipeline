@@ -127,9 +127,13 @@ test("the tree shows Day N, nests to three levels, and notes the levels below", 
     { title: "Top", dueDays: 0 },
     { title: "Middle", dueDays: 7, under: 1 },
     { title: "Third", under: 2 },
-    { title: "Fourth", under: 3 },
-    { title: "Fifth", under: 4 },
   ]);
+  // Older templates may hold deeper tasks (the services no longer make them).
+  db.exec(
+    `INSERT INTO template_tasks (id, template_id, parent_id, position, title) VALUES
+      ('tt_fourth', '${made.templateId}', '${made.taskIds[2]}', 1, 'Fourth'),
+      ('tt_fifth', '${made.templateId}', 'tt_fourth', 1, 'Fifth')`,
+  );
   const { body } = await load(devEnv(db), `/templates/${made.templateId}`);
   assert.equal(count(body, '<ul class="task-tree">'), 3);
   assert.match(body, /Day 0/);

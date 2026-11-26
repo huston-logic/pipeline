@@ -181,11 +181,13 @@ export const addTaskInput = z.strictObject({
   project: projectRef().optional(),
   parent: z.string().min(1).max(100).describe("A sub-task: the id (tk_...) of an open task on a project to put this under. The project and person are the parent's.").optional(),
   title: shortText("What to do, in a few words."),
+  description: longText("Steps and detail, at most 10,000 characters. Keep the title short and put the detail here.").optional(),
   dueAt: when("When it is due").optional(),
 });
 
 export const taskPlanItemInput = z.strictObject({
   title: shortText("What to do, in a few words."),
+  description: longText("Steps and detail, at most 10,000 characters. Keep the title short and put the detail here.").optional(),
   due: when("When it is due").optional(),
   dueDays: z.number().int().min(0).max(3650).describe("Days after the project's start date; use this or due.").optional(),
   under: z.number().int().describe("The 1-based number of an earlier task in this list to put this under.").optional(),

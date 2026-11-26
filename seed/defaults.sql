@@ -63,6 +63,7 @@ What to do when I ramble: a voice note, or a list of things to do.
 - Stage moves go on the deal.
 - Words like call, email, send, buy are tasks; ''she said'', ''we talked'' are notes; ''move to'', ''booked'' are stage moves.
 - Leave out anything you are not sure of and ask me about it after showing the list.
+- Keep a task''s title short, about 80 characters at most, and put steps and detail in its description.
 
 ## Planning a project
 

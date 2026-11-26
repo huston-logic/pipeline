@@ -105,6 +105,7 @@ const VARIANTS: Record<ProposalActionName, Variant[]> = {
     { input: { deal: "dl_seed01", title: "Send the examples", dueAt: "2026-11-21" } },
     { input: { contact: "ct_seed06", title: "Find the card" } },
     { input: { project: "pj_seed01", title: "Order anchors", dueAt: "2026-11-21" } },
+    { input: { project: "pj_seed01", title: "Order bolts", description: "Ask for the stainless ones.\nCheck the length." } },
     { input: { parent: "tk_proj", title: "Check the anchors", dueAt: "2026-11-22" }, setup: ENTRY_ON_PROJECT },
   ],
   complete_task: [
@@ -163,7 +164,7 @@ const VARIANTS: Record<ProposalActionName, Variant[]> = {
       input: {
         project: "Retrofit",
         under: "tk_proj",
-        tasks: [{ title: "Survey", dueDays: 3, workType: "Design" }, { title: "Measure", under: 1, due: "2026-12-05" }, { title: "Order" }],
+        tasks: [{ title: "Survey", dueDays: 3, workType: "Design", description: "Bring a tape." }, { title: "Measure", under: 1, due: "2026-12-05" }, { title: "Order" }],
       },
       setup: `${ENTRY_ON_PROJECT}; UPDATE projects SET start_at = '2026-12-01T08:00:00.000Z' WHERE id = 'pj_seed01'`,
     },
