@@ -3,8 +3,9 @@
 // as propose_changes would and answers the same way, so nothing changes until the owner's yes reaches apply_changes.
 // A small change under Apply small changes is written at once, as one audited change (actor ai, the tool's name), and
 // answers the service's summary line. While the owner approves on the board only (decision 0061) nothing is small:
-// every action is proposed, whatever "AI edits" says. Settings, rules, stages, fields, statuses, views, the rulebook, imports and
-// undo_change don't come here: they write at once as before.
+// every action is proposed, whatever "AI edits" says. Settings, stages, fields, statuses, views, the rulebook, imports and
+// undo_change don't come here: they write at once as before. The rule tools come through ruleWrite below: at once in
+// chat, a proposal while the owner approves on the board only.
 import type { CallToolResult } from "@modelcontextprotocol/server";
 import { parseOwnerEmailsVar } from "../auth/owners.ts";
 import { UserError } from "../services/errors.ts";

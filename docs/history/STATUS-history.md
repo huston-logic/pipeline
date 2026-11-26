@@ -199,6 +199,38 @@ Changes to scope, product or a decision since run 3, one line each:
 
 # History (kept from earlier runs; facts re-checked on 2026-11-23)
 
+## Run 10, Projects, finished (2026-11-25)
+
+Plan: `docs/superpowers/plans/2026-11-25-run10-projects-finished.md`. Design: `docs/superpowers/specs/2026-11-25-projects-finished-design.md`. Decisions 0056 to 0060, migrations 0021 to 0025. The brief was complete. No new dependencies. Run 9 is in the history file.
+
+| PR | What | Work window | Commits | Checks | CI |
+|---|---|---|---|---|---|
+| A #87 | projects shaped by the owner | 09:37 to 10:33 (56 min, with design and plan) | 12 | check:fast per commit (3 to 11 s); full check about 30 s before push | merged about 50 min after opening (6 of 6) |
+| B #88 | sub-tasks | 10:33 to 10:54 (21 min) | 7 | same | merged (6 of 6) |
+| C #89 | AI task plans | 10:54 to about 11:15 | 3 | same | merged (6 of 6) |
+| D #90 | project templates | about 11:15 to 11:39 | 8 | same | merged (6 of 6) |
+| E (this PR) | approve on the board, closing | 11:39 to open (see the PR) | see the PR | same | see the PR |
+
+Each PR after A was built on the previous tip while CI ran, then rebased onto main (no force push).
+
+Judgment calls (one line each):
+
+- The AI app may tighten "Where AI changes are approved" to the board but never loosen it (ruling 15).
+- Board-only approval leaves "Apply small changes" as it is (16).
+- Under the board setting the AI's `undo_change` refuses for every change, with a link to /changes.
+- The AI may not loosen `aiEdits` to apply_small while the setting is the board.
+- `apply_import` over MCP refuses with the board import link.
+- The setting is read through the request memo; a test keeps a maximum-size propose and apply at 40 D1 calls or fewer.
+- The board approves as the owner (tool `apply_changes`); Discard drops a proposal and is not audited.
+- A template copy keeps no link back (0059 ruling 17). The CLAUDE.md sentence about clients inviting your wrangler user was fixed.
+
+Queued:
+
+- A crafted board POST can move a done top-level project task; past the 500-task read a move may swap with an unshown one.
+- A sub-task added between the read and the write of a parent's completion stays open.
+- The get_project answer carries the task tree beside the flat open and done lists (about twice the size).
+- The left-out count for a saved template rides in a display-only field as text.
+
 ## Run 9, Projects (2026-11-25)
 
 Plan: `docs/superpowers/plans/2026-11-25-run9-projects.md`. Design: `docs/superpowers/specs/2026-11-25-projects-design.md`. Decision 0055, migration 0020.

@@ -153,9 +153,9 @@ test("on the board only every rule tool proposes in plain words and writes nothi
   const audits = await count("audit_log");
   const calls: [string, Record<string, unknown>, RegExp][] = [
     ["add_rule", { type: "gone_quiet", days: 9 }, /Add\n- Rule: Flag any open deal with no contact logged for 9 days in the daily brief\./],
-    ["update_rule", { rule: "ru_seed01", days: 8 }, /Update\n- Rule ru_seed01: now Flag any open deal with no activity for 5 days in the daily brief\. -> Flag any open deal with no contact logged for 8 days in the daily brief\./],
+    ["update_rule", { rule: "ru_seed01", days: 8 }, /Update\n- Rule ru_seed01: now Flag any open deal with no contact logged for 5 days in the daily brief\. -> Flag any open deal with no contact logged for 8 days in the daily brief\./],
     ["pause_rule", { rule: "ru_seed01" }, /- Rule ru_seed01: paused: Flag any open deal/],
-    ["resume_rule", { rule: "ru_seed02" }, /- Rule ru_seed02: resumed: When a deal has been in Call done for 2 days/],
+    ["resume_rule", { rule: "ru_seed02" }, /- Rule ru_seed02: resumed: When a deal has sat in Call done for 2 days/],
   ];
   for (const [tool, args, text] of calls) {
     const answer = await okText(c, tool, args);
@@ -216,7 +216,7 @@ test("a maximum-size rule list makes at most 40 D1 calls to propose and to apply
   const c = await connectInMemory(createMcpServer({ db, now: () => NOW, origin: ORIGIN }));
   await ok(c, "update_settings", { approveIn: "board" });
   const actions = [
-    ...Array.from({ length: 5 }, (_, i) => ({ action: "add_rule", type: "gone_quiet", days: i + 10 })),
+    ...Array.from({ length: 7 }, (_, i) => ({ action: "add_rule", type: "gone_quiet", days: i + 10 })),
     { action: "update_rule", rule: "ru_seed01", days: 4 },
     { action: "pause_rule", rule: "ru_seed01" },
     { action: "resume_rule", rule: "ru_seed02" },
@@ -227,4 +227,13 @@ test("a maximum-size rule list makes at most 40 D1 calls to propose and to apply
   db.reset();
   await applyChanges({ db, now: NOW, actor: "owner", tool: "apply_changes" }, (proposed.data as { proposal: string }).proposal, { extraOwnerEmails: [] });
   assert.ok(db.calls <= 40, `apply made ${db.calls} D1 calls`);
+});
+
+test("the list shows what a rule will do from its settings, and the AI's own description only beside it when it differs", async () => {
+  const { c } = await setup();
+  await ok(c, "update_settings", { approveIn: "board" });
+  const added = await okText(c, "add_rule", { type: "gone_quiet", days: 1, description: "Flag deals quiet for 30 days" });
+  assert.match(added.headline, /- Rule: Flag any open deal with no contact logged for 1 day in the daily brief\.; described as Flag deals quiet for 30 days/);
+  const changed = await okText(c, "update_rule", { rule: "ru_seed01", days: 2, description: "Flag deals quiet for 30 days" });
+  assert.match(changed.headline, /- Rule ru_seed01: now Flag any open deal with no contact logged for 5 days in the daily brief\. -> Flag any open deal with no contact logged for 2 days in the daily brief\.; described as .* -> Flag deals quiet for 30 days/);
 });

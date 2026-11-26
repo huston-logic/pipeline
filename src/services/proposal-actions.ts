@@ -267,7 +267,7 @@ export function checkActions(actions: readonly unknown[]): RecordAction[] {
     if (!parsed.success) {
       const name = (raw as { action?: unknown } | null)?.action;
       const known = PROPOSAL_ACTIONS.find((action) => action === name);
-      if (known === undefined) throw new UserError(`Action ${n} needs "action": one of ${PROPOSAL_ACTIONS.join(", ")}.`);
+      if (known === undefined) throw new UserError(`Action ${n} needs "action": one of ${RECORD_ACTIONS.join(", ")}.`);
       throw new UserError(`Action ${n}: ${inputErrorMessage(known, ACTION_SCHEMAS[known], parsed.error.issues, raw)}`);
     }
     const action = parsed.data;
