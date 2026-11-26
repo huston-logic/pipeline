@@ -214,7 +214,8 @@ open its connector settings, remove the copy's connector and add it again (or st
   list as one change, and "Undo that" takes back all of it. A list is good for 2 hours.
 - **Apply small changes.** If you want logged calls, notes and ticked-off tasks to go straight in, say "Use Apply small
   changes." (and "Go back to Review first." to undo that). That covers a logged call or note, a ticked task, starting a
-  timer and stopping one without a next-step date; everything else still waits for your yes.
+  timer and stopping one without a next-step date; everything else still waits for your yes. (If you approve on the board
+  only, nothing goes straight in, whatever this says.)
 - **To-dos.** A to-do no longer needs a person or a deal ("Buy printer ink"). Today now shows your to-dos as a list you
   can sort and filter, with a box to add one (up to 50 show per list, with a "Showing 50 of N" line).
 - **Time tracking is off until you turn it on.** No timer or time pages show before that.
@@ -352,6 +353,10 @@ no cron change.
 
 Open Pending changes (under More) and choose "On the board only". Then the AI app can no longer apply a list, apply an
 import or undo a change. It shows a board link instead. Only the board can switch the setting back to "In chat".
+
+From run 11 on, "On the board only" means nothing applies at once. Small changes (a logged call or note, a ticked task,
+a timer) wait there too, even if you turned on "Apply small changes" earlier, and so do changes to your rules (add,
+change, pause, resume). Each shows on Pending changes in plain words. "In chat" works as before.
 
 ## Before a release that has a new migration
 

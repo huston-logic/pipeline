@@ -542,7 +542,7 @@ export function registerReadTools(server: McpServer, deps: ToolDeps): void {
       description:
         "The owner's settings: timezone, the daily brief's hour, address and on/off switch, when the last brief was " +
         "composed and when one last went out by email, the board's business name and accent colour (null means the " +
-        "defaults), AI edits (review_first or apply_small: whether small record changes apply at once), and the owner emails that may sign in (shown here, never changeable through this server; the " +
+        "defaults), AI edits (review_first or apply_small: whether small record changes apply at once, unless approveIn is board), and the owner emails that may sign in (shown here, never changeable through this server; the " +
         "brief address must be one of them).",
       input: z.strictObject({}),
       async run(_args, { db }) {

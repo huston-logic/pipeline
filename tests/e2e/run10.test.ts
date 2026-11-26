@@ -1,4 +1,4 @@
-// Run 10 "Projects, finished": acceptance sentences 39 to 48 over MCP against the real Worker and the fake seed.
+// Run 10 "Projects, finished": acceptance sentences 39 to 48 (and run 11's 49 and 50, which also need approval on the board) over MCP against the real Worker and the fake seed.
 // The seed has projects on, pj_seed01 "Storage building B retrofit" (person ct_seed07, tasks tk_seed16 to tk_seed18) and the
 // templates tp_seed01 "Website build" and tp_seed02. The tests run in order and share one database: 47 and 48 come last
 // because once approval is on the board the AI app cannot undo or apply anything.
@@ -187,5 +187,21 @@ describe("the run 10 sentences", () => {
   test('48. "Undo that."', async () => {
     assert.match(await fails(client, "undo_change", { changeId: settingsChange }), /\/changes/);
     assert.equal(((await ok(client, "get_settings")).data as { approveIn: string }).approveIn, "board");
+  });
+  test('49. "Pause the quiet-deals rule." (approval on the board only)', async () => {
+    const before = ((await ok(client, "list_rules")).data as { rules: { id: string; active: boolean }[] }).rules.find((rule) => rule.id === "ru_seed01");
+    assert.equal(before?.active, true);
+    const proposed = await okText(client, "pause_rule", { rule: "ru_seed01" });
+    assert.match(proposed.headline, /Approve on the board: .*\/pending\./);
+    assert.match(proposed.headline, /Rule ru_seed01: paused: /);
+    const after = ((await ok(client, "list_rules")).data as { rules: { id: string; active: boolean }[] }).rules.find((rule) => rule.id === "ru_seed01");
+    assert.equal(after?.active, true, "nothing was written");
+    const { proposal } = proposed.data as { proposal: string };
+    assert.match(await fails(client, "apply_changes", { proposal }), /\/pending/);
+  });
+
+  test('50. "Log that I called Pat." (approval on the board only)', async () => {
+    const proposed = await okText(client, "log_activity", { deal: "dl_seed01", type: "call", summary: "Rang Pat about the quote" });
+    assert.match(proposed.headline, /Approve on the board: .*\/pending\./);
   });
 });

@@ -8,6 +8,7 @@ import type {
   DealRow,
   ProjectRow,
   ProjectTemplateRow,
+  RuleRow,
   StageKind,
   StageRow,
   TaskRow,
@@ -35,7 +36,7 @@ export function sourceOf(src: Source): { db: Db; plan: PlanCollector | undefined
   return "prepare" in src ? { db: src, plan: undefined } : { db: src.db, plan: src.plan };
 }
 
-type ById = "contacts" | "deals" | "tasks" | "time_entries" | "work_types" | "projects" | "project_templates" | "template_tasks";
+type ById = "contacts" | "deals" | "tasks" | "time_entries" | "work_types" | "projects" | "project_templates" | "template_tasks" | "rules";
 
 async function rowById<T>(src: Source, table: ById, id: string): Promise<T | null> {
   const { db, plan } = sourceOf(src);
@@ -56,6 +57,7 @@ export const timeEntryById = (src: Source, id: string) => rowById<TimeEntryRow>(
 export const workTypeById = (src: Source, id: string) => rowById<WorkTypeRow>(src, "work_types", id);
 export const projectById = (src: Source, id: string) => rowById<ProjectRow>(src, "projects", id);
 export const templateById = (src: Source, id: string) => rowById<ProjectTemplateRow>(src, "project_templates", id);
+export const ruleById = (src: Source, id: string) => rowById<RuleRow>(src, "rules", id);
 export const templateTaskById = (src: Source, id: string) => rowById<TemplateTaskRow>(src, "template_tasks", id);
 
 /** A template's live tasks in tree order (siblings by position, parents before children), as the plan leaves them. */

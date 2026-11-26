@@ -384,3 +384,15 @@ the board the AI app can no longer apply or undo.
 - Tools: `undo_change`, `get_settings`.
 - Asserts: while approval is on the board, undo over MCP is refused with a link to `/changes`, and the setting stays.
 - Test: `48. "Undo that."`
+
+## 49. Pause the quiet-deals rule, with approval on the board only.
+- Tools: `pause_rule`, `list_rules`, `apply_changes`.
+- Asserts: the rule tool answers a proposal with a board link and the rule's sentence ("Rule ru_...: paused: ..."); the rule stays
+  active; the AI app's `apply_changes` is refused with a link to `/pending`. With approval in chat the same tool pauses at once.
+- Test: `49. "Pause the quiet-deals rule." (approval on the board only)`
+
+## 50. Log that I called Pat, with approval on the board only.
+- Tools: `log_activity`.
+- Asserts: a logged call is a proposal with a board link and writes nothing. The unit tests (`src/mcp/approval.test.ts`)
+  also turn on Apply small changes first and show it makes no difference; in chat it still applies at once.
+- Test: `50. "Log that I called Pat." (approval on the board only)`

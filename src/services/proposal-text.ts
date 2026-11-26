@@ -3,13 +3,14 @@
 // tasks "Tasks", logged activities "Notes" (a deal's stage move is shown on its Update line), time entries "Time".
 // Keys become the owner's labels; outside text is never shown: a record named from outside is named by id
 // (labels.ts), and an old value from outside reads "(text from outside)".
-import type { ContactRow, Db, DealRow, ProjectRow, TaskRow } from "../db/db.ts";
+import type { ContactRow, Db, DealRow, ProjectRow, RuleType, TaskRow } from "../db/db.ts";
 import { formatLocal, localWhen } from "../time.ts";
 import type { ChangeInput, ChangeTable, Row } from "./change.ts";
 import { changedColumns, oneLine, rowKey } from "./change.ts";
 import { capitalize, columnLabel, joinAnd, rowLabel, short } from "./describe.ts";
 import { activityText, contactName, dealLabel, dealTitle, isTrusted, projectTitle, taskTitle, untrustedFields } from "./labels.ts";
 import { parseObject, stageLabels } from "./lookup.ts";
+import { describeRule, parseRuleParams } from "./rules.ts";
 import { fieldDefRows, memoWorkType, type Reader, readerOf } from "./memo.ts";
 import { LEAD } from "./person-move.ts";
 import { projectStatusLabels } from "./project-statuses.ts";
@@ -560,6 +561,40 @@ async function timeItem(names: Names, id: string, before: Row | null, after: Row
   return fields.length === 0 ? null : { record, id, fields };
 }
 
+/**
+ * A rule as it will behave: the sentence built from its stored settings (stage, days, status, title, due), never from the
+ * description the AI may have written beside them (decision 0061).
+ */
+function ruleBehaviour(names: Names, row: Row): string {
+  const params = parseRuleParams({ type: row.type as RuleType, params: String(row.params) });
+  if (params === null) return "(its settings can't be read)";
+  const stage = "stage" in params ? (names.stages.get(params.stage) ?? params.stage) : null;
+  return short(describeRule(params, stage, names.statuses), SHOWN_MAX);
+}
+
+/** The rule's stored description, as the Rules page shows it. */
+const ruleDescription = (names: Names, row: Row) => short(cell(names, "rules", row, "description", row.description), SHOWN_MAX);
+
+/**
+ * A rule (decision 0061). The line says what the rule will do, built from its settings; the description beside it is
+ * the AI's own wording, shown only when it differs, so a description can't stand in for the settings. Paused or resumed
+ * reads "paused: <behaviour>"; a change reads "now <was> -> <is>".
+ */
+function ruleItem(names: Names, id: string, before: Row | null, after: Row): Item {
+  show(names, "rules", id, ["type", "params", "description", "active", "created_by"]);
+  const now = ruleBehaviour(names, after);
+  const wording = (was: string | null): Item["fields"] => {
+    const text = ruleDescription(names, after);
+    return text === now || text === was ? [] : [{ field: "described as", ...(was === null ? {} : { from: was }), to: text }];
+  };
+  if (before === null) return { record: "Rule", id, fields: [{ field: "", to: now }, ...wording(null)] };
+  if (before.active !== after.active) return { record: `Rule ${id}`, id, fields: [{ field: "", to: `${after.active === 1 ? "resumed" : "paused"}: ${now}` }] };
+  const was = ruleBehaviour(names, before);
+  const fields: Item["fields"] = was === now ? [] : [{ field: "now", from: was, to: now }];
+  if (before.description !== after.description) fields.push(...wording(ruleDescription(names, before)));
+  return { record: `Rule ${id}`, id, fields: fields.length > 0 ? fields : [{ field: "", to: "no change you can see" }] };
+}
+
 /** Every column a change writes that the list must show: all but NOT_SHOWN; for an added row, those it sets. */
 function writtenColumns(before: Row | null, after: Row): string[] {
   const columns = before === null ? Object.keys(after).filter((column) => after[column] !== null && after[column] !== "") : changedColumns(before, after);
@@ -656,6 +691,10 @@ export async function shownList(src: Reader, input: ChangeInput, tz: string, now
       }
       const fields = await updatedFields(names, table, id, before, after);
       if (fields.length > 0) list.update.push({ record, id, fields });
+      continue;
+    }
+    if (table === "rules") {
+      (before === null ? list.add : list.update).push(ruleItem(names, id, before, after));
       continue;
     }
     if (table === "projects") {

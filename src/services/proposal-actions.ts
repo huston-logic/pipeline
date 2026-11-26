@@ -12,8 +12,12 @@ import {
   addProjectInput,
   addTaskInput,
   addTaskPlanInput,
+  addRuleInput,
   addTemplateInput,
   completeTaskInput,
+  pauseRuleInput,
+  resumeRuleInput,
+  updateRuleInput,
   saveProjectAsTemplateInput,
   updateTemplateInput,
   logActivityInput,
@@ -41,6 +45,7 @@ import { addLead, qualifyLead, returnToLead } from "./leads.ts";
 import { type Match, MATCH_MAX, matchAll } from "./name-match.ts";
 import { readerOf, type Reader } from "./memo.ts";
 import { addProject, updateProject } from "./projects.ts";
+import { addRule, pauseRule, resumeRule, updateRule } from "./rules.ts";
 import { requireProjects } from "./settings.ts";
 import { saveProjectAsTemplate } from "./save-template.ts";
 import { addTaskPlan } from "./task-plan.ts";
@@ -76,7 +81,26 @@ export const RECORD_ACTIONS = [
 
 export type RecordActionName = (typeof RECORD_ACTIONS)[number];
 
-const named = <A extends RecordActionName>(action: A) =>
+/**
+ * The rule tools a proposal can hold (decision 0061). They are not record tools: while the owner approves in chat they
+ * write at once, as before, and propose_changes refuses them. Only while the owner approves on the board only do they
+ * wait there as proposal actions.
+ */
+export const RULE_ACTIONS = ["add_rule", "update_rule", "pause_rule", "resume_rule"] as const;
+
+export type RuleActionName = (typeof RULE_ACTIONS)[number];
+
+export const PROPOSAL_ACTIONS = [...RECORD_ACTIONS, ...RULE_ACTIONS] as const;
+
+export type ProposalActionName = RecordActionName | RuleActionName;
+
+/** The most rule actions one list holds: each reads its rule on its own, and a list stays within the D1 call budget. */
+export const RULE_ACTIONS_MAX = 10;
+
+export const isRuleAction = (action: { action: string }): action is { action: RuleActionName } =>
+  (RULE_ACTIONS as readonly string[]).includes(action.action);
+
+const named = <A extends ProposalActionName>(action: A) =>
   z.literal(action).describe(`The record tool this action is: ${action}, with that tool's inputs.`);
 
 /** Each action's schema: the tool's input plus `action`. */
@@ -102,7 +126,11 @@ const ACTION_SCHEMAS = {
   add_template: addTemplateInput.extend({ action: named("add_template") }),
   update_template: updateTemplateInput.extend({ action: named("update_template") }),
   save_project_as_template: saveProjectAsTemplateInput.extend({ action: named("save_project_as_template") }),
-} as const satisfies Record<RecordActionName, z.ZodObject>;
+  add_rule: addRuleInput.extend({ action: named("add_rule") }),
+  update_rule: updateRuleInput.extend({ action: named("update_rule") }),
+  pause_rule: pauseRuleInput.extend({ action: named("pause_rule") }),
+  resume_rule: resumeRuleInput.extend({ action: named("resume_rule") }),
+} as const satisfies Record<ProposalActionName, z.ZodObject>;
 
 /** One action: a record tool's input plus `action`, the tool's name (a discriminated union on it). */
 export const recordActionSchema = z.discriminatedUnion("action", [
@@ -127,6 +155,10 @@ export const recordActionSchema = z.discriminatedUnion("action", [
   ACTION_SCHEMAS.add_template,
   ACTION_SCHEMAS.update_template,
   ACTION_SCHEMAS.save_project_as_template,
+  ACTION_SCHEMAS.add_rule,
+  ACTION_SCHEMAS.update_rule,
+  ACTION_SCHEMAS.pause_rule,
+  ACTION_SCHEMAS.resume_rule,
 ]);
 
 export type RecordAction = z.output<typeof recordActionSchema>;
@@ -146,7 +178,7 @@ const TIME_SUBJECT: RefSpec[] = [
 ];
 
 /** The fields of each action that name a record, and whether "@n" may fill them (the action's subject). */
-const REF_FIELDS: Record<RecordActionName, RefSpec[]> = {
+const REF_FIELDS: Record<ProposalActionName, RefSpec[]> = {
   add_lead: [],
   add_deal: [{ field: "contact", kind: "contact", subject: false }],
   add_contact: [],
@@ -188,10 +220,15 @@ const REF_FIELDS: Record<RecordActionName, RefSpec[]> = {
   update_template: [],
   // A project an earlier action adds (with its tasks) may be saved.
   save_project_as_template: [{ field: "project", kind: "project", subject: true }],
+  // A rule is named by its id; no rule is an "@n" (a list never updates a rule it adds).
+  add_rule: [],
+  update_rule: [],
+  pause_rule: [],
+  resume_rule: [],
 };
 
 /** What an action adds (or, for qualify_lead's person, names) that a later "@n" could point at. */
-const ADDS: Partial<Record<RecordActionName, readonly RefKind[]>> = {
+const ADDS: Partial<Record<ProposalActionName, readonly RefKind[]>> = {
   add_lead: ["contact"],
   add_contact: ["contact"],
   add_deal: ["contact", "deal"],
@@ -229,7 +266,7 @@ export function checkActions(actions: readonly unknown[]): RecordAction[] {
     const parsed = recordActionSchema.safeParse(raw);
     if (!parsed.success) {
       const name = (raw as { action?: unknown } | null)?.action;
-      const known = RECORD_ACTIONS.find((action) => action === name);
+      const known = PROPOSAL_ACTIONS.find((action) => action === name);
       if (known === undefined) throw new UserError(`Action ${n} needs "action": one of ${RECORD_ACTIONS.join(", ")}.`);
       throw new UserError(`Action ${n}: ${inputErrorMessage(known, ACTION_SCHEMAS[known], parsed.error.issues, raw)}`);
     }
@@ -246,7 +283,7 @@ export function checkActions(actions: readonly unknown[]): RecordAction[] {
         const which = n > 1 ? ` (@1 to @${n - 1})` : "";
         throw new UserError(`Action ${n} names @${target}, but only an earlier action can be named${which}.`);
       }
-      const earlier = (actions[target - 1] as { action?: RecordActionName }).action;
+      const earlier = (actions[target - 1] as { action?: ProposalActionName }).action;
       const adds = (earlier === undefined ? undefined : ADDS[earlier]) ?? [];
       if (!adds.includes(ref.kind)) {
         if (ref.kind === "deal" && adds.includes("contact")) {
@@ -358,6 +395,7 @@ export type ActionResult = ChangeResult & {
   taskId?: string;
   entryId?: string;
   projectId?: string;
+  ruleId?: string;
   matchedExisting?: boolean;
 };
 
@@ -376,9 +414,9 @@ export function bindAction(action: ResolvedAction, added: readonly ActionResult[
   return copy as RecordAction;
 }
 
-type ActionOf<A extends RecordActionName> = Extract<RecordAction, { action: A }>;
+type ActionOf<A extends ProposalActionName> = Extract<RecordAction, { action: A }>;
 
-function omitAction<A extends RecordActionName>(action: ActionOf<A>): Omit<ActionOf<A>, "action"> {
+function omitAction<A extends ProposalActionName>(action: ActionOf<A>): Omit<ActionOf<A>, "action"> {
   const copy: Partial<ActionOf<A>> = { ...action };
   delete copy.action;
   return copy as Omit<ActionOf<A>, "action">;
@@ -449,6 +487,16 @@ export async function runAction(ctx: Ctx, action: ResolvedAction, _deps: { extra
     }
     case "save_project_as_template":
       return saveProjectAsTemplate(ctx, omitAction(action));
+    case "add_rule":
+      return addRule(ctx, omitAction(action));
+    case "update_rule": {
+      const { rule, ...patch } = omitAction(action);
+      return updateRule(ctx, rule, patch);
+    }
+    case "pause_rule":
+      return pauseRule(ctx, action.rule);
+    case "resume_rule":
+      return resumeRule(ctx, action.rule);
   }
 }
 

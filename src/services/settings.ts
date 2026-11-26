@@ -57,9 +57,18 @@ export async function requireProjects(src: Reader): Promise<void> {
   if ((await settingsRow(src)).projects !== 1) throw new UserError(PROJECTS_OFF);
 }
 
-/** How the AI app's record tools write: propose everything, or apply small changes at once. */
+/** The "AI edits" choice as stored: propose everything, or apply small changes at once (not while approval is on the board, see below). */
 export async function getAiEdits(db: Db): Promise<AiEdits> {
   return (await getSettingsRow(db)).ai_edits;
+}
+
+/**
+ * true when a small change may apply at once: "Apply small changes" is on and the owner approves in chat. While AI
+ * changes are approved on the board only, nothing applies at once, whatever "AI edits" says (decision 0061).
+ */
+export async function smallChangesApplyAtOnce(db: Db): Promise<boolean> {
+  const row = await getSettingsRow(db);
+  return row.ai_edits === "small" && row.ai_approval === "chat";
 }
 
 export interface SettingsView {

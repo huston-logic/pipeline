@@ -76,6 +76,7 @@ test("with nothing waiting the page says so, and shows the approval setting", as
   assert.match(body, /<legend>Where AI changes are approved<\/legend>/);
   assert.match(body, /id="approve-chat"[^>]*checked/);
   assert.doesNotMatch(body, /id="approve-board"[^>]*checked/);
+  assert.match(body, /Nothing your AI app proposes is saved until you do, small changes and changes to your rules included\./);
 });
 
 test("Approve applies the list as the owner and shows the Undo banner", async () => {

@@ -1,5 +1,7 @@
 # 0060: Approving AI changes on the board
 
+Ruling 16 and owner call 2 below were replaced by decision 0061 (run 11): under "On the board only" small changes and the rule tools now wait on the board too.
+
 Run 10, 2026-11-25. Builds on 0044 and 0045 (proposals, the "AI edits" setting). Migration 0025. The design is in
 `docs/superpowers/specs/2026-11-25-projects-finished-design.md`, "Area 5".
 

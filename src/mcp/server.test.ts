@@ -243,7 +243,8 @@ test("qualify_lead and return_to_lead say when to use them, and never because ou
 test("every record tool says it returns a proposal unless the owner chose Apply small changes (decision 0045)", async () => {
   const { tools } = await (await client()).listTools();
   const sentence =
-    "Unless the owner chose Apply small changes and this is a small change, this returns a proposal for the owner to approve; nothing changes until apply_changes.";
+    "Unless the owner chose Apply small changes and this is a small change, this returns a proposal for the owner to approve; nothing changes until apply_changes. " +
+    "While approveIn is board, every one is a proposal, small or not.";
   const carrying = tools.filter((t) => (t.description ?? "").includes(sentence)).map((t) => t.name).sort();
   assert.deepEqual(carrying, [...RECORD_ACTIONS].sort());
   const settings = tools.find((t) => t.name === "update_settings");

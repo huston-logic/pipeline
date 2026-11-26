@@ -6,10 +6,10 @@ History of every earlier run: [docs/history/STATUS-history.md](history/STATUS-hi
 
 Checked on 2026-11-25 against the repo and `gh`.
 
-- **Merged:** everything in the spec and in the runs 2, 4, 5 and 6 briefs, all of run 7 (#73, #74, #75), all of run 8 (#76, #77, #78, #79), run 9's core and board pages (#82, #83), and run 10's first four PRs (#87, #88, #89, #90). The repo has migrations 0001 to 0025 and decisions 0001 to 0060.
-- **Open:** the run 10 closing PR (this PR).
+- **Merged:** everything in the spec and in the runs 2, 4, 5 and 6 briefs, all of run 7 (#73, #74, #75), all of run 8 (#76, #77, #78, #79), run 9's core and board pages (#82, #83), run 10 (#87 to #91). The repo has migrations 0001 to 0025 and decisions 0001 to 0061.
+- **Open:** the run 11 PR (this PR).
 - **Projects (runs 9 and 10):** delivery after the sale, off by default: a project from a won deal or by hand (or internal, with no client), tasks with sub-tasks, notes and time, the owner's own statuses, fields and saved views, task plans from the AI app, templates, the Projects list and project page (0055 to 0059).
-- **Board approval (run 10):** the owner can choose to approve AI changes on the board only, on the Pending changes page; In chat is the default (0060).
+- **Board approval (run 10):** the owner can choose to approve AI changes on the board only, on the Pending changes page; In chat is the default (0060). Run 11 made it strict: nothing the AI app does applies at once, small changes and rule changes included (0061).
 - **Managed hosting (decision 0054):** every client copy is hosted in Grant's own Cloudflare account on Workers Paid, behind one Zero Trust organisation (the owner signs in as an allowed email). Email goes from the client's own domain through Grant's one Resend account. On request a copy moves to the client's own accounts (docs/OFFBOARDING.md, **not yet rehearsed**). Docs only: no code, test or check changed.
 - **Campaigns (run 8):** email campaigns, off by default: drafts by the AI app or by hand, review and approve on the board, batches every 15 minutes within a daily limit, one-click unsubscribe, delivery results by webhook (0053).
 - **Board, the daily screen:** HTML rendered by the Worker, editable (0014, 0017, 0018); look and navigation (0015); home-screen app (0019); phone actions and Ask Claude (0021); Today as a list (0047); timer bar on the board (0050); time pages (0051).
@@ -23,8 +23,8 @@ Checked on 2026-11-25 against the repo and `gh`.
 - **Sign-in and copies:** Cloudflare Access for the board and `/api`, OAuth for `/mcp` (0006); the owner updates copies with `npm run copies:update` (0007); copies live in the owner's account (0054).
 - **Protection:** the "Protect main" ruleset is active (details in CLAUDE.md). 0 open code-scanning alerts on 2026-11-25.
 - **Live:** merging deploys nothing (decision 0007).
-- **Dependencies** (exact-pinned): runtime `agents` 0.33.0, `@modelcontextprotocol/server` 2.4.0, `@cloudflare/workers-oauth-provider` 1.2.4, `postal-mime` 4.2.1, `zod` 4.6.7. Dev: `@playwright/test` 1.65.0, `@modelcontextprotocol/client` 2.4.0, `typescript-eslint` 8.72.2. Runs 5 to 10 added none.
-- **Tests:** `npm run check` passes (2145 unit, 78 e2e, 0 failures). Local a11y still can't run on this Mac (Needs Grant 11); CI runs a11y and Lighthouse.
+- **Dependencies** (exact-pinned): runtime `agents` 0.33.0, `@modelcontextprotocol/server` 2.4.0, `@cloudflare/workers-oauth-provider` 1.2.4, `postal-mime` 4.2.1, `zod` 4.6.7. Dev: `@playwright/test` 1.65.0, `@modelcontextprotocol/client` 2.4.0, `typescript-eslint` 8.72.2. Runs 5 to 11 added none.
+- **Tests:** `npm run check` passes (2155 unit, 80 e2e, 0 failures). Local a11y still can't run on this Mac (Needs Grant 11); CI runs a11y and Lighthouse.
 - **First copy:** your copy "grant" was updated to run 6 on 2026-11-24 (you confirmed). Runs 7 to 10 (migrations 0019 to 0025) reach it when you run the update (Needs Grant 3). Its live state, and which Cloudflare account holds it, cannot be checked from the repo or `gh`.
 
 ## Needs Grant
@@ -33,15 +33,13 @@ Steps only you can do, in order. Items marked "per copy" repeat for each new cli
 
 1. **Create the `full-audit` label.** Use Issues > Labels > New label, or `gh label create full-audit --description "Run the full a11y and Lighthouse audits on this PR"`. Adding it to a PR forces both audits. Adding any label re-runs a PR's CI.
 2. **The site template's own docs/PROCESS.md.** Make it in the same format, as its own run in huston-logic/site-template. It is a different product, so it is not a straight port.
-3. **Update your copies to run 10 (per copy).** Run `npm run copies:update -- --copy <name> --dry-run` first, then the same command without `--dry-run`. Migrations 0019 to 0025 apply. The update also copies run 8's 15-minute campaign cron into each copy's config (it prints a line saying so); runs 9 and 10 add no cron or secret. Then follow docs/UPDATING.md, "Run 8", "Run 9" and "Run 10: after you update". A copy still on run 4 or 5 needs "Run 4" and "Run 5" first. Projects stay off until you turn them on, and approval stays In chat until you choose.
+3. **Update your copies to run 11 (per copy).** Run `npm run copies:update -- --copy <name> --dry-run` first, then the same command without `--dry-run`. Migrations 0019 to 0025 apply. The update also copies run 8's 15-minute campaign cron into each copy's config (it prints a line saying so); runs 9, 10 and 11 add no cron or secret (run 11 adds no migration either). Then follow docs/UPDATING.md, "Run 8", "Run 9" and "Run 10: after you update". A copy still on run 4 or 5 needs "Run 4" and "Run 5" first. Projects stay off until you turn them on, and approval stays In chat until you choose.
 4. **Copy wording to review from run 6.** Nothing was changed without you: the tasks import lede and SPEC.md's tasks line (#64); Today's labels "Add a to-do", "Due date / Newest first / Person", "Nothing to do." (#65); the timer bar and the What did you do? page (#68); the time pages, "Billable" choices and CSV labels such as "No person" (#69); the "capture" rulebook document's text (migration 0017), which you edit by talking.
 5. **Copy wording to review from run 8.** Nothing was changed without you: the campaign form hints; the review page's warning and multi-day lines; the confirm pages (Pause, Cancel, Allow campaign emails again); the results labels ("Marked as spam", "Not confirmed", "Waiting"); the unsubscribe page; and the AI app's new Campaigns instruction line.
 6. **Copy wording to review from run 9.** Nothing was changed without you: "To start a project, open the person's page or a won deal."; "Start a project?"; "This deal is won. Start a project to track the work."; "Start another project"; "No projects yet."; "No projects here."; "Also move this deal's N open tasks to the project"; "The deal's title came from outside. Name the project in a few words."; "Edit project"; "See time"; "All statuses"; and the AI app's new Projects instruction line and Won question.
 6a. **Copy wording to review from run 10.** Nothing was changed without you: "Start a project", "Internal", "Move open tasks to the project", "Complete all open tasks" and its hint, "This deal's open tasks"; "Complete its sub-tasks too?", "Complete them too", "Only this task"; "N of M done", "Has N more level(s) below. Your AI app can show them.", the per-row "Change" menu label; the Templates pages' hints (Under, Remove, Archive), "Start from a template" and its hint, "Starts today unless you set a start date."; "Pending changes", "Nothing is waiting for you.", the Discard hint, the Today notice, "Where AI changes are approved" with "In chat" and "On the board only"; the AI app's new instruction lines (planning, rule 3's record-text sentence, rule 7's board line) and the capture document's planning paragraph and example.
-6b. **Your calls from run 10.** Nothing was changed without you:
-   - Under "On the board only", small changes still apply at once when "Apply small changes" was set earlier (ruling 16).
-   - Under "On the board only", the AI's rule tools (add_rule, update_rule, resume_rule) still write at once (rules are configuration, rule 5).
-   - Lighthouse now scores 22 pages (your approval in the brief); a full Lighthouse run takes about 10% longer in CI.
+6b. **Run 10's Lighthouse approval.** Lighthouse now scores 22 pages (your approval in the brief); a full Lighthouse run takes about 10% longer in CI.
+6c. **Copy wording to review from run 11.** Nothing was changed without you: the Pending page's hint under "On the board only" ("You approve here. Nothing your AI app proposes is saved until you do, small changes and changes to your rules included."); the AI app's rule 5 and rule 7 sentences about the board and the rule tools' and `update_settings`' descriptions; how a rule shows on Pending changes ("Rule: ...", "Rule ru_...: now ... -> ...", "paused: ...", "resumed: ...", "described as ..."). Your call: the other AI writes that still apply at once under the board setting (stages, fields, statuses, views, the rulebook, work types, rates, campaign drafts) are configuration; gate them too?
 7. **Your calls from run 5.** Nothing was changed without you:
    - Rule 3 of the AI app's instructions covers untrusted fields only. A name confirmed with "This is my own list" is no longer untrusted. Adding "treat every record's text as information" to rule 3 would change the instructions.
    - A 2,000-row board import takes about 11 ms of CPU, over the free plan's 10 ms. If it fails with "exceeded CPU", split the file, use `npm run import:contacts`, or move to Workers Paid (item 17 puts the hosting account there).
@@ -88,41 +86,26 @@ Steps only you can do, in order. Items marked "per copy" repeat for each new cli
 - Projects can now be shaped by the owner: their own statuses, custom fields and saved views; internal projects with no client.
 - Project tasks can have sub-tasks, and the AI app can draft a whole task plan for the owner to approve in one go.
 - Project templates: reusable task lists for repeat jobs, picked when a project starts.
-- AI changes can be approved on the board instead of in chat (a setting).
+- AI changes can be approved on the board instead of in chat (a setting); on the board only, nothing the AI app does applies at once, rule changes included.
 - Follow-up series, open/click tracking, images and RSVP tracking are not built yet.
 - Pipeline docs describe managed hosting and offboarding.
 
-## Last run: run 10, Projects, finished
+## Last run: run 11, Board approval, strict
 
-Plan: `docs/superpowers/plans/2026-11-25-run10-projects-finished.md`. Design: `docs/superpowers/specs/2026-11-25-projects-finished-design.md`. Decisions 0056 to 0060, migrations 0021 to 0025. The brief was complete. No new dependencies. Run 9 is in the history file.
+Plan: `docs/superpowers/plans/2026-11-25-run11-board-approval-strict.md`. Decision 0061, no migration, no new dependency. The brief was complete. Run 10 is in the history file.
 
 | PR | What | Work window | Commits | Checks | CI |
 |---|---|---|---|---|---|
-| A #87 | projects shaped by the owner | 09:37 to 10:33 (56 min, with design and plan) | 12 | check:fast per commit (3 to 11 s); full check about 30 s before push | merged about 50 min after opening (6 of 6) |
-| B #88 | sub-tasks | 10:33 to 10:54 (21 min) | 7 | same | merged (6 of 6) |
-| C #89 | AI task plans | 10:54 to about 11:15 | 3 | same | merged (6 of 6) |
-| D #90 | project templates | about 11:15 to 11:39 | 8 | same | merged (6 of 6) |
-| E (this PR) | approve on the board, closing | 11:39 to open (see the PR) | see the PR | same | see the PR |
-
-Each PR after A was built on the previous tip while CI ran, then rebased onto main (no force push).
+| A #92 | small changes and rule tools wait on the board; docs | 23:42 (first commit) to 23:53 (PR opened), 11 min of build and review after planning | 4 (5 with this row) | check:fast per commit (3 to 11 s); full check 30 s before push; 2 reviewers per task | auto-merge queued at open; CI result not known when this was written |
 
 Judgment calls (one line each):
 
-- The AI app may tighten "Where AI changes are approved" to the board but never loosen it (ruling 15).
-- Board-only approval leaves "Apply small changes" as it is (16).
-- Under the board setting the AI's `undo_change` refuses for every change, with a link to /changes.
-- The AI may not loosen `aiEdits` to apply_small while the setting is the board.
-- `apply_import` over MCP refuses with the board import link.
-- The setting is read through the request memo; a test keeps a maximum-size propose and apply at 40 D1 calls or fewer.
-- The board approves as the owner (tool `apply_changes`); Discard drops a proposal and is not audited.
-- A template copy keeps no link back (0059 ruling 17). The CLAUDE.md sentence about clients inviting your wrangler user was fixed.
+- Rule changes are proposal actions, not a second approval store, so one list can mix them with record changes and Pending changes shows both.
+- In chat, `propose_changes` refuses rule actions, so chat behaves exactly as before; a list holds at most 10 rule changes (D1 budget).
+- The AI's `aiEdits` value is kept under the board setting (it only stops applying), so it works again when the owner goes back to chat.
+- The e2e acceptance sentences 49 and 50 reuse run 10's file because they need approval already on the board.
 
-Queued:
-
-- A crafted board POST can move a done top-level project task; past the 500-task read a move may swap with an unshown one.
-- A sub-task added between the read and the write of a parent's completion stays open.
-- The get_project answer carries the task tree beside the flat open and done lists (about twice the size).
-- The left-out count for a saved template rides in a display-only field as text.
+Queued: none new.
 
 ## Changelog
 
@@ -131,6 +114,7 @@ Queued:
 - 2026-11-24 to 25, run 8, "Campaigns, step 1": core, data and the AI door (#76); the board pages (#77); sending, unsubscribe and delivery results (#78); closing docs and acceptance (#79).
 - 2026-11-24, "Managed hosting" docs run: decision 0054, the hosting and offboarding docs, a PROCESS.md rule (#80); the copies prompts name the hosting account (#81).
 - 2026-11-25, run 9, "Projects": core, data and the AI app (#82); the board pages (#83); exports, acceptance 35 to 38 and the final-review fixes.
-- 2026-11-25, run 10, "Projects, finished": projects shaped by the owner (#87); sub-tasks (#88); AI task plans (#89); project templates (#90); approve on the board and the closing docs (this PR).
+- 2026-11-25, run 10, "Projects, finished": projects shaped by the owner (#87); sub-tasks (#88); AI task plans (#89); project templates (#90); approve on the board and the closing docs (#91).
+- 2026-11-25, run 11, "Board approval, strict": small changes and rule changes wait on the board (this PR).
 
 Earlier entries: docs/history/STATUS-history.md.

@@ -1,7 +1,8 @@
 // Write tools (readOnlyHint: false). Each one is a single audited change made as the "ai" actor, and answers with
 // the service's one-line summary, which ends with "(change chg_...)", then the new ids as JSON. The record tools
 // (contacts, leads, deals, activities, tasks) go through recordWrite instead (decision 0045): they answer a proposal for
-// the owner to approve, unless the owner chose Apply small changes and the change is small.
+// the owner to approve, unless the owner chose Apply small changes, approves in chat and the change is small. The rule
+// tools write at once in chat and propose while the owner approves on the board only (decision 0061).
 import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import { parseOwnerEmailsVar } from "../auth/owners.ts";
@@ -14,11 +15,15 @@ import { addStage, archiveStage, updateStage } from "../services/stages.ts";
 import { undoChange } from "../services/undo.ts";
 import { toolResult } from "./format.ts";
 import { SORTING_RULE } from "./instructions.ts";
-import { recordWrite } from "./record-write.ts";
+import { recordWrite, ruleWrite } from "./record-write.ts";
 import { addProjectStatus, archiveProjectStatus, updateProjectStatus } from "../services/project-statuses.ts";
 import {
   addContactInput,
   addDealInput,
+  addRuleInput,
+  pauseRuleInput,
+  resumeRuleInput,
+  updateRuleInput,
   addLeadInput,
   addProjectInput,
   updateProjectInput,
@@ -35,14 +40,19 @@ import {
   updateContactInput,
   updateDealInput,
 } from "../services/record-inputs.ts";
-import { FIELD_ENTITIES, FIELD_TYPES, orNull, RULE_TYPES, ruleRef, ruleSettings, shortText, statusRef, subStatusRef } from "./schemas.ts";
+import { FIELD_ENTITIES, FIELD_TYPES, orNull, shortText, statusRef, subStatusRef } from "./schemas.ts";
 import { aiCtx, registerTool, type ToolDeps } from "./tool.ts";
 
 const PROJECT_STATUS_KIND = z.enum(["open", "closed"]).optional().describe("open (the default for a new status) or closed (a finished project).");
 
 /** The sentence every record tool's description ends with (decision 0045). */
 export const PROPOSES =
-  "Unless the owner chose Apply small changes and this is a small change, this returns a proposal for the owner to approve; nothing changes until apply_changes.";
+  "Unless the owner chose Apply small changes and this is a small change, this returns a proposal for the owner to approve; nothing changes until apply_changes. " +
+  "While approveIn is board, every one is a proposal, small or not.";
+
+/** The sentence every rule tool's description ends with (decision 0061). */
+const RULE_PROPOSES =
+  "While the owner approves AI changes on the board only (approveIn board), this returns a proposal for the owner to approve on the board; nothing changes until they do.";
 
 export function registerWriteTools(server: McpServer, deps: ToolDeps): void {
   registerTool(
@@ -631,16 +641,14 @@ export function registerWriteTools(server: McpServer, deps: ToolDeps): void {
         "`dueInDays` after). gone_quiet: flag open deals with no contact for `days` days in the daily brief. " +
         "lead_followup: when a lead has been in `status` (new or contacted) for `days` days with no contact logged " +
         "since, add a follow-up task on the person. Show the owner preview_rule first. The description is written for " +
-        "you unless you give one.",
-      input: z.strictObject({
-        type: z.enum(RULE_TYPES).describe("stage_followup, on_stage_enter, gone_quiet or lead_followup."),
-        ...ruleSettings,
-        description: shortText("What the rule does, in plain English; written from the settings when left out.").optional(),
-      }),
-      async run(args, deps) {
-        const result = await addRule(aiCtx(deps, "add_rule"), args);
-        return toolResult(result.summary, { changeId: result.changeId, ruleId: result.ruleId });
-      },
+        "you unless you give one. " +
+        RULE_PROPOSES,
+      input: addRuleInput,
+      run: (args, deps) =>
+        ruleWrite(deps, { action: "add_rule", ...args }, async () => {
+          const result = await addRule(aiCtx(deps, "add_rule"), args);
+          return toolResult(result.summary, { changeId: result.changeId, ruleId: result.ruleId });
+        }),
     },
     deps,
   );
@@ -655,23 +663,14 @@ export function registerWriteTools(server: McpServer, deps: ToolDeps): void {
       idempotent: true,
       description:
         "Changes a rule's settings or description (its type stays). Give only what changes. When the settings change " +
-        "and no description is given, the description is rewritten to match.",
-      input: z.strictObject({
-        rule: ruleRef(),
-        ...ruleSettings,
-        title: orNull(
-          shortText(
-            "The new task title, or null to go back to the default (stage_followup: \"Follow up with {contact} about " +
-              "{deal}\"; lead_followup: \"Follow up with {contact}\"). It may use {deal}, {contact} and {stage} " +
-              "({contact} only for lead_followup).",
-          ),
-        ).optional(),
-        description: shortText("A new plain-English description.").optional(),
-      }),
-      async run({ rule, ...patch }, deps) {
-        const result = await updateRule(aiCtx(deps, "update_rule"), rule, patch);
-        return toolResult(result.summary, { changeId: result.changeId, ruleId: result.ruleId });
-      },
+        "and no description is given, the description is rewritten to match. " +
+        RULE_PROPOSES,
+      input: updateRuleInput,
+      run: ({ rule, ...patch }, deps) =>
+        ruleWrite(deps, { action: "update_rule", rule, ...patch }, async () => {
+          const result = await updateRule(aiCtx(deps, "update_rule"), rule, patch);
+          return toolResult(result.summary, { changeId: result.changeId, ruleId: result.ruleId });
+        }),
     },
     deps,
   );
@@ -683,12 +682,13 @@ export function registerWriteTools(server: McpServer, deps: ToolDeps): void {
       title: "Pause a rule",
       kind: "write",
       idempotent: true,
-      description: "Stops a rule from firing (and a gone_quiet rule from flagging deals) until resume_rule. Rules are never deleted.",
-      input: z.strictObject({ rule: ruleRef() }),
-      async run({ rule }, deps) {
-        const result = await pauseRule(aiCtx(deps, "pause_rule"), rule);
-        return toolResult(result.summary, { changeId: result.changeId, ruleId: result.ruleId });
-      },
+      description: `Stops a rule from firing (and a gone_quiet rule from flagging deals) until resume_rule. Rules are never deleted. ${RULE_PROPOSES}`,
+      input: pauseRuleInput,
+      run: ({ rule }, deps) =>
+        ruleWrite(deps, { action: "pause_rule", rule }, async () => {
+          const result = await pauseRule(aiCtx(deps, "pause_rule"), rule);
+          return toolResult(result.summary, { changeId: result.changeId, ruleId: result.ruleId });
+        }),
     },
     deps,
   );
@@ -700,12 +700,13 @@ export function registerWriteTools(server: McpServer, deps: ToolDeps): void {
       title: "Resume a rule",
       kind: "write",
       idempotent: true,
-      description: "Turns a paused rule back on. It catches up on the next hourly run.",
-      input: z.strictObject({ rule: ruleRef() }),
-      async run({ rule }, deps) {
-        const result = await resumeRule(aiCtx(deps, "resume_rule"), rule);
-        return toolResult(result.summary, { changeId: result.changeId, ruleId: result.ruleId });
-      },
+      description: `Turns a paused rule back on. It catches up on the next hourly run. ${RULE_PROPOSES}`,
+      input: resumeRuleInput,
+      run: ({ rule }, deps) =>
+        ruleWrite(deps, { action: "resume_rule", rule }, async () => {
+          const result = await resumeRule(aiCtx(deps, "resume_rule"), rule);
+          return toolResult(result.summary, { changeId: result.changeId, ruleId: result.ruleId });
+        }),
     },
     deps,
   );
@@ -745,7 +746,8 @@ export function registerWriteTools(server: McpServer, deps: ToolDeps): void {
         "Changes the owner's timezone, the daily brief's hour, address or on/off switch, the board's business name " +
         "and accent colour, AI edits (review_first: every record change is proposed for the owner's yes; " +
         "apply_small: a call or note logged on a person or deal, completing a task, starting a timer and stopping one " +
-        "without a next step apply at once), and time tracking (the timer, time entries and work types; off by " +
+        "without a next step apply at once, unless approveIn is board), where AI changes are approved (approveIn: chat, " +
+        "or board for the board only, where nothing applies at once), and time tracking (the timer, time entries and work types; off by " +
         "default). Give only what changes. The brief address must be one of the owner emails (see get_settings); owner emails can't be changed " +
         "here. Set these only when the owner asks.",
       input: z.strictObject({
@@ -765,7 +767,7 @@ export function registerWriteTools(server: McpServer, deps: ToolDeps): void {
         aiEdits: z
           .enum(AI_EDITS_CHOICES)
           .optional()
-          .describe("review_first (the default: record changes wait for the owner's yes) or apply_small (small changes apply at once)."),
+          .describe("review_first (the default: record changes wait for the owner's yes) or apply_small (small changes apply at once, unless approveIn is board)."),
         approveIn: z
           .enum(["chat", "board"])
           .optional()

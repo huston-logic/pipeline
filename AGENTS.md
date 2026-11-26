@@ -117,9 +117,9 @@ hooks and the commands are in `CLAUDE.md`.
   (decision 0045): each one's `run` is `recordWrite` (`src/mcp/record-write.ts`), which answers exactly as
   `propose_changes` does (`proposeResult`), unless the "AI edits" setting (`settings.ai_edits`, migration 0015;
   `update_settings` `aiEdits`: `review_first`, the default, or `apply_small`) is Apply small changes and the action is
-  small (`isSmallAction`: a call or note logged on an existing person or deal, `complete_task`, `start_timer` on existing records, or `stop_timer` without a next-step date), which writes at once
-  and answers the service's line. Settings, rules, stages, fields, statuses, views, the rulebook, imports and
-  `undo_change` always write at once. A new record tool goes in `RECORD_ACTIONS` and through `recordWrite`. `instructions.ts`
+  small (`isSmallAction`: a call or note logged on an existing person or deal, `complete_task`, `start_timer` on existing records, or `stop_timer` without a next-step date) and the owner approves in chat, which writes at once
+  and answers the service's line. Settings, stages, fields, statuses, views, the rulebook, imports and
+  `undo_change` always write at once (rules too, except under `board`, decision 0061). A new record tool goes in `RECORD_ACTIONS` and through `recordWrite`. `instructions.ts`
   holds the server instructions (rule 7: record edits need the owner's yes). Adding a tool means adding its name to the tool-list tests (`src/mcp/server.test.ts`,
   `tests/e2e/mcp.test.ts`).
 - **MCP import** (decision 0039): `import_rows` keeps a sheet's rows (at most 500 a call, 60 columns) in a board
@@ -174,7 +174,12 @@ hooks and the commands are in `CLAUDE.md`.
   (`src/board/pages/pending.ts`, `src/board/pending-actions.ts`) approves a proposal as the owner with the same
   `applyChanges`, discards it, and holds the setting form. Under `board` the AI's `apply_changes`, `apply_import` and
   `undo_change` refuse with a board link, and the AI may only tighten the setting or `aiEdits`, never loosen them. The
-  setting is read through the request memo (no extra D1 call).
+  setting is read through the request memo (no extra D1 call). Decision 0061 makes it strict: under `board` a small action is
+  proposed too (`smallChangesApplyAtOnce`, `src/services/settings.ts`, used by `recordWrite`), and the rule tools
+  (`RULE_ACTIONS`: `add_rule`, `update_rule`, `pause_rule`, `resume_rule`) run through `ruleWrite` (`record-write.ts`): in chat
+  they write at once; under board they propose a one-action list. Rule actions are proposal actions (`proposal-actions.ts`,
+  at most `RULE_ACTIONS_MAX` = 10 a list, item text `ruleItem` in `proposal-text.ts`, reads through `ruleById`) that
+  `propose_changes` accepts only under `board`. They are not in `RECORD_ACTIONS`.
 - **People and person status** (decisions 0022, 0023, 0040): every `contacts` row has a `person_status` (a
   `person_statuses` key: Lead, Contact, Partner and any the owner adds) and a `sub_status` (a `person_substatuses` key
   of that status, or null); there is no leads table. A lead is a person whose status is Lead, with no open deal.
