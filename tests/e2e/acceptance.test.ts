@@ -109,15 +109,17 @@ describe("the twelve owner sentences", () => {
 
   test('2. "Who needs a follow-up today?"', async () => {
     const answer = await tool("whats_due");
-    assert.match(answer.headline, /^Due by the end of today \(\d{4}-\d{2}-\d{2}\): 3 overdue tasks, 2 tasks due today, 1 overdue deal, 1 deal with a next step today\.$/);
+    assert.match(answer.headline, /^Due by the end of today \(\d{4}-\d{2}-\d{2}\): 15 overdue tasks, 9 tasks due today, 1 overdue deal, 1 deal with a next step today\.$/);
     const due = answer.data as {
       overdueTasks: { id: string }[];
       todayTasks: { id: string }[];
       overdueDeals: { id: string }[];
       todayDeals: { id: string }[];
     };
-    assert.deepEqual(due.overdueTasks.map((t) => t.id), ["tk_seed13", "tk_seed07", "tk_seed02"], "Omar's check-back, Chris's photos and Priya's checklist are overdue");
-    assert.deepEqual(due.todayTasks.map((t) => t.id), ["tk_seed01", "tk_seed08"], "Dana's call prep and Marcus's check are due today");
+    // The seed also holds project tasks and loose to-dos (tk_seed20 and up); this checks the original deal and lead tasks.
+    const original = (list: { id: string }[]) => list.map((t) => t.id).filter((id) => Number(id.slice("tk_seed".length)) <= 19);
+    assert.deepEqual(original(due.overdueTasks), ["tk_seed13", "tk_seed07", "tk_seed02"], "Omar's check-back, Chris's photos and Priya's checklist are overdue");
+    assert.deepEqual(original(due.todayTasks), ["tk_seed01", "tk_seed08"], "Dana's call prep and Marcus's check are due today");
     assert.deepEqual(due.overdueDeals.map((d) => d.id), ["dl_seed13"], "Hannah's fee range is late");
     assert.deepEqual(due.todayDeals.map((d) => d.id), ["dl_seed11"], "Ben's call is today");
     const everyId = JSON.stringify(due);
