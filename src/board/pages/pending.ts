@@ -114,7 +114,7 @@ ${postForm(
   html`<fieldset class="field">
 <legend>Where AI changes are approved</legend>
 ${radio("approve-chat", "chat", "In chat", "The AI app asks you, then applies.", !board)}
-${radio("approve-board", "board", "On the board only", "You approve here.", board)}
+${radio("approve-board", "board", "On the board only", "You approve here. Nothing your AI app proposes is saved until you do, small changes included.", board)}
 </fieldset>
 <button class="button" type="submit">Save</button>`,
 )}

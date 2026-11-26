@@ -60,12 +60,30 @@ test("with board approval apply_changes refuses without writing, and propose ans
   assert.ok(listed.headline.endsWith(`Approve on the board: ${ORIGIN}/pending.`), listed.headline);
 });
 
-test("small changes still apply at once under Apply small changes while approval is on the board", async () => {
+test("a small change waits on the board under Apply small changes while approval is on the board (decision 0061)", async () => {
   const { c, count } = await setup();
-  await ok(c, "update_settings", { aiEdits: "apply_small", approveIn: "board" });
+  await ok(c, "update_settings", { aiEdits: "apply_small" });
   const activities = await count("activities");
-  await ok(c, "log_activity", { deal: "dl_seed01", type: "note", summary: "Talked it over" });
+  await ok(c, "log_activity", { deal: "dl_seed01", type: "note", summary: "Before the switch" });
+  assert.equal(await count("activities"), activities + 1, "under chat a small change still applies at once");
+
+  await ok(c, "update_settings", { approveIn: "board" });
+  const audits = await count("audit_log");
+  const answer = await okText(c, "log_activity", { deal: "dl_seed01", type: "note", summary: "Talked it over" });
+  assert.ok(answer.headline.endsWith(`Approve on the board: ${ORIGIN}/pending.`), answer.headline);
   assert.equal(await count("activities"), activities + 1);
+  assert.equal(await count("audit_log"), audits);
+  assert.equal(await count("proposals"), 1);
+});
+
+test("while approval is on the board a logged call is proposed too", async () => {
+  const { c, count } = await setup();
+  await ok(c, "update_settings", { aiEdits: "apply_small" });
+  await ok(c, "update_settings", { approveIn: "board" });
+  const activities = await count("activities");
+  const answer = await okText(c, "log_activity", { deal: "dl_seed01", type: "call", summary: "Rang Pat" });
+  assert.ok(answer.headline.endsWith(`Approve on the board: ${ORIGIN}/pending.`), answer.headline);
+  assert.equal(await count("activities"), activities);
 });
 
 test("while approval is on the board the AI app can't undo anything; the owner can; under chat the AI can", async () => {

@@ -2,14 +2,15 @@
 // under Review first, and for anything but a small change under Apply small changes, it proposes the one action exactly
 // as propose_changes would and answers the same way, so nothing changes until the owner's yes reaches apply_changes.
 // A small change under Apply small changes is written at once, as one audited change (actor ai, the tool's name), and
-// answers the service's summary line. Settings, rules, stages, fields, statuses, views, the rulebook, imports and
+// answers the service's summary line. While the owner approves on the board only (decision 0061) nothing is small:
+// every action is proposed, whatever "AI edits" says. Settings, rules, stages, fields, statuses, views, the rulebook, imports and
 // undo_change don't come here: they write at once as before.
 import type { CallToolResult } from "@modelcontextprotocol/server";
 import { parseOwnerEmailsVar } from "../auth/owners.ts";
 import { UserError } from "../services/errors.ts";
 import { type ActionResult, type RecordAction, runAction } from "../services/proposal-actions.ts";
 import { proposeChanges } from "../services/proposals.ts";
-import { getAiEdits } from "../services/settings.ts";
+import { smallChangesApplyAtOnce } from "../services/settings.ts";
 import { answerApplied } from "./start-project.ts";
 import { aiCtx, type ToolDeps } from "./tool.ts";
 import { proposeResult } from "./tools-proposals.ts";
@@ -52,7 +53,7 @@ function ownMessage(error: unknown): unknown {
 export async function recordWrite(deps: ToolDeps, action: RecordAction): Promise<CallToolResult> {
   const ctx = aiCtx(deps, action.action);
   const options = { extraOwnerEmails: parseOwnerEmailsVar(deps.ownerEmailsVar) };
-  if (isSmallAction(action) && (await getAiEdits(deps.db)) === "small") {
+  if (isSmallAction(action) && (await smallChangesApplyAtOnce(deps.db))) {
     const result = await runAction(ctx, action, options);
     // No small action can mark a deal Won, so there is no Won question to ask here.
     return answerApplied(deps.db, result.summary, answerData(result), []);

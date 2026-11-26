@@ -765,7 +765,7 @@ export function registerWriteTools(server: McpServer, deps: ToolDeps): void {
         aiEdits: z
           .enum(AI_EDITS_CHOICES)
           .optional()
-          .describe("review_first (the default: record changes wait for the owner's yes) or apply_small (small changes apply at once)."),
+          .describe("review_first (the default: record changes wait for the owner's yes) or apply_small (small changes apply at once, unless approveIn is board)."),
         approveIn: z
           .enum(["chat", "board"])
           .optional()
