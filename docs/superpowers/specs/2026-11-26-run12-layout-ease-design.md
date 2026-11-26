@@ -121,7 +121,8 @@ phone:   [box] Title (up to two lines) .........................................
   `lookup.ts`. Board only, no MCP tool (ruling 4). An edited field leaves `untrusted_fields`.
 - Depth cap (ruling 5): a task's level is 1 plus its parent's; `addTask` with a parent at level 3, `add_task_plan`
   with an `under` chain deeper than 3 (counting from `under` on the action), and `addTemplateTask` / `update_template`
-  / `save_project_as_template` producing level 4 are refused with "Sub-tasks go three levels deep. Add this one under
+  / moving a template task in, producing level 4, are refused (`save_project_as_template` copies levels 1 to 3 and
+  leaves deeper tasks out, decision 0062) with "Sub-tasks go three levels deep. Add this one under
   a task higher up." Existing deeper rows are kept and still shown in the tree (level 3 says "Has N more levels
   below").
 - MCP: `description` on `add_task`, `add_task_plan` items, the task actions in `propose_changes`, and in what
