@@ -24,7 +24,7 @@ Checked on 2026-11-25 against the repo and `gh`.
 - **Protection:** the "Protect main" ruleset is active (details in CLAUDE.md). 0 open code-scanning alerts on 2026-11-25.
 - **Live:** merging deploys nothing (decision 0007).
 - **Dependencies** (exact-pinned): runtime `agents` 0.33.0, `@modelcontextprotocol/server` 2.4.0, `@cloudflare/workers-oauth-provider` 1.2.4, `postal-mime` 4.2.1, `zod` 4.6.7. Dev: `@playwright/test` 1.65.0, `@modelcontextprotocol/client` 2.4.0, `typescript-eslint` 8.72.2. Runs 5 to 11 added none.
-- **Tests:** `npm run check` passes (2145 unit, 78 e2e, 0 failures). Local a11y still can't run on this Mac (Needs Grant 11); CI runs a11y and Lighthouse.
+- **Tests:** `npm run check` passes (2155 unit, 80 e2e, 0 failures). Local a11y still can't run on this Mac (Needs Grant 11); CI runs a11y and Lighthouse.
 - **First copy:** your copy "grant" was updated to run 6 on 2026-11-24 (you confirmed). Runs 7 to 10 (migrations 0019 to 0025) reach it when you run the update (Needs Grant 3). Its live state, and which Cloudflare account holds it, cannot be checked from the repo or `gh`.
 
 ## Needs Grant
