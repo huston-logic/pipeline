@@ -59,7 +59,7 @@ export async function timerNotesPage(ctx: PageContext, state?: NotesState): Prom
   return renderPage({
     title: state === undefined ? "Edit or add notes" : "Error: Edit or add notes",
     description: "Add notes to time you already logged, or fix its details.",
-    frame: { ...ctx, corner: await cornerOf(ctx, settings) },
+    frame: { ...ctx, corner: { ...(await cornerOf(ctx, settings)), logged: null } },
     script: true,
     body: html`<h1>Edit or add notes</h1>
 <p class="lede">Time logged: ${sinceText(entry.started_at, now, tz)} to ${sinceText(entry.ended_at, now, tz)}</p>

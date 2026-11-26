@@ -100,6 +100,7 @@ test("the notes page shows the saved entry's fields, its span and Ask Claude", a
   assert.equal(h1Count(body), 1);
   assert.match(body, /<h1>Edit or add notes<\/h1>/);
   assert.match(body, /Time logged: \d{1,2}:\d{2} [AP]M to \d{1,2}:\d{2} [AP]M/);
+  assert.equal(body.match(/Time logged:/g)?.length, 1, "the corner's note is not repeated here");
   assert.match(body, /<textarea id="notes-notes" name="notes"[^>]*>First pass\.<\/textarea>/);
   assert.match(body, /<option value="wt_design" selected>/);
   assert.match(body, /name="billable" type="checkbox" value="yes" checked/);

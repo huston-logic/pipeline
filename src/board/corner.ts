@@ -67,11 +67,8 @@ ${postForm("corner-form", "/corner/close", form, html`${hidden("change", logged.
 }
 
 function changeNotice({ change, name }: Notice, form: FormContext): Html {
-  const after = change.undone
-    ? html`<p class="corner-note">Undone.</p>`
-    : canUndo(change)
-      ? undoForm(change.changeId, form, "corner-form")
-      : "";
+  if (change.undone) return html`<p class="corner-text">${name === null ? "Undone." : `Undone: ${name}`}</p>`;
+  const after = canUndo(change) ? undoForm(change.changeId, form, "corner-form") : "";
   return html`<p class="corner-text">${noticeText(change, name)}</p>
 ${after}`;
 }

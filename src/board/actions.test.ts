@@ -155,7 +155,7 @@ test("the corner ignores a change id of the wrong shape or one that doesn't exis
   assert.match(shown.body, /class="corner-form"/);
   db.exec(`UPDATE audit_log SET undone_at = '2026-01-01T00:00:00.000Z', undone_by = 'chg_other' WHERE id = '${change.changeId}'`);
   const undone = await load(env, `/contacts?change=${change.changeId}`);
-  assert.match(undone.body, /<p class="corner-note">Undone\.<\/p>/);
+  assert.match(undone.body, /<p class="corner-text">Undone\.<\/p>/);
   assert.doesNotMatch(undone.body, /class="corner-form"/);
 });
 

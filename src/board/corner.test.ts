@@ -80,8 +80,9 @@ test("a change notice has its text and an Undo; an undone one says Undone. inste
   assert.match(out, /<div class="corner-notice" role="status">\s*<p class="corner-text">Done: Send the plan<\/p>/);
   assert.match(out, /action="\/changes\/chg_aaaaaaaaaaaa\/undo"/);
   const undone = draw({ ...EMPTY, notice: { change: change({ undone: true }), name: "Send the plan" } });
-  assert.match(undone, /Undone\./);
-  assert.doesNotMatch(undone, /\/undo"/);
+  assert.match(undone, /<p class="corner-text">Undone: Send the plan<\/p>/);
+  assert.doesNotMatch(undone, /Done: Send|corner-note|\/undo"/);
+  assert.match(draw({ ...EMPTY, notice: { change: change({ undone: true }), name: null } }), /<p class="corner-text">Undone\.<\/p>/);
 });
 
 test("the Time logged note has the times, an edit link back to this page, Undo and Close, and wins over a notice", () => {

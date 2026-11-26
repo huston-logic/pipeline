@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { html } from "./html.ts";
 import { DEFAULT_THEME_COLOR, type Look, lookOf, renderPage, shortNameOf } from "./layout.ts";
@@ -163,6 +164,11 @@ test('script: "push" loads only /push.js with defer (the Notifications page, dec
   assert.equal(out.match(/<script\b/g)?.length, 1);
   assert.match(out, /<script src="\/push.js" defer><\/script>\n<\/head>/);
   assert.doesNotMatch(out, /board\.js/);
+});
+
+test("the stylesheet keeps scroll room above a focused control while the corner has content (WCAG 2.4.11)", () => {
+  const css = readFileSync(new URL("../../public/board.css", import.meta.url), "utf8");
+  assert.match(css, /html:has\(\.corner-chip, \.corner-notice:not\(:empty\)\)\s*\{\s*scroll-padding-top: \d+rem;/);
 });
 
 test("the timer chip sits in the corner after the header and before main, and a page with no corner draws none", () => {

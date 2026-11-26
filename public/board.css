@@ -1216,6 +1216,12 @@ button.button {
   display: none;
 }
 
+/* While the corner has content, a control scrolled into view stops below it (WCAG 2.4.11). 21rem is the tallest case
+   at 320px: the wrapped Time logged note under the wrapped chip. */
+html:has(.corner-chip, .corner-notice:not(:empty)) {
+  scroll-padding-top: 21rem;
+}
+
 .corner-clock {
   font-variant-numeric: tabular-nums;
 }

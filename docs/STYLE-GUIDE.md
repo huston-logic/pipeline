@@ -341,8 +341,11 @@ a click or pushes the page down; it takes no focus and traps none, and tab order
 - **Notice** (`role="status"`, always present, empty when there is nothing): the change in a few words ("Done: Send
   the plan") with Undo, or after a timer stops, "Time logged: 1:16 PM to 1:58 PM" with Edit or add notes, Undo and
   Close. The Time logged note wins when both apply and goes after two minutes or on Close.
-- **Focus ring:** rust on the accent fill is about 1.1:1, so inside the corner the ring is 2px `--white` at a 2px
-  offset (on the fill, 6:1 or better for any accepted accent).
+- **Focus ring (the one exception to the rust ring, §1):** rust on the accent fill is about 1.1:1, so inside the
+  corner the ring is 2px `--white` at a 2px offset (on the fill, 4.5:1 or better for any accepted accent).
+- **Scroll room:** `html:has(.corner-chip, .corner-notice:not(:empty))` sets `scroll-padding-top: 21rem`, the tallest
+  case at 320px (the wrapped Time logged note under the wrapped chip), so Tab never leaves a focused control under
+  the sticky corner (WCAG 2.4.11). An empty corner adds none.
 - No animation, nothing that disappears on its own other than the two-minute rule above.
 
 ## 8. Line art and icons
