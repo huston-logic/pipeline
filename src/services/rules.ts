@@ -3,7 +3,7 @@
 // loads their data and writes their results. Rules are never deleted, only paused. Decisions 0010 and 0026.
 import { z } from "zod";
 import type { ActivityType, Db, RuleRow, RuleType, StageRow, TaskRow } from "../db/db.ts";
-import { listRules as listRuleRows, listStages } from "../db/queries.ts";
+import { listRules as listRuleRows } from "../db/queries.ts";
 import { newId } from "../ids.ts";
 import {
   DAY_MS,
@@ -28,7 +28,8 @@ import { capitalize, joinAnd, rowLabel, short, withArticle } from "./describe.ts
 import { UserError } from "./errors.ts";
 import { contactName, dealLabel, untrustedFields } from "./labels.ts";
 import { LEAD_STATUS_LABELS, type LeadStatus, leadStatusFromText } from "./lead-status.ts";
-import { findStage, ownerTimezone, stageLabels } from "./lookup.ts";
+import { findStage, ownerTimezone, ruleById, type Source, stageLabels } from "./lookup.ts";
+import { type Reader, stageRows } from "./memo.ts";
 import { type StatusLabels, statusLabels } from "./status-labels.ts";
 
 export type { RuleParams };
@@ -146,10 +147,10 @@ function leadStatusKey(value: unknown): unknown {
 }
 
 /** Only open stages: rules watch open deals, so a closed stage would never fire. */
-async function ruleStage(db: Db, ref: string): Promise<StageRow> {
-  const found = await findStage(db, ref);
+async function ruleStage(src: Reader, ref: string): Promise<StageRow> {
+  const found = await findStage(src, ref);
   if (found.kind === "open") return found;
-  const open = (await listStages(db)).filter((s) => s.kind === "open");
+  const open = (await stageRows(src)).filter((s) => s.kind === "open");
   const list = open.map((s) => `${s.label} (${s.key})`).join(", ");
   throw new UserError(
     `Rules only watch open deals, so a rule can't use ${found.label} (${withArticle(found.kind.replace("_", " "))} stage). ` +
@@ -161,7 +162,7 @@ const defined = (value: Record<string, unknown>) =>
   Object.fromEntries(Object.entries(value).filter(([, v]) => v !== undefined));
 
 /** Checked, normalized parameters (the stage as its key), and the stage's label for the description. */
-async function checkParams(db: Db, type: RuleType, settings: RuleSettings): Promise<{ params: RuleParams; stageLabel: string | null }> {
+async function checkParams(src: Reader, type: RuleType, settings: RuleSettings): Promise<{ params: RuleParams; stageLabel: string | null }> {
   if (!isRuleType(type)) {
     throw new UserError(`"${String(type)}" isn't a rule type. Use stage_followup, on_stage_enter, gone_quiet or lead_followup.`);
   }
@@ -177,7 +178,7 @@ async function checkParams(db: Db, type: RuleType, settings: RuleSettings): Prom
     if (params.title !== undefined) normalized.title = params.title;
     return { params: normalized, stageLabel: null };
   }
-  const found = await ruleStage(db, params.stage);
+  const found = await ruleStage(src, params.stage);
   if (params.type === "stage_followup") {
     const normalized: RuleParams = { type: params.type, stage: found.key, days: params.days };
     if (params.title !== undefined) normalized.title = params.title;
@@ -243,10 +244,10 @@ function readableParams(row: RuleRow): RuleParams {
   );
 }
 
-async function findRule(db: Db, ref: string): Promise<RuleRow> {
+async function findRule(src: Source, ref: string): Promise<RuleRow> {
   const id = ref.trim();
   if (id === "") throw new UserError("Say which rule: give its id (ru_...) from list_rules.");
-  const row = await db.prepare("SELECT * FROM rules WHERE id = ?").bind(id).first<RuleRow>();
+  const row = await ruleById(src, id);
   if (!row) throw new UserError(`There's no rule "${id}". Use list_rules to find the rule's id (ru_...).`);
   return row;
 }
@@ -255,8 +256,8 @@ const ruleName = (row: RuleRow) => `rule ${row.id}`;
 
 export async function addRule(ctx: Ctx, input: RuleInput): Promise<ChangeResult & { ruleId: string }> {
   const { type, description: given, ...settings } = input;
-  const { params, stageLabel } = await checkParams(ctx.db, type, settings);
-  const description = cleanDescription(given) ?? describeRule(params, stageLabel, await statusLabels(ctx.db));
+  const { params, stageLabel } = await checkParams(ctx, type, settings);
+  const description = cleanDescription(given) ?? describeRule(params, stageLabel, await statusLabels(ctx));
   const now = ctx.now.toISOString();
   const row: RuleRow = {
     id: newId("ru"),
@@ -286,8 +287,7 @@ const PARAM_LABELS: Record<string, string> = {
 };
 
 export async function updateRule(ctx: Ctx, ref: string, patch: RulePatch): Promise<ChangeResult & { ruleId: string }> {
-  const { db } = ctx;
-  const before = await findRule(db, ref);
+  const before = await findRule(ctx, ref);
   const stored = readableParams(before);
   const { description: given, title: newTitle, ...settings } = patch;
   const merged: RuleSettings = { ...stored, ...defined({ ...settings, title: newTitle ?? undefined }) };
@@ -300,14 +300,14 @@ export async function updateRule(ctx: Ctx, ref: string, patch: RulePatch): Promi
     }
     delete merged.title;
   }
-  const { params, stageLabel } = await checkParams(db, stored.type, merged);
+  const { params, stageLabel } = await checkParams(ctx, stored.type, merged);
   const description = cleanDescription(given);
 
   const changed = Object.keys(PARAM_LABELS).filter(
     (key) => JSON.stringify((params as Record<string, unknown>)[key]) !== JSON.stringify((stored as Record<string, unknown>)[key]),
   );
   const paramsChanged = changed.length > 0;
-  const nextDescription = description ?? (paramsChanged ? describeRule(params, stageLabel, await statusLabels(db)) : before.description);
+  const nextDescription = description ?? (paramsChanged ? describeRule(params, stageLabel, await statusLabels(ctx)) : before.description);
   if (!paramsChanged && nextDescription === before.description) {
     throw new UserError(`Nothing to change on ${ruleName(before)}: every value you gave is already set.`);
   }
@@ -337,7 +337,7 @@ export function resumedParams(row: Pick<RuleRow, "type" | "params">, now: Date):
 }
 
 async function setActive(ctx: Ctx, ref: string, active: boolean): Promise<ChangeResult & { ruleId: string }> {
-  const before = await findRule(ctx.db, ref);
+  const before = await findRule(ctx, ref);
   if ((before.active === 1) === active) {
     throw new UserError(
       active

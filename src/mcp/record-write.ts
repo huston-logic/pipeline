@@ -10,7 +10,7 @@ import { parseOwnerEmailsVar } from "../auth/owners.ts";
 import { UserError } from "../services/errors.ts";
 import { type ActionResult, type RecordAction, runAction } from "../services/proposal-actions.ts";
 import { proposeChanges } from "../services/proposals.ts";
-import { smallChangesApplyAtOnce } from "../services/settings.ts";
+import { getApproveIn, smallChangesApplyAtOnce } from "../services/settings.ts";
 import { answerApplied } from "./start-project.ts";
 import { aiCtx, type ToolDeps } from "./tool.ts";
 import { proposeResult } from "./tools-proposals.ts";
@@ -60,6 +60,21 @@ export async function recordWrite(deps: ToolDeps, action: RecordAction): Promise
   }
   try {
     return proposeResult(await proposeChanges(ctx, { actions: [action] }, options), deps.origin);
+  } catch (error) {
+    throw ownMessage(error);
+  }
+}
+
+/**
+ * A rule tool's run() (decision 0061). While the owner approves in chat it writes at once through `direct`, as it
+ * always did. While they approve on the board only it proposes the one rule action, exactly as propose_changes would
+ * and answers the same way, so the change waits on Pending changes.
+ */
+export async function ruleWrite(deps: ToolDeps, action: RecordAction, direct: () => Promise<CallToolResult>): Promise<CallToolResult> {
+  if ((await getApproveIn(deps.db)) !== "board") return direct();
+  const ctx = aiCtx(deps, action.action);
+  try {
+    return proposeResult(await proposeChanges(ctx, { actions: [action] }, { extraOwnerEmails: parseOwnerEmailsVar(deps.ownerEmailsVar) }), deps.origin);
   } catch (error) {
     throw ownMessage(error);
   }

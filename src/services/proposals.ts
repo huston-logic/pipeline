@@ -36,9 +36,11 @@ import {
   type ActionResult,
   bindAction,
   checkActions,
+  isRuleAction,
   type RecordAction,
   recordActionSchema,
   resolveActions,
+  RULE_ACTIONS_MAX,
   type ResolvedAction,
   runAction,
   withStopTimes,
@@ -124,6 +126,20 @@ export function checkListShows(unshown: readonly string[]): void {
   }
 }
 
+/**
+ * Rule actions (decision 0061) are only for the board-only setting: while the owner approves in chat the rule tools write
+ * at once as they always did, and a list holds none. Each reads its rule on its own, so a list holds at most
+ * RULE_ACTIONS_MAX of them.
+ */
+async function checkRuleActions(ctx: Ctx, actions: readonly RecordAction[]): Promise<void> {
+  const rules = actions.filter(isRuleAction).length;
+  if (rules === 0) return;
+  if ((await settingsRow(ctx)).ai_approval !== "board") {
+    throw new UserError("Rules are changed with add_rule, update_rule, pause_rule and resume_rule, not in a list, unless the owner approves AI changes on the board only.");
+  }
+  if (rules > RULE_ACTIONS_MAX) throw new UserError(`A proposal holds at most ${RULE_ACTIONS_MAX} rule changes; this one has ${rules}. Split it into two lists.`);
+}
+
 function checkPlannedTasks(planned: number): void {
   if (planned > TASK_PLAN_MAX) throw new UserError(`A proposal holds at most ${TASK_PLAN_MAX} planned tasks; this one has ${planned}. Split it into two lists.`);
 }
@@ -153,6 +169,7 @@ export async function proposeChanges(caller: Ctx, input: { actions: RecordAction
     throw new UserError(`A proposal holds at most ${PROPOSAL_MAX_ACTIONS} actions; this one has ${count}. Split it into smaller lists.`);
   }
   const checked = checkActions(input.actions);
+  await checkRuleActions(ctx, checked);
   const planned = checked.reduce((sum, action) => sum + ("tasks" in action && action.tasks !== undefined ? action.tasks.length : 0), 0);
   checkPlannedTasks(planned);
   const old = input.replaces === undefined ? null : await replaceable(db, input.replaces.trim(), now);

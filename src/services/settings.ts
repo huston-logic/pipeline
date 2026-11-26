@@ -57,7 +57,7 @@ export async function requireProjects(src: Reader): Promise<void> {
   if ((await settingsRow(src)).projects !== 1) throw new UserError(PROJECTS_OFF);
 }
 
-/** How the AI app's record tools write: propose everything, or apply small changes at once. */
+/** The "AI edits" choice as stored: propose everything, or apply small changes at once (not while approval is on the board, see below). */
 export async function getAiEdits(db: Db): Promise<AiEdits> {
   return (await getSettingsRow(db)).ai_edits;
 }

@@ -173,3 +173,12 @@ test("the first line names every rulebook document a new copy starts with", asyn
   const first = SERVER_INSTRUCTIONS.split("\n")[0] ?? "";
   for (const name of names) assert.ok(first.includes(name), name);
 });
+
+test("rules 5 and 7 say that on the board only nothing applies at once, rule changes included (decision 0061)", () => {
+  const five = SERVER_INSTRUCTIONS.split("\n").find((line) => line.startsWith("5. ")) ?? "";
+  assert.ok(
+    five.endsWith(
+      "When approveIn is board, the rule tools (add_rule, update_rule, pause_rule, resume_rule) wait for the owner's approval on the board too: send the board link from the answer.",
+    ),
+  );
+});

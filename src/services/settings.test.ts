@@ -4,7 +4,7 @@ import type { Db } from "../db/db.ts";
 import { openTestDb } from "../db/sqlite-d1.ts";
 import type { Ctx } from "./change.ts";
 import { UserError } from "./errors.ts";
-import { getAiEdits, getSettings, updateSettings } from "./settings.ts";
+import { getAiEdits, getSettings, smallChangesApplyAtOnce, updateSettings } from "./settings.ts";
 import { undoChange } from "./undo.ts";
 
 const NOW = new Date("2026-11-19T18:00:00.000Z");
@@ -231,4 +231,15 @@ test("getSettings takes the last brief times from the briefs log", async () => {
   const settings = await getSettings(db);
   assert.equal(settings.lastBriefAt, "2026-11-18T15:00:00.000Z", "the latest brief composed");
   assert.equal(settings.lastBriefSentAt, "2026-11-17T15:00:01.000Z", "the latest brief emailed");
+});
+
+test("small changes apply at once only with Apply small changes and approval in chat (decision 0061)", async () => {
+  const db = await openTestDb();
+  assert.equal(await smallChangesApplyAtOnce(db), false, "review first, chat");
+  await db.prepare("UPDATE settings SET ai_edits = 'small'").run();
+  assert.equal(await smallChangesApplyAtOnce(db), true, "small, chat");
+  await db.prepare("UPDATE settings SET ai_approval = 'board'").run();
+  assert.equal(await smallChangesApplyAtOnce(db), false, "small, board");
+  await db.prepare("UPDATE settings SET ai_edits = 'review'").run();
+  assert.equal(await smallChangesApplyAtOnce(db), false, "review first, board");
 });

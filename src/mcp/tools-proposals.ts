@@ -5,7 +5,7 @@ import type { CallToolResult, McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import { parseOwnerEmailsVar } from "../auth/owners.ts";
 import { pendingUrl } from "../services/settings.ts";
-import { RECORD_ACTIONS, recordActionSchema } from "../services/proposal-actions.ts";
+import { RECORD_ACTIONS, recordActionSchema, RULE_ACTIONS_MAX } from "../services/proposal-actions.ts";
 import { applyChanges, PROPOSAL_MAX_ACTIONS, PROPOSAL_MAX_OPEN, type ProposeAnswer, proposeChanges } from "../services/proposals.ts";
 import { toolText } from "./format.ts";
 import { answerApplied } from "./start-project.ts";
@@ -40,6 +40,7 @@ export function registerProposalTools(server: McpServer, deps: ToolDeps): void {
       description:
         `Plans up to ${PROPOSAL_MAX_ACTIONS} record changes as one list and answers the list to show the owner; nothing ` +
         `changes yet. Each action is a record tool's input plus action, the tool's name (${RECORD_ACTIONS.join(", ")}). ` +
+        "While approveIn is board, an action may also be a rule tool (add_rule, update_rule, pause_rule, resume_rule; at most " + `${RULE_ACTIONS_MAX}` + " a list); in chat those tools write at once. " +
         "Name records by id or by name: a name that matches several records, or none, answers questions to ask the owner " +
         "and stores nothing. \"@n\" names the person, deal or task action n adds: as the deal or contact of a later " +
         "log_activity or add_task, or as the deal, contact or task of a later start_timer or add_time_entry. \"@n\" also " +

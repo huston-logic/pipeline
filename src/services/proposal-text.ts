@@ -560,6 +560,22 @@ async function timeItem(names: Names, id: string, before: Row | null, after: Row
   return fields.length === 0 ? null : { record, id, fields };
 }
 
+/** A rule's own sentence, from its row: the description the owner reads on the Rules page. */
+const ruleSentence = (names: Names, row: Row) => short(cell(names, "rules", row, "description", row.description), SHOWN_MAX);
+
+/**
+ * A rule (decision 0061): added, it reads as its sentence; paused or resumed, "paused: <sentence>"; changed, the sentence
+ * it had and the sentence it has. The sentence is built from the rule's settings unless the AI gave a description.
+ */
+function ruleItem(names: Names, id: string, before: Row | null, after: Row): Item {
+  show(names, "rules", id, ["type", "params", "description", "active", "created_by"]);
+  if (before === null) return { record: "Rule", id, fields: [{ field: "", to: ruleSentence(names, after) }] };
+  const fields: Item["fields"] = [];
+  if (before.active !== after.active) fields.push({ field: "", to: `${after.active === 1 ? "resumed" : "paused"}: ${ruleSentence(names, after)}` });
+  else fields.push({ field: "now", from: ruleSentence(names, before), to: ruleSentence(names, after) });
+  return { record: `Rule ${id}`, id, fields };
+}
+
 /** Every column a change writes that the list must show: all but NOT_SHOWN; for an added row, those it sets. */
 function writtenColumns(before: Row | null, after: Row): string[] {
   const columns = before === null ? Object.keys(after).filter((column) => after[column] !== null && after[column] !== "") : changedColumns(before, after);
@@ -656,6 +672,10 @@ export async function shownList(src: Reader, input: ChangeInput, tz: string, now
       }
       const fields = await updatedFields(names, table, id, before, after);
       if (fields.length > 0) list.update.push({ record, id, fields });
+      continue;
+    }
+    if (table === "rules") {
+      (before === null ? list.add : list.update).push(ruleItem(names, id, before, after));
       continue;
     }
     if (table === "projects") {

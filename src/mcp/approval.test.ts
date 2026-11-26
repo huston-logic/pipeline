@@ -4,7 +4,8 @@ import { buildFixtureSeed } from "../../tests/helpers/fixture-seed.ts";
 import { connectInMemory, fails, ok, okText } from "../../tests/helpers/mcp-client.ts";
 import { countingDb } from "../../tests/helpers/counting-db.ts";
 import { createTestDb } from "../db/sqlite-d1.ts";
-import { PROPOSAL_MAX_ACTIONS } from "../services/proposals.ts";
+import { applyChanges, PROPOSAL_MAX_ACTIONS } from "../services/proposals.ts";
+import { updateRule } from "../services/rules.ts";
 import { updateSettings } from "../services/settings.ts";
 import { undoChange } from "../services/undo.ts";
 import { DEFAULT_TZ } from "../time.ts";
@@ -128,5 +129,102 @@ test("a maximum-size propose and apply through the tools make at most 40 D1 call
   assert.ok(db.calls <= 40, `propose made ${db.calls} D1 calls`);
   db.reset();
   await ok(c, "apply_changes", { proposal: (proposed.data as { proposal: string }).proposal });
+  assert.ok(db.calls <= 40, `apply made ${db.calls} D1 calls`);
+});
+
+const ruleCount = (db: Awaited<ReturnType<typeof setup>>["db"]) => db.prepare("SELECT COUNT(*) AS n FROM rules").first<number>("n");
+
+test("in chat the rule tools write at once, and a list may not hold a rule action (decision 0061)", async () => {
+  const { db, c, count } = await setup();
+  const rules = await ruleCount(db);
+  const added = await ok(c, "add_rule", { type: "gone_quiet", days: 9 });
+  assert.match(added.headline, /^Added rule ru_/);
+  assert.equal(await ruleCount(db), (rules ?? 0) + 1);
+  assert.match((await ok(c, "pause_rule", { rule: "ru_seed01" })).headline, /^Paused rule ru_seed01/);
+  assert.match((await ok(c, "resume_rule", { rule: "ru_seed01" })).headline, /^Resumed rule ru_seed01/);
+  assert.match(await fails(c, "propose_changes", { actions: [{ action: "pause_rule", rule: "ru_seed01" }] }), /unless the owner approves AI changes on the board only/);
+  assert.equal(await count("proposals"), 0);
+});
+
+test("on the board only every rule tool proposes in plain words and writes nothing", async () => {
+  const { db, c, count } = await setup();
+  await ok(c, "update_settings", { approveIn: "board" });
+  const rules = await ruleCount(db);
+  const audits = await count("audit_log");
+  const calls: [string, Record<string, unknown>, RegExp][] = [
+    ["add_rule", { type: "gone_quiet", days: 9 }, /Add\n- Rule: Flag any open deal with no contact logged for 9 days in the daily brief\./],
+    ["update_rule", { rule: "ru_seed01", days: 8 }, /Update\n- Rule ru_seed01: now Flag any open deal with no activity for 5 days in the daily brief\. -> Flag any open deal with no contact logged for 8 days in the daily brief\./],
+    ["pause_rule", { rule: "ru_seed01" }, /- Rule ru_seed01: paused: Flag any open deal/],
+    ["resume_rule", { rule: "ru_seed02" }, /- Rule ru_seed02: resumed: When a deal has been in Call done for 2 days/],
+  ];
+  for (const [tool, args, text] of calls) {
+    const answer = await okText(c, tool, args);
+    assert.ok(answer.headline.endsWith(`Approve on the board: ${ORIGIN}/pending.`), `${tool}: ${answer.headline}`);
+    assert.match((answer.data as { text?: string }).text ?? answer.headline, text, tool);
+  }
+  assert.equal(await ruleCount(db), rules);
+  assert.equal(await count("audit_log"), audits);
+  assert.equal(await db.prepare("SELECT active FROM rules WHERE id = 'ru_seed01'").first<number>("active"), 1);
+  assert.equal(await count("proposals"), 4);
+});
+
+test("the owner's Approve writes a rule list as one change, and the AI can't apply it", async () => {
+  const { db, c, count } = await setup();
+  await ok(c, "update_settings", { approveIn: "board" });
+  const proposed = await okText(c, "propose_changes", {
+    actions: [
+      { action: "pause_rule", rule: "ru_seed01" },
+      { action: "resume_rule", rule: "ru_seed02" },
+      { action: "add_rule", type: "gone_quiet", days: 12 },
+      { action: "add_task", title: "Review the rules" },
+    ],
+  });
+  const id = (proposed.data as { proposal: string }).proposal;
+  assert.match(await fails(c, "apply_changes", { proposal: id }), /approves changes on the board/);
+  const rules = (await ruleCount(db)) ?? 0;
+  const audits = await count("audit_log");
+  const done = await applyChanges({ db, now: NOW, actor: "owner", tool: "apply_changes" }, id, { extraOwnerEmails: [] });
+  assert.equal(done.applied, 4);
+  assert.equal(await ruleCount(db), rules + 1);
+  assert.equal(await db.prepare("SELECT active FROM rules WHERE id = 'ru_seed01'").first<number>("active"), 0);
+  assert.equal(await db.prepare("SELECT active FROM rules WHERE id = 'ru_seed02'").first<number>("active"), 1);
+  assert.equal(await count("audit_log"), audits + 1);
+});
+
+test("a rule changed since the list was made refuses the apply and writes nothing", async () => {
+  const { db, c } = await setup();
+  await ok(c, "update_settings", { approveIn: "board" });
+  const id = ((await okText(c, "pause_rule", { rule: "ru_seed01" })).data as { proposal: string }).proposal;
+  await updateRule({ db, now: NOW, actor: "owner", tool: "update_rule" }, "ru_seed01", { days: 6 });
+  await assert.rejects(applyChanges({ db, now: NOW, actor: "owner", tool: "apply_changes" }, id, { extraOwnerEmails: [] }), /changed since/);
+  assert.equal(await db.prepare("SELECT active FROM rules WHERE id = 'ru_seed01'").first<number>("active"), 1);
+});
+
+test("a refused rule tool says why in its own words; a list holds at most 10 rule changes", async () => {
+  const { c } = await setup();
+  await ok(c, "update_settings", { approveIn: "board" });
+  assert.match(await fails(c, "pause_rule", { rule: "ru_nope" }), /There's no rule "ru_nope"/);
+  assert.match(await fails(c, "resume_rule", { rule: "ru_seed01" }), /already active/);
+  const many = Array.from({ length: 11 }, (_, i) => ({ action: "add_rule", type: "gone_quiet", days: i + 1 }));
+  assert.match(await fails(c, "propose_changes", { actions: many }), /at most 10 rule changes/);
+});
+
+test("a maximum-size rule list makes at most 40 D1 calls to propose and to apply", async () => {
+  const raw = await createTestDb();
+  raw.exec(buildFixtureSeed(NOW, DEFAULT_TZ));
+  const db = countingDb(raw);
+  const c = await connectInMemory(createMcpServer({ db, now: () => NOW, origin: ORIGIN }));
+  await ok(c, "update_settings", { approveIn: "board" });
+  const actions = [
+    ...Array.from({ length: 5 }, (_, i) => ({ action: "add_rule", type: "gone_quiet", days: i + 10 })),
+    { action: "update_rule", rule: "ru_seed01", days: 4 },
+    { action: "pause_rule", rule: "ru_seed01" },
+    { action: "resume_rule", rule: "ru_seed02" },
+  ];
+  db.reset();
+  const proposed = await okText(c, "propose_changes", { actions });
+  assert.ok(db.calls <= 40, `propose made ${db.calls} D1 calls`);
+  db.reset();
+  await applyChanges({ db, now: NOW, actor: "owner", tool: "apply_changes" }, (proposed.data as { proposal: string }).proposal, { extraOwnerEmails: [] });
   assert.ok(db.calls <= 40, `apply made ${db.calls} D1 calls`);
 });

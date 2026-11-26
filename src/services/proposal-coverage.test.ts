@@ -8,7 +8,7 @@ import { WORK_TYPES_SQL } from "../../tests/helpers/time-seed.ts";
 import { createTestDb } from "../db/sqlite-d1.ts";
 import { DEFAULT_TZ } from "../time.ts";
 import type { ChangeInput, Ctx, Row } from "./change.ts";
-import { RECORD_ACTIONS, type RecordAction, type RecordActionName, recordActionSchema } from "./proposal-actions.ts";
+import { PROPOSAL_ACTIONS, type ProposalActionName, type RecordAction, recordActionSchema } from "./proposal-actions.ts";
 import { checkListShows, proposeChanges } from "./proposals.ts";
 import { shownList } from "./proposal-text.ts";
 
@@ -51,10 +51,16 @@ const TEMPLATE_KIT =
   "INSERT INTO template_tasks (id, template_id, parent_id, position, title, due_days, work_type_id) VALUES " +
   "('tt_a', 'tp_kit', NULL, 1, 'Survey', 3, 'wt_design'), ('tt_b', 'tp_kit', 'tt_a', 1, 'Measure', NULL, NULL)";
 
+/** A lead rule and a stage-entry rule to edit. */
+const MORE_RULES =
+  "INSERT INTO rules (id, type, params, description, active, created_by) VALUES " +
+  "('ru_lead', 'lead_followup', '{\"type\":\"lead_followup\",\"status\":\"new\",\"days\":3}', 'When a lead has been New for 3 days with no contact logged, add a follow-up task.', 1, 'owner'), " +
+  "('ru_enter', 'on_stage_enter', '{\"type\":\"on_stage_enter\",\"stage\":\"call_done\",\"title\":\"Send notes\",\"dueInDays\":1}', 'When a deal enters Call done, add the task \"Send notes\", due 1 day later.', 1, 'owner')";
+
 type Variant = { input: Record<string, unknown>; setup?: string };
 
 /** Each record action with each optional field set at least once, in inputs the service accepts. */
-const VARIANTS: Record<RecordActionName, Variant[]> = {
+const VARIANTS: Record<ProposalActionName, Variant[]> = {
   add_lead: [
     { input: { name: "Lee Example", business: "Lee Example Signs", email: "lee@example.com", phone: "+1 555 0101", source: "drove past", notes: "Wants a sign.", contactFields: { size: "5" } } },
     { input: { business: "Example Sample Signs", allowDuplicate: true } },
@@ -182,21 +188,37 @@ const VARIANTS: Record<RecordActionName, Variant[]> = {
     { input: { project: "pj_seed01", archived: true } },
     { input: { project: "pj_seed01", status: "on_hold", archived: false } },
   ],
+  // Rule actions are only proposed while the owner approves on the board only (decision 0061).
+  add_rule: [
+    { input: { type: "stage_followup", stage: "call_done", days: 3, title: "Check in with {contact}", description: "Nudge after a call." } },
+    { input: { type: "on_stage_enter", stage: "Call done", title: "Send the notes for {deal}", dueInDays: 1 } },
+    { input: { type: "gone_quiet", days: 7 } },
+    { input: { type: "lead_followup", status: "contacted", days: 4, title: "Ring {contact}" } },
+  ],
+  update_rule: [
+    { input: { rule: "ru_seed01", days: 9 } },
+    { input: { rule: "ru_seed02", stage: "Call done", days: 4, title: null, description: "Chase quiet calls." } },
+    { input: { rule: "ru_lead", status: "contacted", days: 6 }, setup: MORE_RULES },
+    { input: { rule: "ru_enter", stage: "Proposal sent", title: "Send the plan", dueInDays: 2 }, setup: MORE_RULES },
+  ],
+  pause_rule: [{ input: { rule: "ru_seed01" } }],
+  resume_rule: [{ input: { rule: "ru_seed02" } }],
 };
 
 const ctx = (db: Ctx["db"]): Ctx => ({ db, now: NOW, actor: "ai", tool: "propose_changes" });
 
-async function proposeOne(variant: Variant, action: RecordActionName) {
+async function proposeOne(variant: Variant, action: ProposalActionName) {
   const db = await createTestDb();
   db.exec(buildFixtureSeed(NOW, DEFAULT_TZ));
   db.exec(SETUP);
   if (variant.setup !== undefined) db.exec(variant.setup);
+  if (action.endsWith("_rule")) db.exec("UPDATE settings SET ai_approval = 'board'");
   const answer = await proposeChanges(ctx(db), { actions: [{ action, ...variant.input } as RecordAction] }, DEPS);
   assert.equal(answer.kind, "proposal", `${action} ${JSON.stringify(variant.input)}: ${JSON.stringify(answer)}`);
   return answer.kind === "proposal" ? answer : assert.fail();
 }
 
-test("every record action with each optional field set proposes a list that shows every column it writes", async () => {
+test("every record and rule action with each optional field set proposes a list that shows every column it writes", async () => {
   for (const schema of recordActionSchema.options) {
     const action = schema.shape.action.value;
     const optional = Object.entries(schema.shape)
@@ -213,7 +235,7 @@ test("every record action with each optional field set proposes a list that show
       }
     }
   }
-  assert.deepEqual(Object.keys(VARIANTS).sort(), [...RECORD_ACTIONS].sort());
+  assert.deepEqual(Object.keys(VARIANTS).sort(), [...PROPOSAL_ACTIONS].sort());
 });
 
 const timeLines = (text: string) => text.split("\n").filter((line) => line.startsWith("- Time") || line.startsWith("- Timer"));
