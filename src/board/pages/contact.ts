@@ -128,14 +128,15 @@ ${contact.archived ? "" : html`<p class="section-action"><a href="${newProjectOf
   );
 }
 
-function tasksSection(detail: ContactDetail, now: Date, tz: string, form: FormContext, subject: Subject): Html {
+async function tasksSection(detail: ContactDetail, now: Date, tz: string, form: FormContext, subject: Subject): Promise<Html> {
+  const cards = await Promise.all(detail.openTasks.map((task) => taskCard(task, now, tz, true, form)));
   return section(
     "tasks-heading",
     "Open tasks",
     html`${
       detail.openTasks.length === 0
         ? empty("No open tasks.")
-        : html`<ul class="cards cards-single">${detail.openTasks.map((task) => taskCard(task, now, tz, true, form))}</ul>`
+        : html`<ul class="cards cards-single">${cards}</ul>`
     }
 ${addTaskForm(subject, form)}`,
   );
@@ -215,7 +216,7 @@ ${projects === null ? "" : projectsSection(contact, projects)}
 </div>
 <div>
 ${canQualify(row) ? leadAskSection(row.id) : ""}
-${tasksSection(detail, now, tz, ctx, subject)}
+${await tasksSection(detail, now, tz, ctx, subject)}
 ${timelineSection(detail, ctx, subject)}
 </div>
 </div>`,

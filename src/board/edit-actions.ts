@@ -325,9 +325,9 @@ async function editTask(ctx: ActionContext, id: string): Promise<ActionResult> {
   if (row === null) return notFound(ctx);
   const tz = await ownerTimezone(ctx.db);
   const collected = await collectEdit(taskEditSpecs(), ctx.form, { ...row, fields: "{}" }, tz);
-  const refused = (extra: string[] = []) => {
+  const refused = async (extra: string[] = []) => {
     const state = stateOf(collected, extra);
-    const form = taskEditForm({ id, title: row.title, dueAt: row.due_at, description: row.description ?? null, untrusted_fields: row.untrusted_fields }, { csrf: ctx.csrf, here: home.back }, tz, state);
+    const form = await taskEditForm({ id, title: row.title, dueAt: row.due_at, description: row.description ?? null, untrusted_fields: row.untrusted_fields }, { csrf: ctx.csrf, here: home.back }, tz, state);
     return page(422, refusedFormPage(ctx, "The task wasn't saved", form, home.back, "/"));
   };
   if (collected.errors.length > 0) return refused();

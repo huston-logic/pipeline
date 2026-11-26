@@ -124,14 +124,15 @@ ${edit}
   return section("next-heading", "Next step", body);
 }
 
-function tasksSection(brief: DealBrief, now: Date, tz: string, form: FormContext, subject: Subject): Html {
+async function tasksSection(brief: DealBrief, now: Date, tz: string, form: FormContext, subject: Subject): Promise<Html> {
+  const cards = await Promise.all(brief.openTasks.map((task) => taskCard(task, now, tz, false, form)));
   return section(
     "tasks-heading",
     "Open tasks",
     html`${
       brief.openTasks.length === 0
         ? empty("No open tasks.")
-        : html`<ul class="cards cards-single">${brief.openTasks.map((task) => taskCard(task, now, tz, false, form))}</ul>`
+        : html`<ul class="cards cards-single">${cards}</ul>`
     }
 ${addTaskForm(subject, form)}`,
   );
@@ -196,7 +197,7 @@ ${projectsSection(brief)}
 ${startOffer(brief)}
 ${nextSection(brief)}
 ${askSection(brief.deal.id)}
-${tasksSection(brief, now, tz, ctx, subject)}
+${await tasksSection(brief, now, tz, ctx, subject)}
 ${timelineSection(brief, ctx, subject)}
 </div>
 </div>`,

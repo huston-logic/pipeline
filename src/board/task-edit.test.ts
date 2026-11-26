@@ -93,10 +93,32 @@ test("Today draws Edit under each task, shows a description with links only when
   await post(env, "/tasks/tk_seed02/edit", { "due.date": "2026-12-04", "due.time": "", description: "Prices at https://example.com/p, thanks", return_to: "/" });
   const body = (await load(env, "/")).body;
   assert.match(body, /<details class="task-edit">\n<summary>Edit<span class="visually-hidden">: Send Casey the price sheet<\/span><\/summary>/);
-  assert.match(body, /<p class="task-description">Prices at <a href="https:\/\/example\.com\/p" target="_blank" rel="noopener noreferrer">https:\/\/example\.com\/p<\/a>, thanks<\/p>/);
+  assert.match(body, /<p class="task-description">Prices at <a href="https:\/\/example\.com\/p" target="_blank" rel="noopener noreferrer">https:\/\/example\.com\/p<span class="visually-hidden"> \(opens in a new tab\)<\/span><\/a>, thanks<\/p>/);
   assert.match(body, /<time datetime="[^"]+">Fri Dec 4<\/time>/);
   await db.prepare("UPDATE tasks SET untrusted_fields = '[\"description\"]' WHERE id = 'tk_seed02'").run();
   const outside = (await load(env, "/")).body;
   assert.match(outside, /<p class="task-description"><span class="outside">From outside<\/span> Prices at https:\/\/example\.com\/p, thanks<\/p>/);
   assert.doesNotMatch(outside, /<a href="https:\/\/example\.com\/p"/);
+});
+
+test("the drawn Edit form carries a was. fingerprint per field, so a stale tab cannot overwrite a field it did not touch", async () => {
+  const db = await seededDb();
+  const env = devEnv(db);
+  const body = (await load(env, "/")).body;
+  const form = body.slice(body.indexOf('action="/tasks/tk_seed02/edit"'));
+  const was = (name: string) => new RegExp(`name="was\\.${name}" value="([^"]+)"`).exec(form)?.[1];
+  assert.ok(was("title") && was("due") && was("description"), "hidden was.title, was.due and was.description");
+
+  await db.prepare("UPDATE tasks SET title = 'Newer title' WHERE id = 'tk_seed02'").run();
+  const stale = await post(env, "/tasks/tk_seed02/edit", {
+    title: "Send Casey the price sheet",
+    "was.title": was("title") ?? "",
+    description: "Added from the old tab",
+    "was.description": was("description") ?? "",
+    return_to: "/",
+  });
+  assert.equal(stale.res.status, 303);
+  const row = await task(db, "tk_seed02");
+  assert.equal(row?.title, "Newer title", "the untouched field keeps the newer stored value");
+  assert.equal(row?.description, "Added from the old tab");
 });

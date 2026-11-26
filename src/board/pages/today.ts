@@ -32,7 +32,7 @@ export const TASK_LIST_LIMIT = 50;
 
 const has = (fields: readonly string[], key: string) => fields.includes(key);
 
-function taskCard(task: OpenTask, overdue: boolean, form: FormContext, tz: string): Html {
+async function taskCard(task: OpenTask, overdue: boolean, form: FormContext, tz: string): Promise<Html> {
   const outside = task.untrusted_fields;
   return html`<li class="card">
 <div class="card-head">
@@ -51,7 +51,7 @@ ${pairs([
   isStandalone(task) && { name: "For", value: "No person or deal" },
 ])}
 ${descriptionLine(task)}
-${taskActions(task, form, tz)}
+${await taskActions(task, form, tz)}
 </li>`;
 }
 
@@ -95,14 +95,16 @@ ${choice("todo-show", "show", "Show", TASK_SHOWS, SHOW_LABELS, view.show)}
 </form>`;
 }
 
-function taskSections(lists: OpenTaskLists, startOfToday: string, form: FormContext, tz: string): Html {
+async function taskSections(lists: OpenTaskLists, startOfToday: string, form: FormContext, tz: string): Promise<Html> {
   const { todo, undated, totals } = lists;
   if (todo.length + undated.length === 0) return empty("Nothing to do.", "Add a to-do above, or add a task on a deal or contact page.");
-  const list = (items: OpenTask[], total: number) =>
-    html`<ul class="cards">${items.map((t) => taskCard(t, t.dueAt !== null && t.dueAt < startOfToday, form, tz))}</ul>
+  const list = async (items: OpenTask[], total: number) => {
+    const cards = await Promise.all(items.map((t) => taskCard(t, t.dueAt !== null && t.dueAt < startOfToday, form, tz)));
+    return html`<ul class="cards">${cards}</ul>
 ${total > items.length ? html`<p class="stage-more">Showing ${formatNumber(items.length)} of ${formatNumber(total)} to-dos.</p>` : ""}`;
-  return html`${todo.length > 0 ? section("todo-heading", "To do", list(todo, totals.todo)) : ""}
-${undated.length > 0 ? section("undated-heading", "Needs a due date", list(undated, totals.undated)) : ""}`;
+  };
+  return html`${todo.length > 0 ? section("todo-heading", "To do", await list(todo, totals.todo)) : ""}
+${undated.length > 0 ? section("undated-heading", "Needs a due date", await list(undated, totals.undated)) : ""}`;
 }
 
 function dealCards(deals: DealItem[], overdue: boolean): Html {
@@ -183,7 +185,7 @@ ${addButtons("today", ["deal", "lead", "import"])}
 <div class="today-due">
 ${quickAddForm(ctx)}
 ${taskTools(view)}
-${taskSections(tasks, dayBoundsUtc(date, tz).start.toISOString(), ctx, tz)}
+${await taskSections(tasks, dayBoundsUtc(date, tz).start.toISOString(), ctx, tz)}
 ${dueDeals(due)}
 </div>
 <div class="today-glance">

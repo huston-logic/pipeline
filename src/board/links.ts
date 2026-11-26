@@ -16,7 +16,7 @@ export function linkify(text: string, trusted: boolean): Html {
     const found = match[0];
     const address = found.replace(TRAILING, "");
     if (address.replace(SCHEME, "") === "") continue;
-    parts.push(html`${text.slice(last, start)}<a href="${address}" target="_blank" rel="noopener noreferrer">${address}</a>`);
+    parts.push(html`${text.slice(last, start)}<a href="${address}" target="_blank" rel="noopener noreferrer">${address}<span class="visually-hidden"> (opens in a new tab)</span></a>`);
     last = start + address.length;
   }
   parts.push(html`${text.slice(last)}`);

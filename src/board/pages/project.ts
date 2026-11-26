@@ -88,18 +88,18 @@ ${project.archived ? "" : startTimerForm({ kind: "project", id: project.id }, fo
   );
 }
 
-function tasksSection(project: ProjectDetail, now: Date, tz: string, form: FormContext, subject: Subject): Html {
+async function tasksSection(project: ProjectDetail, now: Date, tz: string, form: FormContext, subject: Subject): Promise<Html> {
   const { open, truncated } = project.taskTree;
   return section(
     "tasks-heading",
     "Open tasks",
-    html`${open.length === 0 ? empty("No open tasks.") : taskList(open, 1, now, tz, form)}
+    html`${open.length === 0 ? empty("No open tasks.") : await taskList(open, 1, now, tz, form)}
 ${truncated ? html`<p class="section-note">Showing the first ${TREE_TASK_LIMIT} tasks.</p>` : ""}
 ${addTaskForm(subject, form)}`,
   );
 }
 
-function doneSection(project: ProjectDetail, now: Date, tz: string, form: FormContext): Html {
+async function doneSection(project: ProjectDetail, now: Date, tz: string, form: FormContext): Promise<Html> {
   const { done } = project.taskTree;
   return section(
     "done-heading",
@@ -107,7 +107,7 @@ function doneSection(project: ProjectDetail, now: Date, tz: string, form: FormCo
     done.length === 0
       ? empty("Nothing done yet.")
       : html`<p class="section-note">The latest ${done.length}, newest first.</p>
-${taskList(done, 1, now, tz, form)}`,
+${await taskList(done, 1, now, tz, form)}`,
   );
 }
 
@@ -171,8 +171,8 @@ ${projectSection(project, statuses, labels, tz, ctx)}
 ${timeSection(project, ctx, name)}
 </div>
 <div>
-${tasksSection(project, now, tz, ctx, subject)}
-${doneSection(project, now, tz, ctx)}
+${await tasksSection(project, now, tz, ctx, subject)}
+${await doneSection(project, now, tz, ctx)}
 ${notesSection(project, ctx, subject)}
 </div>
 </div>`,

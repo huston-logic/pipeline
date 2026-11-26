@@ -1,13 +1,13 @@
 // Task forms (decision 0018): Done and Snooze on every task card (Today, the deal page, the contact page), and Add a
 // task on the deal and contact pages. Plain forms that work without JavaScript; a task's name in a control's hidden
 // words is its title, or its id when the title came from outside.
-import { isTrusted, untrustedFields } from "../services/labels.ts";
+import { isTrusted } from "../services/labels.ts";
 import { type FormContext, postForm } from "./forms.ts";
 import { type Html, html } from "./html.ts";
 import { field } from "./inputs.ts";
 import { linkify } from "./links.ts";
 import { contactHref, dealHref, outsideLabel, projectHref } from "./parts.ts";
-import { line, type Shown, shownOf, type Spec } from "./record-form.ts";
+import { editShown, line, type Shown, type Spec } from "./record-form.ts";
 import { fieldId, formErrorSummary, specFields } from "./record-fields.ts";
 import type { FormState } from "./pages/record-page.ts";
 import { startTimerForm } from "./timer-start.ts";
@@ -74,14 +74,11 @@ export function descriptionLine(task: { description: string | null; untrusted_fi
 }
 
 /** Edit, closed under a disclosure on a task card, or open in a card when a post was refused (values kept). */
-export function taskEditForm(task: EditableTask, form: FormContext, tz: string, state?: FormState): Html {
+export async function taskEditForm(task: EditableTask, form: FormContext, tz: string, state?: FormState): Promise<Html> {
   const specs = taskEditSpecs();
   const prefix = `task-edit-${task.id}`;
   const stored = { title: task.title, due_at: task.dueAt, description: task.description, fields: "{}", untrusted_fields: outsideKeys(task.untrusted_fields) };
-  const values = shownOf(specs, stored, tz);
-  const outside = untrustedFields(stored);
-  const shown =
-    state?.shown ?? new Map(specs.map((spec): [string, Shown] => [spec.name, { value: values.get(spec.name) ?? "", outside: outside.has(spec.outsideKey) }]));
+  const shown = state?.shown ?? (await editShown(specs, stored, tz));
   const name = taskName(task);
   const inner = postForm(
     "inline-form",
@@ -99,7 +96,7 @@ ${inner}
 }
 
 /** Done (one tap), Snooze and Edit disclosures, at the foot of a task card. */
-export function taskActions(task: EditableTask, form: FormContext, tz: string): Html {
+export async function taskActions(task: EditableTask, form: FormContext, tz: string): Promise<Html> {
   const name = taskName(task);
   return html`<div class="task-actions">
 ${postForm(
@@ -113,7 +110,7 @@ ${startTimerForm({ kind: "task", id: task.id }, form, name)}
 <summary>Snooze${hiddenName(name)}</summary>
 ${snoozeForms(task, form)}
 </details>
-${taskEditForm(task, form, tz)}
+${await taskEditForm(task, form, tz)}
 </div>`;
 }
 
