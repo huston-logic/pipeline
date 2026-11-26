@@ -35,7 +35,7 @@ async function get(db: SqliteD1, path: string) {
 }
 
 const ownerCtx = (db: SqliteD1, tool: string): Ctx => ({ db, now: new Date(), actor: "owner", tool });
-const mainOf = (body: string) => /<main id="main">([\s\S]*)<\/main>/.exec(body)?.[1] ?? "";
+const mainOf = (body: string) => /<main id="main" tabindex="-1">([\s\S]*)<\/main>/.exec(body)?.[1] ?? "";
 const switchOf = (body: string, label: string) => new RegExp(`<ul class="view-switch" aria-label="${label}">[\\s\\S]*?</ul>`).exec(body)?.[0] ?? "";
 const linkTexts = (body: string) => [...body.matchAll(/<a\b[^>]*>([\s\S]*?)<\/a>/g)].map((m) => m[1] ?? "");
 const titleOf = (body: string) => /<title>([^<]*)<\/title>/.exec(body)?.[1] ?? "";
@@ -107,7 +107,7 @@ test("a saved deals view follows Board and List in the Pipeline switch, as cards
   assert.match(main, /<p class="lede">Every open deal; highest value first\. \d+ deals?\.<\/p>/);
   assert.match(main, /<dt>In this stage<\/dt>/);
   assert.match(body, /<a href="\/pipeline" aria-current="page">/, "Pipeline is the current nav page");
-  assert.doesNotMatch(body, /<script/, "no board.js: there is nothing to drag");
+  assert.doesNotMatch(body.replace('<script src="/live.js" defer></script>', ""), /<script/, "no board.js: there is nothing to drag");
   assert.equal((await get(db, "/pipeline?view=vw_nothing")).status, 404);
   assert.equal((await get(db, "/pipeline?view=nonsense")).status, 200, "anything else is still the board");
 });

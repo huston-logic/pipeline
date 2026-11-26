@@ -9,7 +9,7 @@ import { addProject, type ProjectPatch, updateProject } from "../services/projec
 import { moveTask } from "../services/subtasks.ts";
 import { addTask } from "../services/tasks.ts";
 import { taskSpecs } from "./task-forms.ts";
-import { type ActionContext, type ActionResult, asOwner, backTo, notFound, page, pageContext, redirect, refusal, refusedPage, type Route, stateOf } from "./action-kit.ts";
+import { type ActionContext, type ActionResult, asOwner, backTo, notFound, page, pageContext, redirect, redirectBack, refusal, refusedPage, type Route, stateOf } from "./action-kit.ts";
 import type { PageContext } from "./context.ts";
 import { addTaskTo, logOn } from "./edit-actions.ts";
 import { projectHref } from "./parts.ts";
@@ -165,7 +165,7 @@ async function addSubTask(ctx: ActionContext, id: string): Promise<ActionResult>
   try {
     const input = collected.input as { title: string; dueAt?: string; description?: string };
     const result = await addTask(asOwner(ctx, "add_task"), { parent: parent.id, ...input });
-    return redirect(withChange(back, result.changeId));
+    return redirectBack(ctx, withChange(back, result.changeId));
   } catch (error) {
     return refused(refusal(error, "task"));
   }
@@ -181,7 +181,7 @@ async function move(ctx: ActionContext, id: string): Promise<ActionResult> {
   if (dir !== "up" && dir !== "down") return refused("Say which way to move it: up or down.");
   try {
     const result = await moveTask(asOwner(ctx, "move_task"), task.id, dir);
-    return redirect(withChange(back, result.changeId));
+    return redirectBack(ctx, withChange(back, result.changeId));
   } catch (error) {
     return refused(refusal(error, "task"));
   }

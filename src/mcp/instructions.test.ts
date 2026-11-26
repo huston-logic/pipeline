@@ -151,6 +151,7 @@ test("the time line: record time tools follow rule 7, work types and rates rule 
   for (const tool of ["start_timer", "stop_timer", "add_time_entry", "update_time_entry", "list_time", "add_work_type", "update_work_type", "set_client_rate"]) {
     assert.ok(line.includes(tool), tool);
   }
+  assert.match(line, /To discard a timer the owner started by mistake, use cancel_timer\./);
   assert.match(line, /record edits under rule 7/);
   assert.match(line, /change them only when the owner asks, as in rule 5/);
 });

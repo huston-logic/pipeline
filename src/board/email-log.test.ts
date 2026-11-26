@@ -10,7 +10,7 @@ const withAddress = async (address: string | undefined): Promise<Env> => ({
   EMAIL_LOG_ADDRESS: address,
 });
 
-const mainOf = (body: string) => /<main id="main">([\s\S]*)<\/main>/.exec(body)?.[1] ?? "";
+const mainOf = (body: string) => /<main id="main" tabindex="-1">([\s\S]*)<\/main>/.exec(body)?.[1] ?? "";
 
 test("Email logging shows the address to copy and the two lines on how to Bcc it (decision 0031)", async () => {
   const { res, body } = await load(await withAddress(LOG_ADDRESS), "/email-log");
@@ -45,7 +45,7 @@ test("without EMAIL_LOG_ADDRESS the page says it isn't set up, with no field and
     const main = mainOf(body);
     assert.match(main, /Email logging isn&#39;t set up for this copy\.|Email logging isn't set up for this copy\./);
     assert.doesNotMatch(main, /<input|data-copy/);
-    assert.doesNotMatch(body, /<script/);
+    assert.doesNotMatch(body.replace('<script src="/live.js" defer></script>', ""), /<script/);
   }
 });
 

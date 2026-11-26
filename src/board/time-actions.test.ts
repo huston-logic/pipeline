@@ -30,12 +30,13 @@ test("start then the bar shows on Today", async () => {
   assert.equal(rows[0]?.contact_id, "ct_seed01");
 
   const today = (await load(devEnv(db), "/")).body;
-  assert.match(today, /<div class="timer-bar">/);
-  assert.match(today, /<strong>Timer<\/strong>: Pat Example · since \d{1,2}:\d{2} [AP]M/);
-  assert.match(today, /<a class="button button-small" href="\/timer\/stop">Stop<span class="visually-hidden">: timer for Pat Example<\/span><\/a>/);
+  assert.match(today, /<div class="corner-chip" role="region" aria-label="Running timer">/);
+  assert.match(today, /<time class="corner-clock" datetime="[^"]+" data-since="[^"]+">since \d{1,2}:\d{2} [AP]M<\/time>/);
+  assert.match(today, /<span class="corner-what">Pat Example<\/span>/);
+  assert.match(today, /action="\/timer\/stop\/now" data-live>[^]*Stop<span class="visually-hidden">: timer for Pat Example<\/span>/);
   // Every board page carries it, and a person's page no longer offers a second Start.
   const person = (await load(devEnv(db), "/contacts/ct_seed01")).body;
-  assert.match(person, /class="timer-bar"/);
+  assert.match(person, /class="corner-chip"/);
   assert.doesNotMatch(person, /action="\/timer\/start"/);
 });
 
@@ -43,9 +44,9 @@ test("a Start timer form is on a person, a deal and a task, with the subject as 
   const db = await timeDb(new Date());
   const env = devEnv(db);
   const person = (await load(env, "/contacts/ct_seed01")).body;
-  assert.match(person, /<form class="timer-start" method="post" action="\/timer\/start">[^]*<input type="hidden" name="contact" value="ct_seed01">[^]*Start timer/);
+  assert.match(person, /<form class="timer-start" method="post" action="\/timer\/start" data-live>[^]*<input type="hidden" name="contact" value="ct_seed01">[^]*Start timer/);
   const deal = (await load(env, "/deals/dl_seed01")).body;
-  assert.match(deal, /action="\/timer\/start">[^]*<input type="hidden" name="deal" value="dl_seed01">/);
+  assert.match(deal, /action="\/timer\/start" data-live>[^]*<input type="hidden" name="deal" value="dl_seed01">/);
   assert.match(deal, /<input type="hidden" name="task" value="tk_seed\d+">/);
 });
 
@@ -111,7 +112,8 @@ test("stop saves entry, note and task and redirects to done", async () => {
   assert.match(done.body, /<a href="\/contacts\/ct_seed01">On the timeline<\/a>/);
   assert.match(done.body, /<a href="\/contacts\/ct_seed01">Next step task<\/a>/);
   assert.match(done.body, /Ask Claude to turn these notes into updates/);
-  assert.doesNotMatch(done.body, /class="timer-bar"/, "the timer is stopped, so no bar");
+  assert.doesNotMatch(done.body, /class="corner-chip"/, "the timer is stopped, so no chip");
+  assert.match(done.body, /Time logged: \d{1,2}:\d{2} [AP]M to \d{1,2}:\d{2} [AP]M/, "and the note says so for two minutes");
 });
 
 test("an unchanged start and end are not posted: the timer's own start and the moment of stopping are kept", async () => {
@@ -181,7 +183,7 @@ test("time tracking off: no Start button, no bar, 404s", async () => {
   for (const path of ["/contacts/ct_seed01", "/deals/dl_seed01", "/"]) {
     const { body } = await load(env, path);
     assert.doesNotMatch(body, /\/timer\/start/, path);
-    assert.doesNotMatch(body, /timer-bar/, path);
+    assert.doesNotMatch(body, /corner-chip/, path);
   }
   assert.equal((await load(env, "/timer/stop")).res.status, 404);
   assert.equal((await load(env, "/timer/done?entry=te_seed01")).res.status, 404);
@@ -237,11 +239,12 @@ test("None on a timer that has a work type clears it, and the entry is not billa
   assert.equal(ticked?.billable, 1);
 });
 
-test("the Stop link names the timer it stops for a screen reader", async () => {
+test("the chip's Stop and Undo name the timer they act on for a screen reader", async () => {
   const db = await timeDb(new Date());
   await started(db);
   const { body } = await load(devEnv(db), "/");
-  assert.match(body, /<a class="button button-small" href="\/timer\/stop">Stop<span class="visually-hidden">: timer for Pat Example<\/span><\/a>/);
+  assert.match(body, /<button class="button corner-button" type="submit">Stop<span class="visually-hidden">: timer for Pat Example<\/span><\/button>/);
+  assert.match(body, /Undo<span class="visually-hidden"> the timer<\/span>/);
 });
 
 test("the done page links its task only when the address names a real task of the entry's subject", async () => {

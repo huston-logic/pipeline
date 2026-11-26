@@ -130,7 +130,7 @@ ${contact.archived ? "" : html`<p class="section-action"><a href="${newProjectOf
 
 async function tasksSection(detail: ContactDetail, now: Date, tz: string, form: FormContext, subject: Subject): Promise<Html> {
   const cards = await Promise.all(detail.openTasks.map((task) => taskCard(task, now, tz, true, form)));
-  return section(
+  return html`<div data-region="tasks">${section(
     "tasks-heading",
     "Open tasks",
     html`${
@@ -139,7 +139,7 @@ async function tasksSection(detail: ContactDetail, now: Date, tz: string, form: 
         : html`<ul class="cards cards-single">${cards}</ul>`
     }
 ${addTaskForm(subject, form)}`,
-  );
+  )}</div>`;
 }
 
 function timelineSection(detail: ContactDetail, form: FormContext, subject: Subject): Html {

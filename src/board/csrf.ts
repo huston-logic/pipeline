@@ -12,6 +12,9 @@ const TOKEN = /^[A-Za-z0-9_-]{43}$/;
 
 export const csrfCookieName = (mode: CsrfMode): string => (mode === "dev" ? "pipeline-csrf" : "__Host-pipeline-csrf");
 
+/** Whether this sign-in mode's cookies are `Secure` (production, over https); one rule for every board cookie. */
+export const isSecureMode = (mode: CsrfMode): boolean => mode !== "dev";
+
 export const isCsrfToken = (value: string): boolean => TOKEN.test(value);
 
 /** 32 random bytes as unpadded base64url. */
@@ -29,7 +32,7 @@ export function newCsrfToken(): string {
  * withholds the cookie on cross-site posts, and the same-origin check runs before the token anyway.
  */
 export function csrfCookie(token: string, mode: CsrfMode): string {
-  const secure = mode === "dev" ? "" : " Secure;";
+  const secure = isSecureMode(mode) ? " Secure;" : "";
   return `${csrfCookieName(mode)}=${token}; Path=/;${secure} HttpOnly; SameSite=Lax`;
 }
 

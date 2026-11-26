@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { html } from "./html.ts";
 import { DEFAULT_THEME_COLOR, type Look, lookOf, renderPage, shortNameOf } from "./layout.ts";
@@ -141,12 +142,14 @@ test("pages drawn without a sign-in link no manifest and no apple-touch icon", (
   assert.doesNotMatch(plain, /manifest|apple-touch-icon|apple-mobile-web-app-title|theme-color/);
 });
 
-test("a change banner from the frame sits right after the page's h1, so it is the first thing read after the heading", () => {
-  const frame = { look: { name: "Pipeline" }, banner: html`<div class="banner" role="status">Moved</div>` };
+test("the status corner is the first thing in the page body, one live region, and nothing follows the page's h1", () => {
+  const corner = { timer: null, notice: null, logged: null, startTimer: false };
+  const frame = { look: { name: "Pipeline" }, corner, csrf: "t".repeat(43), here: "/" };
   const out = renderPage({ title: "Pipeline", description: "x", body: html`<h1>Pipeline</h1>\n<p>Rest</p>`, frame });
-  assert.match(out, /<main id="main">\n<h1>Pipeline<\/h1>\n<div class="banner" role="status">Moved<\/div>\n<p>Rest<\/p>/);
-  const backFirst = renderPage({ title: "Deal", description: "x", body: html`<p class="back">Back</p>\n<h1>Deal</h1>\n<p>Rest</p>`, frame });
-  assert.match(backFirst, /<h1>Deal<\/h1>\n<div class="banner" role="status">Moved<\/div>\n<p>Rest<\/p>/);
+  assert.match(out, /<div class="app-body">\n<div class="corner" data-region="corner">/);
+  assert.match(out, /<main id="main" tabindex="-1">\n<h1>Pipeline<\/h1>\n<p>Rest<\/p>\n<\/main>/);
+  assert.equal(out.match(/role="status"/g)?.length, 1);
+  assert.doesNotMatch(out, /class="banner/);
 });
 
 test("script: true loads /board.js with defer in the head; pages without it load no script", () => {
@@ -163,19 +166,26 @@ test('script: "push" loads only /push.js with defer (the Notifications page, dec
   assert.doesNotMatch(out, /board\.js/);
 });
 
-test("the Stop bar sits right after the header and before main, says Timer in words, and is absent with no timer", () => {
+test("the stylesheet keeps scroll room above a focused control while the corner has content (WCAG 2.4.11)", () => {
+  const css = readFileSync(new URL("../../public/board.css", import.meta.url), "utf8");
+  assert.match(css, /html:has\(\.corner-chip, \.corner-notice:not\(:empty\)\)\s*\{\s*scroll-padding-top: var\(--corner-h, 21rem\);/);
+});
+
+test("the timer chip sits in the corner after the header and before main, and a page with no corner draws none", () => {
   const look = { name: "Pipeline" };
-  const draw = (timer: { label: string; since: string } | null) =>
-    renderPage({ title: "T", description: "d", body: html`<h1>H</h1>`, current: "/", frame: { look, timer } });
-  const on = draw({ label: "Pat Example", since: "9:10 AM" });
+  const draw = (timer: { label: string; since: string; startedAt: string } | null) =>
+    renderPage({
+      title: "T",
+      description: "d",
+      body: html`<h1>H</h1>`,
+      current: "/",
+      frame: { look, corner: { timer, notice: null, logged: null, startTimer: false }, csrf: "t".repeat(43), here: "/" },
+    });
+  const on = draw({ label: "Pat Example", since: "9:10 AM", startedAt: "2026-11-26T17:10:00.000Z" });
   const header = on.indexOf("</header>");
-  const bar = on.indexOf('<div class="timer-bar">');
-  assert.ok(header > 0 && bar > header && bar < on.indexOf("<main"), "after the header, before main");
-  assert.equal(on.slice(header + "</header>".length).trimStart().startsWith("<div class=\"app-body\">\n<div class=\"timer-bar\">"), true);
-  assert.match(on, /<strong>Timer<\/strong>: Pat Example · since 9:10 AM/);
-  assert.match(on, /<a class="button button-small" href="\/timer\/stop">Stop<span class="visually-hidden">: timer for Pat Example<\/span><\/a>/);
-  assert.doesNotMatch(draw({ label: "", since: "9:10 AM" }), /Timer<\/strong>: /);
-  assert.match(draw({ label: "", since: "9:10 AM" }), /<strong>Timer<\/strong> · since 9:10 AM/);
-  assert.doesNotMatch(draw(null), /timer-bar/);
-  assert.doesNotMatch(page("/"), /timer-bar/);
+  const chip = on.indexOf('<div class="corner-chip" role="region" aria-label="Running timer">');
+  assert.ok(header > 0 && chip > header && chip < on.indexOf("<main"), "after the header, before main");
+  assert.match(on, /since 9:10 AM<\/time>/);
+  assert.doesNotMatch(draw(null), /corner-chip/);
+  assert.doesNotMatch(page("/"), /corner/);
 });

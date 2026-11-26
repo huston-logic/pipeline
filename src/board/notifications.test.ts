@@ -54,7 +54,7 @@ test("without the keys the page says so and has nothing to tap, and loads no scr
     assert.match(page.body, /This copy has no notification keys yet\./);
     assert.doesNotMatch(page.body, /<form/);
     assert.doesNotMatch(page.body, /<button/);
-    assert.doesNotMatch(page.body, /<script/);
+    assert.doesNotMatch(page.body.replace('<script src="/live.js" defer></script>', ""), /<script/);
   }
 });
 
@@ -90,7 +90,7 @@ test("Turn on: push_subscribe by the owner, back to the page with the banner; th
   assert.ok(row);
 
   const page = await load(env, res.location);
-  assert.match(page.body, /<div class="banner" role="status">\s*<p class="banner-text">Turned on notifications on one device \(ps_/);
+  assert.match(page.body, /<div class="corner-notice" role="status" tabindex="-1">\s*<p class="corner-text">Turned on notifications on one device \(ps_/);
   assert.doesNotMatch(page.body, /push\.example\.net/, "the endpoint is never shown");
   assert.match(page.body, new RegExp(`action="/notifications/${row.id}/off"`));
   assert.match(page.body, /Turn off<span class="visually-hidden"> notifications on device 1<\/span>/);

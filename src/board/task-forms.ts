@@ -38,6 +38,7 @@ export function snoozeForms(task: TaskRef, form: FormContext, state: { until?: s
     form,
     html`<button class="button button-quiet button-small" type="submit" name="preset" value="tomorrow">Tomorrow morning${hiddenName(name)}</button>
 <button class="button button-quiet button-small" type="submit" name="preset" value="next_week">Next week${hiddenName(name)}</button>`,
+    { live: {} },
   )}
 <p class="field-hint">${SNOOZE_HINT}</p>
 ${postForm(
@@ -46,7 +47,7 @@ ${postForm(
   form,
   html`${field({ id, name: "until", label: "Or until", kind: "when", value: state.until ?? "", hint: "The time is optional: 9:00 AM if blank.", error: state.error })}
 <button class="button button-small" type="submit">Snooze${hiddenName(name)}</button>`,
-  { novalidate: true },
+  { novalidate: true, live: {} },
 )}`;
 }
 
@@ -86,10 +87,10 @@ export async function taskEditForm(task: EditableTask, form: FormContext, tz: st
     form,
     html`${specFields(specs, shown, prefix)}
 <button class="button button-small" type="submit">Save${hiddenName(name)}</button>`,
-    { novalidate: true },
+    { novalidate: true, live: {} },
   );
   if (state !== undefined) return html`${formErrorSummary(state.errors, specs, prefix)}<div class="card refused-form">${inner}</div>`;
-  return html`<details class="task-edit">
+  return html`<details class="task-edit" id="edit-${task.id}">
 <summary>Edit${hiddenName(name)}</summary>
 ${inner}
 </details>`;
@@ -104,9 +105,10 @@ ${postForm(
   completeAction(task.id),
   form,
   html`<button class="button button-quiet button-small" type="submit">Done${hiddenName(name)}</button>`,
+  { live: {} },
 )}
 ${startTimerForm({ kind: "task", id: task.id }, form, name)}
-<details class="task-snooze">
+<details class="task-snooze" id="snooze-${task.id}">
 <summary>Snooze${hiddenName(name)}</summary>
 ${snoozeForms(task, form)}
 </details>
@@ -132,10 +134,10 @@ export function addTaskForm(subject: Subject, form: FormContext, state?: FormSta
     form,
     html`${specFields(specs, state?.shown ?? new Map(), prefix)}
 <button class="button button-small" type="submit">Add task</button>`,
-    { novalidate: true },
+    { novalidate: true, live: {} },
   );
   if (state !== undefined) return html`${formErrorSummary(state.errors, specs, prefix)}<div class="card refused-form">${inner}</div>`;
-  return html`<details class="add-details">
+  return html`<details class="add-details" id="add-${subject.id}">
 <summary>Add a task</summary>
 ${inner}
 </details>`;
@@ -154,7 +156,7 @@ export const quickSpecs = (): Spec[] => [
 export function quickAddForm(form: FormContext, state?: FormState): Html {
   const shown = state?.shown ?? new Map<string, Shown>();
   const inner = html`${specFields(quickSpecs(), shown, QUICK_PREFIX)}<button class="button" type="submit">Add</button>`;
-  return postForm("quick-add", QUICK_ADD_ACTION, form, inner, { novalidate: true });
+  return postForm("quick-add", QUICK_ADD_ACTION, form, inner, { novalidate: true, live: { after: fieldId(QUICK_PREFIX, "title") } });
 }
 
 /** A refused quick add: the error summary, then the form again inside a card. */

@@ -21,7 +21,7 @@ async function get(db: SqliteD1, path: string) {
   return { res, body: await res.text() };
 }
 
-const mainOf = (body: string) => /<main id="main">([\s\S]*)<\/main>/.exec(body)?.[1] ?? "";
+const mainOf = (body: string) => /<main id="main" tabindex="-1">([\s\S]*)<\/main>/.exec(body)?.[1] ?? "";
 const LAST = () => lastMonth(new Date(), DEFAULT_TZ);
 
 /** One rule, one deal, one nudge made 3 days into the month and completed, and two leads from sources. */

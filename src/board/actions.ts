@@ -13,12 +13,13 @@ import { type Removal, undoChange, undoRemovals } from "../services/undo.ts";
 import { joinAnd } from "../services/describe.ts";
 import { canUndo, undoAction } from "./banner.ts";
 import { MAX_BODY_BYTES, RECORD_FORM_MAX_BYTES, UPLOAD_MAX_BYTES } from "../http/limits.ts";
-import { type ActionContext, type ActionResult, asOwner, backTo, type MatchedAction, notFound, page, redirect, refusedPage, type Route } from "./action-kit.ts";
+import { type ActionContext, type ActionResult, asOwner, backTo, type MatchedAction, notFound, page, redirect, redirectBack, refusedPage, type Route } from "./action-kit.ts";
 import { isUnqualified } from "../services/lead-status.ts";
 import { EDIT_ROUTES } from "./edit-actions.ts";
 import { IMPORT_ROUTES } from "./import-actions.ts";
 import { CAMPAIGN_ROUTES } from "./campaign-actions.ts";
 import { TIME_ROUTES } from "./time-actions.ts";
+import { CORNER_ROUTES } from "./corner-actions.ts";
 import { PROJECT_ROUTES } from "./project-actions.ts";
 import { TEMPLATE_ROUTES } from "./template-actions.ts";
 import { newProjectOfDealPath } from "./project-form.ts";
@@ -135,7 +136,7 @@ async function undo(ctx: ActionContext, id: string): Promise<ActionResult> {
     }
     const home = await homeIfRemoved(ctx, back);
     const result = await undoChange(asOwner(ctx, "undo_change"), id);
-    return redirect(withChange(await home(), result.changeId));
+    return redirectBack(ctx, withChange(await home(), result.changeId));
   } catch (error) {
     if (!(error instanceof UserError)) throw error;
     return page(422, refusedPage(ctx, "That change wasn't undone", error.message, back, ""));
@@ -170,6 +171,7 @@ const ROUTES: Route[] = [
   { path: /^\/changes\/([^/]+)\/undo$/, handle: undo },
   ...EDIT_ROUTES,
   ...TIME_ROUTES,
+  ...CORNER_ROUTES,
   ...PROJECT_ROUTES,
   ...TEMPLATE_ROUTES,
   ...CAMPAIGN_ROUTES,

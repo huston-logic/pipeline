@@ -126,7 +126,7 @@ ${edit}
 
 async function tasksSection(brief: DealBrief, now: Date, tz: string, form: FormContext, subject: Subject): Promise<Html> {
   const cards = await Promise.all(brief.openTasks.map((task) => taskCard(task, now, tz, false, form)));
-  return section(
+  return html`<div data-region="tasks">${section(
     "tasks-heading",
     "Open tasks",
     html`${
@@ -135,7 +135,7 @@ async function tasksSection(brief: DealBrief, now: Date, tz: string, form: FormC
         : html`<ul class="cards cards-single">${cards}</ul>`
     }
 ${addTaskForm(subject, form)}`,
-  );
+  )}</div>`;
 }
 
 function timelineSection(brief: DealBrief, form: FormContext, subject: Subject): Html {

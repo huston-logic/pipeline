@@ -3,6 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
+import { Script } from "node:vm";
 import { gzipSync } from "node:zlib";
 import { SECURITY_HEADERS } from "../src/security.ts";
 import { build } from "./build.mjs";
@@ -34,6 +35,20 @@ test("board.js stays small and plain: under 3 KB gzipped, no eval, no third-part
   const script = read("board.js");
   assert.ok(gzipSync(script).length < 3 * 1024, `${gzipSync(script).length} bytes gzipped`);
   assert.doesNotMatch(script, /\beval\(|new Function|innerHTML|outerHTML|insertAdjacentHTML|document\.write|\bfetch\(|XMLHttpRequest|import\(|https?:\/\//);
+});
+
+test("live.js stays small and plain: under 3 KB gzipped, no eval, no HTML strings, no third-party code, no history (decision 0062)", () => {
+  const script = read("live.js");
+  assert.ok(gzipSync(script).length < 3 * 1024, `${gzipSync(script).length} bytes gzipped`);
+  assert.doesNotMatch(script, /\beval\(|new Function|innerHTML|outerHTML|insertAdjacentHTML|document\.write|XMLHttpRequest|import\(|https?:\/\/|pushState|localStorage|sendBeacon/);
+  assert.deepEqual(script.match(/\bhistory\.\w+/g), ["history.replaceState"], "the address changes only for a filter, by replacing it");
+  assert.doesNotThrow(() => new Script(script), "live.js parses");
+  assert.equal(script.match(/\bfetch\(/g)?.length, 2, "the form's post, then a GET of a page");
+  assert.match(script, /X-Location/);
+  assert.match(script, /to\.origin !== location\.origin/, "a foreign address is never fetched");
+  assert.match(script, /fetch\(form\.action, \{\s*method: "POST",\s*headers: \{ "X-Live": "1" \},[^]*credentials: "same-origin",?\s*\}\)/, "the form's own action, same origin");
+  assert.match(script, /fetch\(url, \{ credentials: "same-origin" \}\)/, "a GET of a board path");
+  assert.match(script, /new DOMParser\(\)\.parseFromString\(/);
 });
 
 test("board.js copies prompts with the clipboard API and moves focus to the Log button after Call, Text or Email (decision 0021)", () => {

@@ -16,5 +16,6 @@ export function startTimerForm(subject: TimerSubject, form: FormContext, name?: 
     START_PATH,
     form,
     html`${hidden(subject.kind, subject.id)}<button class="button button-quiet button-small" type="submit">Start timer${named}</button>`,
+    { live: {} },
   );
 }

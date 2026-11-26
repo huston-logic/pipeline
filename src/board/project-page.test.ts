@@ -77,7 +77,7 @@ test("the Time card shows totals only with time tracking on, and offers Start ti
   assert.match(body, /<dt>Billable<\/dt>/);
   assert.match(body, /<dt>Not billable<\/dt>/);
   assert.match(body, /<dt>Amount<\/dt><dd>\$/);
-  assert.match(body, /<form class="timer-start" method="post" action="\/timer\/start">[^]*<input type="hidden" name="project" value="pj_retro">/);
+  assert.match(body, /<form class="timer-start" method="post" action="\/timer\/start" data-live>[^]*<input type="hidden" name="project" value="pj_retro">/);
   assert.match(body, /<a href="\/time">See time<\/a>/);
   const off = (await load(devEnv(await projectDb({ tracking: false })), "/projects/pj_retro")).body;
   assert.doesNotMatch(off, /Time<\/h2>|\/timer\/start|See time/);

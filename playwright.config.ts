@@ -13,7 +13,8 @@ export default defineConfig({
   testDir: "tests/a11y",
   forbidOnly: !!process.env.CI,
   retries: 0,
-  workers: process.env.CI ? 1 : undefined,
+  // One worker everywhere: tests/a11y/in-place.spec.ts starts and stops the one timer the preview database allows.
+  workers: 1,
   // The whole suite's wall-clock budget. Every board route is scanned top and bottom on desktop and mobile, plus a
   // horizontal-scroll check on mobile, one test at a time in CI, so it grows with boardRoutes: about 280 tests took
   // 5 minutes in run 6. 12 minutes stays inside the a11y job's 15-minute timeout in .github/workflows/ci.yml.

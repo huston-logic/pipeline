@@ -36,7 +36,7 @@ async function mainOf(db: SqliteD1, path: string): Promise<{ status: number; tit
   return {
     status: res.status,
     title: /<title>([^<]*)<\/title>/.exec(body)?.[1] ?? "",
-    main: /<main id="main">([\s\S]*)<\/main>/.exec(body)?.[1] ?? "",
+    main: /<main id="main" tabindex="-1">([\s\S]*)<\/main>/.exec(body)?.[1] ?? "",
   };
 }
 

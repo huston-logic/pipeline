@@ -64,7 +64,7 @@ test("Today with JavaScript off has the sort form as a GET form", async () => {
   assert.match(form, /<select id="todo-sort" name="sort">[\s\S]*<option value="newest" selected>/);
   assert.match(form, /<select id="todo-show" name="show">[\s\S]*<option value="standalone" selected>/);
   assert.match(form, /<button class="button" type="submit">Show to-dos<\/button>/);
-  assert.match(body, /<form class="quick-add" method="post" action="\/tasks\/quick" novalidate>/);
+  assert.match(body, /<form class="quick-add" method="post" action="\/tasks\/quick" data-live data-after="quick-title" novalidate>/);
 });
 
 test("the show filter and an unknown value", async () => {

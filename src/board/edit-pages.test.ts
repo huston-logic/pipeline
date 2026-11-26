@@ -8,7 +8,7 @@ import { addField } from "../services/fields.ts";
 
 const titleOf = (body: string) => /<title>([^<]*)<\/title>/.exec(body)?.[1] ?? "";
 const descriptionOf = (body: string) => /<meta name="description" content="([^"]*)">/.exec(body)?.[1] ?? "";
-const mainOf = (body: string) => /<main id="main">([\s\S]*)<\/main>/.exec(body)?.[1] ?? "";
+const mainOf = (body: string) => /<main id="main" tabindex="-1">([\s\S]*)<\/main>/.exec(body)?.[1] ?? "";
 const labels = (body: string) => [...body.matchAll(/<label\b[^>]*>([\s\S]*?)<\/label>/g)].map((m) => m[1] ?? "");
 const linkTexts = (body: string) => [...body.matchAll(/<a\b[^>]*>([\s\S]*?)<\/a>/g)].map((m) => m[1] ?? "");
 /** The form posting to `action`, as markup. */
@@ -162,9 +162,9 @@ test("the deal page offers Edit deal, Add a task and Log, and each task card has
   const task = formOf(body, "/deals/dl_seed01/tasks");
   assertLabelled(task, "add task");
   for (const action of ["/deals/dl_seed01/tasks", "/deals/dl_seed01/log"]) {
-    assert.match(formOf(body, action, "inline-form"), new RegExp(`action="${action}" novalidate>`), action);
+    assert.match(formOf(body, action, "inline-form"), new RegExp(`action="${action}"( data-live)? novalidate>`), action);
   }
-  assert.match(body, /<form class="snooze-until" method="post" action="\/tasks\/tk_seed01\/snooze" novalidate>/);
+  assert.match(body, /<form class="snooze-until" method="post" action="\/tasks\/tk_seed01\/snooze" data-live novalidate>/);
   assert.match(task, /<button class="button button-small" type="submit">Add task<\/button>/);
   const log = formOf(body, "/deals/dl_seed01/log", "inline-form");
   assertLabelled(log, "log");

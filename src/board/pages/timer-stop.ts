@@ -14,7 +14,7 @@ import { checkbox } from "../inputs.ts";
 import { renderPage } from "../layout.ts";
 import { formErrorSummary, specField } from "../record-fields.ts";
 import { type FormError, line, type Shown, type Spec } from "../record-form.ts";
-import { timerState } from "../timer-bar.ts";
+import { cornerOf } from "../corner-state.ts";
 
 export const TIMER_STOP_PATH = "/timer/stop";
 export const STOP_PREFIX = "stop";
@@ -39,9 +39,8 @@ export async function timerStopPage(ctx: PageContext, state?: StopState): Promis
   const { db, now } = ctx;
   const settings = await getSettings(db);
   if (settings.time_tracking !== 1) return null;
-  const { timer } = await timerState(db, now, settings);
   const running = await runningTimer(db);
-  const frame = { ...ctx, timer };
+  const frame = { ...ctx, corner: await cornerOf(ctx, settings) };
   if (running === null) {
     return renderPage({
       title: "Timer",

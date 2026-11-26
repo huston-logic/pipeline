@@ -37,7 +37,7 @@ test("no campaign tool is named for sending, scheduling, approving or stopping",
   const names = tools.map((t) => t.name).filter((name) => name.includes("campaign"));
   assert.deepEqual(names.sort(), ["add_campaign_draft", "get_campaign", "list_campaigns", "preview_campaign_recipients", "update_campaign_draft"]);
   for (const name of names) assert.doesNotMatch(name, /send|schedule|approve|unsubscribe|pause|resume|cancel/, name);
-  for (const tool of tools) assert.doesNotMatch(tool.name, /send|schedule|approve|unsubscribe|pause_campaign|cancel/, tool.name);
+  for (const tool of tools) assert.doesNotMatch(tool.name, /send|schedule|approve|unsubscribe|pause_campaign|cancel_campaign/, tool.name);
   assert.deepEqual(
     tools.filter((t) => t.annotations?.readOnlyHint === true && t.name.includes("campaign")).map((t) => t.name).sort(),
     ["get_campaign", "list_campaigns", "preview_campaign_recipients"],

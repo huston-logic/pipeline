@@ -51,13 +51,16 @@ const descriptionOf = (body: string) => /<meta name="description" content="([^"]
 /** The text inside every <a> element. */
 const linkTexts = (body: string) => [...body.matchAll(/<a\b[^>]*>([\s\S]*?)<\/a>/g)].map((m) => m[1] ?? "");
 /** The page without its header (brand and nav), so a test sees only what the page itself drew. */
-const mainOf = (body: string) => /<main id="main">([\s\S]*)<\/main>/.exec(body)?.[1] ?? "";
+const mainOf = (body: string) => /<main id="main" tabindex="-1">([\s\S]*)<\/main>/.exec(body)?.[1] ?? "";
 const navOf = (body: string) => /<nav class="app-nav"[\s\S]*?<\/nav>/.exec(body)?.[0] ?? "";
 /** The card titles on a page, as markup, so an outside name is checked together with its label. */
 /** The one script the board ships (decision 0014), loaded only by the pipeline's board view. */
 // Opening tags only: any extra or inline script still shows up as another (or a different) opening tag.
 const BOARD_JS = '<script src="/board.js" defer>';
+/** Every signed-in page also loads /live.js (decision 0062). */
+const LIVE_JS = '<script src="/live.js" defer>';
 const scriptsOf = (body: string) => [...body.matchAll(/<script\b[^>]*>/gi)].map((m) => m[0]);
+const withoutLive = (body: string) => body.replace(`${LIVE_JS}</script>\n`, "");
 const cardTitles = (body: string) => [...body.matchAll(/<h2 class="card-title">([\s\S]*?)<\/h2>/g)].map((m) => m[1] ?? "");
 
 function assertPage(body: string, path: string) {
@@ -68,8 +71,8 @@ function assertPage(body: string, path: string) {
   assert.match(body, /<link rel="stylesheet" href="\/theme.css">/, path);
   // /board.js: dragging on the pipeline board, the phone actions and Copy prompt on deal and contact pages (decision 0021).
   // /deals/new and /contacts/new are the Add a deal and Add contact forms, not record pages.
-  const scripted = path === "/pipeline" || /^\/deals\/(?!new$)[^/]+$/.test(path) || /^\/contacts\/(?!new$)[^/]+$/.test(path) || path.startsWith("/timer/done");
-  assert.deepEqual(scriptsOf(body), scripted ? [BOARD_JS] : [], `${path}: scripts`);
+  const scripted = path === "/pipeline" || /^\/deals\/(?!new$)[^/]+$/.test(path) || /^\/contacts\/(?!new$)[^/]+$/.test(path) || path.startsWith("/timer/done") || path.startsWith("/timer/notes");
+  assert.deepEqual(scriptsOf(body), scripted ? [LIVE_JS, BOARD_JS] : [LIVE_JS], `${path}: scripts`);
   assert.doesNotMatch(body, /\sstyle=/i, `${path}: no inline styles (the CSP refuses them)`);
 }
 
@@ -237,7 +240,7 @@ test("the pipeline board: one column per open stage in order, with its count and
     ["not_now", "Not now", "0 deals"],
   ]);
   assert.doesNotMatch(main, /Salon booking site/, "closed deals are not cards");
-  assert.deepEqual(scriptsOf(body), [BOARD_JS]);
+  assert.deepEqual(scriptsOf(body), [LIVE_JS, BOARD_JS]);
 });
 
 test("pipeline cards show title, contact, value and next date, overdue in words, and a Move to form that works without JavaScript", async () => {
@@ -372,7 +375,7 @@ test("searching contacts: the count names the search, the box keeps it, and Clea
   assert.match(none, /Clear search/);
 
   const { body: page } = await get(db, `/contacts?q=${encodeURIComponent(SCRIPT)}`);
-  assert.doesNotMatch(page, /<script/i);
+  assert.doesNotMatch(withoutLive(page), /<script/i);
   assert.match(page, /value="&lt;script&gt;alert\(1\)&lt;\/script&gt;"/);
   assert.equal(titleOf(page), "Contacts · Pipeline", "the search stays out of the title");
 });
@@ -533,7 +536,7 @@ test("outside text: labelled From outside, escaped, never a link, and kept out o
 
   for (const path of ["/", "/pipeline", "/contacts", "/contacts/ct_seed02", "/companies", "/deals/dl_seed02"]) {
     const { body } = await get(db, path);
-    assert.doesNotMatch(body.replace(BOARD_JS, ""), /<script/i, path);
+    assert.doesNotMatch(withoutLive(body).replace(BOARD_JS, ""), /<script/i, path);
     assert.doesNotMatch(body, /evil\.example">/, path);
     assert.match(body, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/, path);
     for (const text of linkTexts(body)) assert.doesNotMatch(text, /script|bakery|Robin/i, `${path}: link text "${text}"`);
@@ -671,7 +674,7 @@ test("board pages answer GET and HEAD only: any other method is 405 (writes have
     (/\/(?:edit|new|qualify|campaign-emails\/allow)$/.test(path) && !projectForm(path)) ||
     /^\/projects\/[^/?]+$/.test(path) ||
     /^\/templates\/[^/?]+$/.test(path) ||
-    ["/import", "/timer/stop", "/campaigns/settings", "/templates"].includes(path.split("?")[0] ?? "");
+    ["/import", "/timer/stop", "/timer/notes", "/campaigns/settings", "/templates"].includes(path.split("?")[0] ?? "");
   for (const path of boardRoutes) {
     for (const method of ["POST", "PUT", "DELETE", "PATCH"]) {
       if (method === "POST" && formPage(path)) {

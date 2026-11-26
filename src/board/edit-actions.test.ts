@@ -61,7 +61,7 @@ test("Add a deal for a new person: one add_deal change by the owner, then the ne
   assert.equal(row?.value, 2400);
   assert.equal(row?.next_at, zonedToUtc("2026-12-01T10:30", DEFAULT_TZ).toISOString());
   const shown = (await load(env, location)).body;
-  assert.match(shown, /<p class="banner-text">Added contact Lee Example with deal &quot;Garage plans&quot; in /);
+  assert.match(shown, /<p class="corner-text">Added contact Lee Example with deal &quot;Garage plans&quot; in /);
 });
 
 test("Add a deal with an email already on file adds the deal to that contact, and the banner says so", async () => {

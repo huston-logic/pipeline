@@ -26,6 +26,7 @@ import {
   page,
   pageContext,
   redirect,
+  redirectBack,
   refusal,
   refusedFormPage,
   refusedPage,
@@ -177,7 +178,7 @@ export const addTaskTo = (kind: Subject["kind"]) =>
     try {
       const input = collected.input as { title: string; dueAt?: string; description?: string };
       const result = await addTask(asOwner(ctx, "add_task"), { ...subjectRefs(subject), ...input });
-      return redirect(withChange(back, result.changeId));
+      return redirectBack(ctx, withChange(back, result.changeId));
     } catch (error) {
       return refused([refusal(error, "task")]);
     }
@@ -193,7 +194,7 @@ async function quickAdd(ctx: ActionContext): Promise<ActionResult> {
   try {
     const input = collected.input as { title: string; dueAt?: string };
     const result = await addTask(asOwner(ctx, "add_task"), { title: input.title, dueAt: input.dueAt });
-    return redirect(withChange(back, result.changeId));
+    return redirectBack(ctx, withChange(back, result.changeId));
   } catch (error) {
     return refused([refusal(error, "task")]);
   }
@@ -274,7 +275,7 @@ async function complete(ctx: ActionContext, id: string): Promise<ActionResult> {
       if (open > 0 && (await getTask(ctx.db, id))?.done_at === null) return page(200, subTasksPage(ctx, id, home, open, home.back));
     }
     const result = await completeTask(asOwner(ctx, "complete_task"), id, { subTasks });
-    return redirect(withChange(home.back, result.changeId));
+    return redirectBack(ctx, withChange(home.back, result.changeId));
   } catch (error) {
     return page(422, refusedPage(ctx, "The task wasn't marked done", refusal(error, "task"), home.back, "", home.home));
   }
@@ -312,7 +313,7 @@ async function snooze(ctx: ActionContext, id: string): Promise<ActionResult> {
   }
   try {
     const result = await snoozeTask(asOwner(ctx, "snooze_task"), id, until);
-    return redirect(withChange(home.back, result.changeId));
+    return redirectBack(ctx, withChange(home.back, result.changeId));
   } catch (error) {
     return refused(refusal(error, "task"), preset !== "tomorrow" && preset !== "next_week");
   }
@@ -334,7 +335,7 @@ async function editTask(ctx: ActionContext, id: string): Promise<ActionResult> {
   if (Object.keys(collected.input).length === 0) return refused([NOTHING_TO_SAVE]);
   try {
     const result = await updateTask(asOwner(ctx, "update_task"), id, collected.input as { title?: string; dueAt?: string | null; description?: string | null });
-    return redirect(withChange(home.back, result.changeId));
+    return redirectBack(ctx, withChange(home.back, result.changeId));
   } catch (error) {
     return refused([refusal(error, "task")]);
   }

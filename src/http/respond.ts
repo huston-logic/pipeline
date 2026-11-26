@@ -19,7 +19,15 @@ export function textResponse(body: string, status: number, headers: Record<strin
   );
 }
 
+/**
+ * The same answer for a post made by /live.js (decision 0062): the page to load next in `X-Location`, not a redirect for
+ * the browser to follow (a followed redirect is upgraded to https on a plain-http local board and fails).
+ */
+export function liveDone(location: string, headers: Record<string, string> = {}): Response {
+  return withSecurityHeaders(new Response(null, { status: 204, headers: { "X-Location": location, "Cache-Control": "no-store", ...headers } }));
+}
+
 /** Post/Redirect/Get: a board write answers with the page to load next, so a reload never repeats it. */
-export function seeOther(location: string): Response {
-  return withSecurityHeaders(new Response(null, { status: 303, headers: { Location: location, "Cache-Control": "no-store" } }));
+export function seeOther(location: string, headers: Record<string, string> = {}): Response {
+  return withSecurityHeaders(new Response(null, { status: 303, headers: { Location: location, "Cache-Control": "no-store", ...headers } }));
 }

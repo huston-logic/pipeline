@@ -250,11 +250,8 @@ search box on its own row, the other control and the button below; from 40rem, o
 heading inside a card (15px, 600, `ink-2`, the text face) on a `--divider` line, when a card holds two lists. Links in
 `.card-links` sit above a card title's whole-card link, so both can be tapped.
 
-### 7.16 Change banner (`.banner`)
-After every board write (decision 0017): the change's one-line summary, 600, in `ink` on `--accent-tint`, `--r-card`,
-at most 52rem wide, right after the page's h1, `role="status"`. An Undo button (quiet, §7.10) sits at its right
-end, or wraps under it on a phone. An undone change says "This change was undone." in place of the button. No icon, no
-close button, nothing that disappears on its own.
+### 7.16 Change banner
+Replaced by the status corner, §7.25 (run 12). The `.banner` and `.timer-bar` styles are gone.
 
 ### 7.17 Move to form (`.move`, `.move-details`)
 A select of every stage (open ones first, then "Close the deal": Won, Lost, Not now; the deal's own marked
@@ -331,6 +328,26 @@ script can use the clipboard; it starts `hidden`), a polite live line in `ink-2`
 prompt" disclosure (`ink-2` 600, like Snooze) holding the prompt in a labelled read-only textarea (§7.20 field).
 Nothing pops up and nothing disappears on its own.
 
+### 7.25 Status corner (`.corner`; run 12)
+Replaces the old change banner and Stop bar. `<div class="corner" data-region="corner">` is the first thing in
+`.app-body`, `position: sticky; top: 0` above the content, its chips aligned to the right edge (16px side padding,
+32px from 60rem). The strip itself is `pointer-events: none` and an empty corner has no height, so it never blocks
+a click or pushes the page down; it takes no focus and traps none, and tab order follows the page order.
+- **Fill:** the chip and a non-empty notice are bold: `--accent` fill, `--on-accent` text (15px, 600), `--r-card`,
+  `--shadow-bar`, 8px 12px padding, at most `min(100%, 28rem)` wide. Buttons inside are 44px tall, white text with a
+  1px inset `--on-accent` edge and no fill (a quiet button inverted), with the slow underline on hover and focus.
+- **Timer chip** (only while a timer runs, outside the live region): "since 9:10 AM" in a `<time>` with tabular
+  figures, the who (cut to 32 characters with "…"), Stop and Undo, each its own form.
+- **Notice** (`role="status"`, always present, empty when there is nothing): the change in a few words ("Done: Send
+  the plan") with Undo, or after a timer stops, "Time logged: 1:16 PM to 1:58 PM" with Edit or add notes, Undo and
+  Close. The Time logged note wins when both apply and goes after two minutes or on Close.
+- **Focus ring (the one exception to the rust ring, §1):** rust on the accent fill is about 1.1:1, so inside the
+  corner the ring is 2px `--white` at a 2px offset (on the fill, 4.5:1 or better for any accepted accent).
+- **Scroll room:** `html:has(.corner-chip, .corner-notice:not(:empty))` sets `scroll-padding-top: 21rem`, the tallest
+  case at 320px (the wrapped Time logged note under the wrapped chip), so Tab never leaves a focused control under
+  the sticky corner (WCAG 2.4.11). An empty corner adds none.
+- No animation, nothing that disappears on its own other than the two-minute rule above.
+
 ## 8. Line art and icons
 
 Inline SVG in `src/board/icons.ts`, 24 × 24 viewBox, `stroke: currentColor`, stroke 1.75, round caps and joins, no
@@ -341,10 +358,12 @@ icon packs, emoji or decorative icons.
 
 ## 9. Motion
 
-Almost none. The only motion is the slow underline on links and buttons (0.5s) answering a hover or focus. No page
-load animation, no hover lift on cards, nothing loops, nothing is tied to scrolling. Under
-`prefers-reduced-motion: reduce` every transition is off and the end state shows at once. Only `background-size`
-transitions.
+Short motion that answers a tap, and nothing else: a row opening, a notice arriving, a row leaving when it is done.
+Each lasts `--motion-fast` (160ms) on `--ease`, runs once, and only changes `opacity` and, for the notice and the timer
+chip, a 4px `translateY`. The slow underline on links and buttons (0.5s) answering a hover or focus stays as it is.
+No page load animation, no hover lift on cards, nothing loops or moves by itself, nothing is tied to scrolling.
+Everything sits inside `prefers-reduced-motion: no-preference`; under `reduce` every animation and transition is off
+and the end state shows at once (`/live.js` also skips its 160ms wait before a row leaves).
 
 ## 10. Responsive
 
@@ -371,9 +390,10 @@ Checked at 375 and 1280px wide with no horizontal scroll (`npm run screenshots`)
 
 ## 12. Performance budget (the `lighthouse` check: 90 or higher on mobile, all four categories)
 
-- No font files, no images. Two small stylesheets (`/board.css` static, `/theme.css` from the Worker). One small
-  script, `/board.js` (under 3 KB gzipped, `defer`), on the pipeline board, deal pages and contact pages (decision
-  0021); every other page has none.
+- No font files, no images. Two small stylesheets (`/board.css` static, `/theme.css` from the Worker). Small scripts,
+  each under 3 KB gzipped and `defer`: `/live.js` on every signed-in page (decision 0062), `/board.js` on the
+  pipeline board, deal pages and contact pages (decision 0021), `/push.js` on Notifications (decision 0030); a page
+  outside the sign-in has none.
 - The glow is one CSS radial gradient; no `filter`, no `backdrop-filter`.
 - Icons are inline SVG.
 

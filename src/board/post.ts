@@ -7,9 +7,9 @@ import type { AccessResult } from "../auth/access.ts";
 import { getSettings } from "../db/queries.ts";
 import type { Env } from "../env.ts";
 import { readCappedBody, readCappedBytes } from "../http/limits.ts";
-import { htmlResponse, seeOther, textResponse } from "../http/respond.ts";
+import { htmlResponse, liveDone, seeOther, textResponse } from "../http/respond.ts";
 import type { MatchedAction } from "./action-kit.ts";
-import { CSRF_FIELD, type CsrfMode, csrfFromCookies, csrfMatches } from "./csrf.ts";
+import { CSRF_FIELD, type CsrfMode, csrfFromCookies, csrfMatches, isSecureMode } from "./csrf.ts";
 import { html } from "./html.ts";
 import { type Look, lookOf, renderPage } from "./layout.ts";
 import { RETURN_FIELD } from "./forms.ts";
@@ -89,6 +89,7 @@ export async function handleBoardPost(
   }
 
   const origin = new URL(request.url).origin;
-  const result = await action.run({ db: env.DB, env, now: new Date(), csrf: cookie, form, ...(upload ? { upload } : {}), look, email: auth.email, origin });
-  return result.kind === "redirect" ? seeOther(result.location) : htmlResponse(result.body, result.status);
+  const result = await action.run({ db: env.DB, env, now: new Date(), csrf: cookie, form, ...(upload ? { upload } : {}), look, email: auth.email, origin, secure: isSecureMode(mode) });
+  if (result.kind !== "redirect") return htmlResponse(result.body, result.status);
+  return request.headers.get("X-Live") === "1" ? liveDone(result.location, result.headers) : seeOther(result.location, result.headers);
 }

@@ -17,7 +17,7 @@ test("wrapping an already wrapped response keeps its policy", () => {
   assert.equal(withSecurityHeaders(consent), consent);
 });
 
-test("scripts may come from this site only (the board's own /board.js, decision 0014): never inline, never eval", () => {
+test("scripts may come from this site only (the board's own /live.js, /board.js and /push.js, decisions 0014, 0062): never inline, never eval", () => {
   assert.match(CONTENT_SECURITY_POLICY, /(^|; )script-src 'self'(;|$)/);
   assert.doesNotMatch(CONTENT_SECURITY_POLICY, /unsafe-inline|unsafe-eval|unsafe-hashes|strict-dynamic|nonce-|sha256-/);
   assert.match(CONTENT_SECURITY_POLICY, /object-src 'none'/);

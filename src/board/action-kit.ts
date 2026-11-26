@@ -27,9 +27,14 @@ export interface ActionContext {
   email: string;
   /** The request's origin, for links a handler writes into stored data (an approved campaign's base URL). */
   origin: string;
+  /** Cookies this response sets carry `Secure`: the same rule as the CSRF cookie (production mode, not dev). */
+  secure: boolean;
 }
 
-export type ActionResult = { kind: "redirect"; location: string } | { kind: "page"; status: 200 | 404 | 422; body: string };
+export type ActionResult = { kind: "redirect"; location: string; headers?: Record<string, string> } | { kind: "page"; status: 200 | 404 | 422; body: string };
+
+/** The anchors a form's hidden `at` field may name: the row to come back to (a plain id-like word). */
+export const AT_PATTERN = /^[a-z][a-z0-9_-]{0,80}$/;
 
 export type BoardAction = (ctx: ActionContext) => Promise<ActionResult>;
 
@@ -46,6 +51,12 @@ export const asOwner = (ctx: ActionContext, tool: string): Ctx => ({ db: ctx.db,
 
 export const redirect = (location: string): ActionResult => ({ kind: "redirect", location });
 
+/** A redirect back to where the form was, at the row it came from: `#<at>` when the form posted a valid `at`. */
+export function redirectBack(ctx: ActionContext, location: string): ActionResult {
+  const at = ctx.form.get("at") ?? "";
+  return redirect(AT_PATTERN.test(at) ? `${location}#${at}` : location);
+}
+
 export const page = (status: 200 | 404 | 422, body: string): ActionResult => ({ kind: "page", status, body });
 
 export const notFound = (ctx: ActionContext): ActionResult => page(404, notFoundPage({ look: ctx.look }));
@@ -53,7 +64,7 @@ export const notFound = (ctx: ActionContext): ActionResult => page(404, notFound
 /** Where to come back to: the form's return_to when it is a board page, else the record's own page. */
 export const backTo = (ctx: ActionContext, fallback: string): string => boardReturnPath(ctx.form.get(RETURN_FIELD)) ?? fallback;
 
-/** A page drawn in answer to a post (a refused form): the same frame as a GET of `here`, with no banner. */
+/** A page drawn in answer to a post (a refused form): the same frame as a GET of `here`, with no corner. */
 export const pageContext = (ctx: ActionContext, here: string): PageContext => ({
   db: ctx.db,
   now: ctx.now,
@@ -61,7 +72,6 @@ export const pageContext = (ctx: ActionContext, here: string): PageContext => ({
   here,
   csrf: ctx.csrf,
   look: ctx.look,
-  banner: "",
 });
 
 /** A collected form as a refused page draws it, with any extra messages that belong to no one field. */

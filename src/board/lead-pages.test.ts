@@ -12,7 +12,7 @@ import { updateContact } from "../services/contacts.ts";
 const contact = (db: SqliteD1, id: string) => db.prepare("SELECT * FROM contacts WHERE id = ?").bind(id).first<ContactRow>();
 const deal = (db: SqliteD1, id: string) => db.prepare("SELECT * FROM deals WHERE id = ?").bind(id).first<DealRow>();
 const titleOf = (body: string) => /<title>([^<]*)<\/title>/.exec(body)?.[1] ?? "";
-const mainOf = (body: string) => /<main id="main">([\s\S]*)<\/main>/.exec(body)?.[1] ?? "";
+const mainOf = (body: string) => /<main id="main" tabindex="-1">([\s\S]*)<\/main>/.exec(body)?.[1] ?? "";
 const formOf = (body: string, action: string) => {
   const at = body.indexOf(`action="${action}"`);
   const start = at < 0 ? -1 : body.lastIndexOf("<form", at + 1);
@@ -74,7 +74,7 @@ test("Add a lead: one add_lead change by the owner, the lead's page with the ban
   const row = await contact(db, id);
   assert.equal(row?.lead_status, "new");
   assert.equal(row?.business, "Example Signs");
-  assert.match((await load(env, location)).body, /<p class="banner-text">Added lead Lee Example \(New\), from walk-in/);
+  assert.match((await load(env, location)).body, /<p class="corner-text">Added lead Lee Example \(New\), from walk-in/);
   const back = await undo(env, location, `/contacts/${id}`);
   assert.match(back, /^\/leads\?change=chg_/, "the lead is gone, so its list");
   assert.equal(await contact(db, id), null);
@@ -222,7 +222,7 @@ test("Save status: Not now with a check-back date is one update_contact change w
   const tasks = await db.prepare("SELECT * FROM tasks WHERE contact_id = ?").bind(id).all<TaskRow>();
   assert.equal(tasks.results.length, 1);
   const shown = (await load(env, location)).body;
-  assert.match(shown, /<p class="banner-text">Updated Lee Example: lead status to Not now; added task &quot;Check back with Lee Example&quot;, due Fri Dec 4/);
+  assert.match(shown, /<p class="corner-text">Updated Lee Example: lead status to Not now; added task &quot;Check back with Lee Example&quot;, due Fri Dec 4/);
   assert.match(shown, /Lead status: Not now, since/);
   await undo(env, location, `/contacts/${id}`);
   assert.equal((await contact(db, id))?.lead_status, "new");

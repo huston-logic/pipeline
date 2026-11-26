@@ -6,7 +6,7 @@ import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import { UserError } from "../services/errors.ts";
 import { ownerTimezone } from "../services/lookup.ts";
-import { addTimeEntryInput, startTimerInput, stopTimerInput, updateTimeEntryInput } from "../services/record-inputs.ts";
+import { addTimeEntryInput, cancelTimerInput, startTimerInput, stopTimerInput, updateTimeEntryInput } from "../services/record-inputs.ts";
 import { requireTimeTracking } from "../services/settings.ts";
 import { formatDuration, formatMoney } from "../services/time-format.ts";
 import { runningTimer } from "../services/time-entries.ts";
@@ -82,6 +82,22 @@ export function registerTimeTools(server: McpServer, deps: ToolDeps): void {
         PROPOSES,
       input: stopTimerInput,
       run: (args, deps) => recordWrite(deps, { action: "stop_timer", ...args }),
+    },
+    deps,
+  );
+
+  registerTool(
+    server,
+    {
+      name: "cancel_timer",
+      title: "Discard the timer",
+      kind: "write",
+      description:
+        "Discard the running timer, as if it never started. Nothing is logged. " +
+        "Small: under Apply small changes it applies at once when the owner says yes; otherwise it is proposed. " +
+        PROPOSES,
+      input: cancelTimerInput,
+      run: (_args, deps) => recordWrite(deps, { action: "cancel_timer" }),
     },
     deps,
   );

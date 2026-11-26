@@ -191,7 +191,7 @@ test("Approve and send freezes the list as the owner, and its banner has no Undo
   const audit = await auditOf(db, changeIdOf(sent.location));
   assert.deepEqual([audit?.actor, audit?.tool], ["owner", "campaign_approve"]);
   const after = await load(env, sent.location, sent.cookie);
-  assert.match(after.body, /class="banner"/);
+  assert.match(after.body, /class="corner-text"/);
   assert.doesNotMatch(after.body, /Undo/);
   assert.match(after.body, /Duplicate/);
 });

@@ -34,7 +34,7 @@ async function get(db: SqliteD1, path: string) {
 }
 
 const owner = (db: SqliteD1, tool: string): Ctx => ({ db, now: new Date(), actor: "owner", tool });
-const mainOf = (body: string) => /<main id="main">([\s\S]*)<\/main>/.exec(body)?.[1] ?? "";
+const mainOf = (body: string) => /<main id="main" tabindex="-1">([\s\S]*)<\/main>/.exec(body)?.[1] ?? "";
 const titleOf = (body: string) => /<title>([^<]*)<\/title>/.exec(body)?.[1] ?? "";
 const tableOf = (main: string) => /<table class="data-table">[\s\S]*?<\/table>/.exec(main)?.[0] ?? "";
 // A header's visible label: the text between its tags, less the sort arrow. Split, not replaced, so no tag can be
@@ -65,7 +65,7 @@ test("a status view as a table: a region wrapper, a caption, scoped headers, the
   assert.equal(heads.length, 2);
   assert.match(heads[0] ?? "", /^<a href="\/contacts\/ct_seed01">Pat Example<\/a>$/);
   assert.equal(main.match(/<li class="card">/g), null, "no cards in the table layout");
-  assert.doesNotMatch(body, /<script/, "no JavaScript");
+  assert.doesNotMatch(body.replace('<script src="/live.js" defer></script>', ""), /<script/, "no page script");
   assert.doesNotMatch(body, /\sstyle=/i);
   assert.match(titleOf(body), /^Partner as a table · /);
 });

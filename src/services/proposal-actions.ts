@@ -24,6 +24,7 @@ import {
   qualifyLeadInput,
   returnToLeadInput,
   addTimeEntryInput,
+  cancelTimerInput,
   snoozeTaskInput,
   startTimerInput,
   stopTimerInput,
@@ -52,7 +53,7 @@ import { addTaskPlan } from "./task-plan.ts";
 import { addTemplate, updateTemplate } from "./templates.ts";
 import { addTask, completeTask, snoozeTask } from "./tasks.ts";
 import { addTimeEntry, updateTimeEntry } from "./time-entries.ts";
-import { startTimer, stopTimer } from "./timer.ts";
+import { cancelTimer, startTimer, stopTimer } from "./timer.ts";
 
 /** The record tools a proposal can hold, in the order the schema lists them; then four of time (decision 0049) and two of projects (0055). */
 export const RECORD_ACTIONS = [
@@ -69,6 +70,7 @@ export const RECORD_ACTIONS = [
   "snooze_task",
   "start_timer",
   "stop_timer",
+  "cancel_timer",
   "add_time_entry",
   "update_time_entry",
   "add_project",
@@ -118,6 +120,7 @@ const ACTION_SCHEMAS = {
   snooze_task: snoozeTaskInput.extend({ action: named("snooze_task") }),
   start_timer: startTimerInput.extend({ action: named("start_timer") }),
   stop_timer: stopTimerInput.extend({ action: named("stop_timer") }),
+  cancel_timer: cancelTimerInput.extend({ action: named("cancel_timer") }),
   add_time_entry: addTimeEntryInput.extend({ action: named("add_time_entry") }),
   update_time_entry: updateTimeEntryInput.extend({ action: named("update_time_entry") }),
   add_project: addProjectInput.extend({ action: named("add_project") }),
@@ -147,6 +150,7 @@ export const recordActionSchema = z.discriminatedUnion("action", [
   ACTION_SCHEMAS.snooze_task,
   ACTION_SCHEMAS.start_timer,
   ACTION_SCHEMAS.stop_timer,
+  ACTION_SCHEMAS.cancel_timer,
   ACTION_SCHEMAS.add_time_entry,
   ACTION_SCHEMAS.update_time_entry,
   ACTION_SCHEMAS.add_project,
@@ -201,6 +205,7 @@ const REF_FIELDS: Record<ProposalActionName, RefSpec[]> = {
   // What the time is for may be a person, deal or task an earlier action adds.
   start_timer: TIME_SUBJECT,
   stop_timer: [],
+  cancel_timer: [],
   add_time_entry: TIME_SUBJECT,
   update_time_entry: [
     { field: "deal", kind: "deal", subject: false },
@@ -463,6 +468,8 @@ export async function runAction(ctx: Ctx, action: ResolvedAction, _deps: { extra
       const { activityId, taskId, ...rest } = await stopTimer(ctx, omitAction(action));
       return { ...rest, ...(activityId === null ? {} : { activityId }), ...(taskId === null ? {} : { taskId }) };
     }
+    case "cancel_timer":
+      return cancelTimer(ctx);
     case "add_time_entry":
       return addTimeEntry(ctx, omitAction(action));
     case "update_time_entry": {
