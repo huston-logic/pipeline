@@ -169,7 +169,7 @@ test("the deal page offers Edit deal, Add a task and Log, and each task card has
   const log = formOf(body, "/deals/dl_seed01/log", "inline-form");
   assertLabelled(log, "log");
   assert.match(log, /<select id="log-dl_seed01-type" name="type">\n<option value="note" selected>Note<\/option>\n<option value="call">Call<\/option>/);
-  assert.match(formOf(body, "/tasks/tk_seed01/complete"), /<button class="button button-quiet button-small" type="submit">Done<span class="visually-hidden">: Prepare questions for Pat&#39;s call<\/span><\/button>/);
+  assert.match(formOf(body, "/tasks/tk_seed01/complete"), /<button class="task-done-box" id="done-tk_seed01" type="submit"><span class="task-box" aria-hidden="true"><\/span><span class="visually-hidden">Done: Prepare questions for Pat&#39;s call<\/span><\/button>/);
   const presets = formOf(body, "/tasks/tk_seed01/snooze");
   assert.match(presets, /<button class="button button-quiet button-small" type="submit" name="preset" value="tomorrow">Tomorrow morning<span class="visually-hidden">: Prepare questions/);
   assert.match(presets, /value="next_week">Next week/);
@@ -191,7 +191,7 @@ test("an outside task title never names a button: the task's id does", async () 
   const db = await seededDb();
   db.exec(`UPDATE tasks SET title = 'Robin Sample says hi', untrusted_fields = '["title"]' WHERE id = 'tk_seed01'`);
   const { body } = await load(devEnv(db), "/deals/dl_seed01");
-  assert.match(body, /Done<span class="visually-hidden">: task tk_seed01<\/span>/);
+  assert.match(body, /<span class="visually-hidden">Done: task tk_seed01<\/span>/);
   assert.doesNotMatch(body, /visually-hidden">: Robin/);
 });
 

@@ -100,7 +100,7 @@ test("while projects are off the person page has nothing about projects", async 
   assert.doesNotMatch(body, /Start a project|>Projects<\/h2>|\/projects\//);
 });
 
-test("a project task shows its Project pair on Today and on the person page's task card, before Contact", async () => {
+test("a project task shows its Project pair on Today and the person page's task row names it, before Contact", async () => {
   const db = await projectDb();
   personProject(db);
   await addTask(ctxFor(db, "add_task"), { project: "pj_retro", title: "Order anchors", dueAt: "2026-11-19" });
@@ -108,7 +108,7 @@ test("a project task shows its Project pair on Today and on the person page's ta
   assert.match(today, /Project<\/dt><dd><a href="\/projects\/pj_retro">Retrofit<\/a>/);
   assert.ok(today.indexOf("Project</dt>") < today.indexOf("Contact</dt>"));
   const person = (await load(devEnv(db), "/contacts/ct_seed01")).body;
-  assert.match(person, /Project<\/dt><dd><a href="\/projects\/pj_retro">Retrofit<\/a>/);
+  assert.match(person, /<span class="task-belongs">Retrofit<\/span>[^]*<a href="\/projects\/pj_retro">Open the project<\/a>/);
 });
 
 test("a project task's Project pair is gone while projects are off", async () => {

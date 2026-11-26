@@ -21,7 +21,7 @@ the slow underline (§7), sentence-case labels, and the banned list (§13). Depa
   The board never uses the Huston Logic mark: each copy belongs to its owner.
 - **Cards are allowed for records.** A deal, a contact, a task and a rule are "objects you could hold" in v3's terms
   (v3 §4), so each gets a card. Lists of lines (the brief, the change log, a timeline) stay unboxed rows on one panel,
-  separated by dividers.
+  separated by dividers. So are tasks (run 12): a list of tasks is one panel of rows (§7.24), not a card each.
 - **One subtle glow at the top of the page** (v3's `glow-green`, small and faint), behind the app bar. No other glows.
 - **The accent comes from the settings.** v3's green is the default `--accent`; the owner can set another (§2).
 
@@ -124,8 +124,9 @@ lists become an auto-filling grid (`minmax(17rem, 1fr)`) from 40rem up.
 | `--shadow-card` | Cards and panels: a 1px contact shadow plus a soft drop (lighter than v3's hero card, because a board shows many cards at once) |
 | `--shadow-bar` | The phone tab bar, lifting it off the content |
 
-**Cards vs. no cards.** A card is a record: a deal, a task, a contact, a rule, a "More" destination. Lines of a
-document (the brief, the change log, a timeline, the download list) sit as rows on one white panel with dividers.
+**Cards vs. no cards.** A card is a record: a deal, a contact, a rule, a "More" destination. Lines of a
+document (the brief, the change log, a timeline, the download list) and lists of tasks (§7.24) sit as rows on one
+white panel with dividers.
 Facts are label/value pairs (`dl`): one grid per list, labels in `ink-2` in a column as wide as the longest label,
 values beside them.
 
@@ -327,6 +328,22 @@ own width wide; hidden words say it opens a new tab), "Copy prompt" beside it as
 script can use the clipboard; it starts `hidden`), a polite live line in `ink-2` that says "Copied.", and a "Show the
 prompt" disclosure (`ink-2` 600, like Snooze) holding the prompt in a labelled read-only textarea (§7.20 field).
 Nothing pops up and nothing disappears on its own.
+
+### 7.24 Task row (`.task-rows`, `.task-row`; run 12)
+One list of tasks is one white panel (`--white`, 1px `--edge`, `--r-card`, no shadow, no padding); rows are split by
+1px `--divider`. Each row (`li.task-row`, min 44px) holds, left to right: the Done box (a 24px box in a 44px target;
+hidden words "Done: <task>"; a static filled box when the task is done), the row line (`details.task-open`'s
+`summary`, plain text, no links) and, when the task has sub-tasks, `details.task-subs` whose summary ("3 open
+sub-tasks") sits at the row's right edge (the row line reserves its width).
+- **Row line, 40rem and up:** a grid `minmax(0,1fr) 10rem 12rem 1.5rem`: title (17px, one line, ellipsis), due
+  (15px `--ink-2`, tabular figures, "Overdue" in rust beside it when it was due before today), belongs (project, deal
+  or person; left out where the page already says it), then a CSS chevron that turns when open.
+- **Phone:** the title up to two lines, then the due and belongs cells side by side on a second line in `--ink-2` 15px.
+- **Open content:** 12px padding, a `--divider` top line; the description, one links line (Open the deal, Open the
+  person, Open the project), then one wrapping action line with 8px gaps (Start timer, Snooze, Edit, Add a sub-task,
+  Move up, Move down).
+- **Nested rows** (sub-tasks): the same panel without its own border, set in 44px per level, a divider on top.
+- No hover lift. The focus ring (§7.10) is on the row line, the Done box and every button. Today keeps cards until its own task.
 
 ### 7.25 Status corner (`.corner`; run 12)
 Replaces the old change banner and Stop bar. `<div class="corner" data-region="corner">` is the first thing in

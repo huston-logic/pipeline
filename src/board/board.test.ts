@@ -427,7 +427,7 @@ test("a contact page shows details, custom fields, every deal, open tasks and on
   }
   assert.match(main, /<dt>Added<\/dt><dd><time datetime=/);
   assert.match(main, /<h2 id="deals-heading">Deals<\/h2>[\s\S]*?<h3 class="card-title"><a href="\/deals\/dl_seed01">Website refresh for Example Plumbing<\/a><\/h3>\n<span class="tag">Call booked<\/span>[\s\S]*?<dt>Value<\/dt><dd>1,500<\/dd>[\s\S]*?<dt>Next step<\/dt><dd>Discovery call<\/dd>/);
-  assert.match(main, /<h2 id="tasks-heading">Open tasks<\/h2>[\s\S]*?Prepare questions for Pat&#39;s call[\s\S]*?<dt>Deal<\/dt><dd><a href="\/deals\/dl_seed01">/);
+  assert.match(main, /<h2 id="tasks-heading">Open tasks<\/h2>[\s\S]*?Prepare questions for Pat&#39;s call[\s\S]*?<span class="task-belongs">Website refresh for Example Plumbing<\/span>[\s\S]*?<a href="\/deals\/dl_seed01">Open the deal<\/a>/);
   const order = ["Moved from Replied to Call booked", "Sent two times for a call", "Short intro call", "Pat asked about"];
   const positions = order.map((text) => main.indexOf(text));
   assert.ok(positions.every((p, i) => p > 0 && (i === 0 || p > (positions[i - 1] ?? 0))), `newest first: ${positions}`);

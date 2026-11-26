@@ -96,23 +96,33 @@ ${inner}
 </details>`;
 }
 
-/** Done (one tap), Snooze and Edit disclosures, at the foot of a task card. */
-export async function taskActions(task: EditableTask, form: FormContext, tz: string): Promise<Html> {
+/** Done (one tap, unless `withDone` is false: the task row has its own box), Snooze and Edit, at the foot of a task. */
+export async function taskActions(
+  task: EditableTask,
+  form: FormContext,
+  tz: string,
+  { withDone = true, extra = "" }: { withDone?: boolean; extra?: Html | "" } = {},
+): Promise<Html> {
   const name = taskName(task);
   return html`<div class="task-actions">
-${postForm(
-  "task-done",
-  completeAction(task.id),
-  form,
-  html`<button class="button button-quiet button-small" type="submit">Done${hiddenName(name)}</button>`,
-  { live: {} },
-)}
+${
+  withDone
+    ? postForm(
+        "task-done",
+        completeAction(task.id),
+        form,
+        html`<button class="button button-quiet button-small" type="submit">Done${hiddenName(name)}</button>`,
+        { live: {} },
+      )
+    : ""
+}
 ${startTimerForm({ kind: "task", id: task.id }, form, name)}
 <details class="task-snooze" id="snooze-${task.id}">
 <summary>Snooze${hiddenName(name)}</summary>
 ${snoozeForms(task, form)}
 </details>
 ${await taskEditForm(task, form, tz)}
+${extra}
 </div>`;
 }
 

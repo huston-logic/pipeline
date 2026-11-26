@@ -16,7 +16,7 @@ import { newProjectOfContactPath } from "../project-form.ts";
 import type { FormContext } from "../forms.ts";
 import { logForm } from "../log-form.ts";
 import { reachActions } from "../reach.ts";
-import { customRows, outsideNote, STATUS, taskCard, timelineItem } from "../records.ts";
+import { customRows, openTaskRows, outsideNote, STATUS, timelineItem } from "../records.ts";
 import { addTaskForm, type Subject } from "../task-forms.ts";
 import { startTimerForm } from "../timer-start.ts";
 import { leadAskSection } from "../ask-claude.ts";
@@ -129,15 +129,10 @@ ${contact.archived ? "" : html`<p class="section-action"><a href="${newProjectOf
 }
 
 async function tasksSection(detail: ContactDetail, now: Date, tz: string, form: FormContext, subject: Subject): Promise<Html> {
-  const cards = await Promise.all(detail.openTasks.map((task) => taskCard(task, now, tz, true, form)));
   return html`<div data-region="tasks">${section(
     "tasks-heading",
     "Open tasks",
-    html`${
-      detail.openTasks.length === 0
-        ? empty("No open tasks.")
-        : html`<ul class="cards cards-single">${cards}</ul>`
-    }
+    html`${detail.openTasks.length === 0 ? empty("No open tasks.") : await openTaskRows(detail.openTasks, "contact", now, tz, form)}
 ${addTaskForm(subject, form)}`,
   )}</div>`;
 }

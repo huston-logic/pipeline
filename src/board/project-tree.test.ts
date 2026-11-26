@@ -36,7 +36,7 @@ async function older(db: SqliteD1, title: string, parent: string): Promise<strin
 
 const section = (body: string, from: string, to: string) => body.slice(body.indexOf(from), body.indexOf(to));
 
-test("tasks nest to three levels, and a parent says how many of its sub-tasks are done", async () => {
+test("tasks nest to three levels, and a parent says how many of its sub-tasks are open", async () => {
   const db = await projectDb();
   const top = await add(db, "Build deck");
   const subs: string[] = [];
@@ -45,8 +45,9 @@ test("tasks nest to three levels, and a parent says how many of its sub-tasks ar
   await completeTask(ctxFor(db, "complete_task"), subs[3] ?? "");
   await completeTask(ctxFor(db, "complete_task"), subs[4] ?? "");
   const { body } = await load(devEnv(db), PAGE);
-  assert.match(body, /2 of 5 done/);
-  assert.match(body, /<ul class="task-tree"[^]*Build deck[^]*<ul class="task-tree"[^]*Footings[^]*<ul class="task-tree"[^]*Dig holes/);
+  assert.match(body, /3 open sub-tasks<span class="visually-hidden">: Build deck/);
+  assert.match(body, /1 open sub-task<span class="visually-hidden">: Footings/);
+  assert.match(body, /<ul class="task-rows">[^]*Build deck[^]*<ul class="task-rows task-rows-nested">[^]*Footings[^]*<ul class="task-rows task-rows-nested">[^]*Dig holes/);
   assert.match(body, /Rails[^]*Done/);
 });
 
