@@ -44,7 +44,8 @@ async function loggedFor(db: Db, now: Date, closed: string | null): Promise<Logg
   const entry = await timeEntryById(db, latest.targetId);
   if (entry === null || entry.ended_at === null) return null;
   const tz = await ownerTimezone(db);
-  return { changeId: latest.changeId, entryId: entry.id, from: sinceText(entry.started_at, now, tz), to: sinceText(entry.ended_at, now, tz) };
+  const expiresAt = new Date(Date.parse(latest.at) + LOGGED_FOR_MS).toISOString();
+  return { changeId: latest.changeId, entryId: entry.id, from: sinceText(entry.started_at, now, tz), to: sinceText(entry.ended_at, now, tz), expiresAt };
 }
 
 export async function buildCorner(db: Db, now: Date, settings: Pick<SettingsRow, "time_tracking">, input: CornerInput): Promise<CornerState> {

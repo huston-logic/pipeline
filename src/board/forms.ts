@@ -24,9 +24,17 @@ export function postForm(
   action: string,
   form: FormContext,
   inner: Html,
-  options: { novalidate?: boolean; multipart?: boolean } = {},
+  options: { novalidate?: boolean; multipart?: boolean; live?: LiveOptions } = {},
 ): Html {
   const novalidate = options.novalidate ? html` novalidate` : "";
   const enctype = options.multipart ? html` enctype="multipart/form-data"` : "";
-  return html`<form class="${className}" method="post" action="${action}"${enctype}${novalidate}>${formBasics(form)}${inner}</form>`;
+  const { live } = options;
+  const marks = live === undefined ? "" : live.after === undefined ? html` data-live` : html` data-live data-after="${live.after}"`;
+  const at = live?.after === undefined ? "" : hidden(AT_FIELD, live.after);
+  return html`<form class="${className}" method="post" action="${action}"${marks}${enctype}${novalidate}>${formBasics(form)}${at}${inner}</form>`;
 }
+
+/** The form posts in place (public/live.js, decision 0062). `after` is the id the focus goes to, and, with scripts off, the page's #hash. */
+export type LiveOptions = { after?: string };
+
+export const AT_FIELD = "at";

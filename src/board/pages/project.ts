@@ -90,25 +90,25 @@ ${project.archived ? "" : startTimerForm({ kind: "project", id: project.id }, fo
 
 async function tasksSection(project: ProjectDetail, now: Date, tz: string, form: FormContext, subject: Subject): Promise<Html> {
   const { open, truncated } = project.taskTree;
-  return section(
+  return html`<div data-region="project-tasks">${section(
     "tasks-heading",
     "Open tasks",
     html`${open.length === 0 ? empty("No open tasks.") : await taskList(open, 1, now, tz, form)}
 ${truncated ? html`<p class="section-note">Showing the first ${TREE_TASK_LIMIT} tasks.</p>` : ""}
 ${addTaskForm(subject, form)}`,
-  );
+  )}</div>`;
 }
 
 async function doneSection(project: ProjectDetail, now: Date, tz: string, form: FormContext): Promise<Html> {
   const { done } = project.taskTree;
-  return section(
+  return html`<div data-region="project-done">${section(
     "done-heading",
     "Done",
     done.length === 0
       ? empty("Nothing done yet.")
       : html`<p class="section-note">The latest ${done.length}, newest first.</p>
 ${await taskList(done, 1, now, tz, form)}`,
-  );
+  )}</div>`;
 }
 
 function notesSection(project: ProjectDetail, form: FormContext, subject: Subject): Html {
@@ -167,7 +167,7 @@ export async function projectPage(ctx: PageContext, id: string): Promise<string 
 ${hasOutsideText(project) ? outsideNote() : ""}
 <div class="deal-columns">
 <div>
-${projectSection(project, statuses, labels, tz, ctx)}
+<div data-region="project-facts">${projectSection(project, statuses, labels, tz, ctx)}</div>
 ${timeSection(project, ctx, name)}
 </div>
 <div>

@@ -36,6 +36,16 @@ test("board.js stays small and plain: under 3 KB gzipped, no eval, no third-part
   assert.doesNotMatch(script, /\beval\(|new Function|innerHTML|outerHTML|insertAdjacentHTML|document\.write|\bfetch\(|XMLHttpRequest|import\(|https?:\/\//);
 });
 
+test("live.js stays small and plain: under 3 KB gzipped, no eval, no HTML strings, no third-party code, no history (decision 0062)", () => {
+  const script = read("live.js");
+  assert.ok(gzipSync(script).length < 3 * 1024, `${gzipSync(script).length} bytes gzipped`);
+  assert.doesNotMatch(script, /\beval\(|new Function|innerHTML|outerHTML|insertAdjacentHTML|document\.write|XMLHttpRequest|import\(|https?:\/\/|\bhistory\b|pushState|localStorage|sendBeacon/);
+  assert.equal(script.match(/\bfetch\(/g)?.length, 2, "the form's post, then the page it names");
+  assert.match(script, /fetch\(form\.action, \{\s*method: "POST",\s*headers: \{ "X-Live": "1" \},[^]*credentials: "same-origin",?\s*\}\)/, "the form's own action, same origin");
+  assert.match(script, /fetch\(to, \{ credentials: "same-origin" \}\)/, "a GET of a path the Worker named");
+  assert.match(script, /new DOMParser\(\)\.parseFromString\(/);
+});
+
 test("board.js copies prompts with the clipboard API and moves focus to the Log button after Call, Text or Email (decision 0021)", () => {
   const script = read("board.js");
   assert.match(script, /navigator\.clipboard\.writeText\(/);

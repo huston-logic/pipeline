@@ -162,9 +162,9 @@ test("the deal page offers Edit deal, Add a task and Log, and each task card has
   const task = formOf(body, "/deals/dl_seed01/tasks");
   assertLabelled(task, "add task");
   for (const action of ["/deals/dl_seed01/tasks", "/deals/dl_seed01/log"]) {
-    assert.match(formOf(body, action, "inline-form"), new RegExp(`action="${action}" novalidate>`), action);
+    assert.match(formOf(body, action, "inline-form"), new RegExp(`action="${action}"( data-live)? novalidate>`), action);
   }
-  assert.match(body, /<form class="snooze-until" method="post" action="\/tasks\/tk_seed01\/snooze" novalidate>/);
+  assert.match(body, /<form class="snooze-until" method="post" action="\/tasks\/tk_seed01\/snooze" data-live novalidate>/);
   assert.match(task, /<button class="button button-small" type="submit">Add task<\/button>/);
   const log = formOf(body, "/deals/dl_seed01/log", "inline-form");
   assertLabelled(log, "log");

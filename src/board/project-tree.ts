@@ -27,6 +27,7 @@ function moveForm(node: TaskNode, first: boolean, last: boolean, form: FormConte
     form,
     html`${first ? "" : html`<button class="button button-quiet button-small" type="submit" name="dir" value="up">Move up${hiddenName(name)}</button>`}
 ${last ? "" : html`<button class="button button-quiet button-small" type="submit" name="dir" value="down">Move down${hiddenName(name)}</button>`}`,
+    { live: {} },
   );
 }
 
@@ -40,7 +41,7 @@ function subTaskForm(node: TaskNode, form: FormContext): Html {
 ${specFields(taskSpecs(), new Map(), `subtask-${node.id}`)}
 <button class="button button-small" type="submit">Add sub-task${hiddenName(taskName(node))}</button>
 </fieldset>`,
-    { novalidate: true },
+    { novalidate: true, live: {} },
   );
 }
 

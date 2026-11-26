@@ -358,10 +358,12 @@ icon packs, emoji or decorative icons.
 
 ## 9. Motion
 
-Almost none. The only motion is the slow underline on links and buttons (0.5s) answering a hover or focus. No page
-load animation, no hover lift on cards, nothing loops, nothing is tied to scrolling. Under
-`prefers-reduced-motion: reduce` every transition is off and the end state shows at once. Only `background-size`
-transitions.
+Short motion that answers a tap, and nothing else: a row opening, a notice arriving, a row leaving when it is done.
+Each lasts `--motion-fast` (160ms) on `--ease`, runs once, and only changes `opacity` and, for the notice and the timer
+chip, a 4px `translateY`. The slow underline on links and buttons (0.5s) answering a hover or focus stays as it is.
+No page load animation, no hover lift on cards, nothing loops or moves by itself, nothing is tied to scrolling.
+Everything sits inside `prefers-reduced-motion: no-preference`; under `reduce` every animation and transition is off
+and the end state shows at once (`/live.js` also skips its 160ms wait before a row leaves).
 
 ## 10. Responsive
 
@@ -388,9 +390,10 @@ Checked at 375 and 1280px wide with no horizontal scroll (`npm run screenshots`)
 
 ## 12. Performance budget (the `lighthouse` check: 90 or higher on mobile, all four categories)
 
-- No font files, no images. Two small stylesheets (`/board.css` static, `/theme.css` from the Worker). One small
-  script, `/board.js` (under 3 KB gzipped, `defer`), on the pipeline board, deal pages and contact pages (decision
-  0021); every other page has none.
+- No font files, no images. Two small stylesheets (`/board.css` static, `/theme.css` from the Worker). Small scripts,
+  each under 3 KB gzipped and `defer`: `/live.js` on every signed-in page (decision 0062), `/board.js` on the
+  pipeline board, deal pages and contact pages (decision 0021), `/push.js` on Notifications (decision 0030); a page
+  outside the sign-in has none.
 - The glow is one CSS radial gradient; no `filter`, no `backdrop-filter`.
 - Icons are inline SVG.
 

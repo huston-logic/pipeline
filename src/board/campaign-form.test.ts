@@ -70,7 +70,7 @@ test("New campaign draws the form with its groups, hints and no JavaScript", asy
   assert.match(body, /Used for \{\{first_name\}\} when a person has none, as in “Hi there”\./);
   assert.match(body, /For an invite: a button such as “RSVP” and the page it opens\. Leave both empty for no button\./);
   assert.match(body, /name="first_name_fallback" type="text" value="there"/);
-  assert.doesNotMatch(body, /<script/);
+  assert.doesNotMatch(body.replace('<script src="/live.js" defer></script>', ""), /<script/);
 });
 
 test("saving a new campaign goes through the service as the owner and answers 303", async () => {

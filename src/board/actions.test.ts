@@ -74,6 +74,18 @@ const auditCount = async (db: SqliteD1) =>
 const dealRow = async (db: SqliteD1, id: string) => db.prepare("SELECT * FROM deals WHERE id = ?").bind(id).first<DealRow>();
 const changeIdOf = (location: string | null) => /[?&]change=(chg_[a-z0-9]+)/.exec(location ?? "")?.[1] ?? "";
 
+test("a post from /live.js (X-Live: 1) answers 204 with the page to load in X-Location, not a redirect to follow", async () => {
+  const db = await seededDb();
+  const env = devEnv(db);
+  const { res } = await post(env, "/deals/dl_seed01/move", { stage: "call_done", return_to: "/pipeline" }, { headers: { "X-Live": "1" } });
+  assert.equal(res.status, 204);
+  assert.equal(res.headers.get("Location"), null);
+  assert.match(res.headers.get("X-Location") ?? "", /^\/pipeline\?change=chg_[a-z0-9]{12}$/);
+  assert.match(res.headers.get("Cache-Control") ?? "", /no-store/);
+  assert.match(res.headers.get("Content-Security-Policy") ?? "", /default-src 'self'/);
+  assert.equal((await dealRow(db, "dl_seed01"))?.stage_key, "call_done");
+});
+
 test("a board page sets the CSRF cookie once and puts the same token in every form", async () => {
   const env = devEnv(await seededDb());
   const first = await load(env);
@@ -119,7 +131,7 @@ test("the status corner shows the summary in a status region with an Undo button
     page.body,
     new RegExp(`<div class="corner-notice" role="status">\\n<p class="corner-text">Moved &quot;Website refresh for Example Plumbing&quot; \\(Pat Example\\) to Call done \\(change ${changeId}\\)</p>`),
   );
-  assert.match(page.body, new RegExp(`<form class="corner-form" method="post" action="/changes/${changeId}/undo">`));
+  assert.match(page.body, new RegExp(`<form class="corner-form" method="post" action="/changes/${changeId}/undo" data-live>`));
   assert.match(page.body, /<input type="hidden" name="return_to" value="\/pipeline\?view=list">/, "Undo comes back here, without the old change id");
 
   const undo = await post(env, `/changes/${changeId}/undo`, { return_to: "/pipeline?view=list" });

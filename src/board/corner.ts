@@ -10,8 +10,8 @@ import type { TimerInfo } from "./timer-bar.ts";
 /** A change the corner announces, with the safe name of the one task or time entry it touches, when it names one. */
 export type Notice = { change: ChangeItem; name: string | null };
 
-/** The time just logged: the stop's change, its entry and the two times as the owner reads them. */
-export type Logged = { changeId: string; entryId: string; from: string; to: string };
+/** The time just logged: the stop's change, its entry, the two times as the owner reads them, and when the note goes (an ISO time). */
+export type Logged = { changeId: string; entryId: string; from: string; to: string; expiresAt: string };
 
 export type CornerState = { timer: TimerInfo | null; notice: Notice | null; logged: Logged | null; startTimer: boolean };
 
@@ -48,27 +48,29 @@ const cut = (label: string): string => {
 function chip(timer: TimerInfo, form: FormContext): Html {
   const named = html`<span class="visually-hidden">: timer${timer.label === "" ? "" : ` for ${timer.label}`}</span>`;
   const what = timer.label === "" ? "" : html`<span class="corner-what">${cut(timer.label)}</span>\n`;
-  return html`<div class="corner-chip">
+  return html`<div class="corner-chip" role="region" aria-label="Running timer">
 <time class="corner-clock" datetime="${timer.startedAt}" data-since="${timer.startedAt}">since ${timer.since}</time>
-${what}${postForm("corner-form", "/timer/stop/now", form, html`<button class="button corner-button" type="submit">Stop${named}</button>`)}
-<form class="corner-form" data-started="${timer.startedAt}" method="post" action="/timer/cancel">${formBasics(form)}<button class="button corner-button" type="submit">Undo<span class="visually-hidden"> the timer</span></button></form>
+${what}${postForm("corner-form", "/timer/stop/now", form, html`<button class="button corner-button" type="submit">Stop${named}</button>`, { live: {} })}
+<form class="corner-form" data-started="${timer.startedAt}" data-live method="post" action="/timer/cancel">${formBasics(form)}<button class="button corner-button" type="submit">Undo<span class="visually-hidden"> the timer</span></button></form>
 </div>
 `;
 }
 
 function loggedNote(logged: Logged, form: FormContext): Html {
   const notes = `${TIMER_NOTES_LINK}?entry=${encodeURIComponent(logged.entryId)}&back=${encodeURIComponent(form.here)}`;
-  return html`<p class="corner-text">Time logged: ${logged.from} to ${logged.to}</p>
+  return html`<div class="corner-logged" data-expires="${logged.expiresAt}">
+<p class="corner-text">Time logged: ${logged.from} to ${logged.to}</p>
 <div class="corner-actions">
 <a class="corner-link" href="${notes}">Edit or add notes</a>
-${undoForm(logged.changeId, form, "corner-form")}
-${postForm("corner-form", "/corner/close", form, html`${hidden("change", logged.changeId)}<button class="button corner-button" type="submit">Close</button>`)}
+${undoForm(logged.changeId, form, "corner-form", true)}
+${postForm("corner-form", "/corner/close", form, html`${hidden("change", logged.changeId)}<button class="button corner-button" type="submit">Close</button>`, { live: {} })}
+</div>
 </div>`;
 }
 
 function changeNotice({ change, name }: Notice, form: FormContext): Html {
   if (change.undone) return html`<p class="corner-text">${name === null ? "Undone." : `Undone: ${name}`}</p>`;
-  const after = canUndo(change) ? undoForm(change.changeId, form, "corner-form") : "";
+  const after = canUndo(change) ? undoForm(change.changeId, form, "corner-form", true) : "";
   return html`<p class="corner-text">${noticeText(change, name)}</p>
 ${after}`;
 }

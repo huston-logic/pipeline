@@ -40,8 +40,8 @@ test("the chip shows the label, the start, Stop and Undo, outside the live regio
   const out = draw({ ...EMPTY, timer: { label: "Pat Example", since: "9:10 AM", startedAt: "2026-11-26T17:10:00.000Z" } });
   assert.match(out, /<time class="corner-clock" datetime="2026-11-26T17:10:00.000Z" data-since="2026-11-26T17:10:00.000Z">since 9:10 AM<\/time>/);
   assert.match(out, /<span class="corner-what">Pat Example<\/span>/);
-  assert.match(out, /<form class="corner-form" method="post" action="\/timer\/stop\/now">[^]*Stop<span class="visually-hidden">: timer for Pat Example<\/span><\/button>/);
-  assert.match(out, /<form class="corner-form" data-started="2026-11-26T17:10:00.000Z" method="post" action="\/timer\/cancel">[^]*Undo<span class="visually-hidden"> the timer<\/span><\/button>/);
+  assert.match(out, /<form class="corner-form" method="post" action="\/timer\/stop\/now" data-live>[^]*Stop<span class="visually-hidden">: timer for Pat Example<\/span><\/button>/);
+  assert.match(out, /<form class="corner-form" data-started="2026-11-26T17:10:00.000Z" data-live method="post" action="\/timer\/cancel">[^]*Undo<span class="visually-hidden"> the timer<\/span><\/button>/);
   assert.ok(out.indexOf("corner-chip") < out.indexOf('role="status"'));
   const live = out.slice(out.indexOf('role="status"'));
   assert.doesNotMatch(live, /corner-clock|corner-chip/);
@@ -78,7 +78,7 @@ test("noticeText names the verb and the record, or only the verb, or falls back 
 test("a change notice has its text and an Undo; an undone one says Undone. instead", () => {
   const out = draw({ ...EMPTY, notice: { change: change(), name: "Send the plan" } });
   assert.match(out, /<div class="corner-notice" role="status">\s*<p class="corner-text">Done: Send the plan<\/p>/);
-  assert.match(out, /action="\/changes\/chg_aaaaaaaaaaaa\/undo"/);
+  assert.match(out, /action="\/changes\/chg_aaaaaaaaaaaa\/undo" data-live>/);
   const undone = draw({ ...EMPTY, notice: { change: change({ undone: true }), name: "Send the plan" } });
   assert.match(undone, /<p class="corner-text">Undone: Send the plan<\/p>/);
   assert.doesNotMatch(undone, /Done: Send|corner-note|\/undo"/);
@@ -89,9 +89,11 @@ test("the Time logged note has the times, an edit link back to this page, Undo a
   const out = draw({
     ...EMPTY,
     notice: { change: change(), name: "x" },
-    logged: { changeId: "chg_bbbbbbbbbbbb", entryId: "te_aaaaaaaaaaaa", from: "1:16 PM", to: "1:58 PM" },
+    logged: { changeId: "chg_bbbbbbbbbbbb", entryId: "te_aaaaaaaaaaaa", from: "1:16 PM", to: "1:58 PM", expiresAt: "2026-11-26T21:02:00.000Z" },
   });
   assert.match(out, /Time logged: 1:16 PM to 1:58 PM/);
+  assert.match(out, /<div class="corner-logged" data-expires="2026-11-26T21:02:00.000Z">/);
+  assert.equal(out.match(/data-live/g)?.length, 2, "Undo and Close post in place");
   assert.match(out, /<a class="corner-link" href="\/timer\/notes\?entry=te_aaaaaaaaaaaa&amp;back=%2Fpipeline">Edit or add notes<\/a>/);
   assert.match(out, /action="\/changes\/chg_bbbbbbbbbbbb\/undo"/);
   assert.match(out, /action="\/corner\/close"[^]*name="change" value="chg_bbbbbbbbbbbb"[^]*Close/);
@@ -124,6 +126,7 @@ test("a timer that just stopped shows the Time logged note, for two minutes", as
   assert.equal(state.logged?.changeId, changeId);
   assert.match(state.logged?.entryId ?? "", /^te_/);
   assert.match(state.logged?.from ?? "", /^\d{1,2}:\d{2} [AP]M/);
+  assert.equal(Date.parse(state.logged?.expiresAt ?? "") - now.getTime(), 60_000, "it expires two minutes after the stop");
   const late = await ranTimer(3);
   assert.equal((await corner_(late.db, late.now)).logged, null, "three minutes on, it is gone");
 });

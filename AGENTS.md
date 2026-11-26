@@ -62,11 +62,19 @@ hooks and the commands are in `CLAUDE.md`.
   stored one, because `update_contact` marks every field it sets as the owner's. Never build an edit patch from every
   posted field. Record forms are `novalidate` (the server checks; outside data can break the browser's rules). A
   refused form is a 422 with the values kept. Dates are a date plus an optional time, read in the owner's timezone.
-- **Browser JavaScript** (decision 0014): only first-party files from `public/`, loaded with `defer`, as progressive
-  enhancement, and only on pages that pass `script` to `renderPage` (`true` loads `/board.js`, `"push"` loads
-  `/push.js`). Every action must also work as a plain form with JavaScript off, except turning notifications on,
-  which needs the browser (the page then says so in one line). No framework, no build step, no third-party code, no
-  eval, each file at most 3 KB gzipped (tests check). `public/board.js`: drag a pipeline card to another stage, which
+- **Browser JavaScript** (decisions 0014, 0062): only first-party files from `public/`, loaded with `defer`, as
+  progressive enhancement. `renderPage` loads `/live.js` on every page that has a `frame` (signed in), and also
+  `/board.js` or `/push.js` when the page passes `script` (`true` or `"push"`). Every action must also work as a plain
+  form with JavaScript off, except turning notifications on, which needs the browser (the page then says so in one
+  line). No framework, no build step, no third-party code, no eval, never `innerHTML`/`outerHTML`, each file at most
+  3 KB gzipped (tests check). `public/live.js` (decision 0062): a form marked `data-live` (`postForm(..., { live: {
+  after? } })`) is sent with a same-origin `fetch` (header `X-Live: 1`) to its own board route; the Worker then answers 204 with the
+  page to load in `X-Location` instead of the 303 (a followed redirect is upgraded to https and fails on a plain-http
+  local board, `liveDone` in `src/http/respond.ts`), `live.js` fetches that page, and, when it is the page already
+  open, swaps its `[data-region]` parts (`DOMParser`, `replaceWith`, `replaceChildren`; the
+  corner's live region keeps its element); any refusal, other page or odd answer falls back to the plain post. It also
+  runs the timer clock, the Time logged note's expiry, the discard confirm, `data-autosubmit` filters and the corner's
+  scroll room (`--corner-h`); it never touches `history`. `public/board.js`: drag a pipeline card to another stage, which
   submits the card's Move to form; on deal and contact pages, after Call, Text or Email, focus the matching one-tap
   Log button, and Copy prompt for Ask Claude (decision 0021). `public/push.js` (Notifications page only, decision
   0030): on the tap, ask for permission, register `/sw.js`, subscribe, fill the form's hidden fields and submit it; on

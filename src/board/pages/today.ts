@@ -178,11 +178,13 @@ export async function todayPage(ctx: PageContext): Promise<string> {
 <h1>Today</h1>
 <p class="page-date"><time datetime="${date}">${headerDate(date)}</time></p>
 </div>
+<div data-region="today-head">
 <p class="lede">${summaryLine(summary)}</p>
 ${waiting === 0 ? "" : html`<p class="pending-note"><a class="button button-quiet" href="/pending">${count(waiting, "change")} from your AI app ${waiting === 1 ? "is" : "are"} waiting. Review ${waiting === 1 ? "it" : "them"}.</a></p>`}
+</div>
 ${addButtons("today", ["deal", "lead", "import"])}
 <div class="today-columns">
-<div class="today-due">
+<div class="today-due" data-region="today-list">
 ${quickAddForm(ctx)}
 ${taskTools(view)}
 ${await taskSections(tasks, dayBoundsUtc(date, tz).start.toISOString(), ctx, tz)}

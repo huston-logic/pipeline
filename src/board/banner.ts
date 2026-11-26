@@ -16,13 +16,14 @@ export const undoAction = (changeId: string): string => `/changes/${encodeURICom
 export const canUndo = (change: Pick<ChangeItem, "undone" | "undoOf" | "tool">): boolean =>
   !change.undone && change.undoOf === null && !(CAMPAIGN_FINAL_TOOLS as readonly string[]).includes(change.tool);
 
-/** The Undo button as its own form. The hidden words tell a screen reader which change it undoes. */
-export function undoForm(changeId: string, form: FormContext, className: string): Html {
+/** The Undo button as its own form (in place when `live`, as in the corner). The hidden words tell a screen reader which change it undoes. */
+export function undoForm(changeId: string, form: FormContext, className: string, live = false): Html {
   return postForm(
     className,
     undoAction(changeId),
     form,
     html`<button class="button button-quiet" type="submit">Undo<span class="visually-hidden"> change ${changeId}</span></button>`,
+    live ? { live: {} } : {},
   );
 }
 

@@ -168,7 +168,7 @@ test('script: "push" loads only /push.js with defer (the Notifications page, dec
 
 test("the stylesheet keeps scroll room above a focused control while the corner has content (WCAG 2.4.11)", () => {
   const css = readFileSync(new URL("../../public/board.css", import.meta.url), "utf8");
-  assert.match(css, /html:has\(\.corner-chip, \.corner-notice:not\(:empty\)\)\s*\{\s*scroll-padding-top: \d+rem;/);
+  assert.match(css, /html:has\(\.corner-chip, \.corner-notice:not\(:empty\)\)\s*\{\s*scroll-padding-top: var\(--corner-h, 21rem\);/);
 });
 
 test("the timer chip sits in the corner after the header and before main, and a page with no corner draws none", () => {
@@ -183,7 +183,7 @@ test("the timer chip sits in the corner after the header and before main, and a 
     });
   const on = draw({ label: "Pat Example", since: "9:10 AM", startedAt: "2026-11-26T17:10:00.000Z" });
   const header = on.indexOf("</header>");
-  const chip = on.indexOf('<div class="corner-chip">');
+  const chip = on.indexOf('<div class="corner-chip" role="region" aria-label="Running timer">');
   assert.ok(header > 0 && chip > header && chip < on.indexOf("<main"), "after the header, before main");
   assert.match(on, /since 9:10 AM<\/time>/);
   assert.doesNotMatch(draw(null), /corner-chip/);

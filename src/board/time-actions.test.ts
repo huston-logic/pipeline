@@ -30,10 +30,10 @@ test("start then the bar shows on Today", async () => {
   assert.equal(rows[0]?.contact_id, "ct_seed01");
 
   const today = (await load(devEnv(db), "/")).body;
-  assert.match(today, /<div class="corner-chip">/);
+  assert.match(today, /<div class="corner-chip" role="region" aria-label="Running timer">/);
   assert.match(today, /<time class="corner-clock" datetime="[^"]+" data-since="[^"]+">since \d{1,2}:\d{2} [AP]M<\/time>/);
   assert.match(today, /<span class="corner-what">Pat Example<\/span>/);
-  assert.match(today, /action="\/timer\/stop\/now">[^]*Stop<span class="visually-hidden">: timer for Pat Example<\/span>/);
+  assert.match(today, /action="\/timer\/stop\/now" data-live>[^]*Stop<span class="visually-hidden">: timer for Pat Example<\/span>/);
   // Every board page carries it, and a person's page no longer offers a second Start.
   const person = (await load(devEnv(db), "/contacts/ct_seed01")).body;
   assert.match(person, /class="corner-chip"/);
@@ -44,9 +44,9 @@ test("a Start timer form is on a person, a deal and a task, with the subject as 
   const db = await timeDb(new Date());
   const env = devEnv(db);
   const person = (await load(env, "/contacts/ct_seed01")).body;
-  assert.match(person, /<form class="timer-start" method="post" action="\/timer\/start">[^]*<input type="hidden" name="contact" value="ct_seed01">[^]*Start timer/);
+  assert.match(person, /<form class="timer-start" method="post" action="\/timer\/start" data-live>[^]*<input type="hidden" name="contact" value="ct_seed01">[^]*Start timer/);
   const deal = (await load(env, "/deals/dl_seed01")).body;
-  assert.match(deal, /action="\/timer\/start">[^]*<input type="hidden" name="deal" value="dl_seed01">/);
+  assert.match(deal, /action="\/timer\/start" data-live>[^]*<input type="hidden" name="deal" value="dl_seed01">/);
   assert.match(deal, /<input type="hidden" name="task" value="tk_seed\d+">/);
 });
 
