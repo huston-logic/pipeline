@@ -243,6 +243,33 @@ and 1440 x 900, before (main's code) and after. A Playwright test in `tests/a11y
 proves: Done, Start timer, Stop and Undo cause no navigation with scripts on and work with scripts off; Today shows at
 least 12 rows at 1440 x 900 and 6 at 390 x 844 with the demo seed.
 
+## Builder check answers (settled here; none needed the owner)
+
+1. Budgets: hosting is Workers Paid (1,000 D1 queries a request, decision 0054), but Today and the project page are
+   held to at most 20 D1 calls a render each, counted by a unit test with `tests/helpers/counting-db.ts`. If `live.js`
+   cannot fit 3 KB gzipped, the clock and the note's expiry move to a second file `/clock.js` (same rules); if still
+   over, the inline Discard confirm is cut and the server's confirm page is used.
+2. The script compares path plus query with `change` removed; equal means swap. The address bar is never changed.
+   A reload after a swap shows the page without the notice (the change is in Changes).
+3. The corner adds one D1 read per page (the latest timer change with its time, batched with the running timer read in
+   `timerState`); the close cookie is read in `contextFor` from the request. `POST /corner/close` is a route in the
+   action table (sign-in, origin and CSRF are checked) that writes no data and only sets the cookie.
+4. `/contacts` keeps serving Contacts. The People tab links `/leads`; `/contacts`, `/leads`, `/companies`, `/people`
+   and person pages all mark People current.
+5. Lighthouse keeps exactly its 22 entries (the new pages are form pages of kinds already scored). The demo seed turns
+   the brief on, and `npm run preview` loads that seed, so `/brief` and `/notifications` stay scored.
+6. Stored `briefs` rows stay. With the brief off nothing new is stored; `/api` still answers the latest stored brief;
+   `get_settings` still reports `lastBriefAt`. Nothing else reads briefs.
+7. PR B updates AGENTS.md "Browser JavaScript" (live.js on every framed page, same-origin `fetch` of board forms only,
+   `DOMParser` and `replaceWith`, never `innerHTML`), `renderPage` always adds `/live.js` when it has a frame, and
+   the script-size test covers it.
+8. `time` is a facts-only key: the facts check is the projects view columns without `project`, plus `time`, plus
+   `fields.<key>`. Saved views do not gain `time`.
+9. The one-running index is `WHERE ended_at IS NULL AND archived = 0` (migration 0018) and `runningTimer` skips
+   archived rows, so `cancel_timer` needs no migration.
+10. `amendTime` writes under tool `log_time`. The note's rule looks only at `start_timer`, `stop_timer` and
+    `cancel_timer`; saving notes also sets the close cookie, so the note does not come back.
+
 ## Rulings (decision 0062; cost to change in brackets)
 
 1. In place = the script posts the real form and swaps marked regions of the page the server would show. [Medium:
