@@ -70,6 +70,7 @@ const WRITE_TOOLS = [
   "archive_project_status",
   "archive_stage",
   "archive_view",
+  "cancel_timer",
   "complete_task",
   "import_rows",
   "log_activity",

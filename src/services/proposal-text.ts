@@ -16,6 +16,7 @@ import { LEAD } from "./person-move.ts";
 import { projectStatusLabels } from "./project-statuses.ts";
 import { type StatusLabels, statusLabels } from "./status-labels.ts";
 import { timeLine, timerLine } from "./time-format.ts";
+import { sinceText } from "./timer.ts";
 
 export interface Item {
   record: string;
@@ -526,8 +527,15 @@ function entryField(names: Names, before: Row | null, after: Row, column: "start
  * archived or restored, it says so beside every other edit; edited, what it was, and each other change.
  */
 async function timeItem(names: Names, id: string, before: Row | null, after: Row, notes: ReadonlySet<string>): Promise<Item | null> {
-  const record = await entryLine(names, after);
   const running = after.ended_at === null;
+  if (before !== null && before.ended_at === null && running && before.archived === 0 && after.archived === 1) {
+    // cancel_timer: the running timer is archived with no end.
+    show(names, "time_entries", id, ["archived"]);
+    const who = (await forWhom(names, before)) ?? (await entryTask(names, before));
+    const since = sinceText(String(before.started_at), new Date(names.now), names.tz);
+    return { record: `Discard the running timer (${who === null ? "" : `${who}, `}started ${since})`, id, fields: [] };
+  }
+  const record = await entryLine(names, after);
   // The note a stop logged shows in Notes.
   const linked = typeof after.activity_id === "string" && notes.has(after.activity_id) && after.activity_id !== before?.activity_id;
   if (before === null || (before.ended_at === null && !running && after.archived === 0)) {

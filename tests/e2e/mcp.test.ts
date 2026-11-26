@@ -44,6 +44,7 @@ test("lists the tools over Streamable HTTP, with the server instructions", async
     "archive_project_status",
     "archive_stage",
     "archive_view",
+    "cancel_timer",
     "complete_task",
     "get_campaign",
     "get_deal",

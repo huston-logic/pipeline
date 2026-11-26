@@ -2,7 +2,7 @@
 // one-running index, migration 0018). Stopping fixes its end, minutes and rate in one change that also logs the notes
 // as a note on its person or deal and adds a "Next step" task when asked. A timer left running longer than 16 hours
 // can't be stopped without its real start or end.
-import type { ActivityRow, DealRow, ProjectRow, TaskRow, TimeEntryRow } from "../db/db.ts";
+import type { ActivityRow, ContactRow, DealRow, ProjectRow, TaskRow, TimeEntryRow, WorkTypeRow } from "../db/db.ts";
 import { newId } from "../ids.ts";
 import { formatLocal, localDate, localWhen, parseWhen } from "../time.ts";
 import { activityEffects } from "./activities.ts";
@@ -11,7 +11,7 @@ import { rowLabel } from "./describe.ts";
 import { UserError } from "./errors.ts";
 import { clean, whenOrNull } from "./input.ts";
 import { isTrusted } from "./labels.ts";
-import { contactById, dealById, nextPosition, ownerTimezone, projectById, type Source, workTypeById } from "./lookup.ts";
+import { contactById, dealById, nextPosition, ownerTimezone, projectById, type Source, timeEntryById, workTypeById } from "./lookup.ts";
 import { requireTimeTracking } from "./settings.ts";
 import {
   ENTRY_MAX_MINUTES,
@@ -127,44 +127,18 @@ function dueText(at: string, tz: string): string {
   return localWhen(at, tz).includes("T") ? full : (full.split(",")[0] ?? full);
 }
 
-export async function stopTimer(
+/**
+ * What logging time adds beside the entry: a note on its person or project when there are notes, and the "Next step" task
+ * when asked. Shared by stopping a timer and adding to time already logged.
+ */
+async function timeLogEffects(
   ctx: Ctx,
-  input: StopInput,
-): Promise<ChangeResult & { entryId: string; activityId: string | null; taskId: string | null }> {
-  await requireTimeTracking(ctx);
-  const tz = await ownerTimezone(ctx);
-  const running = await runningTimer(ctx);
-  if (!running) throw new UserError("No timer is running. Start one with start_timer, or add the time with add_time_entry.");
-  if (ctx.plan?.reads()[rowKey("time_entries", running.id)] === null) {
-    throw new UserError("A timer started in this list can't be stopped in the same list. Use add_time_entry with the start and end instead.");
-  }
-
-  const start = input.startedAt === undefined ? new Date(running.started_at) : parseWhen(input.startedAt, tz);
-  const end = input.endedAt === undefined ? ctx.now : parseWhen(input.endedAt, tz);
-  if (end.getTime() < start.getTime()) throw new UserError("The end must be after the start. Edit the start or end.");
-  if (end.getTime() > ctx.now.getTime()) throw new UserError("A time entry can't end in the future. Give an end that has passed.");
-  const minutes = minutesBetween(start, end);
-  if (minutes > ENTRY_MAX_MINUTES) {
-    if (input.startedAt !== undefined || input.endedAt !== undefined) throw new UserError(tooLong(minutes));
-    throw new UserError(
-      `The timer has been running since ${formatLocal(start, tz)} (${formatDuration(minutes)}), and an entry can be at most ` +
-        "16 hours. Edit the start or end: stop it with startedAt or endedAt.",
-    );
-  }
-
-  const deal = running.deal_id === null ? null : await dealById(ctx, running.deal_id);
-  const contact = running.contact_id === null ? null : await contactById(ctx, running.contact_id);
-  const project = running.project_id == null ? null : await projectById(ctx, running.project_id);
-  const workType =
-    input.workType === null
-      ? null
-      : input.workType !== undefined
-        ? await findWorkType(ctx, input.workType)
-        : running.work_type_id === null
-          ? null
-          : await workTypeById(ctx, running.work_type_id);
-  const billable = input.billable ?? (input.workType !== undefined ? workType?.billable_default === 1 : running.billable === 1);
-  const notes = clean(input.notes ?? null);
+  tz: string,
+  subject: { deal: DealRow | null; contact: ContactRow | null; project: ProjectRow | null },
+  input: { notes: string | null; nextStepDate?: string },
+): Promise<{ changes: RowChange[]; parts: string[]; activityId: string | null; taskId: string | null }> {
+  const { deal, contact, project } = subject;
+  const { notes } = input;
   const stamp = ctx.now.toISOString();
   const changes: RowChange[] = [];
   const parts: string[] = [];
@@ -215,6 +189,48 @@ export async function stopTimer(
     taskId = task.id;
     parts.push(`added ${rowLabel("tasks", task)}${task.due_at === null ? "" : ` due ${dueText(task.due_at, tz)}`}`);
   }
+  return { changes, parts, activityId, taskId };
+}
+
+export async function stopTimer(
+  ctx: Ctx,
+  input: StopInput,
+): Promise<ChangeResult & { entryId: string; activityId: string | null; taskId: string | null }> {
+  await requireTimeTracking(ctx);
+  const tz = await ownerTimezone(ctx);
+  const running = await runningTimer(ctx);
+  if (!running) throw new UserError("No timer is running. Start one with start_timer, or add the time with add_time_entry.");
+  if (ctx.plan?.reads()[rowKey("time_entries", running.id)] === null) {
+    throw new UserError("A timer started in this list can't be stopped in the same list. Use add_time_entry with the start and end instead.");
+  }
+
+  const start = input.startedAt === undefined ? new Date(running.started_at) : parseWhen(input.startedAt, tz);
+  const end = input.endedAt === undefined ? ctx.now : parseWhen(input.endedAt, tz);
+  if (end.getTime() < start.getTime()) throw new UserError("The end must be after the start. Edit the start or end.");
+  if (end.getTime() > ctx.now.getTime()) throw new UserError("A time entry can't end in the future. Give an end that has passed.");
+  const minutes = minutesBetween(start, end);
+  if (minutes > ENTRY_MAX_MINUTES) {
+    if (input.startedAt !== undefined || input.endedAt !== undefined) throw new UserError(tooLong(minutes));
+    throw new UserError(
+      `The timer has been running since ${formatLocal(start, tz)} (${formatDuration(minutes)}), and an entry can be at most ` +
+        "16 hours. Edit the start or end: stop it with startedAt or endedAt.",
+    );
+  }
+
+  const deal = running.deal_id === null ? null : await dealById(ctx, running.deal_id);
+  const contact = running.contact_id === null ? null : await contactById(ctx, running.contact_id);
+  const project = running.project_id == null ? null : await projectById(ctx, running.project_id);
+  const workType =
+    input.workType === null
+      ? null
+      : input.workType !== undefined
+        ? await findWorkType(ctx, input.workType)
+        : running.work_type_id === null
+          ? null
+          : await workTypeById(ctx, running.work_type_id);
+  const billable = input.billable ?? (input.workType !== undefined ? workType?.billable_default === 1 : running.billable === 1);
+  const notes = clean(input.notes ?? null);
+  const { changes, parts, activityId, taskId } = await timeLogEffects(ctx, tz, { deal, contact, project }, { notes, nextStepDate: input.nextStepDate });
 
   // Last, so the note it points at is written first and an undo clears the link before removing the note.
   const after = updatedRow(
@@ -238,4 +254,76 @@ export async function stopTimer(
     changes,
   });
   return { ...result, entryId: running.id, activityId, taskId };
+}
+
+/** Discards the running timer as if it never started: the entry is archived with no end, so nothing counts it and an undo restores it. */
+export async function cancelTimer(ctx: Ctx): Promise<ChangeResult & { entryId: string }> {
+  await requireTimeTracking(ctx);
+  const tz = await ownerTimezone(ctx);
+  const running = await runningTimer(ctx);
+  if (!running) throw new UserError("No timer is running.");
+  const line = await entryLine(ctx, running);
+  const after = updatedRow(running, { archived: 1 }, ctx.now);
+  const result = await commitChange(ctx, {
+    target: { table: "time_entries", id: running.id },
+    summary: `Discarded the timer started at ${sinceText(running.started_at, ctx.now, tz)}${line === "" ? "" : `: ${line}`}`,
+    changes: [{ table: "time_entries", id: running.id, before: running, after }],
+  });
+  return { ...result, entryId: running.id };
+}
+
+/**
+ * Adds to time already logged (the board's "Edit or add notes", tool log_time): notes replace the entry's and are logged as
+ * a note as a stop does, a work type or billable change reprices as an edit does, nextStepDate adds the task, and a
+ * start or end changes the span (1 to 960 minutes). Only what is given changes.
+ */
+export async function amendTime(ctx: Ctx, entryId: string, input: StopInput): Promise<ChangeResult & { taskId: string | null }> {
+  await requireTimeTracking(ctx);
+  const tz = await ownerTimezone(ctx);
+  const before = await timeEntryById(ctx, entryId);
+  if (!before) throw new UserError(`No time entry "${entryId}".`);
+  if (before.ended_at === null) throw new UserError("That entry is still running. Stop it first.");
+  if (before.archived === 1) throw new UserError("That entry is archived. Restore it first.");
+  if (Object.values(input).every((value) => value === undefined)) throw new UserError("Nothing to change: give notes, a work type, a next step date or new times.");
+
+  const set: Partial<TimeEntryRow> = {};
+  if (input.startedAt !== undefined || input.endedAt !== undefined) {
+    const start = input.startedAt === undefined ? new Date(before.started_at) : parseWhen(input.startedAt, tz);
+    const end = input.endedAt === undefined ? new Date(before.ended_at) : parseWhen(input.endedAt, tz);
+    if (end.getTime() <= start.getTime()) throw new UserError("The end must be after the start. Edit the start or end.");
+    if (end.getTime() > ctx.now.getTime()) throw new UserError("A time entry can't end in the future. Give an end that has passed.");
+    const minutes = minutesBetween(start, end);
+    if (minutes > ENTRY_MAX_MINUTES) throw new UserError(tooLong(minutes));
+    Object.assign(set, { started_at: start.toISOString(), ended_at: end.toISOString(), minutes });
+  }
+
+  const deal = before.deal_id === null ? null : await dealById(ctx, before.deal_id);
+  const contact = before.contact_id === null ? null : await contactById(ctx, before.contact_id);
+  const project = before.project_id == null ? null : await projectById(ctx, before.project_id);
+  let workTypeId = before.work_type_id;
+  let workType: WorkTypeRow | null = null;
+  if (input.workType !== undefined) {
+    workType = input.workType === null ? null : await findWorkType(ctx, input.workType);
+    workTypeId = workType?.id ?? null;
+    set.work_type_id = workTypeId;
+  }
+  const billable = input.billable ?? (input.workType !== undefined ? workType?.billable_default === 1 : before.billable === 1);
+  set.billable = billable ? 1 : 0;
+  if (!billable) set.rate = null;
+  else if (input.workType !== undefined || input.billable !== undefined) set.rate = await rateFor(ctx, workTypeId, contact?.id ?? null);
+
+  const notes = clean(input.notes ?? null);
+  const { changes, parts, activityId, taskId } = await timeLogEffects(ctx, tz, { deal, contact, project }, { notes, nextStepDate: input.nextStepDate });
+  if (notes !== null) set.notes = notes;
+  if (activityId !== null) set.activity_id = activityId;
+
+  // Last, so the note it points at is written first and an undo clears the link before removing the note.
+  const after = updatedRow(before, set, ctx.now);
+  changes.push({ table: "time_entries", id: before.id, before, after });
+  const result = await commitChange(ctx, {
+    target: { table: "time_entries", id: before.id },
+    summary: [`Updated time: ${await entryLine(ctx, after)}`, ...parts].join("; "),
+    changes,
+  });
+  return { ...result, taskId };
 }

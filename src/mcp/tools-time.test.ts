@@ -16,6 +16,7 @@ async function setup(options: { on?: boolean } = {}) {
 const TIME_CALLS: [string, Record<string, unknown>][] = [
   ["start_timer", { contact: "ct_seed01" }],
   ["stop_timer", {}],
+  ["cancel_timer", {}],
   ["add_time_entry", { contact: "ct_seed01", startedAt: "2026-11-19T08:00", minutes: 30 }],
   ["update_time_entry", { entry: "te_aaaaaaaaaaaa", minutes: 30 }],
   ["list_time", {}],
@@ -88,6 +89,24 @@ test("a proposed stop keeps the time it was asked for", async () => {
   await ok(c, "apply_changes", { proposal: (proposed.data as { proposal: string }).proposal });
   const row = await db.prepare("SELECT ended_at, minutes FROM time_entries WHERE id = 'te_running'").first();
   assert.deepEqual({ ...row }, { ended_at: NOW.toISOString(), minutes: 60 });
+});
+
+test("cancel_timer is small: a proposal under review first, applied at once under apply small, and a proposal again on the board setting", async () => {
+  const { db, c } = await setup();
+  await db
+    .prepare("INSERT INTO time_entries (id, contact_id, started_at, work_type_id, billable, version, created_at, updated_at) VALUES ('te_running', 'ct_seed01', ?, 'wt_design', 1, 1, ?, ?)")
+    .bind(NOW.toISOString(), NOW.toISOString(), NOW.toISOString())
+    .run();
+  const proposed = await okText(c, "cancel_timer", {});
+  assert.match(proposed.headline, /\nTime\n- Discard the running timer \(Pat Example, started 10:00 AM\)\n/);
+  assert.equal(await db.prepare("SELECT archived FROM time_entries WHERE id = 'te_running'").first("archived"), 0, "nothing written yet");
+
+  await ok(c, "update_settings", { aiEdits: "apply_small" });
+  const cancelled = await ok(c, "cancel_timer", {});
+  assert.match(cancelled.headline, /^Discarded the timer started at 10:00 AM: Design, for Pat Example \(change chg_/);
+  assert.deepEqual(Object.keys(cancelled.data as object).sort(), ["changeId", "entryId"]);
+  assert.equal(await db.prepare("SELECT archived FROM time_entries WHERE id = 'te_running'").first("archived"), 1);
+  assert.equal(await fails(c, "cancel_timer", {}), "No timer is running.");
 });
 
 test("work types and client rates write at once, and list_work_types lists them", async () => {

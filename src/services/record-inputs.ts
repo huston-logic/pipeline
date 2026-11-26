@@ -268,6 +268,8 @@ export const stopTimerInput = z.strictObject({
   endedAt: when("The real end, when the timer was left running; the default is now").optional(),
 });
 
+export const cancelTimerInput = z.strictObject({});
+
 export const addTimeEntryInput = z.strictObject({
   contact: timeContact().optional(),
   deal: timeDeal().optional(),

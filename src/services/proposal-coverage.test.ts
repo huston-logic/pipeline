@@ -126,6 +126,7 @@ const VARIANTS: Record<ProposalActionName, Variant[]> = {
     { input: { notes: "Sorted the receipts." }, setup: RUNNING_ALONE },
     { input: { startedAt: "2026-11-19T09:00" }, setup: RUNNING_ALONE },
   ],
+  cancel_timer: [{ input: {}, setup: RUNNING_ON_PAT }, { input: {}, setup: RUNNING_ALONE }],
   add_time_entry: [
     { input: { deal: "dl_seed01", startedAt: "2026-11-19T07:30", endedAt: "2026-11-19T09:00", workType: "Design", notes: "Booking mock-up." } },
     { input: { contact: "ct_seed03", startedAt: "2026-11-19T07:30", minutes: 45, billable: false } },
@@ -254,6 +255,15 @@ test("a stopped timer for no one shows its notes, and a stop that moves the star
   assert.deepEqual(notes.list.notes, [], "no person, so no note is logged");
   const moved = await proposeOne(VARIANTS.stop_timer[3] as Variant, "stop_timer");
   assert.deepEqual(timeLines(moved.text), ["- Time 1 h, not billable: started Thu Nov 19, 8:30 AM -> Thu Nov 19, 9:00 AM"]);
+});
+
+test("a discarded timer reads as one line naming who it was for and when it started", async () => {
+  const pat = await proposeOne(VARIANTS.cancel_timer[0] as Variant, "cancel_timer");
+  assert.deepEqual(timeLines(pat.text).length, 0, "it is not a Time or Timer line");
+  assert.deepEqual(pat.list.time.map((item) => item.record), ['Discard the running timer ("Website refresh for Example Plumbing" (Pat Example), started 8:30 AM)']);
+  const alone = await proposeOne(VARIANTS.cancel_timer[1] as Variant, "cancel_timer");
+  assert.deepEqual(alone.list.time.map((item) => item.record), ["Discard the running timer (started 8:30 AM)"]);
+  assert.deepEqual(alone.list.time.map((item) => item.fields), [[]]);
 });
 
 test("an archive with other edits shows every edit beside it", async () => {
