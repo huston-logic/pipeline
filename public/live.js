@@ -1,6 +1,5 @@
-// In-place actions (decision 0062). A form marked data-live posts with fetch to its own board route, follows the
-// redirect, and swaps the [data-region] parts of the page that came back. Anything unexpected falls back to the plain
-// form post, so every action still works without this file. Also: the timer clock, auto-submitting filters.
+// In-place actions (decision 0062): a data-live form posts with fetch and swaps the [data-region] parts of the page
+// it names; anything unexpected falls back to the plain post. Also the timer clock and filters.
 (() => {
   const $ = (sel, root = document) => root.querySelector(sel);
   const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
@@ -23,7 +22,11 @@
     const now = Date.now();
     const clocks = $$("time[data-since]");
     for (const t of clocks) t.textContent = hm(now - Date.parse(t.dataset.since));
-    for (const n of $$("[data-expires]")) if (Date.parse(n.dataset.expires) <= now) n.parentNode.replaceChildren();
+    for (const n of $$("[data-expires]")) {
+      if (Date.parse(n.dataset.expires) > now) continue;
+      if (n.contains(document.activeElement)) $("main").focus();
+      n.parentNode.replaceChildren();
+    }
     room();
     return clocks.length > 0 || !!$("[data-expires]");
   };
@@ -72,7 +75,8 @@
   };
 
   const swap = (doc, form, who) => {
-    const open = $$("details[id][open]").map((d) => d.id);
+    // The disclosure the form sat in closes (its job is done); the others stay as they were.
+    const open = $$("details[id][open]").filter((d) => !d.contains(form)).map((d) => d.id);
     const { scrollX, scrollY } = window;
     const was = (who && who.id) || form.id;
     const next = $$("[data-region]", doc);
@@ -87,8 +91,9 @@
       if (d && d.tagName === "DETAILS") d.open = true;
     }
     scrollTo(scrollX, scrollY);
-    const f = document.getElementById(form.dataset.after || "") || (was && document.getElementById(was)) || $(".corner button");
-    if (f) f.focus();
+    // Never the timer chip: Enter there would stop the timer.
+    const n = $(".corner-notice");
+    (document.getElementById(form.dataset.after || "") || (was && document.getElementById(was)) || (n && n.textContent.trim() && n) || $("main")).focus();
     init();
   };
 
@@ -121,13 +126,20 @@
     no.type = "button";
     no.className = "button corner-button";
     no.textContent = "Keep it";
-    no.addEventListener("click", () => {
+    const keep = () => {
       box.remove();
-      if (who) who.focus();
-    });
+      (who && who.isConnected ? who : $("button", form) || $("main")).focus();
+    };
+    no.addEventListener("click", keep);
+    box.addEventListener("keydown", (e) => e.key === "Escape" && keep());
     box.append(p, yes, no);
     form.append(box);
     yes.focus();
+  };
+
+  const read = async (url) => {
+    const page = await fetch(url, { credentials: "same-origin" });
+    return page.ok ? page.text() : null;
   };
 
   const send = async (form, who) => {
@@ -144,17 +156,18 @@
         });
         // Anything but the 204 means nothing was written (a refusal, a confirm page): the plain post shows it.
         if (sent.status !== 204) return plain(form, who);
-        const to = new URL(sent.headers.get("X-Location"), location.href);
+        // The 204 means it was written, so a missing or foreign address reloads this page, never posts again.
+        const to = new URL(sent.headers.get("X-Location") || location.href, location.href);
+        if (to.origin !== location.origin) return location.reload();
         if (key(to) !== key(location)) return location.assign(to);
-        const page = await fetch(to, { credentials: "same-origin" });
-        if (!page.ok) return location.assign(to);
-        text = await page.text();
+        text = await read(to);
+        if (text === null) return location.assign(to);
       } catch {
         say(form, "Couldn't save. Check your connection and try again.");
         return;
       }
       const doc = new DOMParser().parseFromString(text, "text/html");
-      const row = form.classList.contains("task-done") && form.closest("[data-task-row], li");
+      const row = form.classList.contains("task-done") && form.closest("[data-task-row], li.card");
       if (row && !calm()) {
         row.classList.add("is-leaving");
         await new Promise((r) => setTimeout(r, 160));
@@ -180,9 +193,21 @@
     send(form, who);
   });
 
-  document.addEventListener("change", (e) => {
+  // A filter select changes the list in place (no navigation per arrow key) and the address, so a reload keeps it.
+  document.addEventListener("change", async (e) => {
     const form = e.target.closest("form[data-autosubmit]");
-    if (form && e.target.tagName === "SELECT") form.requestSubmit();
+    if (!form || e.target.tagName !== "SELECT") return;
+    const url = new URL(form.action);
+    url.search = new URLSearchParams(new FormData(form));
+    let text = null;
+    try {
+      if (url.origin === location.origin) text = await read(url);
+    } catch {
+      text = null;
+    }
+    if (text === null) return form.submit();
+    history.replaceState(null, "", url);
+    swap(new DOMParser().parseFromString(text, "text/html"), form, e.target);
   });
 
   if (matchMedia("(max-width: 39.99rem)").matches) for (const d of $$("details[data-close-narrow]")) d.open = false;

@@ -51,7 +51,7 @@ const descriptionOf = (body: string) => /<meta name="description" content="([^"]
 /** The text inside every <a> element. */
 const linkTexts = (body: string) => [...body.matchAll(/<a\b[^>]*>([\s\S]*?)<\/a>/g)].map((m) => m[1] ?? "");
 /** The page without its header (brand and nav), so a test sees only what the page itself drew. */
-const mainOf = (body: string) => /<main id="main">([\s\S]*)<\/main>/.exec(body)?.[1] ?? "";
+const mainOf = (body: string) => /<main id="main" tabindex="-1">([\s\S]*)<\/main>/.exec(body)?.[1] ?? "";
 const navOf = (body: string) => /<nav class="app-nav"[\s\S]*?<\/nav>/.exec(body)?.[0] ?? "";
 /** The card titles on a page, as markup, so an outside name is checked together with its label. */
 /** The one script the board ships (decision 0014), loaded only by the pipeline's board view. */

@@ -3,7 +3,7 @@ import { authMode } from "./auth/dev.ts";
 import { isOAuthPath } from "./auth/oauth-routes.ts";
 import { matchBoardAction } from "./board/actions.ts";
 import { closedChangeFrom } from "./board/corner-actions.ts";
-import { type CsrfMode, csrfCookie, csrfFromCookies, newCsrfToken } from "./board/csrf.ts";
+import { type CsrfMode, csrfCookie, csrfFromCookies, isSecureMode, newCsrfToken } from "./board/csrf.ts";
 import { MANIFEST_PATH, manifestFor } from "./board/manifest.ts";
 import { notFoundPage, serverErrorPage } from "./board/pages/not-found.ts";
 import { handleBoardPost } from "./board/post.ts";
@@ -171,7 +171,7 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
         CAMPAIGN_WEBHOOK_SECRET: env.CAMPAIGN_WEBHOOK_SECRET,
         OWNER_EMAILS: env.OWNER_EMAILS,
       };
-      const result = await page({ db: env.DB, now: new Date(), url, csrf, pushKey, emailLogAddress: logAddressOf(env), campaignEnv, closedChange: closedChangeFrom(request) });
+      const result = await page({ db: env.DB, now: new Date(), url, csrf, pushKey, emailLogAddress: logAddressOf(env), campaignEnv, closedChange: closedChangeFrom(request, isSecureMode(csrfMode)) });
       const headers: Record<string, string> = cookie === null ? { "Set-Cookie": csrfCookie(csrf, csrfMode) } : {};
       return htmlResponse(result.body, result.status, headers);
     } catch {

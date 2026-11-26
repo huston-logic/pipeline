@@ -66,7 +66,7 @@ test.describe.serial("with scripts off", () => {
   test.use({ javaScriptEnabled: false });
 
   test("each action is a plain form post that lands back on the same page", async ({ page }) => {
-    await page.goto("/");
+    await discardStrayTimer(page);
     await press(page, /^Done/).click();
     await expect(page).toHaveURL(/\/\?change=chg_/);
     await expect(notice(page)).toContainText("Done");

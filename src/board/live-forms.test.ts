@@ -4,7 +4,7 @@ import { test } from "node:test";
 import { postForm } from "./forms.ts";
 import { html } from "./html.ts";
 import { renderPage } from "./layout.ts";
-import { snoozeForms, taskActions } from "./task-forms.ts";
+import { addTaskForm, snoozeForms, taskActions } from "./task-forms.ts";
 
 const FORM = { csrf: "t".repeat(43), here: "/" };
 const inner = html`<button type="submit">Go</button>`;
@@ -24,6 +24,14 @@ test("every signed-in page loads /live.js with defer, before any page script; a 
   assert.match(page, /<script src="\/live.js" defer><\/script>\n<script src="\/board.js" defer><\/script>\n<\/head>/);
   assert.match(renderPage({ title: "T", description: "d", body: html`<h1>T</h1>`, frame }), /<script src="\/live.js" defer><\/script>\n<\/head>/);
   assert.doesNotMatch(renderPage({ title: "T", description: "d", body: html`<h1>T</h1>` }), /live\.js/);
+});
+
+test("the Snooze, Edit and Add a task disclosures have stable ids, so they stay open across a swap", async () => {
+  const task = { id: "tk_aaaaaaaaaaaa", title: "Send the plan", untrusted_fields: [], dueAt: null, description: null };
+  const out = (await taskActions(task, FORM, "America/Los_Angeles")).value;
+  assert.match(out, /<details class="task-snooze" id="snooze-tk_aaaaaaaaaaaa">/);
+  assert.match(out, /<details class="task-edit" id="edit-tk_aaaaaaaaaaaa">/);
+  assert.match(addTaskForm({ kind: "deal", id: "dl_aaaaaaaaaaaa" }, FORM).value, /<details class="add-details" id="add-dl_aaaaaaaaaaaa">/);
 });
 
 test("Done, the snooze forms, Edit save and Start timer on a task card post in place", async () => {

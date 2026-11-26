@@ -143,7 +143,7 @@ ${frame ? html`<link rel="stylesheet" href="/theme.css">\n${appTags(frame.look)}
 ${nav(current, { timeTracking: frame?.timeTracking === true, campaigns: frame?.campaigns === true, projects: frame?.projects === true })}
 </header>
 <div class="app-body">
-${cornerOf(frame)}<main id="main">
+${cornerOf(frame)}<main id="main" tabindex="-1">
 ${body}
 </main>
 <footer class="app-footer">

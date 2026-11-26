@@ -90,7 +90,7 @@ export async function taskEditForm(task: EditableTask, form: FormContext, tz: st
     { novalidate: true, live: {} },
   );
   if (state !== undefined) return html`${formErrorSummary(state.errors, specs, prefix)}<div class="card refused-form">${inner}</div>`;
-  return html`<details class="task-edit">
+  return html`<details class="task-edit" id="edit-${task.id}">
 <summary>Edit${hiddenName(name)}</summary>
 ${inner}
 </details>`;
@@ -108,7 +108,7 @@ ${postForm(
   { live: {} },
 )}
 ${startTimerForm({ kind: "task", id: task.id }, form, name)}
-<details class="task-snooze">
+<details class="task-snooze" id="snooze-${task.id}">
 <summary>Snooze${hiddenName(name)}</summary>
 ${snoozeForms(task, form)}
 </details>
@@ -137,7 +137,7 @@ export function addTaskForm(subject: Subject, form: FormContext, state?: FormSta
     { novalidate: true, live: {} },
   );
   if (state !== undefined) return html`${formErrorSummary(state.errors, specs, prefix)}<div class="card refused-form">${inner}</div>`;
-  return html`<details class="add-details">
+  return html`<details class="add-details" id="add-${subject.id}">
 <summary>Add a task</summary>
 ${inner}
 </details>`;

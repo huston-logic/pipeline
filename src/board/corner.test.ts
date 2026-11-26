@@ -32,7 +32,7 @@ const change = (overrides: Partial<ChangeItem> = {}): ChangeItem => ({
 test("an empty corner is a region with an empty status line and nothing else", () => {
   const out = draw(EMPTY);
   assert.match(out, /^<div class="corner" data-region="corner">/);
-  assert.match(out, /<div class="corner-notice" role="status"><\/div>/);
+  assert.match(out, /<div class="corner-notice" role="status" tabindex="-1"><\/div>/);
   assert.doesNotMatch(out, /corner-chip|<form/);
 });
 
@@ -77,7 +77,7 @@ test("noticeText names the verb and the record, or only the verb, or falls back 
 
 test("a change notice has its text and an Undo; an undone one says Undone. instead", () => {
   const out = draw({ ...EMPTY, notice: { change: change(), name: "Send the plan" } });
-  assert.match(out, /<div class="corner-notice" role="status">\s*<p class="corner-text">Done: Send the plan<\/p>/);
+  assert.match(out, /<div class="corner-notice" role="status" tabindex="-1">\s*<p class="corner-text">Done: Send the plan<\/p>/);
   assert.match(out, /action="\/changes\/chg_aaaaaaaaaaaa\/undo" data-live>/);
   const undone = draw({ ...EMPTY, notice: { change: change({ undone: true }), name: "Send the plan" } });
   assert.match(undone, /<p class="corner-text">Undone: Send the plan<\/p>/);

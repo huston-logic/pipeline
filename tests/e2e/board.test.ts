@@ -156,7 +156,7 @@ test("a move from the board: cookie and token from the page, 303 with the change
   assert.match(location, /^\/pipeline\?change=chg_[a-z0-9]{12}$/);
 
   const shown = await (await fetch(`${server.url}${location}`, { headers: { Cookie: cookie } })).text();
-  assert.match(shown, new RegExp(`<div class="corner-notice" role="status">\\n<p class="corner-text">Moved [^<]+\\(change ${changeId}\\)</p>`));
+  assert.match(shown, new RegExp(`<div class="corner-notice" role="status" tabindex="-1">\\n<p class="corner-text">Moved [^<]+\\(change ${changeId}\\)</p>`));
   assert.match(shown, new RegExp(`data-deal="${dealId}" data-stage="${to}"`), "the card is in its new column");
 
   const changes = await (await fetch(`${server.url}/changes`, { headers: { Cookie: cookie } })).text();

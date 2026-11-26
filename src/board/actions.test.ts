@@ -86,6 +86,25 @@ test("a post from /live.js (X-Live: 1) answers 204 with the page to load in X-Lo
   assert.equal((await dealRow(db, "dl_seed01"))?.stage_key, "call_done");
 });
 
+test("X-Live: 1 changes nothing about the checks: no token, a wrong token and a cross-site Origin are 403 and write nothing", async () => {
+  const db = await seededDb();
+  const env = devEnv(db);
+  const fields = "stage=call_done&return_to=%2Fpipeline";
+  const cases: [string, PostOptions][] = [
+    ["no token", { body: fields }],
+    ["a wrong token", { body: `csrf=${"x".repeat(43)}&${fields}` }],
+    ["a cross-site origin", { origin: "https://evil.example" }],
+  ];
+  for (const [name, options] of cases) {
+    const before = await auditCount(db);
+    const { res } = await post(env, "/deals/dl_seed01/move", { stage: "call_done", return_to: "/pipeline" }, { ...options, headers: { "X-Live": "1" } });
+    assert.equal(res.status, 403, name);
+    assert.equal(res.headers.get("X-Location"), null, name);
+    assert.equal(await auditCount(db), before, `${name}: no audit row`);
+    assert.notEqual((await dealRow(db, "dl_seed01"))?.stage_key, "call_done", name);
+  }
+});
+
 test("a board page sets the CSRF cookie once and puts the same token in every form", async () => {
   const env = devEnv(await seededDb());
   const first = await load(env);
@@ -129,7 +148,7 @@ test("the status corner shows the summary in a status region with an Undo button
   const page = await load(env, location, moved.cookie);
   assert.match(
     page.body,
-    new RegExp(`<div class="corner-notice" role="status">\\n<p class="corner-text">Moved &quot;Website refresh for Example Plumbing&quot; \\(Pat Example\\) to Call done \\(change ${changeId}\\)</p>`),
+    new RegExp(`<div class="corner-notice" role="status" tabindex="-1">\\n<p class="corner-text">Moved &quot;Website refresh for Example Plumbing&quot; \\(Pat Example\\) to Call done \\(change ${changeId}\\)</p>`),
   );
   assert.match(page.body, new RegExp(`<form class="corner-form" method="post" action="/changes/${changeId}/undo" data-live>`));
   assert.match(page.body, /<input type="hidden" name="return_to" value="\/pipeline\?view=list">/, "Undo comes back here, without the old change id");
@@ -163,7 +182,7 @@ test("the corner ignores a change id of the wrong shape or one that doesn't exis
   const owner: Ctx = { db, now: new Date(), actor: "ai", tool: "update_deal" };
   const change = await updateDeal(owner, "dl_seed03", { value: 900 });
   const shown = await load(env, `/contacts?change=${change.changeId}`);
-  assert.match(shown.body, /<div class="corner-notice" role="status">\n<p class="corner-text">/);
+  assert.match(shown.body, /<div class="corner-notice" role="status" tabindex="-1">\n<p class="corner-text">/);
   assert.match(shown.body, /class="corner-form"/);
   db.exec(`UPDATE audit_log SET undone_at = '2026-01-01T00:00:00.000Z', undone_by = 'chg_other' WHERE id = '${change.changeId}'`);
   const undone = await load(env, `/contacts?change=${change.changeId}`);

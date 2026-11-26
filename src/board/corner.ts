@@ -79,7 +79,7 @@ ${after}`;
 export function corner(state: CornerState, form: FormContext): Html {
   const inside = state.logged !== null ? loggedNote(state.logged, form) : state.notice !== null ? changeNotice(state.notice, form) : "";
   return html`<div class="corner" data-region="corner">
-${state.timer === null ? "" : chip(state.timer, form)}<div class="corner-notice" role="status">${inside === "" ? "" : html`\n${inside}\n`}</div>
+${state.timer === null ? "" : chip(state.timer, form)}<div class="corner-notice" role="status" tabindex="-1">${inside === "" ? "" : html`\n${inside}\n`}</div>
 </div>
 `;
 }

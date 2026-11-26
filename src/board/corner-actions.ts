@@ -7,19 +7,23 @@ export const CORNER_COOKIE = "pipeline_corner";
 const MAX_AGE_SECONDS = 300;
 
 /** The change id the owner closed, from the request's cookie, or null when there is none or it is not a change id. */
-export function closedChangeFrom(request: Request): string | null {
+export function closedChangeFrom(request: Request, secure: boolean): string | null {
+  const name = cornerCookieName(secure);
   for (const part of (request.headers.get("Cookie") ?? "").split(";")) {
     const split = part.indexOf("=");
-    if (split < 0 || part.slice(0, split).trim() !== CORNER_COOKIE) continue;
+    if (split < 0 || part.slice(0, split).trim() !== name) continue;
     const value = part.slice(split + 1).trim();
     return isChangeId(value) ? value : null;
   }
   return null;
 }
 
+/** `__Host-` in secure mode, exactly as the CSRF cookie (csrf.ts); the plain name only over http://localhost. */
+const cornerCookieName = (secure: boolean): string => (secure ? `__Host-${CORNER_COOKIE}` : CORNER_COOKIE);
+
 /** The Set-Cookie value that closes a change's corner; `secure` comes from the same sign-in mode as the CSRF cookie's. */
 export const closeCookie = (changeId: string, secure: boolean): string =>
-  `${CORNER_COOKIE}=${changeId}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${MAX_AGE_SECONDS}${secure ? "; Secure" : ""}`;
+  `${cornerCookieName(secure)}=${changeId}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${MAX_AGE_SECONDS}${secure ? "; Secure" : ""}`;
 
 async function close(ctx: ActionContext): Promise<ActionResult> {
   const change = ctx.form.get("change") ?? "";

@@ -12,7 +12,7 @@ import { updateContact } from "../services/contacts.ts";
 const contact = (db: SqliteD1, id: string) => db.prepare("SELECT * FROM contacts WHERE id = ?").bind(id).first<ContactRow>();
 const deal = (db: SqliteD1, id: string) => db.prepare("SELECT * FROM deals WHERE id = ?").bind(id).first<DealRow>();
 const titleOf = (body: string) => /<title>([^<]*)<\/title>/.exec(body)?.[1] ?? "";
-const mainOf = (body: string) => /<main id="main">([\s\S]*)<\/main>/.exec(body)?.[1] ?? "";
+const mainOf = (body: string) => /<main id="main" tabindex="-1">([\s\S]*)<\/main>/.exec(body)?.[1] ?? "";
 const formOf = (body: string, action: string) => {
   const at = body.indexOf(`action="${action}"`);
   const start = at < 0 ? -1 : body.lastIndexOf("<form", at + 1);
