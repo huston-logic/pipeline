@@ -68,7 +68,7 @@ function assertPage(body: string, path: string) {
   assert.match(body, /<link rel="stylesheet" href="\/theme.css">/, path);
   // /board.js: dragging on the pipeline board, the phone actions and Copy prompt on deal and contact pages (decision 0021).
   // /deals/new and /contacts/new are the Add a deal and Add contact forms, not record pages.
-  const scripted = path === "/pipeline" || /^\/deals\/(?!new$)[^/]+$/.test(path) || /^\/contacts\/(?!new$)[^/]+$/.test(path) || path.startsWith("/timer/done");
+  const scripted = path === "/pipeline" || /^\/deals\/(?!new$)[^/]+$/.test(path) || /^\/contacts\/(?!new$)[^/]+$/.test(path) || path.startsWith("/timer/done") || path.startsWith("/timer/notes");
   assert.deepEqual(scriptsOf(body), scripted ? [BOARD_JS] : [], `${path}: scripts`);
   assert.doesNotMatch(body, /\sstyle=/i, `${path}: no inline styles (the CSP refuses them)`);
 }
@@ -671,7 +671,7 @@ test("board pages answer GET and HEAD only: any other method is 405 (writes have
     (/\/(?:edit|new|qualify|campaign-emails\/allow)$/.test(path) && !projectForm(path)) ||
     /^\/projects\/[^/?]+$/.test(path) ||
     /^\/templates\/[^/?]+$/.test(path) ||
-    ["/import", "/timer/stop", "/campaigns/settings", "/templates"].includes(path.split("?")[0] ?? "");
+    ["/import", "/timer/stop", "/timer/notes", "/campaigns/settings", "/templates"].includes(path.split("?")[0] ?? "");
   for (const path of boardRoutes) {
     for (const method of ["POST", "PUT", "DELETE", "PATCH"]) {
       if (method === "POST" && formPage(path)) {

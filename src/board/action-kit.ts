@@ -29,7 +29,10 @@ export interface ActionContext {
   origin: string;
 }
 
-export type ActionResult = { kind: "redirect"; location: string } | { kind: "page"; status: 200 | 404 | 422; body: string };
+export type ActionResult = { kind: "redirect"; location: string; headers?: Record<string, string> } | { kind: "page"; status: 200 | 404 | 422; body: string };
+
+/** The anchors a form's hidden `at` field may name: the row to come back to (a plain id-like word). */
+export const AT_PATTERN = /^[a-z][a-z0-9_-]{0,80}$/;
 
 export type BoardAction = (ctx: ActionContext) => Promise<ActionResult>;
 
@@ -45,6 +48,12 @@ export type Route = { path: RegExp; handle: (ctx: ActionContext, id: string) => 
 export const asOwner = (ctx: ActionContext, tool: string): Ctx => ({ db: ctx.db, now: ctx.now, actor: "owner", tool });
 
 export const redirect = (location: string): ActionResult => ({ kind: "redirect", location });
+
+/** A redirect back to where the form was, at the row it came from: `#<at>` when the form posted a valid `at`. */
+export function redirectBack(ctx: ActionContext, location: string): ActionResult {
+  const at = ctx.form.get("at") ?? "";
+  return redirect(AT_PATTERN.test(at) ? `${location}#${at}` : location);
+}
 
 export const page = (status: 200 | 404 | 422, body: string): ActionResult => ({ kind: "page", status, body });
 

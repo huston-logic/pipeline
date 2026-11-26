@@ -90,5 +90,5 @@ export async function handleBoardPost(
 
   const origin = new URL(request.url).origin;
   const result = await action.run({ db: env.DB, env, now: new Date(), csrf: cookie, form, ...(upload ? { upload } : {}), look, email: auth.email, origin });
-  return result.kind === "redirect" ? seeOther(result.location) : htmlResponse(result.body, result.status);
+  return result.kind === "redirect" ? seeOther(result.location, result.headers) : htmlResponse(result.body, result.status);
 }

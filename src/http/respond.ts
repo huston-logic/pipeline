@@ -20,6 +20,6 @@ export function textResponse(body: string, status: number, headers: Record<strin
 }
 
 /** Post/Redirect/Get: a board write answers with the page to load next, so a reload never repeats it. */
-export function seeOther(location: string): Response {
-  return withSecurityHeaders(new Response(null, { status: 303, headers: { Location: location, "Cache-Control": "no-store" } }));
+export function seeOther(location: string, headers: Record<string, string> = {}): Response {
+  return withSecurityHeaders(new Response(null, { status: 303, headers: { Location: location, "Cache-Control": "no-store", ...headers } }));
 }

@@ -35,6 +35,7 @@ import { REPORT_PATH, reportPage } from "./pages/report.ts";
 import { rulesPage } from "./pages/rules.ts";
 import { todayPage } from "./pages/today.ts";
 import { timerDonePage, TIMER_DONE_PATH } from "./pages/timer-done.ts";
+import { timerNotesPage, TIMER_NOTES_PATH } from "./pages/timer-notes.ts";
 import { timerStopPage, TIMER_STOP_PATH } from "./pages/timer-stop.ts";
 import { timePage, TIME_PATH } from "./pages/time.ts";
 import { timeEditPage, timeNewPage } from "./pages/time-entry.ts";
@@ -97,6 +98,7 @@ const PAGES = new Map<string, Page>([
   [PERSON_DEAL_PATH, (ctx) => personDealPage(ctx)],
   [TIMER_STOP_PATH, (ctx) => timerStopPage(ctx)],
   [TIMER_DONE_PATH, (ctx) => timerDonePage(ctx)],
+  [TIMER_NOTES_PATH, (ctx) => timerNotesPage(ctx)],
   [TIME_PATH, (ctx) => timePage(ctx)],
   [TIME_NEW_PATH, (ctx) => timeNewPage(ctx)],
   [PROJECTS_PATH, (ctx) => projectsPage(ctx)],

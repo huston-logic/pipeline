@@ -82,6 +82,7 @@ export const boardRoutes: string[] = [
   "/import/im_seed03",
   "/timer/stop",
   "/timer/done?entry=te_seed01",
+  "/timer/notes?entry=te_seed01",
   "/time",
   "/time?week=2026-11-16",
   "/time/new",
