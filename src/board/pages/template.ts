@@ -62,7 +62,7 @@ export function addTaskForm(view: TemplateView, workTypes: { id: string; name: s
 ${specFields(specs, state?.shown ?? new Map(), prefix)}
 ${choices.length === 0 ? "" : field({ id: `${prefix}-under`, name: "under", label: "Under", kind: "choice", value: state?.under ?? "", blank: "Top level", groups: [{ label: "", options: choices }], hint: "The new task goes under the one you choose." })}
 </div>
-<div class="form-actions"><button class="button" type="submit">Add the task</button></div>`,
+<div class="form-actions"><button class="button" type="submit">Add task</button></div>`,
     { novalidate: true },
   );
 }

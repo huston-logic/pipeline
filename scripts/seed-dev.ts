@@ -512,8 +512,151 @@ export function devSeed(now: Date, tz: string): DevSeed {
       version: 2,
       updated_at: day(-3, "11:00"),
     }),
-    task(19, { contact: 3 }, "Ask the co-op board when the balcony work can resume", day(14, "09:00"), day(-5, "09:00"), { project_id: "pj_seed02" }),
+    task(19, { contact: 3 }, "Ask the co-op board when the balcony work can resume", day(14, "09:00"), day(-5, "09:00"), { project_id: "pj_seed02", position: 1 }),
   ];
+  for (const row of tasks) if (row.project_id === "pj_seed01") row.position = ["tk_seed16", "tk_seed17", "tk_seed18"].indexOf(String(row.id)) + 1;
+
+  // A richer set for the design review: project task trees (three levels deep in pj_seed01 and pj_seed03) and loose to-dos.
+  type Node = { title: string; due: number | null; at?: string; done?: boolean; kids?: Node[] };
+  const nodes = (
+    projectId: string,
+    contact: string | null,
+    list: Node[],
+    firstNumber: number,
+    firstPosition: number,
+  ): Row[] => {
+    let next = firstNumber;
+    const out: Row[] = [];
+    const walk = (items: Node[], parent: string | null, start: number): void => {
+      items.forEach((node, index) => {
+        const id = `tk_seed${n2(next++)}`;
+        const dueAt = node.due === null ? null : day(node.due, node.at ?? "09:00");
+        const done = node.done === true;
+        out.push(
+          task(0, {}, node.title, dueAt, day(-6, "10:00"), {
+            id,
+            contact_id: contact,
+            project_id: projectId,
+            parent_id: parent,
+            position: start + index,
+            ...(done ? { done_at: day(node.due ?? -1, "11:00"), version: 2, updated_at: day(node.due ?? -1, "11:00") } : {}),
+          }),
+        );
+        if (node.kids) walk(node.kids, id, 1);
+      });
+    };
+    walk(list, null, firstPosition);
+    return out;
+  };
+
+  const websiteTree: Node[] = [
+    {
+      title: "Set up the staging copy of the site",
+      due: -3,
+      done: true,
+      kids: [
+        { title: "Copy the live site to staging", due: -4, done: true, kids: [{ title: "Export the page content as a backup", due: -4, done: true }, { title: "Check the staging login works on a phone", due: -1 }] },
+        { title: "Turn on the editor for two test users", due: 0, at: "16:00" },
+      ],
+    },
+    {
+      title: "Edit the existing pages",
+      due: 1,
+      kids: [
+        { title: "Change the opening hours on the Contact page", due: -1, kids: [{ title: "Check the new hours show in the footer and on the map card", due: 0, at: "17:00" }, { title: "Check the new hours on a phone-sized screen", due: 1 }] },
+        { title: "Replace the team photo and keep its description up to date", due: 2, kids: [{ title: "Resize the photo so the page still loads quickly", due: null }] },
+        { title: "Fix the broken link on the pricing page", due: -2 },
+      ],
+    },
+    {
+      title: "Add a new page from scratch",
+      due: 1,
+      kids: [
+        { title: "Draft the page copy in the editor: a headline, three short sections and a button that asks people to book a call", due: null },
+        { title: "Add three images with descriptions", due: 2, kids: [{ title: "Upload the images to the media library", due: 1 }, { title: "Write the image descriptions", due: null }] },
+        { title: "Publish the page and check the address", due: 3 },
+      ],
+    },
+    {
+      title: "Write down what confused me in the editor",
+      due: null,
+      kids: [
+        { title: "List the steps that took more than a minute", due: -1 },
+        { title: "Send the list to the agency with screenshots attached", due: 2 },
+        { title: "Share the staging link with Dana for a second opinion", due: null },
+      ],
+    },
+    { title: "Decide whether to move the real site to the editor", due: 5 },
+    { title: "Book a 30 minute review call with the agency", due: 4 },
+  ];
+  const buildingTree: Node[] = [
+    {
+      title: "Site prep for the new footing",
+      due: -1,
+      kids: [
+        { title: "Clear and mark the footing area", due: -2, done: true, kids: [{ title: "Call 811 to locate the buried lines", due: -3, done: true }, { title: "Rent the plate compactor for the week", due: 0, at: "15:00" }] },
+        { title: "Pour the test footing", due: 5 },
+      ],
+    },
+    {
+      title: "Anchor bolts and base plates",
+      due: null,
+      kids: [
+        {
+          title: "Check the bolt order against the stamped drawings",
+          due: 2,
+          kids: [{ title: "Mark any mismatched bolt lengths and send the list back to the supplier before the crew starts on Monday", due: 1 }],
+        },
+      ],
+    },
+    { title: "Final walk-through with Luis and the city inspector, including the punch list and the signed completion form", due: 30 },
+  ];
+  const balconyTree: Node[] = [
+    { title: "Get the repair quote from a second masonry contractor", due: -2 },
+    { title: "Send Priya the updated cost range", due: null },
+    { title: "Photograph the cracked railing posts for the board packet", due: 0, at: "14:00", done: true },
+    { title: "Draft the scope of work once the budget is voted", due: 20 },
+    { title: "Order the sealant samples", due: -5, done: true },
+  ];
+
+  const loose = (n: number, title: string, due: number | null, at = "09:00"): Row =>
+    task(n, {}, title, due === null ? null : day(due, at), day(-7, "09:00"), { contact_id: null });
+  const looseSpecs: [string, number | null, string?][] = [
+    ["Call the accountant about quarterly taxes", -6],
+    ["Pay the trailer registration", -4],
+    ["Replace the batteries in the shop smoke alarms", -3],
+    ["Return the rented ladder", -2],
+    ["Send the safety binder to the insurance agent", -2],
+    ["Reorder printer toner", -1],
+    ["Pick up the permit stamps", 0, "11:00"],
+    ["Back up the shared drive", 0, "15:00"],
+    ["Call the dentist to move Thursday", 0, "16:30"],
+    ["Wash and fuel the work truck", 0, "17:30"],
+    ["Review the January supplier prices", 1],
+    ["Order work gloves for the crew", 1, "13:00"],
+    ["Schedule the truck oil change", 2],
+    ["Renew the contractor license", 4],
+    ["Send holiday cards to past clients", 5],
+    ["Update the crew's phone list", 6],
+    ["Compare quotes for the new compressor", 7],
+    ["Clean out the tool trailer", 8],
+    ["Book the booth for the spring home show", 10],
+    ["Write the crew's year-end bonus note", 14],
+    ["Check the fire extinguisher dates", 21],
+    ["Look into a second invoice login for the bookkeeper", null],
+    ["Think about a slogan for the truck", null],
+    ["Read the new lead paint rules", null],
+    ["Find a better way to track receipts", null],
+    ["Ask the crew about Friday hours", null],
+    ["Sort the old job photos", null],
+    ["Try the new scheduling app", null],
+  ];
+  tasks.push(
+    ...nodes("pj_seed01", "ct_seed07", buildingTree, 20, 4),
+    ...nodes("pj_seed02", "ct_seed03", balconyTree, 30, 2),
+    ...nodes("pj_seed03", null, websiteTree, 40, 1),
+    ...looseSpecs.map(([title, due, at], index) => loose(100 + index, title, due, at)),
+  );
 
   const rules: Row[] = [
     {
@@ -969,7 +1112,7 @@ export function devSeed(now: Date, tz: string): DevSeed {
   // Projects (decision 0055). pj_seed01 started from the won storage building B deal (Luis) and is Active, with a note and
   // two finished time entries (one billable); pj_seed02 was made by hand for Priya and is On hold. Its time entries and note
   // are kept apart from the lists above, whose counts the time pages' and the lists' tests rely on.
-  const project = (n: number, name: string, contact: string, deal: string | null, status: string, startAt: string | null, targetAt: string | null, created: string, notes: string | null): Row => ({
+  const project = (n: number, name: string, contact: string | null, deal: string | null, status: string, startAt: string | null, targetAt: string | null, created: string, notes: string | null): Row => ({
     id: `pj_seed${n2(n)}`,
     name,
     contact_id: contact,
@@ -987,6 +1130,7 @@ export function devSeed(now: Date, tz: string): DevSeed {
   const projects: Row[] = [
     project(1, "Storage building B retrofit", "ct_seed07", "dl_seed07", "active", day(-4, "00:00"), day(42, "00:00"), day(-4, "10:00"), "Permit is approved. Crew starts after the bolts arrive."),
     project(2, "Cedar Row balcony repair", "ct_seed03", null, "on_hold", day(-5, "00:00"), day(60, "00:00"), day(-5, "09:00"), "Waiting on the co-op board's budget vote."),
+    project(3, "Test the website editor", null, null, "active", day(0, "00:00"), day(1, "00:00"), day(-6, "10:00"), "An internal trial of the new page editor on a staging copy."),
   ];
   // Project templates: Website build (a nested task, a work type) and Kitchen remodel. tt_seed01 is the first task.
   const template = (n: number, name: string, description: string): Row => ({

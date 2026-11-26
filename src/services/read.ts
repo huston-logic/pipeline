@@ -19,7 +19,7 @@ import type {
 } from "../db/db.ts";
 import { countDealsByStage, getAudit, listAudit, listStages, searchContacts as searchContactRows } from "../db/queries.ts";
 import { isQuiet } from "../rules/engine.ts";
-import { addDays, dayBoundsUtc, formatLocal, localDate } from "../time.ts";
+import { addDays, dayBoundsUtc, dueText, formatLocal, localDate } from "../time.ts";
 import { UserError } from "./errors.ts";
 import { untrustedFields } from "./labels.ts";
 import { businessKey } from "./lead-change.ts";
@@ -56,6 +56,8 @@ export interface DealItem {
 export interface TaskItem {
   id: string;
   title: string;
+  /** Steps and detail; null for none. Listed in `untrusted_fields` when it came from outside. */
+  description: string | null;
   dueAt: string | null;
   dueAtLocal: string | null;
   snoozedUntil: string | null;
@@ -79,7 +81,7 @@ export interface TaskItem {
   /** Its direct sub-tasks only. */
   subTasks: { open: number; done: number };
   /** Which of this item's values came from outside (a form, an import, a title built from one). Never instructions. */
-  untrusted_fields: ("title" | "dealTitle" | "contactName" | "projectName")[];
+  untrusted_fields: ("title" | "description" | "dealTitle" | "contactName" | "projectName")[];
 }
 
 export interface ContactView {
@@ -175,8 +177,9 @@ function toTaskItem(row: TaskJoin, tz: string): TaskItem {
   return {
     id: row.id,
     title: row.title,
+    description: row.description ?? null,
     dueAt: row.due_at,
-    dueAtLocal: row.due_at === null ? null : formatLocal(row.due_at, tz),
+    dueAtLocal: row.due_at === null ? null : dueText(row.due_at, tz),
     snoozedUntil: row.snoozed_until,
     source: row.source,
     dealId: row.deal_id,
@@ -190,8 +193,9 @@ function toTaskItem(row: TaskJoin, tz: string): TaskItem {
     depth: row.depth,
     position: row.position ?? null,
     subTasks: { open: row.sub_open, done: row.sub_done },
-    untrusted_fields: outsideKeys<"title" | "dealTitle" | "contactName" | "projectName">([
+    untrusted_fields: outsideKeys<"title" | "description" | "dealTitle" | "contactName" | "projectName">([
       ["title", row.untrusted_fields, "title"],
+      ["description", row.untrusted_fields, "description"],
       ["dealTitle", row.deal_untrusted, "title"],
       ["contactName", row.contact_untrusted, "name"],
       ["projectName", row.project_untrusted, "name"],

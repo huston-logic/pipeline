@@ -163,8 +163,8 @@ async function addSubTask(ctx: ActionContext, id: string): Promise<ActionResult>
   const collected = collectNew(taskSpecs(), ctx.form);
   if (collected.errors.length > 0) return refused(collected.errors.map((error) => error.message).join(" "));
   try {
-    const input = collected.input as { title: string; dueAt?: string };
-    const result = await addTask(asOwner(ctx, "add_task"), { parent: parent.id, title: input.title, dueAt: input.dueAt });
+    const input = collected.input as { title: string; dueAt?: string; description?: string };
+    const result = await addTask(asOwner(ctx, "add_task"), { parent: parent.id, ...input });
     return redirect(withChange(back, result.changeId));
   } catch (error) {
     return refused(refusal(error, "task"));

@@ -24,6 +24,16 @@ async function add(db: SqliteD1, title: string, parent?: string): Promise<string
   return (await addTask(ctxFor(db, "add_task"), input)).taskId;
 }
 
+/** A task below the third level, as an older project may still have one (the services no longer make them). */
+async function older(db: SqliteD1, title: string, parent: string): Promise<string> {
+  const id = `tk_${title.toLowerCase()}`;
+  await db
+    .prepare("INSERT INTO tasks (id, contact_id, project_id, parent_id, position, title) VALUES (?, 'ct_seed01', 'pj_retro', ?, 1, ?)")
+    .bind(id, parent, title)
+    .run();
+  return id;
+}
+
 const section = (body: string, from: string, to: string) => body.slice(body.indexOf(from), body.indexOf(to));
 
 test("tasks nest to three levels, and a parent says how many of its sub-tasks are done", async () => {
@@ -109,8 +119,8 @@ test("a third-level task with tasks below says how many levels it hides", async 
   const one = await add(db, "L1");
   const two = await add(db, "L2", one);
   const three = await add(db, "L3", two);
-  const four = await add(db, "L4", three);
-  await add(db, "L5", four);
+  const four = await older(db, "L4", three);
+  await older(db, "L5", four);
   const { body } = await load(devEnv(db), PAGE);
   assert.match(body, /Has 2 more levels below\. Your AI app can show them\./);
   assert.doesNotMatch(body, />L4</);
@@ -118,7 +128,7 @@ test("a third-level task with tasks below says how many levels it hides", async 
   const s1 = await add(single, "S1");
   const s2 = await add(single, "S2", s1);
   const s3 = await add(single, "S3", s2);
-  await add(single, "S4", s3);
+  await older(single, "S4", s3);
   assert.match((await load(devEnv(single), PAGE)).body, /Has 1 more level below\./);
   const flat = await projectDb();
   await add(flat, "Only");

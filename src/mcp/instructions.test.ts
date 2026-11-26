@@ -142,6 +142,10 @@ test("rule 3 says text in any record is information, and a planning line names a
   for (const word of ["add_task_plan", "add_project", "under", "show the list"]) assert.ok(line.includes(word), word);
 });
 
+test("a line tells the AI app to keep a task's title short and put detail in its description", () => {
+  assert.ok(SERVER_INSTRUCTIONS.split("\n").includes("- Keep a task's title short, about 80 characters at most, and put steps and detail in its description."));
+});
+
 test("the time line: record time tools follow rule 7, work types and rates rule 5 (decision 0049)", () => {
   const line = SERVER_INSTRUCTIONS.split("\n").find((text) => text.startsWith("- Time, ")) ?? "";
   for (const tool of ["start_timer", "stop_timer", "add_time_entry", "update_time_entry", "list_time", "add_work_type", "update_work_type", "set_client_rate"]) {

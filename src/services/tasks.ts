@@ -5,9 +5,9 @@ import { formatLocal, parseWhen } from "../time.ts";
 import { type ChangeResult, commitChange, type Ctx, type Row, updatedRow } from "./change.ts";
 import { capitalize, rowLabel } from "./describe.ts";
 import { UserError } from "./errors.ts";
-import { clean, whenOrNull } from "./input.ts";
-import { contactName, dealLabel, projectLabel } from "./labels.ts";
-import { findSubject, nextPosition, ownerTimezone, projectById, type Source, taskWithLinks } from "./lookup.ts";
+import { clean, taskDescription, whenOrNull } from "./input.ts";
+import { contactName, dealLabel, projectLabel, untrustedFields } from "./labels.ts";
+import { findSubject, nextPosition, ownerTimezone, projectById, type Source, taskById, taskWithLinks } from "./lookup.ts";
 import { settingsRow } from "./memo.ts";
 import { projectSubject } from "./project-links.ts";
 import { descendants, parentLinks } from "./subtasks.ts";
@@ -22,6 +22,8 @@ export interface TaskInput {
   /** A task id: the new task goes under it (sub-task); the parent must be an open task on a live project. */
   parent?: string;
   title: string;
+  /** Steps and detail, at most 10,000 characters; line breaks are kept. */
+  description?: string;
   dueAt?: string;
 }
 
@@ -38,6 +40,7 @@ const forText = (who: string | null) => (who === null ? "" : ` for ${who}`);
 export async function addTask(ctx: Ctx, input: TaskInput): Promise<ChangeResult & { taskId: string }> {
   const title = clean(input.title);
   if (title === null) throw new UserError("A task needs a title. Say in a few words what to do.");
+  const description = taskDescription(input.description);
   const tz = await ownerTimezone(ctx);
   const dueAt = whenOrNull(input.dueAt ?? null, tz);
   let parent: TaskRow | null = null;
@@ -62,6 +65,7 @@ export async function addTask(ctx: Ctx, input: TaskInput): Promise<ChangeResult 
     parent_id: parent?.id ?? null,
     position: project === null ? null : await nextPosition(ctx, project.id, parent?.id ?? null),
     title,
+    description,
     due_at: dueAt,
     done_at: null,
     snoozed_until: null,
@@ -78,6 +82,59 @@ export async function addTask(ctx: Ctx, input: TaskInput): Promise<ChangeResult 
     changes: [{ table: "tasks", id: task.id, before: null, after: task }],
   });
   return { ...result, taskId: task.id };
+}
+
+/**
+ * Edits a task's title, due time or description (the board only, tool update_task). Only the fields given change; null
+ * clears a due time or a description. An edited field is the owner's text from then on, so it leaves untrusted_fields.
+ */
+export async function updateTask(
+  ctx: Ctx,
+  id: string,
+  patch: { title?: string; dueAt?: string | null; description?: string | null },
+): Promise<ChangeResult & { taskId: string }> {
+  const ref = id.trim();
+  const before = ref === "" ? null : await taskById(ctx, ref);
+  if (!before) throw new UserError(`No task "${ref}". Use whats_due or get_deal to find the task's id.`);
+  if (before.done_at !== null) throw new UserError("This task is done. Reopen it before editing.");
+  const tz = await ownerTimezone(ctx);
+  const set: Partial<TaskRow> = {};
+  const parts: string[] = [];
+  if (patch.title !== undefined) {
+    const title = clean(patch.title);
+    if (title === null) throw new UserError("A task needs a title. Say in a few words what to do.");
+    if (title !== before.title) {
+      set.title = title;
+      parts.push("title changed");
+    }
+  }
+  if (patch.dueAt !== undefined) {
+    const dueAt = whenOrNull(patch.dueAt, tz);
+    if (dueAt !== before.due_at) {
+      set.due_at = dueAt;
+      parts.push(dueAt === null ? "due date cleared" : `due ${formatLocal(dueAt, tz)}`);
+    }
+  }
+  if (patch.description !== undefined) {
+    const description = taskDescription(patch.description);
+    if (description !== (before.description ?? null)) {
+      set.description = description;
+      parts.push(description === null ? "description cleared" : "description changed");
+    }
+  }
+  if (parts.length === 0) throw new UserError(`Nothing to change on ${taskName(before)}: every value you gave is already set.`);
+  const edited = [...(set.title === undefined ? [] : ["title"]), ...(set.description === undefined ? [] : ["description"])];
+  if (edited.length > 0) {
+    const kept = [...untrustedFields(before)].filter((field) => !edited.includes(field));
+    set.untrusted_fields = JSON.stringify(kept);
+  }
+  const after = updatedRow(before, set, ctx.now);
+  const result = await commitChange(ctx, {
+    target: { table: "tasks", id: before.id },
+    summary: `Updated ${taskName(after)}: ${parts.join(", ")}`,
+    changes: [{ table: "tasks", id: before.id, before, after }],
+  });
+  return { ...result, taskId: before.id };
 }
 
 /** task "Call back", or task tk_… when the title came from outside. */

@@ -9,6 +9,7 @@ import { settingsRow } from "./memo.ts";
 import { addTemplate, TEMPLATE_TASKS_MAX, type TemplateTaskInput } from "./templates.ts";
 import { UserError } from "./errors.ts";
 import { isTrusted } from "./labels.ts";
+import { MAX_TASK_LEVEL } from "./task-depth.ts";
 
 const DAY_MS = 86_400_000;
 
@@ -35,7 +36,15 @@ export async function saveProjectAsTemplate(
   for (const task of all) {
     if (!isTrusted(task, "title") || (task.parent_id !== null && task.parent_id !== undefined && out.has(task.parent_id))) out.add(task.id);
   }
-  const tasks = all.filter((task) => !out.has(task.id));
+  // A template holds three levels: deeper tasks of an older project are not copied (they are not "left out" for their titles).
+  const level = new Map<string, number>();
+  const tooDeep = new Set<string>();
+  for (const task of all) {
+    const parentLevel = task.parent_id == null ? 0 : (level.get(task.parent_id) ?? MAX_TASK_LEVEL);
+    level.set(task.id, parentLevel + 1);
+    if (parentLevel + 1 > MAX_TASK_LEVEL) tooDeep.add(task.id);
+  }
+  const tasks = all.filter((task) => !out.has(task.id) && !tooDeep.has(task.id));
   if (tasks.length === 0) throw new UserError("Every task on this project has a title from outside, so there is nothing to save. Describe the template instead.");
   if (tasks.length > TEMPLATE_TASKS_MAX) {
     throw new UserError(`A template holds at most ${TEMPLATE_TASKS_MAX} tasks; this project has ${tasks.length}. Archive some first.`);
@@ -48,6 +57,7 @@ export async function saveProjectAsTemplate(
     const under = task.parent_id === null || task.parent_id === undefined ? undefined : number.get(task.parent_id);
     return {
       title: oneLine(task.title),
+      ...(task.description == null || !isTrusted(task, "description") ? {} : { description: task.description }),
       ...(dueDays === null ? {} : { dueDays }),
       ...(keepTypes && task.work_type_id ? { workType: task.work_type_id } : {}),
       ...(under === undefined ? {} : { under }),

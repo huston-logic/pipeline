@@ -5,6 +5,7 @@ import {
   addDays,
   dayBoundsUtc,
   DEFAULT_TZ,
+  dueText,
   formatLocal,
   localDate,
   localHour,
@@ -84,6 +85,12 @@ test("formatLocal shows weekday, date and 12-hour time in the owner's timezone",
   assert.equal(formatLocal("2026-11-19T22:00:00.000Z", LA), "Thu Nov 19, 2:00 PM");
   assert.equal(formatLocal("2026-11-19T08:05:00.000Z", LA), "Thu Nov 19, 12:05 AM");
   assert.equal(formatLocal("2026-10-31T19:30:00.000Z", LA), "Sat Oct 31, 12:30 PM");
+});
+
+test("dueText shows the day only at local midnight, and the time otherwise", () => {
+  assert.equal(dueText("2026-11-27T08:00:00.000Z", LA), "Fri Nov 27");
+  assert.equal(dueText("2026-11-28T04:00:00.000Z", LA), "Fri Nov 27, 8:00 PM");
+  assert.equal(dueText("2026-11-27T08:01:00.000Z", LA), "Fri Nov 27, 12:01 AM");
 });
 
 test("parseWhen accepts a date, a local date-time, or an ISO time with offset", () => {

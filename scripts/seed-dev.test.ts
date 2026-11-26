@@ -392,7 +392,7 @@ test("three saved views (decision 0042): referrals, open commercial jobs by valu
   ]);
   const work = await db.prepare("SELECT * FROM views WHERE id = 'vw_seed03'").first<{ filters: string; sort: string }>();
   const open = await projectsInView(db, parseFilters(work?.filters ?? "{}"), parseSort("projects", work?.sort ?? ""));
-  assert.deepEqual(open.items.map((project) => project.id), ["pj_seed01", "pj_seed02"], "both demo projects are open, soonest target first");
+  assert.deepEqual(open.items.map((project) => project.id), ["pj_seed03", "pj_seed01", "pj_seed02"], "all three demo projects are open, soonest target first");
   const row = async (id: string) => (await db.prepare("SELECT * FROM views WHERE id = ?").bind(id).first<{ filters: string; sort: string }>())!;
   const people = await row("vw_seed01");
   const referrals = await peopleInView(db, NOW, DEFAULT_TZ, parseFilters(people.filters), parseSort("people", people.sort));
@@ -483,16 +483,32 @@ test("projects (decision 0055): on, one from the won storage building B deal and
   assert.deepEqual(projects.map((p) => [p.id, p.name, p.contact_id, p.deal_id, p.status_key]), [
     ["pj_seed01", "Storage building B retrofit", "ct_seed07", "dl_seed07", "active"],
     ["pj_seed02", "Cedar Row balcony repair", "ct_seed03", null, "on_hold"],
+    ["pj_seed03", "Test the website editor", null, null, "active"],
   ]);
   const [first] = projects;
   assert.ok((first?.start_at ?? "9") < NOW.toISOString() && (first?.target_at ?? "") > addDays(localDate(NOW, DEFAULT_TZ), 35), "started a few days ago, due in about six weeks");
   assert.ok(projects.every((p) => p.target_at !== null));
-  const tasks = await rows<{ project_id: string; done_at: string | null; deal_id: string | null }>(db, "SELECT project_id, done_at, deal_id FROM tasks WHERE project_id IS NOT NULL");
-  assert.deepEqual(tasks.filter((t) => t.project_id === "pj_seed01").map((t) => t.done_at !== null).sort(), [false, false, true]);
-  assert.equal(tasks.filter((t) => t.project_id === "pj_seed02" && t.done_at === null).length, 1);
+  const tasks = await rows<{ id: string; project_id: string; done_at: string | null; deal_id: string | null }>(db, "SELECT id, project_id, done_at, deal_id FROM tasks WHERE project_id IS NOT NULL");
+  const original = ["tk_seed16", "tk_seed17", "tk_seed18"];
+  assert.deepEqual(tasks.filter((t) => original.includes(t.id)).map((t) => t.done_at !== null).sort(), [false, false, true]);
+  assert.equal(tasks.filter((t) => t.id === "tk_seed19" && t.done_at === null).length, 1);
   assert.ok(tasks.every((t) => t.deal_id === null), "project tasks sit on the person");
   assert.equal(await db.prepare("SELECT COUNT(*) AS n FROM activities WHERE project_id = 'pj_seed01'").first("n"), 1);
   const time = await rows<{ billable: number }>(db, "SELECT billable FROM time_entries WHERE project_id = 'pj_seed01' AND ended_at IS NOT NULL ORDER BY id");
   assert.deepEqual(time.map((t) => t.billable), [1, 0]);
   assert.equal(await db.prepare("SELECT COUNT(*) AS n FROM time_entries WHERE project_id IS NOT NULL AND deal_id IS NOT NULL").first("n"), 0, "project time sits on the person, never on a deal");
+});
+
+test("the design-review seed: three projects of 5 to 25 tasks, a task three levels deep, 30 loose open to-dos", async () => {
+  const db = await seeded();
+  const tasks = await rows<{ id: string; project_id: string | null; parent_id: string | null; contact_id: string | null; deal_id: string | null; done_at: string | null }>(db, "SELECT id, project_id, parent_id, contact_id, deal_id, done_at FROM tasks");
+  for (const id of ["pj_seed01", "pj_seed02", "pj_seed03"]) {
+    const count = tasks.filter((t) => t.project_id === id).length;
+    assert.ok(count >= 5 && count <= 25, `${id} has ${count} tasks`);
+  }
+  const byId = new Map(tasks.map((t) => [t.id, t]));
+  const depth = (t: { parent_id: string | null }): number => (t.parent_id === null ? 1 : 1 + depth(byId.get(t.parent_id) ?? { parent_id: null }));
+  assert.ok(tasks.some((t) => t.project_id === "pj_seed03" && depth(t) === 3), "pj_seed03 has a task three levels deep");
+  assert.ok(tasks.filter((t) => t.project_id === "pj_seed03").every((t) => t.contact_id === null && t.deal_id === null), "the internal project's tasks have no person or deal");
+  assert.equal(tasks.filter((t) => t.project_id === null && t.contact_id === null && t.deal_id === null && t.done_at === null).length, 30);
 });

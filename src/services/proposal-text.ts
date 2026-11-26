@@ -386,9 +386,10 @@ async function taskItem(names: Names, id: string, before: Row | null, after: Row
   const who = await forWhom(names, after);
   // A task the owner or the AI app adds is the owner's own: its source says so and isn't worth a word.
   // The position is the order among siblings: the list's own order shows it.
-  show(names, "tasks", id, ["title", "deal_id", "contact_id", "project_id", "parent_id", "position", "due_at", ...(after.source === "owner" ? ["source"] : [])]);
+  show(names, "tasks", id, ["title", "deal_id", "contact_id", "project_id", "parent_id", "position", "due_at", "description", ...(after.source === "owner" ? ["source"] : [])]);
   const parent = await planned<TaskRow>(names, "tasks", (after.parent_id as string | null | undefined) ?? null);
   const under = parent ? [{ field: "under", to: `task ${taskTitle(parent)}` }] : [];
+  const about = typeof after.description === "string" ? [{ field: "description", to: cell(names, "tasks", after, "description", after.description) }] : [];
   return {
     record: `New task ${taskTitle(after as unknown as { id: string; title: string })}`,
     id,
@@ -396,6 +397,7 @@ async function taskItem(names: Names, id: string, before: Row | null, after: Row
       who === null ? { field: "", to: "no person or deal" } : { field: "for", to: who },
       ...under,
       { field: "due", to: shown(names, "tasks", "due_at", after.due_at) },
+      ...about,
     ],
   };
 }
@@ -432,11 +434,12 @@ const taskTitleOf = (row: Row) => taskTitle(row as unknown as { id: string; titl
 async function taskLines(names: Names, rows: readonly Row[]): Promise<string[]> {
   const nodes: TreeNode[] = [];
   for (const row of rows) {
-    show(names, "tasks", String(row.id), ["title", "deal_id", "contact_id", "project_id", "parent_id", "position", "due_at", "work_type_id", ...(row.source === "owner" ? ["source"] : [])]);
+    show(names, "tasks", String(row.id), ["title", "deal_id", "contact_id", "project_id", "parent_id", "position", "due_at", "work_type_id", "description", ...(row.source === "owner" ? ["source"] : [])]);
     const words: string[] = [];
     if (row.due_at !== null && row.due_at !== undefined) words.push(`due ${shown(names, "tasks", "due_at", row.due_at)}`);
     const type = await workTypeName(names, row.work_type_id);
     if (type !== null) words.push(type);
+    if (typeof row.description === "string") words.push(`Description: ${short(row.description, 80)}`);
     nodes.push({ row, words });
   }
   return treeLines(nodes, taskTitleOf);
@@ -471,11 +474,12 @@ const templateTitle = (row: Row) => `"${short(String(row.title), 60)}"`;
 async function templateLines(names: Names, rows: readonly Row[]): Promise<string[]> {
   const nodes: TreeNode[] = [];
   for (const row of rows) {
-    show(names, "template_tasks", String(row.id), ["template_id", "parent_id", "position", "title", "due_days", "work_type_id", "archived"]);
+    show(names, "template_tasks", String(row.id), ["template_id", "parent_id", "position", "title", "due_days", "work_type_id", "description", "archived"]);
     const words: string[] = [];
     if (typeof row.due_days === "number") words.push(`due ${row.due_days} ${row.due_days === 1 ? "day" : "days"} after the start`);
     const type = await workTypeName(names, row.work_type_id);
     if (type !== null) words.push(type);
+    if (typeof row.description === "string") words.push(`Description: ${short(row.description, 80)}`);
     nodes.push({ row, words });
   }
   return treeLines(nodes, templateTitle);

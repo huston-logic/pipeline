@@ -167,6 +167,19 @@ test("a project copied from a 100-task template stays at most 40 D1 calls each w
   assert.equal(await count(), 0);
 });
 
+test("25 sub-tasks each with a parent stay at most 40 D1 calls each way", async () => {
+  const more =
+    "UPDATE settings SET projects = 1; INSERT INTO projects (id, name, contact_id, status_key) VALUES ('pj_seed01', 'Retrofit', 'ct_seed01', 'active'); " +
+    "INSERT INTO tasks (id, title, contact_id, project_id, position) VALUES ('tk_top01', 'Top task', 'ct_seed01', 'pj_seed01', 1)";
+  const actions: RecordAction[] = Array.from({ length: PROPOSAL_MAX_ACTIONS }, (_, i) => ({
+    action: "add_task",
+    parent: "tk_top01",
+    title: `Sub-step ${i + 1}`,
+    description: `Detail for step ${i + 1}.`,
+  }));
+  assertAtMost(await measure(actions, more), 40);
+});
+
 test("a one-action proposal makes at most 12 D1 calls to propose and 12 to apply", async () => {
   assertAtMost(await measure([{ action: "log_activity", deal: "Pat", type: "call", summary: "Pat wants a quote by Friday." }]), 12);
 });

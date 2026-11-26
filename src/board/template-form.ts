@@ -18,8 +18,9 @@ export const templateSpecs = (): Spec[] => [
 /** The task fields; the work type only while time tracking is on (`workTypes` is null when it is off). */
 export function templateTaskSpecs(workTypes: { id: string; name: string }[] | null): Spec[] {
   return [
-    line("title", "Task", "text", "project", { column: "title", required: true, requiredMessage: "Say in a few words what to do." }),
+    line("title", "Title", "text", "project", { column: "title", required: true, requiredMessage: "Give the task a title." }),
     line("dueDays", "Days after start", "number", "project", { column: "due_days", prop: "dueDays", min0: true, hint: "Optional. 0 is the start day." }),
+    line("description", "Description", "textarea", "project", { column: "description" }),
     ...(workTypes === null
       ? []
       : [

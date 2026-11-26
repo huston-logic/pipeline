@@ -95,6 +95,22 @@ test("tasks: an id that matches a task fills an empty due date only; an unmatche
   assert.deepEqual((await plan(db, csv)).plan.unchanged.map((row) => row.line), [2, 3]);
 });
 
+test("tasks: an id match fills an empty description from the file and lists it as outside text; a written one is kept", async () => {
+  const db = await withRecords();
+  db.exec(`INSERT INTO tasks (id, deal_id, contact_id, title, description, due_at, untrusted_fields) VALUES
+    ('tk_written', 'dl_pat', 'ct_pat', 'Email Pat', 'Mine', NULL, '[]')`);
+  const csv = "id,title,description,deal_id\r\ntk_onfile,Call Pat,Steps from the file,dl_pat\r\ntk_written,Email Pat,From the file,dl_pat\r\n";
+  const { ctx, plan: planned } = await plan(db, csv);
+  assert.deepEqual(planned.merge, [{ id: "tk_onfile", line: 2, changes: { description: "Steps from the file" } }]);
+  const input = tasksModule.change(planned, ctx, NOW);
+  assert.ok(input);
+  await commitChange({ db, now: NOW, ...IMPORT_ACTOR }, input);
+  const rows = await tasks(db);
+  const onFile = rows.find((task) => task.id === "tk_onfile");
+  assert.deepEqual([onFile?.description, JSON.parse(onFile?.untrusted_fields ?? "")], ["Steps from the file", ["description"]]);
+  assert.equal(rows.find((task) => task.id === "tk_written")?.description, "Mine");
+});
+
 test("tasks: a row with no person or deal columns filled is a standalone task; a row naming someone not on file is still skipped", async () => {
   const db = await withRecords();
   const csv = [
@@ -119,6 +135,22 @@ test("tasks: a row with no person or deal columns filled is a standalone task; a
     [added?.deal_id, added?.contact_id, added?.due_at, JSON.parse(added?.untrusted_fields ?? "[]")],
     [null, null, "2026-11-30T08:00:00.000Z", ["title", "due_at"]],
   );
+});
+
+test("tasks: a description column (aliases notes, details) is kept as outside text, up to 10,000 characters", async () => {
+  const db = await withRecords();
+  const long = "x".repeat(10_001);
+  const csv = ["title,details", 'Order bolts,"Ask for the stainless ones.\nCheck the length."', `Too long,${long}`, "Plain,"].join("\r\n");
+  const { ctx, plan: planned } = await plan(db, csv);
+  assert.deepEqual(planned.create.map((row) => [row.title, row.description]), [["Order bolts", "Ask for the stainless ones.\nCheck the length."], ["Plain", null]]);
+  assert.equal(planned.skipped.length, 1);
+  const input = tasksModule.change(planned, ctx, NOW);
+  assert.ok(input);
+  await commitChange({ db, now: NOW, ...IMPORT_ACTOR }, input);
+  const added = (await tasks(db)).find((task) => task.title === "Order bolts");
+  assert.deepEqual([added?.description, JSON.parse(added?.untrusted_fields ?? "[]")], ["Ask for the stainless ones.\nCheck the length.", ["title", "description"]]);
+  assert.equal((await plan(db, "title,notes\r\nA,B\r\n")).plan.create[0]?.description, "B");
+  assert.equal((await plan(db, "title,description\r\nA,B\r\n")).plan.create[0]?.description, "B");
 });
 
 test("tasks: a name two people share is not guessed", async () => {

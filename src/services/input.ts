@@ -9,6 +9,15 @@ export function clean(value: string | null | undefined): string | null {
   return text === "" ? null : text;
 }
 
+export const TASK_DESCRIPTION_MAX = 10_000;
+
+/** A task's description: trimmed, line breaks kept, null when empty; at most 10,000 characters. */
+export function taskDescription(value: string | null | undefined): string | null {
+  const text = clean(value);
+  if (text !== null && [...text].length > TASK_DESCRIPTION_MAX) throw new UserError("A description holds at most 10,000 characters.");
+  return text;
+}
+
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export function checkEmail(email: string): string {

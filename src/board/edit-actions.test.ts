@@ -280,7 +280,7 @@ test("a refused task is a 422 page with the message and the values kept", async 
   assert.equal(await auditCount(db), before);
   assert.equal(h1Count(body), 1);
   assert.match(body, /<h1>The task wasn&#39;t added<\/h1>/);
-  assert.match(body, /<a href="#task-dl_seed01-title">Say in a few words what to do\.<\/a>/);
+  assert.match(body, /<a href="#task-dl_seed01-title">Give the task a title\.<\/a>/);
   assert.match(body, /name="due\.date" type="date" value="2026-12-02"/);
   assert.match(body, /<a href="\/deals\/dl_seed01">Back to the page<\/a>/);
 });

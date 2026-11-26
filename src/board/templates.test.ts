@@ -127,9 +127,13 @@ test("the tree shows Day N, nests to three levels, and notes the levels below", 
     { title: "Top", dueDays: 0 },
     { title: "Middle", dueDays: 7, under: 1 },
     { title: "Third", under: 2 },
-    { title: "Fourth", under: 3 },
-    { title: "Fifth", under: 4 },
   ]);
+  // Older templates may hold deeper tasks (the services no longer make them).
+  db.exec(
+    `INSERT INTO template_tasks (id, template_id, parent_id, position, title) VALUES
+      ('tt_fourth', '${made.templateId}', '${made.taskIds[2]}', 1, 'Fourth'),
+      ('tt_fifth', '${made.templateId}', 'tt_fourth', 1, 'Fifth')`,
+  );
   const { body } = await load(devEnv(db), `/templates/${made.templateId}`);
   assert.equal(count(body, '<ul class="task-tree">'), 3);
   assert.match(body, /Day 0/);
@@ -194,7 +198,7 @@ test("Add a task puts the task under the chosen one; a refusal is a 422 that kee
   assert.match(refused.body, /value="Late"/);
   const blank = await post(env, `${page}/tasks`, { title: " ", return_to: page });
   assert.equal(blank.res.status, 422);
-  assert.match(blank.body, /Say in a few words what to do\./);
+  assert.match(blank.body, /Give the task a title\./);
 });
 
 test("the Under choices carry outline numbers, so equal titles differ; the controls say what Remove and Archive do", async () => {

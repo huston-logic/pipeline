@@ -6,7 +6,7 @@ import { type FormContext, postForm } from "./forms.ts";
 import { type Html, html } from "./html.ts";
 import { count, labelled, tag, when } from "./parts.ts";
 import { specFields } from "./record-fields.ts";
-import { taskActions, taskName, taskSpecs } from "./task-forms.ts";
+import { descriptionLine, taskActions, taskName, taskSpecs } from "./task-forms.ts";
 
 export const MAX_LEVEL = 3;
 
@@ -38,7 +38,7 @@ function subTaskForm(node: TaskNode, form: FormContext): Html {
     html`<fieldset class="field field-when">
 <legend>Add a sub-task</legend>
 ${specFields(taskSpecs(), new Map(), `subtask-${node.id}`)}
-<button class="button button-small" type="submit">Add the sub-task${hiddenName(taskName(node))}</button>
+<button class="button button-small" type="submit">Add sub-task${hiddenName(taskName(node))}</button>
 </fieldset>`,
     { novalidate: true },
   );
@@ -55,7 +55,7 @@ ${add}
 </details>`;
 }
 
-function row(node: TaskNode, level: number, first: boolean, last: boolean, now: Date, tz: string, form: FormContext): Html {
+async function row(node: TaskNode, level: number, first: boolean, last: boolean, now: Date, tz: string, form: FormContext): Promise<Html> {
   const done = node.doneAt !== null;
   const snoozed = !done && node.snoozedUntil !== null && node.snoozedUntil > now.toISOString() ? node.snoozedUntil : null;
   const total = node.subTasks.open + node.subTasks.done;
@@ -71,15 +71,17 @@ function row(node: TaskNode, level: number, first: boolean, last: boolean, now: 
         : "No due date"
   }${total > 0 ? html` · ${node.subTasks.done} of ${total} done` : ""}</p>
 ${level === MAX_LEVEL && deeper > 0 ? html`<p class="field-hint">Has ${count(deeper, "more level")} below. Your AI app can show them.</p>` : ""}
-${done ? "" : taskActions(node, form)}
+${descriptionLine(node)}
+${done ? "" : await taskActions(node, form, tz)}
 ${done ? "" : changeControls(node, level, first, last, form)}
 </div>
-${level < MAX_LEVEL ? taskList(node.children, level + 1, now, tz, form) : ""}
+${level < MAX_LEVEL ? await taskList(node.children, level + 1, now, tz, form) : ""}
 </li>`;
 }
 
 /** One level's nested list; a level-1 call starts the tree. */
-export function taskList(nodes: TaskNode[], level: number, now: Date, tz: string, form: FormContext): Html | "" {
+export async function taskList(nodes: TaskNode[], level: number, now: Date, tz: string, form: FormContext): Promise<Html | ""> {
   if (nodes.length === 0) return "";
-  return html`<ul class="task-tree">${nodes.map((node, index) => row(node, level, index === 0, index === nodes.length - 1, now, tz, form))}</ul>`;
+  const rows = await Promise.all(nodes.map((node, index) => row(node, level, index === 0, index === nodes.length - 1, now, tz, form)));
+  return html`<ul class="task-tree">${rows}</ul>`;
 }

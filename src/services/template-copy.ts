@@ -48,6 +48,7 @@ export function templateTaskRows(
       parent_id: parent,
       position,
       title: task.title,
+      description: task.description ?? null,
       due_at: due,
       done_at: null,
       snoozed_until: null,

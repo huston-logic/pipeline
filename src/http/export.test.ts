@@ -93,6 +93,16 @@ test("the projects, their statuses and every project_id column are in the JSON a
   }
 });
 
+test("the tasks CSV and JSON carry the description column", async () => {
+  const db = await createTestDb();
+  db.exec("INSERT INTO tasks (id, title, description) VALUES ('tk_d', 'Order bolts', 'Ask for the stainless ones.')");
+  const csv = await exportTableCsv(db, "tasks");
+  assert.match(csv.split("\r\n")[0] ?? "", /(^|,)description(,|$)/);
+  assert.match(csv, /Ask for the stainless ones\./);
+  const tables = (await exportAll(db, new Date("2026-11-24T18:00:00.000Z"))).tables;
+  assert.equal(tables.tasks[0]?.description, "Ask for the stainless ones.");
+});
+
 test("export file names are letters, digits, dots, dashes and underscores only", () => {
   assert.equal(jsonFilename("2026-11-19"), "pipeline-export-2026-11-19.json");
   for (const table of EXPORT_TABLES) assert.match(csvFilename(table, "2026-11-19"), /^pipeline-[a-z_]+-2026-11-19\.csv$/);

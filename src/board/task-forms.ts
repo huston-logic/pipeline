@@ -5,8 +5,9 @@ import { isTrusted } from "../services/labels.ts";
 import { type FormContext, postForm } from "./forms.ts";
 import { type Html, html } from "./html.ts";
 import { field } from "./inputs.ts";
-import { contactHref, dealHref, projectHref } from "./parts.ts";
-import { line, type Shown, type Spec } from "./record-form.ts";
+import { linkify } from "./links.ts";
+import { contactHref, dealHref, outsideLabel, projectHref } from "./parts.ts";
+import { editShown, line, type Shown, type Spec } from "./record-form.ts";
 import { fieldId, formErrorSummary, specFields } from "./record-fields.ts";
 import type { FormState } from "./pages/record-page.ts";
 import { startTimerForm } from "./timer-start.ts";
@@ -49,8 +50,53 @@ ${postForm(
 )}`;
 }
 
-/** Done (one tap) and a Snooze disclosure, at the foot of a task card. */
-export function taskActions(task: TaskRef, form: FormContext): Html {
+export type EditableTask = TaskRef & { dueAt: string | null; description: string | null };
+
+const TITLE_REQUIRED = "Give the task a title.";
+const titleSpec = (): Spec => line("title", "Title", "text", "deal", { required: true, requiredMessage: TITLE_REQUIRED });
+const dueSpec = (): Spec => line("due", "Due", "when", "deal", { column: "due_at", prop: "dueAt", hint: "Optional. The time is optional too." });
+const descriptionSpec = (): Spec => line("description", "Description", "textarea", "deal");
+
+/** The fields of the task edit form: the same three as Add task. */
+export const taskEditSpecs = (): Spec[] => [titleSpec(), dueSpec(), descriptionSpec()];
+
+export const editAction = (id: string): string => `${taskPath(id)}/edit`;
+
+const outsideKeys = (fields: readonly string[] | string): string => (typeof fields === "string" ? fields : JSON.stringify(fields));
+
+/** A task's description as a paragraph: links only in the owner's own text, labelled when it came from outside. */
+export function descriptionLine(task: { description: string | null; untrusted_fields: readonly string[] | string }): Html | "" {
+  if (task.description === null || task.description === "") return "";
+  const trusted = isTrusted({ untrusted_fields: outsideKeys(task.untrusted_fields) }, "description");
+  return trusted
+    ? html`<p class="task-description">${linkify(task.description, true)}</p>`
+    : html`<p class="task-description">${outsideLabel()} ${linkify(task.description, false)}</p>`;
+}
+
+/** Edit, closed under a disclosure on a task card, or open in a card when a post was refused (values kept). */
+export async function taskEditForm(task: EditableTask, form: FormContext, tz: string, state?: FormState): Promise<Html> {
+  const specs = taskEditSpecs();
+  const prefix = `task-edit-${task.id}`;
+  const stored = { title: task.title, due_at: task.dueAt, description: task.description, fields: "{}", untrusted_fields: outsideKeys(task.untrusted_fields) };
+  const shown = state?.shown ?? (await editShown(specs, stored, tz));
+  const name = taskName(task);
+  const inner = postForm(
+    "inline-form",
+    editAction(task.id),
+    form,
+    html`${specFields(specs, shown, prefix)}
+<button class="button button-small" type="submit">Save${hiddenName(name)}</button>`,
+    { novalidate: true },
+  );
+  if (state !== undefined) return html`${formErrorSummary(state.errors, specs, prefix)}<div class="card refused-form">${inner}</div>`;
+  return html`<details class="task-edit">
+<summary>Edit${hiddenName(name)}</summary>
+${inner}
+</details>`;
+}
+
+/** Done (one tap), Snooze and Edit disclosures, at the foot of a task card. */
+export async function taskActions(task: EditableTask, form: FormContext, tz: string): Promise<Html> {
   const name = taskName(task);
   return html`<div class="task-actions">
 ${postForm(
@@ -64,6 +110,7 @@ ${startTimerForm({ kind: "task", id: task.id }, form, name)}
 <summary>Snooze${hiddenName(name)}</summary>
 ${snoozeForms(task, form)}
 </details>
+${await taskEditForm(task, form, tz)}
 </div>`;
 }
 
@@ -73,10 +120,7 @@ export const subjectHref = (subject: Subject): string =>
   subject.kind === "deal" ? dealHref(subject.id) : subject.kind === "project" ? projectHref(subject.id) : contactHref(subject.id);
 export const addTaskAction = (subject: Subject): string => `${subjectHref(subject)}/tasks`;
 
-export const taskSpecs = (): Spec[] => [
-  line("title", "What to do", "text", "deal", { required: true, requiredMessage: "Say in a few words what to do." }),
-  line("due", "Due", "when", "deal", { prop: "dueAt", hint: "Optional. The time is optional too." }),
-];
+export const taskSpecs = (): Spec[] => taskEditSpecs();
 
 /** Add a task, closed under a disclosure on a record page, or open on its own when a post was refused. */
 export function addTaskForm(subject: Subject, form: FormContext, state?: FormState): Html {
@@ -87,7 +131,7 @@ export function addTaskForm(subject: Subject, form: FormContext, state?: FormSta
     addTaskAction(subject),
     form,
     html`${specFields(specs, state?.shown ?? new Map(), prefix)}
-<button class="button button-small" type="submit">Add the task</button>`,
+<button class="button button-small" type="submit">Add task</button>`,
     { novalidate: true },
   );
   if (state !== undefined) return html`${formErrorSummary(state.errors, specs, prefix)}<div class="card refused-form">${inner}</div>`;
@@ -102,14 +146,14 @@ const QUICK_PREFIX = "quick";
 
 /** Quick add on Today (decision 0047): a to-do with no person or deal, and an optional due date. */
 export const quickSpecs = (): Spec[] => [
-  line("title", "Add a to-do", "text", "deal", { required: true, requiredMessage: "Say in a few words what to do." }),
-  line("due", "Due (optional)", "date", "deal", { prop: "dueAt" }),
+  titleSpec(),
+  line("due", "Due", "date", "deal", { prop: "dueAt" }),
 ];
 
 /** The form at the top of Today, or drawn again with what was posted and the errors when a post was refused. */
 export function quickAddForm(form: FormContext, state?: FormState): Html {
   const shown = state?.shown ?? new Map<string, Shown>();
-  const inner = html`${specFields(quickSpecs(), shown, QUICK_PREFIX)}<button class="button" type="submit">Add to-do</button>`;
+  const inner = html`${specFields(quickSpecs(), shown, QUICK_PREFIX)}<button class="button" type="submit">Add</button>`;
   return postForm("quick-add", QUICK_ADD_ACTION, form, inner, { novalidate: true });
 }
 

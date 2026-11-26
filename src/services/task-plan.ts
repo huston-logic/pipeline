@@ -5,18 +5,21 @@ import { newId } from "../ids.ts";
 import { addDays, localDate, parseWhen } from "../time.ts";
 import { type ChangeResult, commitChange, type Ctx } from "./change.ts";
 import { UserError } from "./errors.ts";
-import { clean, whenOrNull } from "./input.ts";
+import { clean, taskDescription, whenOrNull } from "./input.ts";
 import { projectLabel } from "./labels.ts";
 import { nextPosition, ownerTimezone } from "./lookup.ts";
 import { projectLinks } from "./project-links.ts";
 import { requireTimeTracking } from "./settings.ts";
 import { findWorkType } from "./work-types.ts";
 import { parentLinks } from "./subtasks.ts";
+import { listLevels, MAX_TASK_LEVEL, TOO_DEEP } from "./task-depth.ts";
 
 export const TASK_PLAN_MAX = 100;
 
 export interface TaskPlanItem {
   title: string;
+  /** Steps and detail, at most 10,000 characters. */
+  description?: string;
   /** A date or time, in the owner's timezone. */
   due?: string;
   /** Days after the project's start date, at local midnight. */
@@ -56,7 +59,10 @@ export async function addTaskPlan(ctx: Ctx, input: TaskPlanInput): Promise<Chang
   if (tasks.length > TASK_PLAN_MAX) throw new UserError(`A task plan holds at most ${TASK_PLAN_MAX} tasks; this one has ${tasks.length}. Split it into two lists.`);
   checkTree(tasks);
   const { project, contact } = await projectLinks(ctx, input.project);
-  const top = input.under === undefined ? null : (await parentLinks(ctx, input.under, { project: project.id })).parent;
+  const found = input.under === undefined ? null : await parentLinks(ctx, input.under, { project: project.id });
+  const top = found?.parent ?? null;
+  if (listLevels(tasks).some((level) => level + (found?.level ?? 0) > MAX_TASK_LEVEL)) throw new UserError(TOO_DEEP);
+  const descriptions = tasks.map((item) => taskDescription(item.description));
   const tz = await ownerTimezone(ctx);
   const dueAt = tasks.map((item, i) => {
     const n = i + 1;
@@ -101,6 +107,7 @@ export async function addTaskPlan(ctx: Ctx, input: TaskPlanInput): Promise<Chang
       parent_id: parentId,
       position: await positionUnder(parentId, item.under === undefined),
       title: titles[i] ?? "",
+      description: descriptions[i] ?? null,
       due_at: dueAt[i] ?? null,
       done_at: null,
       snoozed_until: null,
