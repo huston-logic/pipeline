@@ -110,7 +110,7 @@ test("a confirmed Won with projects on and no live project goes to Start a proje
   assert.match(location, /^\/deals\/dl_seed01\/projects\/new\?change=chg_[a-z0-9]{12}$/);
   const next = await load(env, location);
   assert.equal(next.res.status, 200);
-  assert.match(next.body, /<div class="banner" role="status">/);
+  assert.match(next.body, /<div class="corner-notice" role="status">/);
   assert.match(next.body, /action="\/changes\/chg_[a-z0-9]{12}\/undo"[^]*Undo/);
 });
 

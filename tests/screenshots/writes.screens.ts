@@ -42,7 +42,7 @@ async function drag(page: Page, from: Locator, to: Locator) {
 test("the change banner, with its Undo button", async ({ page }) => {
   // A seeded change by the AI that undo can still reverse (decision 0016).
   await page.goto("/pipeline?change=chg_seed00000012");
-  await expect(page.getByRole("status")).toContainText("Added task");
+  await expect(page.getByRole("status")).toContainText("Added:");
   await expect(page.getByRole("button", { name: "Undo change chg_seed00000012" })).toBeVisible();
   await check(page, "write-banner");
 });
@@ -88,7 +88,7 @@ test("drag a card to the next column: it moves, the banner shows, and Undo puts 
   await expect(page.locator(`[data-deal="${dealId}"]`)).toHaveAttribute("data-stage", to);
   await check(page, "write-after-drag");
   await page.getByRole("status").getByRole("button", { name: /^Undo/ }).click();
-  await expect(page.getByRole("status")).toContainText("Undid");
+  await expect(page.getByRole("status")).toContainText("Undone");
   await expect(page.locator(`[data-deal="${dealId}"]`)).toHaveAttribute("data-stage", from);
 
   // Dropping on Won goes through the same confirm step as the form.

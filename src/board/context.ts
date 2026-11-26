@@ -1,7 +1,6 @@
 // What a board page gets for one request (decision 0017), instead of a growing list of positional arguments.
 import type { CampaignEnv } from "../campaigns/readiness.ts";
 import type { Db } from "../db/db.ts";
-import type { Html } from "./html.ts";
 import type { Look, PageFrame } from "./layout.ts";
 
 export interface PageContext extends PageFrame {
@@ -14,9 +13,7 @@ export interface PageContext extends PageFrame {
   /** The CSRF token for every form's hidden `csrf` field: the same value as this response's cookie. */
   csrf: string;
   look: Look;
-  /** The change banner for `?change=<id>`, or "" when there is none. */
-  banner: Html | "";
-  /** Start timer buttons are offered: time tracking is on and no timer runs (decision 0050). The running timer itself is `timer`. */
+  /** Start timer buttons are offered: time tracking is on and no timer runs (decision 0050). The running timer is in `corner`. */
   startTimer?: boolean;
   /** The Worker's campaign switches, for the review page's readiness check only (decision 0053). Never drawn. */
   campaignEnv?: CampaignEnv;

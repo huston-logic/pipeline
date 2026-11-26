@@ -1180,31 +1180,98 @@ button.button {
   text-decoration-color: var(--rust);
 }
 
-/* The change banner: the one line a write answers with, and Undo. Text on the tint is ink (§2). */
-.banner {
+/* The status corner (§7.25): the timer chip and the latest change, sticky at the top right. The strip itself never
+   takes a click; only the chip and a filled notice do. Text on the accent is --on-accent (§2). */
+.corner {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 8px 16px 0;
+  pointer-events: none;
+}
+
+.corner-chip,
+.corner-notice:not(:empty) {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem 1rem;
-  max-width: 52rem;
-  margin: 0 0 1.5rem;
-  padding: 0.75rem 0.75rem 0.75rem 1rem;
+  gap: 8px 12px;
+  box-sizing: border-box;
+  max-width: min(100%, 28rem);
+  padding: 8px 12px;
   border-radius: var(--r-card);
-  background: var(--accent-tint);
-  color: var(--ink);
-}
-
-.banner-text {
-  flex: 1 1 16rem;
-  min-width: 0;
-  margin: 0;
+  background: var(--accent);
+  color: var(--on-accent);
+  box-shadow: var(--shadow-bar);
+  font-size: 0.9375rem;
   font-weight: 600;
+  pointer-events: auto;
 }
 
-.banner-note,
-.banner-form {
+.corner-notice:empty {
+  display: none;
+}
+
+.corner-clock {
+  font-variant-numeric: tabular-nums;
+}
+
+.corner-what {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.corner-text,
+.corner-note {
   margin: 0;
+}
+
+.corner-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.corner-form {
+  margin: 0;
+}
+
+.corner-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--on-accent);
+  text-decoration-color: var(--on-accent);
+}
+
+.corner-link:hover {
+  text-decoration-thickness: 2px;
+}
+
+/* A quiet button turned inside out for the accent fill: white text, a white 1px edge, no fill. */
+.corner .button {
+  min-height: 44px;
+  padding: 0 1rem;
+  background: transparent;
+  color: var(--on-accent);
+  font-size: 0.9375rem;
+  box-shadow: inset 0 0 0 1px var(--on-accent);
+}
+
+.corner .button:hover {
+  color: var(--on-accent);
+  text-decoration-color: var(--on-accent);
+}
+
+/* Rust on the accent is about 1.1:1, so the ring here is white (§7.25). */
+.corner :focus-visible {
+  outline: 2px solid var(--white);
+  outline-offset: 2px;
 }
 
 .row-form {
@@ -1764,27 +1831,6 @@ button.button {
 .task-done,
 .timer-start {
   margin: 0;
-}
-
-/* The Stop bar (decision 0050): one line under the app bar while a timer runs. "Timer" is written out, so the tint
-   is never the only sign. Text on the tint is ink (§2). */
-.timer-bar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem 1rem;
-  padding: 0.5rem max(1rem, env(safe-area-inset-right)) 0.5rem max(1rem, env(safe-area-inset-left));
-  background: var(--accent-tint);
-  color: var(--ink);
-  box-shadow: 0 1px 0 var(--divider);
-}
-
-.timer-bar-text {
-  flex: 1 1 14rem;
-  min-width: 0;
-  margin: 0;
-  overflow-wrap: anywhere;
 }
 
 /* The stop form (decision 0050): the same stacked fields as the other forms, at a readable width. */
@@ -2475,8 +2521,8 @@ button.button {
     background-size: 44rem 30rem;
   }
 
-  .timer-bar {
-    padding-inline: 2.5rem;
+  .corner {
+    padding-inline: 32px;
   }
 
   main {

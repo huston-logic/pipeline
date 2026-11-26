@@ -115,7 +115,7 @@ test("board edits (a contact's phone, a new task) show in /changes and recent_ch
     const undoEdit = await send(`/changes/${editId}/undo`, new URLSearchParams({ csrf: token, return_to: `/contacts/${contactId}` }));
     assert.equal(undoEdit.status, 303);
     const after = await (await fetch(`${server.url}${undoEdit.headers.get("Location") ?? ""}`, { headers: { Cookie: cookie } })).text();
-    assert.match(after, new RegExp(`<p class="banner-text">Undid ${editId}: `));
+    assert.match(after, /<p class="corner-text">Undone\.<\/p>/);
     const contact = (await ok(client, "search_contacts", { query: "" })).data as { contacts: { id: string; phone: string | null }[] };
     assert.notEqual(contact.contacts.find((row) => row.id === contactId)?.phone, "555-0177", "the phone is back");
     const tasks = (await ok(client, "whats_due")).data as Record<string, unknown>;
@@ -156,7 +156,7 @@ test("a move from the board: cookie and token from the page, 303 with the change
   assert.match(location, /^\/pipeline\?change=chg_[a-z0-9]{12}$/);
 
   const shown = await (await fetch(`${server.url}${location}`, { headers: { Cookie: cookie } })).text();
-  assert.match(shown, new RegExp(`<div class="banner" role="status">\\n<p class="banner-text">Moved [^<]+\\(change ${changeId}\\)</p>`));
+  assert.match(shown, new RegExp(`<div class="corner-notice" role="status">\\n<p class="corner-text">Moved [^<]+\\(change ${changeId}\\)</p>`));
   assert.match(shown, new RegExp(`data-deal="${dealId}" data-stage="${to}"`), "the card is in its new column");
 
   const changes = await (await fetch(`${server.url}/changes`, { headers: { Cookie: cookie } })).text();
@@ -173,7 +173,7 @@ test("a move from the board: cookie and token from the page, 303 with the change
     const undone = await postForm(`/changes/${changeId}/undo`, {});
     assert.equal(undone.status, 303);
     const after = await (await fetch(`${server.url}${undone.headers.get("Location") ?? ""}`, { headers: { Cookie: cookie } })).text();
-    assert.match(after, new RegExp(`<p class="banner-text">Undid ${changeId}: `));
+    assert.match(after, /<p class="corner-text">Undone\.<\/p>/);
     const deal = (await ok(client, "get_deal", { deal: dealId })).data as { stage: { key: string } };
     assert.equal(deal.stage.key, from, "the deal is back where it was");
   } finally {
@@ -234,7 +234,7 @@ test("the board import (decision 0036): upload, match, check, apply and undo a 3
   const changeId = /change=(chg_[a-z0-9]+)/.exec(done)?.[1] ?? "";
   assert.ok(changeId);
   const result = await get(done);
-  assert.match(result, new RegExp(`<p class="banner-text">Imported 2 contacts and filled details on 0; added 1 contact field \\(change ${changeId}\\)</p>`));
+  assert.match(result, new RegExp(`<p class="corner-text">Imported 2 contacts and filled details on 0; added 1 contact field \\(change ${changeId}\\)</p>`));
 
   const client: Client = await connectHttp(`${server.url}/mcp`);
   try {

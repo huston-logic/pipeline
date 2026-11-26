@@ -53,7 +53,7 @@ test("Add a lead, a lead's page, Qualify, then Undo", async ({ page }, testInfo)
   await page.getByRole("status").getByRole("button", { name: /^Undo/ }).click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Undo this change?");
   await page.getByRole("button", { name: "Undo the change" }).click();
-  await expect(page.getByRole("status")).toContainText("Undid");
+  await expect(page.getByRole("status")).toContainText("Undone");
 });
 
 test("Back to leads on a deal asks first; Keep the deal goes back", async ({ page }) => {

@@ -1,9 +1,9 @@
 // Which board page a path is. Matching is separate from drawing so the Worker can ask for a sign-in before it reads
-// anything. The owner's look (business name) and the change banner are read once here and handed to the page in its
+// anything. The owner's look (business name) and the status corner are read once here and handed to the page in its
 // PageContext (decision 0017).
 import type { Db } from "../db/db.ts";
 import { getSettings } from "../db/queries.ts";
-import { changeBanner } from "./banner.ts";
+import { buildCorner } from "./corner-state.ts";
 import { campaignAllowPage } from "./campaign-emails.ts";
 import { herePath, type PageContext } from "./context.ts";
 import { lookOf } from "./layout.ts";
@@ -54,7 +54,6 @@ import { templatePage } from "./pages/template.ts";
 import { templateTaskEditPage } from "./pages/template-task-edit.ts";
 import { TEMPLATES_NEW_PATH, templateNewPage, templatesPage } from "./pages/templates.ts";
 import { TEMPLATES_PATH } from "./template-form.ts";
-import { timerState } from "./timer-bar.ts";
 
 export type PageResult = { status: 200 | 404; body: string };
 /**
@@ -71,6 +70,8 @@ export type PageRequest = {
   emailLogAddress: string | null;
   /** The Worker's campaign switches, for the review page's readiness check (decision 0053). */
   campaignEnv?: CampaignEnv;
+  /** The change the owner closed in the status corner, from its cookie (run 12); null when there is none. */
+  closedChange?: string | null;
 };
 export type BoardPage = (request: PageRequest) => Promise<PageResult>;
 /** A page answers its markup, or null for the plain 404 (an unknown view, decision 0042). */
@@ -141,9 +142,10 @@ const TEMPLATE_TASK_EDIT = /^\/templates\/([^/]+)\/tasks\/([^/]+)\/edit$/;
 /** /import: the start of the board import, for the module its `module=` names (decisions 0036, 0037). */
 const IMPORT_START = "/import";
 
-async function contextFor({ db, now, url, csrf, campaignEnv }: Omit<PageRequest, "pushKey" | "emailLogAddress">): Promise<PageContext> {
+async function contextFor({ db, now, url, csrf, campaignEnv, closedChange = null }: Omit<PageRequest, "pushKey" | "emailLogAddress">): Promise<PageContext> {
   const here = herePath(url);
   const settings = await getSettings(db);
+  const corner = await buildCorner(db, now, settings, { changeId: url.searchParams.get("change"), closed: closedChange });
   return {
     db,
     now,
@@ -151,13 +153,13 @@ async function contextFor({ db, now, url, csrf, campaignEnv }: Omit<PageRequest,
     here,
     csrf,
     look: lookOf(settings),
-    banner: await changeBanner(db, url.searchParams, { csrf, here }),
+    corner,
+    startTimer: corner.startTimer,
     timeTracking: settings.time_tracking === 1,
     campaigns: settings.campaigns === 1,
     projects: settings.projects === 1,
     origin: url.origin,
     ...(campaignEnv === undefined ? {} : { campaignEnv }),
-    ...(await timerState(db, now, settings)),
   };
 }
 

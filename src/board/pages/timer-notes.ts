@@ -16,7 +16,7 @@ import { renderPage } from "../layout.ts";
 import { formErrorSummary, specField } from "../record-fields.ts";
 import type { FormError, Shown } from "../record-form.ts";
 import { boardReturnPath } from "../return-to.ts";
-import { timerState } from "../timer-bar.ts";
+import { cornerOf } from "../corner-state.ts";
 import { TIMER_DONE_PATH } from "./timer-done.ts";
 import { stopSpecs } from "./timer-stop.ts";
 
@@ -56,11 +56,10 @@ export async function timerNotesPage(ctx: PageContext, state?: NotesState): Prom
     return spec === undefined ? "" : specField(spec, shown.get(name), PREFIX);
   };
   const errors = state?.errors ?? [];
-  const { timer } = await timerState(db, now, settings);
   return renderPage({
     title: state === undefined ? "Edit or add notes" : "Error: Edit or add notes",
     description: "Add notes to time you already logged, or fix its details.",
-    frame: { ...ctx, timer },
+    frame: { ...ctx, corner: await cornerOf(ctx, settings) },
     script: true,
     body: html`<h1>Edit or add notes</h1>
 <p class="lede">Time logged: ${sinceText(entry.started_at, now, tz)} to ${sinceText(entry.ended_at, now, tz)}</p>

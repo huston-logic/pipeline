@@ -101,7 +101,7 @@ test("Log the text on a deal: one log_activity change by the owner, a note sayin
   assert.equal(row?.summary, "Sent a text message.");
   assert.equal(row?.deal_id, "dl_seed01");
   assert.equal(row?.data, '{"via":"text"}', "the board marks it as a text");
-  assert.match((await load(env, location, page.cookie)).body, /<p class="banner-text">/);
+  assert.match((await load(env, location, page.cookie)).body, /<p class="corner-text">/);
 });
 
 test("Log the text on a New lead makes them Contacted; a via other than exactly text is ignored", async () => {

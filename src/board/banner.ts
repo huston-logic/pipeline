@@ -1,9 +1,7 @@
-// The change banner (decisions 0014, 0017): a board page opened with ?change=<id> shows that change's one-line summary
-// in a status region, with an Undo button unless the change is an undo itself or was already undone. Summaries never
-// carry outside text (services name records through src/services/labels.ts), so they are shown as they are.
-import type { Db } from "../db/db.ts";
-import { isChangeId } from "../ids.ts";
-import { type ChangeItem, getChange } from "../services/read.ts";
+// Undo on the board (decisions 0014, 0017): the Undo button as its own form, and whether a change may offer it. The
+// status corner (corner.ts) shows a page's ?change=<id> with this button, unless the change is an undo itself or was
+// already undone.
+import type { ChangeItem } from "../services/read.ts";
 import { CAMPAIGN_FINAL_TOOLS } from "../services/undo.ts";
 import type { FormContext } from "./forms.ts";
 import { postForm } from "./forms.ts";
@@ -28,18 +26,3 @@ export function undoForm(changeId: string, form: FormContext, className: string)
   );
 }
 
-export async function changeBanner(db: Db, query: URLSearchParams, form: FormContext): Promise<Html | ""> {
-  const id = query.get("change");
-  if (id === null || !isChangeId(id)) return "";
-  const change = await getChange(db, id);
-  if (change === null) return "";
-  const after = change.undone
-    ? html`<p class="banner-note">This change was undone.</p>`
-    : canUndo(change)
-      ? undoForm(change.changeId, form, "banner-form")
-      : "";
-  return html`<div class="banner" role="status">
-<p class="banner-text">${change.summary}</p>
-${after}
-</div>`;
-}

@@ -9,6 +9,7 @@ import { formatDuration } from "../services/time-format.ts";
 import { UserError } from "../services/errors.ts";
 import { addTimeEntry, runningTimer, type TimeEntryInput, type TimeEntryPatch, updateTimeEntry } from "../services/time-entries.ts";
 import { ownerTimezone, timeEntryById } from "../services/lookup.ts";
+import { stopChangeOf } from "../services/read.ts";
 import { amendTime, cancelTimer, startTimer, type StopInput, stopTimer } from "../services/timer.ts";
 import { type ActionContext, type ActionResult, asOwner, AT_PATTERN, backTo, fieldError, notFound, page, pageContext, redirect, redirectBack, refusal, refusedPage, type Route, stateOf } from "./action-kit.ts";
 import { timerStopPage, stopSpecs, TIMER_STOP_PATH } from "./pages/timer-stop.ts";
@@ -127,13 +128,6 @@ async function cancel(ctx: ActionContext): Promise<ActionResult> {
   }
 }
 
-/** The change that stopped this entry, for the status corner's Close. */
-const stopChangeOf = (ctx: ActionContext, entryId: string): Promise<string | null> =>
-  ctx.db
-    .prepare("SELECT id FROM audit_log WHERE tool = 'stop_timer' AND target_table = 'time_entries' AND target_id = ? ORDER BY at DESC, id DESC LIMIT 1")
-    .bind(entryId)
-    .first<string>("id");
-
 /** POST /timer/notes: log_time with only what changed on a saved entry's form. Then back, with the stop's corner closed. */
 async function notes(ctx: ActionContext): Promise<ActionResult> {
   if (!(await trackingOn(ctx))) return notFound(ctx);
@@ -174,10 +168,10 @@ async function notes(ctx: ActionContext): Promise<ActionResult> {
   if (Object.keys(patch).length === 0) return refused([NOTHING_TO_SAVE]);
   try {
     const result = await amendTime(asOwner(ctx, "log_time"), id, patch);
-    const stopChange = await stopChangeOf(ctx, id);
+    const stopChange = await stopChangeOf(ctx.db, id);
     const location = withChange(back, result.changeId);
     if (stopChange === null || !isChangeId(stopChange)) return redirect(location);
-    return { kind: "redirect", location, headers: { "Set-Cookie": closeCookie(stopChange, ctx.origin.startsWith("https:")) } };
+    return { kind: "redirect", location, headers: { "Set-Cookie": closeCookie(stopChange, ctx.secure) } };
   } catch (error) {
     return refused([refusal(error, "time entry")]);
   }

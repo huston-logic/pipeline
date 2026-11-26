@@ -2,10 +2,10 @@
 // screens. Both are one <nav>; CSS lays it out for the width. The page body supplies the single <h1>.
 import type { SettingsRow } from "../db/db.ts";
 import { isUsableAccent } from "../services/accent.ts";
-import { type Html, html, raw } from "./html.ts";
+import { type Html, html } from "./html.ts";
 import { icon } from "./icons.ts";
 import { moreItemsFor, type NavItem, navItems } from "./routes.ts";
-import { type TimerInfo, timerBar } from "./timer-bar.ts";
+import { type CornerState, corner } from "./corner.ts";
 
 /**
  * What a copy's owner set for the board's look. The accent reaches the stylesheet separately, as /theme.css; here it
@@ -43,8 +43,12 @@ function appTags(look: Look): Html {
 `;
 }
 
-/** What the router hands every signed-in page's frame: the owner's look and the change banner (decision 0017). */
-export type PageFrame = { look: Look; banner?: Html | ""; /** The running timer, for the Stop bar (decision 0050). */ timer?: TimerInfo | null; /** Time tracking is on, so More lists Time (decision 0051). */ timeTracking?: boolean; /** Campaigns are on, so More lists Campaigns (decision 0053). */ campaigns?: boolean; /** Projects are on, so More lists Projects (decision 0055). */ projects?: boolean };
+/**
+ * What the router hands every signed-in page's frame: the owner's look and the status corner (decision 0017, run 12).
+ * The corner's forms need the page's token and path, which a page's context already has (`csrf`, `here`); the corner is
+ * drawn only when all three are there.
+ */
+export type PageFrame = { look: Look; corner?: CornerState; csrf?: string; here?: string; /** Time tracking is on, so More lists Time (decision 0051). */ timeTracking?: boolean; /** Campaigns are on, so More lists Campaigns (decision 0053). */ campaigns?: boolean; /** Projects are on, so More lists Projects (decision 0055). */ projects?: boolean };
 
 export type PageOptions = {
   /** The page's own title; the layout adds " · <business name>". */
@@ -111,16 +115,10 @@ ${items}
 /** The first letter of the business name, for the monogram tile. */
 const initial = (name: string) => ([...name.trim()][0] ?? "P").toUpperCase();
 
-/**
- * The page body with the change banner right after its h1, so a screen reader meets it straight after the heading.
- * Both are markup this repo wrote (data inside the h1 is escaped, so its closing tag can only be the page's own).
- */
-function withBanner(body: Html, banner: Html | "" | undefined): Html {
-  if (!banner) return body;
-  const end = body.value.indexOf("</h1>");
-  if (end < 0) return html`${banner}\n${body}`;
-  const split = end + "</h1>".length;
-  return html`${raw(body.value.slice(0, split))}\n${banner}${raw(body.value.slice(split))}`;
+/** The status corner, first in the page body, when the frame has the state and the page's form basics. */
+function cornerOf(frame: PageFrame | undefined): Html | "" {
+  if (frame?.corner === undefined || frame.csrf === undefined || frame.here === undefined) return "";
+  return corner(frame.corner, { csrf: frame.csrf, here: frame.here });
 }
 
 export function renderPage({ title, description, body, current, frame, script = false }: PageOptions): string {
@@ -143,8 +141,8 @@ ${frame ? html`<link rel="stylesheet" href="/theme.css">\n${appTags(frame.look)}
 ${nav(current, { timeTracking: frame?.timeTracking === true, campaigns: frame?.campaigns === true, projects: frame?.projects === true })}
 </header>
 <div class="app-body">
-${frame?.timer ? timerBar(frame.timer) : ""}<main id="main">
-${withBanner(body, frame?.banner)}
+${cornerOf(frame)}<main id="main">
+${body}
 </main>
 <footer class="app-footer">
 <p>${FOOTER}</p>

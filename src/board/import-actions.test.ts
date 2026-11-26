@@ -151,7 +151,7 @@ test('a mapped "New field" is created in the import\'s own change and undo remov
   assert.equal((await contactByEmail(db, "pat@example.com"))?.fields, '{"budget":"900"}', "filled on the person on file");
 
   const shown = await load(env, done, session.cookie);
-  assert.match(shown.body, new RegExp(`<p class="banner-text">Imported 1 contact and filled details on 1; added 1 contact field \\(change ${changeId}\\)</p>`));
+  assert.match(shown.body, new RegExp(`<p class="corner-text">Imported 1 contact and filled details on 1; added 1 contact field \\(change ${changeId}\\)</p>`));
   assert.match(shown.body, /<dt>New fields added<\/dt><dd>1<\/dd>/);
 
   const asked = await post(env, `/changes/${changeId}/undo`, { return_to: `/import/${id}` }, session);

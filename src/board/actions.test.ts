@@ -107,7 +107,7 @@ test("moving a deal: one audited change by the owner, then 303 back to the page 
   assert.match(res.headers.get("Content-Security-Policy") ?? "", /default-src 'self'/);
 });
 
-test("the change banner shows the summary in a status region with an Undo button, and Undo puts the deal back", async () => {
+test("the status corner shows the summary in a status region with an Undo button, and Undo puts the deal back", async () => {
   const db = await seededDb();
   const env = devEnv(db);
   const moved = await post(env, "/deals/dl_seed01/move", { stage: "call_done", return_to: "/pipeline?view=list" });
@@ -117,9 +117,9 @@ test("the change banner shows the summary in a status region with an Undo button
   const page = await load(env, location, moved.cookie);
   assert.match(
     page.body,
-    new RegExp(`<div class="banner" role="status">\\n<p class="banner-text">Moved &quot;Website refresh for Example Plumbing&quot; \\(Pat Example\\) to Call done \\(change ${changeId}\\)</p>`),
+    new RegExp(`<div class="corner-notice" role="status">\\n<p class="corner-text">Moved &quot;Website refresh for Example Plumbing&quot; \\(Pat Example\\) to Call done \\(change ${changeId}\\)</p>`),
   );
-  assert.match(page.body, new RegExp(`<form class="banner-form" method="post" action="/changes/${changeId}/undo">`));
+  assert.match(page.body, new RegExp(`<form class="corner-form" method="post" action="/changes/${changeId}/undo">`));
   assert.match(page.body, /<input type="hidden" name="return_to" value="\/pipeline\?view=list">/, "Undo comes back here, without the old change id");
 
   const undo = await post(env, `/changes/${changeId}/undo`, { return_to: "/pipeline?view=list" });
@@ -132,8 +132,8 @@ test("the change banner shows the summary in a status region with an Undo button
   assert.equal(audit?.tool, "undo_change");
 
   const after = await load(env, undo.res.headers.get("Location") ?? "", moved.cookie);
-  assert.match(after.body, new RegExp(`<p class="banner-text">Undid ${changeId}: Moved &quot;Website refresh for Example Plumbing&quot; back to Call booked`));
-  assert.doesNotMatch(after.body, /class="banner-form"/, "an undo can't be undone");
+  assert.match(after.body, /<p class="corner-text">Undone\.<\/p>/);
+  assert.doesNotMatch(after.body, /class="corner-form"/, "an undo can't be undone");
 
   const again = await post(env, `/changes/${changeId}/undo`, { return_to: "/pipeline" });
   assert.equal(again.res.status, 422);
@@ -142,21 +142,21 @@ test("the change banner shows the summary in a status region with an Undo button
   assert.match(again.body, /<a href="\/pipeline">Back to the page<\/a>/);
 });
 
-test("the banner ignores a change id of the wrong shape or one that doesn't exist, and says when a change was undone", async () => {
+test("the corner ignores a change id of the wrong shape or one that doesn't exist, and says when a change was undone", async () => {
   const db = await seededDb();
   const env = devEnv(db);
   for (const query of ["?change=nonsense", "?change=chg_nothing0000", `?change=${encodeURIComponent("<script>")}`]) {
-    assert.doesNotMatch((await load(env, `/contacts${query}`)).body, /class="banner"/, query);
+    assert.doesNotMatch((await load(env, `/contacts${query}`)).body, /class="corner-text"/, query);
   }
   const owner: Ctx = { db, now: new Date(), actor: "ai", tool: "update_deal" };
   const change = await updateDeal(owner, "dl_seed03", { value: 900 });
   const shown = await load(env, `/contacts?change=${change.changeId}`);
-  assert.match(shown.body, /<div class="banner" role="status">/);
-  assert.match(shown.body, /class="banner-form"/);
+  assert.match(shown.body, /<div class="corner-notice" role="status">\n<p class="corner-text">/);
+  assert.match(shown.body, /class="corner-form"/);
   db.exec(`UPDATE audit_log SET undone_at = '2026-01-01T00:00:00.000Z', undone_by = 'chg_other' WHERE id = '${change.changeId}'`);
   const undone = await load(env, `/contacts?change=${change.changeId}`);
-  assert.match(undone.body, /<p class="banner-note">This change was undone\.<\/p>/);
-  assert.doesNotMatch(undone.body, /class="banner-form"/);
+  assert.match(undone.body, /<p class="corner-note">Undone\.<\/p>/);
+  assert.doesNotMatch(undone.body, /class="corner-form"/);
 });
 
 test("a move to Won, Lost or Not now asks first and writes nothing; with confirm=yes it closes the deal", async () => {

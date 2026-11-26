@@ -12,7 +12,7 @@ import { timerAskSection } from "../ask-claude.ts";
 import { type Html, html } from "../html.ts";
 import { renderPage } from "../layout.ts";
 import { contactHref, contactLink, dealHref, dealLink, pairs, section, when } from "../parts.ts";
-import { timerState } from "../timer-bar.ts";
+import { cornerOf } from "../corner-state.ts";
 
 export const TIMER_DONE_PATH = "/timer/done";
 
@@ -39,7 +39,7 @@ async function nextStepTaskId(ctx: PageContext, entry: TimeEntryRow): Promise<st
 }
 
 export async function timerDonePage(ctx: PageContext): Promise<string | null> {
-  const { db, now } = ctx;
+  const { db } = ctx;
   const settings = await getSettings(db);
   const id = ctx.query.get("entry") ?? "";
   if (settings.time_tracking !== 1 || !isTimeEntryId(id)) return null;
@@ -50,12 +50,11 @@ export async function timerDonePage(ctx: PageContext): Promise<string | null> {
   const subject = await subjectOf(ctx, entry);
   const taskId = await nextStepTaskId(ctx, entry);
   const billable = entry.billable === 1;
-  const { timer } = await timerState(db, now, settings);
   const base = subject?.href ?? "/";
   return renderPage({
     title: "Time saved",
     description: "The time you just saved, and what it made.",
-    frame: { ...ctx, timer },
+    frame: { ...ctx, corner: await cornerOf(ctx, settings) },
     script: true,
     body: html`<h1>Time saved</h1>
 ${section(

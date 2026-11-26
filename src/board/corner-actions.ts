@@ -17,7 +17,7 @@ export function closedChangeFrom(request: Request): string | null {
   return null;
 }
 
-/** The Set-Cookie value that closes a change's corner; Secure only over https, as the board's own cookies are. */
+/** The Set-Cookie value that closes a change's corner; `secure` comes from the same sign-in mode as the CSRF cookie's. */
 export const closeCookie = (changeId: string, secure: boolean): string =>
   `${CORNER_COOKIE}=${changeId}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${MAX_AGE_SECONDS}${secure ? "; Secure" : ""}`;
 
@@ -25,7 +25,7 @@ async function close(ctx: ActionContext): Promise<ActionResult> {
   const change = ctx.form.get("change") ?? "";
   const location = backTo(ctx, "/");
   if (!isChangeId(change)) return { kind: "redirect", location };
-  return { kind: "redirect", location, headers: { "Set-Cookie": closeCookie(change, ctx.origin.startsWith("https:")) } };
+  return { kind: "redirect", location, headers: { "Set-Cookie": closeCookie(change, ctx.secure) } };
 }
 
 export const CORNER_ROUTES: Route[] = [{ path: /^\/corner\/(close)$/, handle: (ctx) => close(ctx) }];

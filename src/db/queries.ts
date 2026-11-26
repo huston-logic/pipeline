@@ -222,6 +222,21 @@ export async function getAudit(db: Db, id: string): Promise<AuditRow | null> {
   return db.prepare("SELECT * FROM audit_log WHERE id = ?").bind(id).first<AuditRow>();
 }
 
+/** The newest change by a timer tool (start, stop or cancel), or null. */
+export async function latestTimerAudit(db: Db): Promise<AuditRow | null> {
+  return db
+    .prepare("SELECT * FROM audit_log WHERE tool IN ('start_timer', 'stop_timer', 'cancel_timer') ORDER BY at DESC, rowid DESC LIMIT 1")
+    .first<AuditRow>();
+}
+
+/** The newest stop_timer change on a time entry, or null. */
+export async function stopAuditOf(db: Db, entryId: string): Promise<AuditRow | null> {
+  return db
+    .prepare("SELECT * FROM audit_log WHERE tool = 'stop_timer' AND target_table = 'time_entries' AND target_id = ? ORDER BY at DESC, rowid DESC LIMIT 1")
+    .bind(entryId)
+    .first<AuditRow>();
+}
+
 /** Deals that are not archived, counted per stage key. */
 export async function countDealsByStage(db: Db): Promise<{ stage_key: string; n: number }[]> {
   return all<{ stage_key: string; n: number }>(

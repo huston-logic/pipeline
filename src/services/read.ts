@@ -17,7 +17,7 @@ import type {
   StageKind,
   TaskRow,
 } from "../db/db.ts";
-import { countDealsByStage, getAudit, listAudit, listStages, searchContacts as searchContactRows } from "../db/queries.ts";
+import { countDealsByStage, getAudit, latestTimerAudit, listAudit, listStages, searchContacts as searchContactRows, stopAuditOf } from "../db/queries.ts";
 import { isQuiet } from "../rules/engine.ts";
 import { addDays, dayBoundsUtc, dueText, formatLocal, localDate } from "../time.ts";
 import { UserError } from "./errors.ts";
@@ -1005,6 +1005,17 @@ export async function recentChanges(db: Db, since: Date, options: { limit?: numb
 export async function getChange(db: Db, id: string): Promise<ChangeItem | null> {
   const row = await getAudit(db, id);
   return row === null ? null : toChangeItem(row);
+}
+
+/** The newest timer change (start, stop or cancel), or null: the status corner's "Time logged" note reads it. */
+export async function latestTimerChange(db: Db): Promise<ChangeItem | null> {
+  const row = await latestTimerAudit(db);
+  return row === null ? null : toChangeItem(row);
+}
+
+/** The id of the newest change that stopped this time entry, or null. */
+export async function stopChangeOf(db: Db, entryId: string): Promise<string | null> {
+  return (await stopAuditOf(db, entryId))?.id ?? null;
 }
 
 /** How many deals that are not archived each stage holds, closed stages included; a stage with none is missing. */
