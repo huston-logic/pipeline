@@ -263,7 +263,14 @@ function templateLevel(tasks: readonly TemplateTaskRow[], id: string): number {
   return level;
 }
 
-const lastPosition =(tasks: TemplateTaskRow[], parent: string | null) =>
+/** The levels a task and everything under it span: 1 for a task with no children. A parent loop in bad data ends the walk. */
+function subtreeHeight(tasks: readonly TemplateTaskRow[], id: string, seen: ReadonlySet<string> = new Set()): number {
+  const next = new Set(seen).add(id);
+  const kids = tasks.filter((t) => t.parent_id === id && !next.has(t.id));
+  return 1 + kids.reduce((most, kid) => Math.max(most, subtreeHeight(tasks, kid.id, next)), 0);
+}
+
+const lastPosition = (tasks: TemplateTaskRow[], parent: string | null) =>
   tasks.filter((t) => t.parent_id === parent).reduce((most, t) => Math.max(most, t.position), 0);
 
 export async function addTemplateTask(
@@ -365,6 +372,7 @@ export async function moveTemplateTask(ctx: Ctx, id: string, direction: Template
   } else if (direction === "in") {
     const above = siblings[at - 1];
     if (above === undefined) throw new UserError(`${taskText(task)} has no task above it to go under. Nothing to move.`);
+    if (templateLevel(tasks, above.id) + subtreeHeight(tasks, task.id) > MAX_TASK_LEVEL) throw new UserError(TOO_DEEP);
     changes.push(edit(task, { parent_id: above.id, position: lastPosition(tasks, above.id) + 1 }));
     summary = `Moved ${taskText(task)} under ${taskText(above)}`;
   } else {

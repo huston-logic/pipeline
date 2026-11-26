@@ -18,7 +18,7 @@ export function taskDescription(value: string | null | undefined): string | null
   return text;
 }
 
-const EMAIL =/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export function checkEmail(email: string): string {
   if (!EMAIL.test(email)) throw new UserError(`"${email}" doesn't look like an email address. Give one like name@example.com.`);

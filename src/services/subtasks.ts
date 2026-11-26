@@ -9,7 +9,7 @@ import { siblingTasks, sourceOf, type Source, taskById, withPlanned } from "./lo
 import { checkGiven, type ProjectLinks, projectLinks } from "./project-links.ts";
 import { findProject } from "./projects.ts";
 import { requireProjects } from "./settings.ts";
-import { MAX_TASK_LEVEL, taskLevel, TOO_DEEP } from "./task-depth.ts";
+import { MAX_TASK_LEVEL, rowLevel, TOO_DEEP } from "./task-depth.ts";
 
 export { nextPosition } from "./lookup.ts";
 export { listLevels, MAX_TASK_LEVEL, TOO_DEEP, taskLevel } from "./task-depth.ts";
@@ -40,7 +40,7 @@ export async function parentLinks(
     throw new UserError("A sub-task is on its parent's project. Leave out the project, or give the parent's own.");
   }
   await checkGiven(src, links, given);
-  const level = await taskLevel(src, parent.id);
+  const level = await rowLevel(src, parent);
   if (level >= MAX_TASK_LEVEL) throw new UserError(TOO_DEEP);
   return { parent, links, level };
 }

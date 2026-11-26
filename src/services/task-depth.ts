@@ -1,4 +1,5 @@
 // How deep tasks nest: three levels (level 1 has no parent). Older deeper rows stay as they are and still read.
+import type { TaskRow } from "../db/db.ts";
 import { type Source, taskById } from "./lookup.ts";
 
 export const MAX_TASK_LEVEL = 3;
@@ -6,9 +7,15 @@ export const TOO_DEEP = "Sub-tasks go three levels deep. Add this one under a ta
 
 /** A task's level: 1 with no parent, else its parent's plus one. A parent loop in bad data ends the walk. */
 export async function taskLevel(src: Source, taskId: string): Promise<number> {
+  const task = await taskById(src, taskId);
+  return task ? rowLevel(src, task) : 1;
+}
+
+/** The level of a task row already read: only its ancestors are read. */
+export async function rowLevel(src: Source, row: TaskRow): Promise<number> {
   const seen = new Set<string>();
   let level = 1;
-  let task = await taskById(src, taskId);
+  let task: TaskRow | null = row;
   while (task?.parent_id != null && !seen.has(task.id)) {
     seen.add(task.id);
     level += 1;

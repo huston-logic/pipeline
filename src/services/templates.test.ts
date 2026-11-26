@@ -177,6 +177,25 @@ test("moveTemplateTask in goes last under the task above; out goes right after i
   assert.ok(c);
 });
 
+test("moveTemplateTask in refuses when the task and its sub-tree would end deeper than level 3", async () => {
+  const db = await setup();
+  const made = await addTemplate(ctxFor(db), {
+    name: "T",
+    tasks: [{ title: "A" }, { title: "A1", under: 1 }, { title: "B" }, { title: "B1", under: 3 }, { title: "B11", under: 4 }],
+  });
+  const [, a1 = "", b = ""] = made.taskIds;
+  // B (with B1 and B11, three levels) under A would make B11 level 4.
+  await assert.rejects(moveTemplateTask(ctxFor(db), b, "in"), /three levels deep/);
+  assert.deepEqual(await outline(db, made.templateId), ["A", "-A1", "B", "-B1", "--B11"]);
+  assert.ok(a1);
+});
+
+test("a template task keeps its description", async () => {
+  const db = await setup();
+  const made = await addTemplate(ctxFor(db), { name: "T", tasks: [{ title: "A", description: "  Do this.\nThen that.  " }] });
+  assert.equal(await db.prepare("SELECT description FROM template_tasks WHERE id = ?").bind(made.taskIds[0]).first("description"), "Do this.\nThen that.");
+});
+
 test("a move is one change and undo puts the tree back", async () => {
   const db = await setup();
   const made = await addTemplate(ctxFor(db), { name: "T", tasks: [{ title: "A" }, { title: "A1", under: 1 }, { title: "B" }, { title: "C" }] });

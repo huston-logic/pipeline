@@ -121,6 +121,22 @@ test("tasks: a row with no person or deal columns filled is a standalone task; a
   );
 });
 
+test("tasks: a description column (aliases notes, details) is kept as outside text, up to 10,000 characters", async () => {
+  const db = await withRecords();
+  const long = "x".repeat(10_001);
+  const csv = ["title,details", 'Order bolts,"Ask for the stainless ones.\nCheck the length."', `Too long,${long}`, "Plain,"].join("\r\n");
+  const { ctx, plan: planned } = await plan(db, csv);
+  assert.deepEqual(planned.create.map((row) => [row.title, row.description]), [["Order bolts", "Ask for the stainless ones.\nCheck the length."], ["Plain", null]]);
+  assert.equal(planned.skipped.length, 1);
+  const input = tasksModule.change(planned, ctx, NOW);
+  assert.ok(input);
+  await commitChange({ db, now: NOW, ...IMPORT_ACTOR }, input);
+  const added = (await tasks(db)).find((task) => task.title === "Order bolts");
+  assert.deepEqual([added?.description, JSON.parse(added?.untrusted_fields ?? "[]")], ["Ask for the stainless ones.\nCheck the length.", ["title", "description"]]);
+  assert.equal((await plan(db, "title,notes\r\nA,B\r\n")).plan.create[0]?.description, "B");
+  assert.equal((await plan(db, "title,description\r\nA,B\r\n")).plan.create[0]?.description, "B");
+});
+
 test("tasks: a name two people share is not guessed", async () => {
   const db = await withRecords();
   db.exec(`INSERT INTO contacts (id, name, untrusted_fields) VALUES ('ct_pat2', 'Pat Example', '[]')`);

@@ -196,6 +196,7 @@ export const taskPlanItemInput = z.strictObject({
 
 export const templateTaskInput = z.strictObject({
   title: shortText("What to do, in a few words."),
+  description: longText("Steps and detail, at most 10,000 characters. Keep the title short and put the detail here.").optional(),
   dueDays: z.number().int().min(0).max(3650).describe("Days after the project's start date.").optional(),
   workType: shortText("The work type: its name or id (see list_work_types). Needs time tracking on.").optional(),
   under: z.number().int().describe("The 1-based number of an earlier task in this list to put this under.").optional(),

@@ -228,7 +228,8 @@ test("list_tasks: undated standalone tasks, standalone filter, contact filter, d
   const done = await addTask(ctx, { title: "Old chore" });
   await db.prepare("UPDATE tasks SET done_at = ? WHERE id = ?").bind(NOW.toISOString(), done.taskId).run();
   await db.prepare("UPDATE tasks SET untrusted_fields = '[\"title\"]' WHERE title = 'Email Bo'").run();
-  const c = await connectInMemory(createMcpServer({ db, now: () => NOW }));
+  await db.prepare("UPDATE tasks SET description = 'Ask about the quote.', untrusted_fields = '[\"title\",\"description\"]' WHERE title = 'Email Bo'").run();
+  const c =await connectInMemory(createMcpServer({ db, now: () => NOW }));
   type Item = { id: string; title: string; dueAt: string | null; snoozedUntil: string | null; doneAt: string | null; dealId: string | null; contactId: string | null; untrusted_fields: string[] };
 
   const open = await ok(c, "list_tasks");
@@ -236,7 +237,8 @@ test("list_tasks: undated standalone tasks, standalone filter, contact filter, d
   assert.deepEqual(items.map((t) => t.title), ["Call Ann", "Email Bo", "Buy printer ink"], "overdue first, undated last");
   assert.equal(open.headline, "3 open tasks.");
   assert.ok(!open.headline.includes("Bo"), "no title in the headline");
-  assert.deepEqual(items[1]?.untrusted_fields, ["title"]);
+  assert.deepEqual(items[1]?.untrusted_fields, ["title", "description"]);
+  assert.deepEqual(items.map((t) => (t as Item & { description: string | null }).description), [null, "Ask about the quote.", null]);
   assert.deepEqual([items[2]?.dueAt, items[2]?.dealId, items[2]?.contactId, items[2]?.doneAt], [null, null, null, null]);
 
   const alone = (await ok(c, "list_tasks", { standalone: true })).data as { tasks: Item[] };

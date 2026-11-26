@@ -34,7 +34,7 @@ async function older(db: SqliteD1, title: string, parent: string): Promise<strin
   return id;
 }
 
-const section =(body: string, from: string, to: string) => body.slice(body.indexOf(from), body.indexOf(to));
+const section = (body: string, from: string, to: string) => body.slice(body.indexOf(from), body.indexOf(to));
 
 test("tasks nest to three levels, and a parent says how many of its sub-tasks are done", async () => {
   const db = await projectDb();

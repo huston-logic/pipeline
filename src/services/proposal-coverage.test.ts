@@ -170,14 +170,14 @@ const VARIANTS: Record<ProposalActionName, Variant[]> = {
     },
   ],
   add_template: [
-    { input: { name: "Retrofit kit", description: "For retrofits.", tasks: [{ title: "Survey", dueDays: 3, workType: "Design" }, { title: "Measure", under: 1 }, { title: "Order" }] } },
+    { input: { name: "Retrofit kit", description: "For retrofits.", tasks: [{ title: "Survey", dueDays: 3, workType: "Design", description: "Bring a tape." }, { title: "Measure", under: 1 }, { title: "Order" }] } },
     { input: { name: "Bare kit", tasks: [{ title: "One" }] } },
   ],
   update_template: [
     { input: { template: "tp_kit", name: "Kitchen kit 2", description: "Changed." }, setup: TEMPLATE_KIT },
     { input: { template: "Kitchen kit", description: null }, setup: TEMPLATE_KIT },
     { input: { template: "tp_kit", archived: true }, setup: TEMPLATE_KIT },
-    { input: { template: "tp_kit", tasks: [{ title: "Fresh survey", dueDays: 1, workType: "Admin" }, { title: "Sub", under: 1 }] }, setup: TEMPLATE_KIT },
+    { input: { template: "tp_kit", tasks: [{ title: "Fresh survey", dueDays: 1, workType: "Admin", description: "Check the site first." }, { title: "Sub", under: 1 }] }, setup: TEMPLATE_KIT },
   ],
   save_project_as_template: [
     { input: { project: "pj_seed01", name: "Saved kit", description: "From Retrofit." }, setup: `${ENTRY_ON_PROJECT}; UPDATE projects SET start_at = '2026-12-01T08:00:00.000Z' WHERE id = 'pj_seed01'; UPDATE tasks SET due_at = '2026-12-04T08:00:00.000Z', work_type_id = 'wt_design' WHERE id = 'tk_proj'` },

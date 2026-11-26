@@ -12,6 +12,7 @@ import { EMAIL, emailKey, idList, nameKey, readWhen } from "./values.ts";
 const TASK_COLUMNS: readonly ColumnDef[] = [
   { key: "id", label: "Task id", aliases: [], multiline: false },
   { key: "title", label: "Title", aliases: [], limit: 500, multiline: false, required: true },
+  { key: "description", label: "Description", aliases: ["notes", "details"], limit: 10_000, multiline: true },
   { key: "due_at", label: "Due", aliases: ["due"], multiline: false },
   { key: "deal_id", label: "Deal id", aliases: [], multiline: false },
   { key: "contact_id", label: "Contact id", aliases: [], multiline: false },
@@ -41,6 +42,7 @@ export interface TaskCreate {
   /** null for a standalone task (decision 0046), and then dealId is null too. */
   contactId: string | null;
   title: string;
+  description: string | null;
   dueAt: string | null;
   doneAt: string | null;
 }
@@ -150,7 +152,7 @@ export function planTasks(rows: readonly MappedRow[], ctx: TasksCtx): TasksPlan 
       skip(subject.reason);
       continue;
     }
-    plan.create.push({ line, id, dealId: subject.deal?.id ?? null, contactId: subject.contact?.id ?? null, title, dueAt, doneAt });
+    plan.create.push({ line, id, dealId: subject.deal?.id ?? null, contactId: subject.contact?.id ?? null, title, description: values.description ?? null, dueAt, doneAt });
   }
   return plan;
 }
@@ -166,12 +168,13 @@ export function tasksChange(plan: TasksPlan, ctx: TasksCtx, now: Date): ChangeIn
   const stamp = now.toISOString();
   const changes: RowChange[] = [];
   for (const row of plan.create) {
-    const outside = ["title", ...(row.dueAt === null ? [] : ["due_at"]), ...(row.doneAt === null ? [] : ["done_at"])];
+    const outside = ["title", ...(row.description === null ? [] : ["description"]), ...(row.dueAt === null ? [] : ["due_at"]), ...(row.doneAt === null ? [] : ["done_at"])];
     const task: TaskRow = {
       id: row.id ?? newId("tk"),
       deal_id: row.dealId,
       contact_id: row.contactId,
       title: row.title,
+      description: row.description,
       due_at: row.dueAt,
       done_at: row.doneAt,
       snoozed_until: null,
