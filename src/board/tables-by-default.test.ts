@@ -48,7 +48,7 @@ test("each list opens as a table, and layout=cards gives cards", async () => {
     { path: "/leads", label: "Leads, as a table", headers: ["Name", "Account", "Status", "Last contact", "Next task", "Added"] },
     { path: "/companies", label: "Accounts, as a table", headers: ["Account", "People", "Open deals", "Value"] },
     { path: "/people?status=partner", label: "Partner, as a table", headers: ["Name", "Account", "Person status", "Sub-status", "Next task", "Last activity"] },
-    { path: "/projects", label: "Projects, as a table", headers: [] },
+    { path: "/projects", label: "Projects, as a table", headers: ["Project", "Status", "Person", "Start", "Target", "Open tasks"] },
     { path: "/templates", label: "Templates, as a table", headers: ["Template", "Tasks", "Description"] },
     { path: "/campaigns", label: "Campaigns, as a table", headers: ["Campaign", "Status", "Subject", "Date"] },
   ];
@@ -56,12 +56,7 @@ test("each list opens as a table, and layout=cards gives cards", async () => {
   for (const { path, label, headers } of cases) {
     const { res, body } = await load(env, path);
     assert.equal(res.status, 200, path);
-    if (path === "/projects") {
-      assert.match(mainOf(body), new RegExp(`role="region" aria-label="[^"]*" tabindex="0">`), path);
-      assert.match(tableOf(mainOf(body)), /<caption class="visually-hidden">/);
-    } else {
-      assertTable(body, label, headers, path);
-    }
+    assertTable(body, label, headers, path);
     const cards = mainOf((await load(env, `${path}${path.includes("?") ? "&" : "?"}layout=cards`)).body);
     assert.equal(tableOf(cards), "", `${path} as cards has no table`);
     assert.match(cards, /<li class="card"/, path);
@@ -108,11 +103,18 @@ test("Deals still opens as the board, and its List is one tap away", async () =>
   assert.match(main, /href="\/pipeline\?view=list"/);
 });
 
-test("a page with no region of its own is the region; Today, which has its own, is not", async () => {
-  const env = devEnv(await db());
-  assert.match((await load(env, "/pipeline")).body, /<main id="main" tabindex="-1" data-region="main">/);
-  assert.match((await load(env, "/contacts")).body, /<main id="main" tabindex="-1" data-region="main">/);
-  const today = (await load(env, "/")).body;
-  assert.match(today, /data-region="/);
-  assert.match(today, /<main id="main" tabindex="-1">/);
+test("only read-only list pages are a whole region; form pages and Today are not", async () => {
+  const d = await db();
+  const env = devEnv(d);
+  const MAIN_REGION = /<main id="main" tabindex="-1" data-region="main">/;
+  for (const path of ["/pipeline", "/pipeline?view=list", "/contacts", "/leads", "/companies", "/people?status=partner", "/projects", "/templates", "/campaigns", "/changes", "/pending", "/more", "/time"]) {
+    const { res, body } = await load(env, path);
+    assert.equal(res.status, 200, path);
+    assert.match(body, MAIN_REGION, path);
+  }
+  for (const path of ["/", "/contacts/new", "/contacts/ct_seed01/edit", "/deals/new", "/import", "/contacts/ct_seed01", "/rules"]) {
+    const { body } = await load(env, path);
+    assert.match(body, /<main id="main" tabindex="-1">/, path);
+    assert.doesNotMatch(body, MAIN_REGION, path);
+  }
 });

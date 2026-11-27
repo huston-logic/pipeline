@@ -72,7 +72,7 @@ export async function campaignsPage(ctx: PageContext): Promise<string | null> {
       header: "Date",
       cell: (item) => {
         const time = timeOf(item);
-        return time === null ? "" : html`${time.name} ${when(time.at, formatLocal(time.at, tz))}`;
+        return time === null ? "None" : html`${time.name} ${when(time.at, formatLocal(time.at, tz))}`;
       },
     },
   ];
@@ -81,6 +81,7 @@ export async function campaignsPage(ctx: PageContext): Promise<string | null> {
       ? dataTable({ label: "Campaigns, as a table", caption: "Campaigns by status, with their subject and date.", columns, rows: ordered })
       : groups.map((group) => section(`campaigns-${group.status}`, group.heading, html`<ul class="cards">${group.items.map((item) => card(item, tz))}</ul>`));
   return renderPage({
+    region: true,
     title: layoutTitle("Campaigns", layout, "table"),
     description: layoutDescription("Email newsletters and invites: drafts, review, sending and results.", layout, "table"),
     current: CAMPAIGNS_PATH,

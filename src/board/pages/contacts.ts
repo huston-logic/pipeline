@@ -160,6 +160,7 @@ ${await leadsHint(ctx, tz, query)}${clear}`;
 ${layout === "table" ? contactsTable(contacts, params, { sort, dir }) : html`<ul class="cards">${contacts.map(contactCard)}</ul>`}`;
   }
   return renderPage({
+    region: true,
     title: layoutTitle("Contacts", layout, "table"),
     description: layoutDescription("Everyone in your pipeline, with their account, open deals and last activity. Search and sort them.", layout, "table"),
     current: "/contacts",

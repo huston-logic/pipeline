@@ -36,6 +36,7 @@ ${item.description === null ? "" : html`<p>${firstLine(item.description)}</p>`}
       ? dataTable({ label: "Templates, as a table", caption: `${archived ? "Archived templates" : "Templates"}: ${count(items.length, "template")}.`, columns, rows: items })
       : html`<ul class="cards">${cards}</ul>`;
   return renderPage({
+    region: true,
     title: layoutTitle(archived ? "Templates, archived" : "Templates", layout, "table"),
     description: layoutDescription(archived ? "Archived project templates." : "Project templates: a task list a new project can start from.", layout, "table"),
     current: TEMPLATES_PATH,

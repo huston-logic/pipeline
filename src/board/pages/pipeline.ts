@@ -166,6 +166,7 @@ ${dealsList(list.items, {
 })}`;
   }
   return renderPage({
+    region: true,
     title: layoutTitle(only === undefined ? "Deals list" : `${only.label} deals`, layout, "table"),
     description: layoutDescription(
       only === undefined
@@ -199,6 +200,7 @@ export async function pipelinePage(ctx: PageContext): Promise<string | null> {
       ? empty("There are no open stages.", "Ask your AI app to add one.")
       : boardView(summary, stages, counts, ctx);
   return renderPage({
+    region: true,
     title: "Deals",
     description: "Your open deals as a board, one column per stage, with each deal's contact, value and next date.",
     current: "/pipeline",

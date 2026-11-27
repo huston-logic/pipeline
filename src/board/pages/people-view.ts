@@ -83,6 +83,7 @@ export async function peopleViewPage(ctx: PageContext): Promise<string | null> {
 
 async function page(ctx: PageContext, current: SwitchCurrent, layout: Layout, usual: Layout, view: { title: string; description: string; body: Html }): Promise<string> {
   return renderPage({
+    region: true,
     title: layoutTitle(view.title, layout, usual),
     description: layoutDescription(view.description, layout, usual),
     current: PEOPLE_VIEW_PATH,

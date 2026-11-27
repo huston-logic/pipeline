@@ -113,6 +113,7 @@ export async function projectsPage(ctx: PageContext): Promise<string | null> {
         : html`<ul class="cards">${items.map((project) => projectCard(project, tz))}</ul>`;
   const shown = status === "open" ? { kind: "built_in" as const, id: "open" } : statuses.some((s) => s.key === status) ? { kind: "status" as const, id: status } : null;
   return renderPage({
+    region: true,
     title,
     description: layoutDescription(note === "" ? description : `${description.replace(/\.$/, "")}: ${note}.`, layout, "table"),
     current: PROJECTS_PATH,

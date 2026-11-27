@@ -41,7 +41,8 @@ hooks and the commands are in `CLAUDE.md`.
   read it); `lighthouserc.cjs` scores `lighthouseRoutes`, one of each kind of page, at most 22 (a test checks), 3 runs
   each; `npm run test:lighthouse` (`scripts/lighthouse.mjs`) collects again, at most twice, only the pages whose runs
   crashed (Chrome's `NO_NAVSTART`), then checks scores once. Every new page goes in `boardRoutes`; a new kind of page
-  also takes a `lighthouseRoutes` slot. The file also has the nav (`navItems`: Today, Pipeline, People, Brief, More; `moreItems`: Rules, Changes, Pending changes, What it caught, Export, Import, Notifications, Email logging; `moreItemsFor` adds Time, Projects and Templates, and Campaigns while each is on, decisions 0051, 0053, 0055). Pages are
+  also takes a `lighthouseRoutes` slot. `renderPage`'s `region: true` makes `<main>` a live region (`live.js` swaps it
+  whole after a corner action), set only on read-only list and board pages, never on a page with a form. The file also has the nav (`navItems`: Today, Pipeline, People, Brief, More; `moreItems`: Rules, Changes, Pending changes, What it caught, Export, Import, Notifications, Email logging; `moreItemsFor` adds Time, Projects and Templates, and Campaigns while each is on, decisions 0051, 0053, 0055). Pages are
   GET and HEAD with `Cache-Control: no-store`; a page that finds no CSRF cookie sets one.
 - **Board edits** (decisions 0014, 0017): every board write path is in the route table in `src/board/actions.ts`; a
   POST to any other path is 405. `src/board/post.ts` checks, in order, the sign-in, the same origin, a form body
@@ -228,7 +229,10 @@ hooks and the commands are in `CLAUDE.md`.
   Companies, the status views, then saved views; the Pipeline's Board, List, then saved views (`viewSwitch` in
   `src/board/people-switch.ts`). Addresses carry only status keys and view ids, never outside text; People stays one
   tab, so the phone tab bar keeps five items.
-- **Table layout** (decision 0043): Contacts, Leads, the People views, the Pipeline List and saved deals views show as
+- **Table layout** (decision 0043; run 12): the built-in lists open as tables by default (People/Contacts, Leads,
+  Accounts, the status views, Projects, Templates, Campaigns, Time and the Pipeline List); Show as keeps Cards one tap
+  away, and saved views keep their stored layout. Contacts, Leads, Accounts, the People views, the Pipeline List,
+  saved views, Templates and Campaigns show as
   cards or a table (`dataTable`, `layoutSwitch` and `withParams` in `src/board/table.ts`; the columns of a view in
   `src/board/view-table.ts`). `layout=cards|table` and `sort=<key>-<dir>` in the address override a view's stored ones
   for that visit and never write. A real `<table>` in a sideways-scrolling `role="region"` wrapper, a `<caption>`,

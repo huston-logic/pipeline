@@ -63,6 +63,9 @@ export type PageOptions = {
   /** Loads /board.js (decision 0014): only pages whose forms it enhances. "push" loads /push.js instead, on the
    * Notifications page only (decision 0030). Every page with a `frame` also loads /live.js and /clock.js (decision 0062). */
   script?: boolean | "push";
+  /** Makes <main> a live region (live.js swaps it whole after a corner action). Only for read-only list and board pages:
+   * a page with a form would lose what was typed. */
+  region?: true;
 };
 
 /** /live.js and /clock.js (decision 0062) on every signed-in page, then the page's own script, if any. */
@@ -131,10 +134,9 @@ function cornerOf(frame: PageFrame | undefined): Html | "" {
   return corner(frame.corner, { csrf: frame.csrf, here: frame.here });
 }
 
-export function renderPage({ title, description, body, current, frame, script = false }: PageOptions): string {
+export function renderPage({ title, description, body, current, frame, script = false, region }: PageOptions): string {
   const name = frame?.look.name ?? DEFAULT_NAME;
-  // A page with no region of its own is refreshed whole (live.js swaps any region present in both documents).
-  const mainRegion = body.value.includes("data-region=") ? "" : html` data-region="main"`;
+  const mainRegion = region === true ? html` data-region="main"` : "";
   return html`<!doctype html>
 <html lang="en">
 <head>

@@ -131,6 +131,7 @@ ${[...days.entries()].map(([date, entries]) => dayTable(date, entries, links, tz
 ${section("by-person", "By person", totalsTable("Time by person", "Person", summary.byPerson, (total) => (total.id === null ? null : contactHref(total.id))))}
 ${summary.byDeal.length === 0 ? "" : section("by-deal", "By deal", totalsTable("Time by deal", "Deal", summary.byDeal, (total) => (total.id === null ? null : dealHref(total.id))))}`;
   return renderPage({
+    region: true,
     title: `Time, ${label}`,
     description: `Time entries and totals for ${isThis ? "this week" : "the week of"} ${range}, with Add time and the month's CSV.`,
     current: TIME_PATH,

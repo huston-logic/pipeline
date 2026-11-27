@@ -47,6 +47,7 @@ export async function changesPage(ctx: PageContext): Promise<string> {
       : html`<ul class="panel rows changes">${log.changes.map((change) => changeItem(change, tz, ctx))}</ul>
 ${log.truncated ? html`<p class="note">Showing the newest ${log.changes.length}. Ask your AI app for older changes.</p>` : ""}`;
   return renderPage({
+    region: true,
     title: "Changes",
     description: `Every change from the last ${CHANGE_LOG_DAYS} days, newest first, with the ones that were undone marked.`,
     current: "/changes",

@@ -44,6 +44,7 @@ ${projectsList(list.items, {
   summary: tableSummary(list.items.length, list.total, "project", "projects", sort),
 })}`;
   return renderPage({
+    region: true,
     title: layoutTitle(view.name, layout, "cards"),
     description: layoutDescription("A saved view of your projects.", layout, "cards"),
     current: "/projects",

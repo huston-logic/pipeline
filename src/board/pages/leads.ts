@@ -198,6 +198,7 @@ ${clear}`;
 ${layout === "table" ? leadsTable(list.items, tz, params, asked.sort) : html`<ul class="cards">${list.items.map((lead) => leadCard(lead, tz))}</ul>`}`;
   }
   return renderPage({
+    region: true,
     title: layoutTitle(asked.filter.title, layout, "table"),
     description: layoutDescription(asked.filter.description, layout, "table"),
     current: "/leads",

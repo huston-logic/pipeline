@@ -63,6 +63,7 @@ ${noCompany === null ? "" : list([noCompany])}`
       : html`<p class="lede">${count(companies.length, "account", "accounts")}, ${count(people, "person", "people")}.</p>
 ${list(groups)}`;
   return renderPage({
+    region: true,
     title: layoutTitle("Accounts", layout, "table"),
     description: layoutDescription("Your contacts grouped by account, with each account's people, open deals and open value.", layout, "table"),
     current: "/companies",
