@@ -62,9 +62,11 @@ export function dataTable<T>(options: { label: string; caption: string; columns:
   const head = columns.map((column) => {
     if (column.sort === undefined) return html`<th scope="col">${column.header}</th>`;
     const { href, now } = column.sort;
-    if (now === undefined) return html`<th scope="col"><a href="${href}">${column.header}</a></th>`;
+    // The hidden words make the link text descriptive (Lighthouse's link-text audit) and tell a screen reader what it does.
+    const sortBy = html`<span class="visually-hidden">Sort by </span>`;
+    if (now === undefined) return html`<th scope="col"><a href="${href}">${sortBy}${column.header}</a></th>`;
     const arrow = now === "asc" ? html`&uarr;` : html`&darr;`;
-    return html`<th scope="col" aria-sort="${now === "asc" ? "ascending" : "descending"}"><a href="${href}">${column.header} <span aria-hidden="true">${arrow}</span></a></th>`;
+    return html`<th scope="col" aria-sort="${now === "asc" ? "ascending" : "descending"}"><a href="${href}">${sortBy}${column.header} <span aria-hidden="true">${arrow}</span></a></th>`;
   });
   const body = rows.map(
     (row) =>

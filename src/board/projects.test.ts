@@ -131,15 +131,15 @@ test("the table has a caption, column headers, a row header link and aria-sort o
   assert.match(body, /<table class="data-table">/);
   assert.match(body, /<caption class="visually-hidden">[^<]+<\/caption>/);
   for (const header of ["Project", "Status", "Person", "Start", "Target", "Open tasks"]) {
-    assert.match(body, new RegExp(`<th scope="col"[^>]*>(?:<a [^>]*>)?${header}`), header);
+    assert.match(body, new RegExp(`<th scope="col"[^>]*>(?:<a [^>]*><span class="visually-hidden">Sort by </span>)?${header}`), header);
   }
-  assert.match(body, /<th scope="col" aria-sort="ascending"><a href="\/projects\?layout=table&amp;sort=target">Target/);
-  assert.match(body, /<th scope="col"><a href="\/projects\?layout=table&amp;sort=name">Project<\/a><\/th>/);
+  assert.match(body, /<th scope="col" aria-sort="ascending"><a href="\/projects\?layout=table&amp;sort=target"><span class="visually-hidden">Sort by <\/span>Target/);
+  assert.match(body, /<th scope="col"><a href="\/projects\?layout=table&amp;sort=name"><span class="visually-hidden">Sort by <\/span>Project<\/a><\/th>/);
   assert.match(body, /<th scope="row"><a href="\/projects\/pj_retro">Retrofit<\/a><\/th>/);
   assert.match(body, /<td>Active<\/td>/);
   assert.doesNotMatch(body, /<ul class="cards">/);
   const sortedByName = (await load(devEnv(await projectsDb()), "/projects?layout=table&sort=name")).body;
-  assert.match(sortedByName, /<th scope="col" aria-sort="ascending"><a href="[^"]*">Project/);
+  assert.match(sortedByName, /<th scope="col" aria-sort="ascending"><a href="[^"]*"><span class="visually-hidden">Sort by <\/span>Project/);
 });
 
 test("Show as and the sort and status form keep each other's choices", async () => {

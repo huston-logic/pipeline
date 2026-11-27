@@ -33,7 +33,8 @@ function assertTable(body: string, label: string, headers: string[], path: strin
   assert.match(main, new RegExp(`<div class="table-scroll" role="region" aria-label="${label}" tabindex="0">`), path);
   const table = tableOf(main);
   assert.match(table, /<caption class="visually-hidden">[^<]+<\/caption>/, path);
-  const found = [...table.matchAll(/<th scope="col"[^>]*>([\s\S]*?)<\/th>/g)].map((m) => (m[1] ?? "").replace(/<[^>]*>/g, "").replace(/&[ud]arr;/g, "").trim());
+  // The label is captured directly: after the link's hidden "Sort by " words, up to the sort arrow.
+  const found = [...table.matchAll(/<th scope="col"[^>]*>(?:<a [^>]*><span class="visually-hidden">Sort by <\/span>)?([^<]*)/g)].map((m) => (m[1] ?? "").trim());
   assert.deepEqual(found, headers, path);
   assert.match(table, /<tr><th scope="row">/, path);
   assert.match(main, /aria-label="Show as"/, path);
