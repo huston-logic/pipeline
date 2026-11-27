@@ -28,7 +28,7 @@ test("quick add creates a standalone task and shows Undo", async () => {
   assert.equal(row?.due_at, null);
   const shown = (await load(env, location)).body;
   assert.match(shown, /Undo<span class="visually-hidden"> change chg_/);
-  assert.match(shown, /<h2 id="undated-heading">Needs a due date<\/h2>[\s\S]*Order printer paper[\s\S]*No person or deal/);
+  assert.match(shown, /<h2 id="today-undated">No due date<\/h2>[\s\S]*<span class="task-title">Order printer paper/);
 });
 
 test("quick add with a date", async () => {
@@ -41,7 +41,7 @@ test("quick add with a date", async () => {
   assert.ok(row?.due_at !== null && row?.due_at !== undefined);
   assert.equal(new Date(row.due_at).toISOString(), zonedToUtc("2027-01-15", DEFAULT_TZ).toISOString());
   const shown = (await load(devEnv(db), "/")).body;
-  assert.match(shown, /<h2 id="todo-heading">To do<\/h2>[\s\S]*Renew the van insurance[\s\S]*No person or deal/);
+  assert.match(shown, /<h2 id="today-upcoming">Upcoming<\/h2>[\s\S]*<span class="task-title">Renew the van insurance/);
 });
 
 test("empty quick add is 422 with the value kept", async () => {
@@ -58,12 +58,14 @@ test("empty quick add is 422 with the value kept", async () => {
 test("Today with JavaScript off has the sort form as a GET form", async () => {
   const db = await seededDb();
   const { body } = await load(devEnv(db), "/?sort=newest&show=standalone");
-  const form = /<form class="search search-filters todo-filter"[^>]*>[\s\S]*?<\/form>/.exec(body)?.[0] ?? "";
-  assert.match(form, /action="\/" method="get"/);
+  const tools = /<details class="today-tools" open data-close-narrow>[\s\S]*?<\/details>/.exec(body)?.[0] ?? "";
+  assert.match(tools, /<summary>Sort and filter<\/summary>/, "open on a laptop; live.js closes it under 40rem");
+  const form = /<form class="today-filter"[^>]*>[\s\S]*?<\/form>/.exec(tools)?.[0] ?? "";
+  assert.match(form, /action="\/" method="get"[^>]* data-autosubmit>/);
   assert.doesNotMatch(form, /name="csrf"/);
-  assert.match(form, /<select id="todo-sort" name="sort">[\s\S]*<option value="newest" selected>/);
-  assert.match(form, /<select id="todo-show" name="show">[\s\S]*<option value="standalone" selected>/);
-  assert.match(form, /<button class="button" type="submit">Show to-dos<\/button>/);
+  assert.match(form, /<label for="todo-sort">Sort<\/label>\s*<select id="todo-sort" name="sort">[\s\S]*<option value="newest" selected>/);
+  assert.match(form, /<label for="todo-show">Show<\/label>\s*<select id="todo-show" name="show">[\s\S]*<option value="standalone" selected>/);
+  assert.match(form, /<button class="button button-small" type="submit" data-autosubmit-hide>Show to-dos<\/button>/);
   assert.match(body, /<form class="quick-add" method="post" action="\/tasks\/quick" data-live data-after="quick-title" novalidate>/);
 });
 
@@ -73,13 +75,13 @@ test("the show filter and an unknown value", async () => {
   await post(env, "/tasks/quick", { title: "Order printer paper", return_to: "/" });
   const alone = (await load(env, "/?show=standalone")).body;
   assert.match(alone, /Order printer paper/);
-  const casey = /<h3 class="card-title">Send Casey the price sheet/;
+  const casey = /<span class="task-title">Send Casey the price sheet/;
   assert.doesNotMatch(alone, casey);
   const linked = (await load(env, "/?show=linked")).body;
-  assert.doesNotMatch(linked, /<h3 class="card-title">Order printer paper/);
+  assert.doesNotMatch(linked, /<span class="task-title">Order printer paper/);
   assert.match(linked, casey);
   const fallback = (await load(env, "/?sort=bogus&show=bogus")).body;
-  assert.match(fallback, /<h3 class="card-title">Order printer paper/);
+  assert.match(fallback, /<span class="task-title">Order printer paper/);
   assert.match(fallback, casey);
   assert.match(fallback, /<option value="due" selected>/);
 });
@@ -101,18 +103,20 @@ function addStandalone(db: Awaited<ReturnType<typeof seededDb>>, count: number, 
   db.exec(`INSERT INTO tasks (${TASK_COLUMNS}) VALUES ${rows.join(",")}`);
 }
 
-test("each list shows at most 50, overdue first, with a Showing line", async () => {
+const padRows = (body: string) => body.match(/<span class="task-title">Pad /g)?.length;
+
+test("the list shows at most 200 dated to-dos, overdue first, with a Showing line", async () => {
   const db = await seededDb();
-  addStandalone(db, 62, true);
+  addStandalone(db, 262, true);
   const body = (await load(devEnv(db), "/?show=standalone")).body;
-  assert.equal(body.match(/<h3 class="card-title">Pad /g)?.length, 50);
-  assert.match(body, /<h3 class="card-title">Pad overdue<\/h3>/, "the overdue task is not cut");
-  assert.match(body, /<p class="stage-more">Showing 50 of 63 to-dos\.<\/p>/);
+  assert.equal(padRows(body), 200);
+  assert.match(body, /<span class="task-title">Pad overdue<\/span>/, "the overdue task is not cut");
+  assert.match(body, /<p class="stage-more">Showing 200 of 263 to-dos\.<\/p>/);
 });
 
-test("Today reads at most 50 tasks a list from the database, however many are open", async () => {
+test("Today reads at most 200 dated tasks from the database, however many are open", async () => {
   const db = await seededDb();
-  addStandalone(db, 300, true);
+  addStandalone(db, 600, true);
   let read = 0;
   const execute = db.execute.bind(db);
   db.execute = (statement) => {
@@ -121,17 +125,31 @@ test("Today reads at most 50 tasks a list from the database, however many are op
     return out;
   };
   const body = (await load(devEnv(db), "/")).body;
-  assert.equal(body.match(/<h3 class="card-title">Pad /g)?.length, 47, "50 in To do: the overdue pad, three seeded tasks, 46 more pads");
-  assert.match(body, /<p class="stage-more">Showing 50 of \d+ to-dos\.<\/p>/);
-  assert.ok(read <= 100, `read ${read} task rows`);
+  assert.equal(padRows(body), 197, "200 dated: three seeded tasks, the overdue pad and 196 more pads");
+  assert.match(body, /<p class="stage-more">Showing 201 of 605 to-dos\.<\/p>/, "the undated seeded one is the 201st");
+  assert.ok(read <= 201, `read ${read} task rows`);
 });
 
-test("no Showing line at 50 or fewer", async () => {
+test("no Showing line at 200 or fewer", async () => {
   const db = await seededDb();
-  addStandalone(db, 50, false);
+  addStandalone(db, 200, false);
   const body = (await load(devEnv(db), "/?show=standalone")).body;
-  assert.equal(body.match(/<h3 class="card-title">Pad /g)?.length, 50);
+  assert.equal(padRows(body), 200);
   assert.doesNotMatch(body, /Showing \d+ of/);
+});
+
+test("Today has no Latest brief block and no second column", async () => {
+  const body = (await load(devEnv(await seededDb()), "/")).body;
+  assert.doesNotMatch(body, /Latest brief|brief-heading|today-columns|today-glance/);
+  assert.match(body, /<dl class="stage-counts" aria-label="Open deals by stage">[\s\S]*<a href="\/pipeline#stage-1">New inquiry<\/a><\/dt><dd>2<\/dd>/);
+});
+
+test("the groups are plain h2s in order, and an empty one is left out", async () => {
+  const body = (await load(devEnv(await seededDb()), "/")).body;
+  const names = [...body.matchAll(/<h2 id="today-\w+">([^<]*)<\/h2>/g)].map((m) => m[1]);
+  const order = ["Overdue", "Today", "Upcoming", "No due date"];
+  assert.deepEqual(names, order.filter((name) => names.includes(name)));
+  assert.ok(names.includes("Overdue") && names.includes("No due date"));
 });
 
 test("the quick-add title is required in words, the date is optional", async () => {
@@ -148,7 +166,7 @@ test("Done in a non-default view comes back to that same address", async () => {
   assert.match(location, /^\/\?sort=newest&change=chg_/);
 });
 
-test("a sub-task on Today says what it is under; an outside parent title is 'a task'", async () => {
+test("a project is one row with its tasks inside it; an outside name is labelled", async () => {
   const db = await seededDb();
   await db.prepare("UPDATE settings SET projects = 1").run();
   const ctx = (tool: string) => ({ db, now: new Date(), actor: "owner" as const, tool });
@@ -157,9 +175,27 @@ test("a sub-task on Today says what it is under; an outside parent title is 'a t
   await addTask(ctx("add_task"), { parent: parent.taskId, title: "Pick supplier" });
   const env = devEnv(db);
   const shown = (await load(env, "/")).body;
-  assert.match(shown, /Pick supplier[\s\S]*?<dt>Under<\/dt>\s*<dd>Order anchors<\/dd>/);
-  await db.prepare("UPDATE tasks SET untrusted_fields = '[\"title\"]' WHERE id = ?").bind(parent.taskId).run();
+  const row = shown.slice(shown.indexOf(`<li class="task-row project-row" data-task-row id="p-${project.projectId}">`));
+  assert.ok(row.length > 0 && shown.includes(`id="p-${project.projectId}"`));
+  assert.match(row, /<span class="task-title">Retrofit<\/span>/);
+  assert.match(row, /<span class="task-belongs">1 task, 0 overdue<\/span>/);
+  assert.match(row, /<span class="task-title">Order anchors<\/span>[\s\S]*1 open sub-task/);
+  assert.match(row, /Pick supplier/, "the sub-task is under its parent");
+  assert.match(row, new RegExp(`<a href="/projects/${project.projectId}">Open the project</a>`));
+  assert.equal(shown.match(/<span class="task-title">Order anchors/g)?.length, 1, "no row of its own outside the project");
+  await db.prepare("UPDATE projects SET untrusted_fields = '[\"name\"]' WHERE id = ?").bind(project.projectId).run();
   const outside = (await load(env, "/")).body;
-  assert.match(outside, /Pick supplier[\s\S]*?<dt>Under<\/dt>\s*<dd>a task<\/dd>/);
-  assert.doesNotMatch(outside.slice(outside.indexOf("Pick supplier")), /Under<\/dt>\s*<dd>Order anchors/);
+  assert.match(outside, /<span class="task-title"><span class="outside">From outside<\/span> <span class="outside-value">Retrofit<\/span><\/span>/);
+});
+
+test("a deal due is a row with an empty Done cell, its next step and a link to the deal", async () => {
+  const db = await seededDb();
+  await db.prepare("UPDATE deals SET next_step = 'Send the quote', next_at = ? WHERE id = 'dl_seed01'").bind("2020-01-01T17:00:00.000Z").run();
+  const body = (await load(devEnv(db), "/")).body;
+  const row = /<li class="task-row next-step-row"[\s\S]*?<\/li>/.exec(body)?.[0] ?? "";
+  assert.match(row, /<span class="task-done-cell" aria-hidden="true"><\/span>/);
+  assert.doesNotMatch(row, /task-done-box/, "a deal has no Done box");
+  assert.match(row, /Next step: Send the quote/);
+  assert.match(row, /<a href="\/deals\/dl_seed01">Open the deal<\/a>/);
+  assert.match(row, /Overdue/);
 });

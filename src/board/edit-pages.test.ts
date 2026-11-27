@@ -205,9 +205,15 @@ test("Today, Pipeline and Contacts each have Add a deal and Add a lead buttons t
     const importing = `<a class="button button-quiet" href="/import\\?module=${module}">Import</a>`;
     // Contacts has Add contact too (decision 0041).
     const contact = from === "contacts" ? `<a class="button button-quiet" href="/contacts/new\\?from=contacts">Add contact</a>` : "";
+    // Today's are one small quiet line (run 12).
+    const small = from === "today";
+    const first = small ? "button button-quiet button-small" : "button";
+    const quiet = small ? "button button-quiet button-small" : "button button-quiet";
+    const wrapper = small ? "page-action today-actions" : "page-action";
+    const importLink = importing.replace("button button-quiet", quiet);
     assert.match(
       (await load(env, path)).body,
-      new RegExp(`<p class="page-action"><a class="button" href="/deals/new\\?from=${from}">Add a deal</a>${contact}<a class="button button-quiet" href="/leads/new\\?from=${from}">Add a lead</a>${importing}</p>`),
+      new RegExp(`<p class="${wrapper}"><a class="${first}" href="/deals/new\\?from=${from}">Add a deal</a>${contact}<a class="${quiet}" href="/leads/new\\?from=${from}">Add a lead</a>${importLink}</p>`),
       path,
     );
   }
@@ -231,12 +237,12 @@ test("Today shows a standalone task with no Deal or Contact line, and its Done g
   assert.doesNotMatch(body, /undefined|null/);
   const card = (id: string) => {
     const end = body.indexOf(`action="/tasks/${id}/complete"`);
-    return body.slice(body.lastIndexOf('<li class="card">', end), body.indexOf("</li>", end));
+    return body.slice(body.lastIndexOf('<li class="task-row', end), body.indexOf("</li>", end));
   };
-  assert.match(card("tk_mine"), /<h3 class="card-title">Buy printer ink<\/h3>/);
-  assert.doesNotMatch(card("tk_mine"), /<dt>(Deal|Contact)<\/dt>/);
-  assert.match(card("tk_mine"), /Done<span class="visually-hidden">: Buy printer ink<\/span>/);
-  assert.match(card("tk_mine2"), /Done<span class="visually-hidden">: task tk_mine2<\/span>/);
+  assert.match(card("tk_mine"), /<span class="task-title">Buy printer ink<\/span>/);
+  assert.match(card("tk_mine"), /<span class="task-belongs"><\/span>/, "no deal or person to name");
+  assert.match(card("tk_mine"), /Done: Buy printer ink<\/span>/);
+  assert.match(card("tk_mine2"), /Done: task tk_mine2<\/span>/);
   assert.doesNotMatch(titleOf(body), /Robin|printer/);
 
   const done = await post(env, "/tasks/tk_mine/complete", { return_to: "/" });

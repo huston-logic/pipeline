@@ -132,30 +132,36 @@ values beside them.
 
 ## 5. Layout: the Home first screen
 
-The home page is **Today** (`/`). Measured at 375 × 812 and 1280 × 800 (`npm run screenshots`).
+The home page is **Today** (`/`): one dense list of rows (§7.24) in one column. Measured at 390 × 844 and 1440 × 900
+(`npm run screenshots`); `tests/a11y/today-density.spec.ts` holds at least 12 rows fully in view on the wide screen and
+6 on the phone, with the demo seed.
 
 ```
-Phone (375)                          Wide (1280)
-┌ app bar ───────────────────────┐   ┌ side bar ───┬ content ─────────────────────────────────┐
-│ [F] Fernwood Engineering       │   │ [F] Fernwood│ Today  Wednesday Nov 18                  │
-├────────────────────────────────┤   │             │ summary sentence                         │
-│ Today  Wednesday Nov 18        │   │  Today      │ Overdue                  Pipeline        │
-│ summary sentence               │   │  Pipeline   │ ┌ task card ─────────┐   ┌ stage rows ─┐ │
-│ Overdue                        │   │  Contacts   │ └────────────────────┘   └─────────────┘ │
-│ ┌ task card ────────────────┐  │   │  Brief      │ Due today                Latest brief    │
-│ └───────────────────────────┘  │   │  More       │ ┌ task card ─────────┐   ┌ 4 lines ────┐ │
-│ Due today                      │   │    Rules    │ └────────────────────┘   └─────────────┘ │
-│ ┌ task card ────────────────┐  │   │    Changes  │                                          │
-│ Pipeline (stage rows)          │   │    Export   │ footer                                   │
-│ Latest brief                   │   └─────────────┴──────────────────────────────────────────┘
-├────────────────────────────────┤
-│ Today Pipeline Contacts Brief More │  fixed tab bar, safe-area inset below
+Phone (390)                          Wide (1440)
+┌ app bar ───────────────────────┐   ┌ side bar ┬ content ────────────────────────────────────┐
+│ Today  Thu Nov 26              │   │ Today    │ Today  Thu Nov 26               New inquiry 2 │
+│ summary line                   │   │ Deals    │ summary line                    Replied     1 │
+│ New inquiry 2  Replied 1  ...  │   │ People   │ [Add a deal] [Add a lead] [Import]  Call done 2│
+│ [Add a deal][Add a lead][Import]│  │ ...      │ Title [.........] Due [....] [Add]            │
+│ Title [.......] Due [..] [Add] │   │          │ Sort and filter  Sort [Due date] Show [All]   │
+│ Sort and filter (closed)       │   │          │ Overdue                                       │
+│ Overdue                        │   │          │ [ ] Email Jamie ...   Tue Nov 24   Jamie      │
+│ [ ] Email Jamie about quoti. v │   │          │ Today                                         │
+│     Tue Nov 24  Jamie Bernal   │   │          │  >  Test the website editor  Today 8 PM  7 tasks│
+│ Upcoming, No due date          │   │          │ Upcoming, No due date                         │
+├────────────────────────────────┤   └──────────┴───────────────────────────────────────────────┘
+│ Today Deals People ... More    │  fixed tab bar, safe-area inset below
 └────────────────────────────────┘
 ```
 
-Order on Today: the H1 with the owner's date beside it, one summary sentence, Overdue, Due today (or the empty
-state), then Pipeline (one row per open stage with its count, each a link to that stage on `/pipeline`) and Latest
-brief. From 72rem the due cards take the left column (3fr) and Pipeline and Latest brief the right (2fr).
+Order on Today: the head (the H1 with the date beside it, one summary line, a line for changes waiting from the AI app
+when there are any, Add a deal, Add a lead and Import as one small quiet line, and the open deals by stage as label and
+count pairs, each label a link to its column; top right from 60rem, a wrapped line on a phone), the add line (Title,
+Due, Add), Sort and filter (a `details`, open on a laptop and closed under 40rem; with scripts on a choice applies at
+once), then plain h2 groups: Overdue, Today, Upcoming and No due date (an empty one is left out), each one
+`ul.task-rows` panel with 24px of space between groups, none inside rows. A row is a task, a deal whose next step is
+due (an empty Done cell; opened, its next step and Open the deal) or a project ("N tasks, M overdue", its tasks inside
+when opened). There is no Latest brief block: the brief has its own page.
 
 ## 6. Signature elements
 

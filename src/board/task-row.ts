@@ -88,12 +88,12 @@ const dayOf = (iso: string, tz: string): string => {
 };
 
 /** The future time a task is snoozed to, or null. */
-function snoozedTo(task: RowTask, now: Date): string | null {
+function snoozedTo(task: Pick<RowTask, "doneAt" | "snoozedUntil">, now: Date): string | null {
   const done = task.doneAt !== undefined && task.doneAt !== null;
   return !done && task.snoozedUntil !== undefined && task.snoozedUntil !== null && task.snoozedUntil > now.toISOString() ? task.snoozedUntil : null;
 }
 
-function dueCell(task: RowTask, opts: RowOptions): Html {
+export function dueCell(task: Pick<RowTask, "dueAt" | "dueAtLocal" | "doneAt" | "snoozedUntil">, opts: RowOptions): Html {
   if (task.doneAt !== undefined && task.doneAt !== null) {
     return html`<span class="task-due">Done ${when(task.doneAt, dayOf(task.doneAt, opts.tz))}</span>`;
   }

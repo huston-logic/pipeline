@@ -123,8 +123,8 @@ export interface TimelineItem {
   untrusted_fields: "summary"[];
 }
 
-type DealJoin = DealRow & { contact_name: string; contact_untrusted: string; stage_label: string };
-type TaskJoin = TaskRow & {
+export type DealJoin = DealRow & { contact_name: string; contact_untrusted: string; stage_label: string };
+export type TaskJoin = TaskRow & {
   deal_title: string | null;
   deal_untrusted: string | null;
   who_id: string | null;
@@ -150,7 +150,7 @@ async function rows<T>(db: Db, sql: string, params: unknown[]): Promise<T[]> {
   return (await db.prepare(sql).bind(...params).all<T>()).results;
 }
 
-function toDealItem(row: DealJoin, now: Date, tz: string): DealItem {
+export function toDealItem(row: DealJoin, now: Date, tz: string): DealItem {
   return {
     id: row.id,
     title: row.title,
@@ -173,7 +173,7 @@ function toDealItem(row: DealJoin, now: Date, tz: string): DealItem {
   };
 }
 
-function toTaskItem(row: TaskJoin, tz: string): TaskItem {
+export function toTaskItem(row: TaskJoin, tz: string): TaskItem {
   return {
     id: row.id,
     title: row.title,
@@ -259,7 +259,7 @@ async function dealItems(
   return found.filter(keep).map((row) => toDealItem(row, now, tz));
 }
 
-const TASK_SELECT = `SELECT t.*, d.title AS deal_title, d.untrusted_fields AS deal_untrusted, c.id AS who_id,
+export const TASK_SELECT =`SELECT t.*, d.title AS deal_title, d.untrusted_fields AS deal_untrusted, c.id AS who_id,
   c.name AS contact_name, c.untrusted_fields AS contact_untrusted,
   p.id AS project_ref, p.name AS project_name, p.untrusted_fields AS project_untrusted,
   pt.id AS parent_ref, pt.title AS parent_title, pt.untrusted_fields AS parent_untrusted,
@@ -375,14 +375,14 @@ export type TaskView = { sort: TaskSort; show: TaskShow };
  * made first. Person: by the person's name (the deal's person for a task on a deal), ignoring ASCII case, standalone
  * tasks last, then as Due.
  */
-const TASK_ORDER: Record<TaskSort, string> = {
+export const TASK_ORDER:Record<TaskSort, string> = {
   due: "t.due_at, t.created_at, t.id",
   newest: "t.created_at DESC, t.id",
   subject: "c.name IS NULL, lower(c.name), t.due_at, t.created_at, t.id",
 };
 
 /** A standalone task has no deal, no person and no project (a task on a deal always has the deal's person; one on an internal project has the project). */
-const TASK_FILTER: Record<TaskShow, string> = {
+export const TASK_FILTER:Record<TaskShow, string> = {
   all: "",
   linked: " AND (t.deal_id IS NOT NULL OR t.contact_id IS NOT NULL OR t.project_id IS NOT NULL)",
   standalone: " AND t.deal_id IS NULL AND t.contact_id IS NULL AND t.project_id IS NULL",

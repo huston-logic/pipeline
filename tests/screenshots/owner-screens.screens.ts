@@ -8,8 +8,8 @@ const WIDTHS = [
   { width: 390, height: 844 },
   { width: 1440, height: 900 },
 ];
-// Today's to-do rows. The current markup is `ul.cards > li.card`; later markup uses `[data-task-row]`. Both are counted.
-const TASK_ROW_SELECTORS = ["main ul.cards > li.card", "[data-task-row]"];
+// Today's rows (the task row, §7.24). Counted when visible and fully inside the window above the fixed tab bar.
+const TASK_ROW_SELECTORS = ["[data-task-row]"];
 
 const SCREENS = [
   { name: "today", path: "/" },
@@ -37,7 +37,14 @@ test("owner screens", async ({ page }, testInfo) => {
         for (const selector of TASK_ROW_SELECTORS) {
           const inside = await page.$$eval(
             selector,
-            (items, height) => items.filter((item) => item.getBoundingClientRect().bottom <= height).length,
+            (items, height) => {
+              const nav = document.querySelector(".app-nav");
+              const floor = nav !== null && getComputedStyle(nav).position === "fixed" ? Math.min(height, nav.getBoundingClientRect().top) : height;
+              return items.filter((item) => {
+                const box = item.getBoundingClientRect();
+                return item.checkVisibility() && box.height > 0 && box.top >= 0 && box.bottom <= floor;
+              }).length;
+            },
             size.height,
           );
           const total = await page.locator(selector).count();
@@ -50,6 +57,8 @@ test("owner screens", async ({ page }, testInfo) => {
 
   // Last: a running timer changes every page. Start one, then shoot its Stop page at both widths.
   await page.goto("/", { waitUntil: "networkidle" });
+  // Start timer is in a task row's actions, which open with the row.
+  await page.locator(".today-group > ul > li.task-row:not(.next-step-row):not(.project-row) > details.task-open > summary").first().click();
   await page.getByRole("button", { name: /^Start timer/ }).first().click();
   await page.waitForLoadState("networkidle");
   for (const size of WIDTHS) {

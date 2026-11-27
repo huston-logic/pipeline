@@ -9,7 +9,9 @@ const TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa", "best-prac
 const notice = (page: Page) => page.locator(".corner-notice");
 const chip = (page: Page) => page.locator(".corner-chip");
 const press = (page: Page, name: RegExp) => page.getByRole("button", { name }).first();
-const mark = (page: Page) => page.evaluate(() => (window as unknown as { __marker?: number }).__marker);
+// Start timer lives in a task row's actions, which open with the row.
+const openFirstTask = (page: Page) => page.locator(".today-group > ul > li.task-row:not(.next-step-row):not(.project-row) > details.task-open > summary").first().click();
+const mark =(page: Page) => page.evaluate(() => (window as unknown as { __marker?: number }).__marker);
 
 async function expectClean(page: Page, label: string) {
   const { violations } = await new AxeBuilder({ page }).withTags(TAGS).analyze();
@@ -44,6 +46,7 @@ test.describe.serial("with scripts on", () => {
     await expect(notice(page)).toContainText("Undone");
     await inPlace();
 
+    await openFirstTask(page);
     await press(page, /^Start timer/).click();
     await expect(chip(page)).toBeVisible();
     await inPlace();
@@ -73,6 +76,7 @@ test.describe.serial("with scripts off", () => {
     await notice(page).getByRole("button", { name: /^Undo/ }).click();
     await expect(notice(page)).toContainText("Undone");
 
+    await openFirstTask(page);
     await press(page, /^Start timer/).click();
     await expect(chip(page)).toContainText("since");
     await chip(page).getByRole("button", { name: /^Stop/ }).click();

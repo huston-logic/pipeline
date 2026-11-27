@@ -60,9 +60,11 @@ const IMPORT_FROM = {
 export const addButtons = (
   from: "today" | "pipeline" | "contacts" | "leads",
   kinds: readonly ("deal" | "lead" | "contact" | "import")[],
+  /** One quiet line of small buttons (Today's). */
+  small = false,
 ): Html =>
-  html`<p class="page-action">${kinds.map((kind, i) => {
-    const className = `button${i === 0 ? "" : " button-quiet"}`;
+  html`<p class="page-action${small ? " today-actions" : ""}">${kinds.map((kind, i) => {
+    const className = small ? "button button-quiet button-small" : `button${i === 0 ? "" : " button-quiet"}`;
     if (kind === "import") return html`<a class="${className}" href="${IMPORT_FROM[from]}">Import</a>`;
     return html`<a class="${className}" href="${ADD[kind].path}?from=${from}">${ADD[kind].label}</a>`;
   })}</p>`;
