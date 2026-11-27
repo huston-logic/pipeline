@@ -2139,10 +2139,15 @@ html:has(.corner-chip, .corner-notice:not(:empty)) {
   }
 }
 
-/* Today (run 12, §5): a head with the summary and the stage counts, one add line, one tools line, then the groups. */
+/* Today (run 12, §5): a head with the summary and the stage counts, one add line, one tools line, the groups, and the
+   add buttons at the foot. */
 .today-head h1 {
   margin: 0;
   font-size: 1.875rem;
+}
+
+.today-head {
+  margin-top: -1rem;
 }
 
 .today-head .page-head {
@@ -2157,7 +2162,7 @@ html:has(.corner-chip, .corner-notice:not(:empty)) {
 .today-summary,
 .pending-note {
   max-width: 44rem;
-  margin: 0.125rem 0 0.25rem;
+  margin: 0;
   color: var(--ink-2);
   font-size: 0.9375rem;
   line-height: 1.4;
@@ -2170,16 +2175,21 @@ html:has(.corner-chip, .corner-notice:not(:empty)) {
   font-weight: 600;
 }
 
-.today-actions {
-  gap: 0.5rem;
-  margin: 0 0 0.5rem;
+.today-foot {
+  margin-top: 1.5rem;
 }
 
+.today-actions {
+  gap: 0.5rem;
+  margin: 0;
+}
+
+/* The open deals by stage: label and count pairs, each label a 44px target; columns, so they stay a short block. */
 .stage-counts {
   display: flex;
   flex-wrap: wrap;
   gap: 0 1rem;
-  margin: 0 0 0.5rem;
+  margin: 0;
   font-size: 0.9375rem;
   font-variant-numeric: tabular-nums;
 }
@@ -2187,7 +2197,7 @@ html:has(.corner-chip, .corner-notice:not(:empty)) {
 .stage-counts > div {
   display: flex;
   gap: 0.375rem;
-  align-items: baseline;
+  align-items: center;
 }
 
 .stage-counts dt,
@@ -2196,8 +2206,9 @@ html:has(.corner-chip, .corner-notice:not(:empty)) {
 }
 
 .stage-counts dt a {
-  display: inline-block;
-  padding: 0.25rem 0;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
   color: var(--ink-2);
 }
 
@@ -2206,20 +2217,33 @@ html:has(.corner-chip, .corner-notice:not(:empty)) {
   font-weight: 600;
 }
 
+/* Add a to-do: Title on its own line on a phone, then Due and Add; one line from 40rem. */
 .quick-add {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 9rem auto;
-  gap: 0.25rem 0.5rem;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0 0.5rem;
   align-items: end;
-  margin: 0 0 0.25rem;
+  margin: 0;
+}
+
+.quick-add > .field:first-of-type {
+  grid-column: 1 / -1;
 }
 
 .quick-add .field {
-  gap: 0.125rem;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .quick-add .field label {
+  flex: none;
+  white-space: nowrap;
   font-size: 0.9375rem;
+}
+
+.quick-add .field input {
+  min-height: 44px;
 }
 
 .quick-add .button {
@@ -2263,8 +2287,12 @@ html:has(.corner-chip, .corner-notice:not(:empty)) {
 }
 
 .today-group h2 {
-  margin: 1.5rem 0 0.375rem;
-  font-size: 1.125rem;
+  margin: 1.5rem 0 0.25rem;
+  font-size: 1.0625rem;
+}
+
+.today-group:first-of-type h2 {
+  margin-top: 0;
 }
 
 .today-group .task-rows {
@@ -2279,6 +2307,23 @@ html:has(.corner-chip, .corner-notice:not(:empty)) {
   height: 44px;
 }
 
+/* A project reads as a group: a chevron in the Done cell's place, turned when the row is open. */
+.project-row > .task-open > summary::before {
+  content: "";
+  position: absolute;
+  top: 17px;
+  left: 18px;
+  width: 8px;
+  height: 8px;
+  border: solid var(--ink-2);
+  border-width: 0 2px 2px 0;
+  transform: rotate(-45deg);
+}
+
+.project-row > .task-open[open] > summary::before {
+  transform: rotate(45deg);
+}
+
 .project-tasks.task-open-body {
   padding: 0;
 }
@@ -2289,7 +2334,8 @@ html:has(.corner-chip, .corner-notice:not(:empty)) {
   border-radius: 0;
 }
 
-.project-tasks > .task-links {
+.project-tasks > .task-links,
+.project-tasks > .task-more-note {
   margin: 0;
   padding: 0.25rem 12px 0.75rem 44px;
 }
@@ -2298,17 +2344,25 @@ html:has(.corner-chip, .corner-notice:not(:empty)) {
   margin: 0 0 0.25rem;
 }
 
-/* Today's rows are tight: two short lines on a phone, one line from 48rem. A project's count sits on the title line. */
-.today-group:first-of-type h2 {
-  margin-top: 0.25rem;
+/* Today's rows are tight. A phone: the title (up to two lines), then the due and who it is for, which goes to a line of
+   its own only when there is no room beside the due. From 48rem: one line in columns. */
+.today-group .task-open > summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 8px;
+  padding: 0.125rem 1.75rem 0.125rem 44px;
 }
 
-.today-group .task-open > summary {
-  grid-template-columns: minmax(0, 1fr) auto 1.5rem;
-  grid-template-areas:
-    "title belongs chev"
-    "due due chev";
-  padding-block: 0.25rem;
+.today-group .task-open > summary::after {
+  position: absolute;
+  top: 15px;
+  right: 10px;
+}
+
+/* Under the Overdue heading the word is said once; on a phone that keeps the due and the person on one line. */
+.today-group-overdue > ul > .task-row > .task-open > summary .task-late {
+  display: none;
 }
 
 .today-group .task-title,
@@ -2317,63 +2371,18 @@ html:has(.corner-chip, .corner-notice:not(:empty)) {
   line-height: 1.3;
 }
 
+.today-group .task-title {
+  flex: 1 1 100%;
+}
+
 .today-group .task-due {
+  flex: none;
   white-space: nowrap;
 }
 
 .today-group .task-belongs {
-  max-width: 9rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.today-group .task-row:not(.project-row):not(.next-step-row) > .task-open > summary,
-.today-group .no-belongs > .task-open > summary {
-  grid-template-columns: auto minmax(0, 1fr) 1.5rem;
-  grid-template-areas:
-    "title title chev"
-    "due belongs chev";
-}
-
-.today-group .no-belongs > .task-open > summary {
-  grid-template-areas:
-    "title title chev"
-    "due due chev";
-}
-
-.quick-add .field input {
-  min-height: 44px;
-}
-
-.today-head {
-  margin-top: -0.5rem;
-}
-
-.today-group .project-row .task-title {
-  -webkit-line-clamp: 1;
-}
-
-.today-group .task-open > summary {
-  padding-block: 0.125rem;
-}
-
-.today-head .stage-counts {
-  margin-bottom: 0;
-}
-
-@media (min-width: 48rem) {
-  .today-group .task-open > summary,
-  .today-group .task-row:not(.project-row):not(.next-step-row) > .task-open > summary,
-  .today-group .no-belongs > .task-open > summary {
-    grid-template-columns: minmax(0, 1fr) 14.5rem 11rem 1.5rem;
-    grid-template-areas: "title due belongs chev";
-    padding-block: 0.375rem;
-  }
-
-  .today-group .task-belongs {
-    max-width: none;
-  }
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 @media (min-width: 40rem) {
@@ -2381,15 +2390,8 @@ html:has(.corner-chip, .corner-notice:not(:empty)) {
     grid-template-columns: minmax(0, 1fr) 14rem auto;
   }
 
-  .quick-add .field {
-    flex-direction: row;
-    align-items: center;
-    gap: 0.5rem;
-  }
-
-  .quick-add .field label {
-    flex: none;
-    white-space: nowrap;
+  .quick-add > .field:first-of-type {
+    grid-column: auto;
   }
 
   .quick-add .field-hint,
@@ -2431,6 +2433,30 @@ html:has(.corner-chip, .corner-notice:not(:empty)) {
   }
 }
 
+@media (min-width: 48rem) {
+  .today-group .task-open > summary {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 14.5rem 11rem 1.5rem;
+    grid-template-areas: "title due belongs chev";
+    align-items: center;
+    padding: 0.375rem 12px 0.375rem 44px;
+  }
+
+  .today-group .task-open > summary::after {
+    position: static;
+  }
+
+  .today-group-overdue > ul > .task-row > .task-open > summary .task-late {
+    display: inline;
+  }
+
+  .today-group .task-belongs {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
 @media (min-width: 60rem) {
   .today-head {
     display: grid;
@@ -2441,16 +2467,11 @@ html:has(.corner-chip, .corner-notice:not(:empty)) {
 
   .stage-counts {
     display: grid;
-    grid-template-columns: repeat(2, auto);
+    grid-template-columns: repeat(3, auto);
     justify-content: end;
-    gap: 0 2rem;
-    margin-top: 0.25rem;
+    gap: 0 1.5rem;
   }
 
-  .stage-counts > div {
-    justify-content: space-between;
-    gap: 1rem;
-  }
 }
 
 /* The time pages (decision 0051): the week's links, each day's table and the month's CSV form. */

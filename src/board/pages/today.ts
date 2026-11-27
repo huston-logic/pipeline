@@ -71,7 +71,7 @@ async function groupSections(groups: TodayGroups, ctx: PageContext, tz: string):
   const sections = await Promise.all(
     GROUPS.filter(({ key }) => groups[key].length > 0).map(async ({ key, heading }) => {
       const rows = await Promise.all(groups[key].map(row));
-      return section(`today-${key}`, heading, html`<ul class="task-rows">${rows}</ul>`, "today-group");
+      return section(`today-${key}`, heading, html`<ul class="task-rows">${rows}</ul>`, `today-group today-group-${key}`);
     }),
   );
   const cut = groups.cut === null ? "" : html`<p class="stage-more">Showing ${formatNumber(groups.cut.shown)} of ${formatNumber(groups.cut.total)} to-dos.</p>`;
@@ -81,9 +81,9 @@ async function groupSections(groups: TodayGroups, ctx: PageContext, tz: string):
 /** Open deals by stage, a label and its count each, every label a link to its column. */
 function stageCounts(summary: PipelineSummary): Html | "" {
   if (summary.stages.length === 0) return "";
-  return html`<dl class="stage-counts" aria-label="Open deals by stage">${summary.stages.map(
+  return html`<div role="group" aria-labelledby="stage-counts-name"><span class="visually-hidden" id="stage-counts-name">Open deals by stage</span><dl class="stage-counts">${summary.stages.map(
     (stage, i) => html`<div><dt><a href="/pipeline#stage-${i + 1}">${stage.label}</a></dt><dd>${stage.count}</dd></div>`,
-  )}</dl>`;
+  )}</dl></div>`;
 }
 
 /** One short line: the open deals and their value (the closed ones are on the Pipeline page). */
@@ -101,6 +101,7 @@ export async function todayPage(ctx: PageContext): Promise<string> {
   const date = localDate(now, tz);
   const note = viewNote(view);
   const description = "Your open to-dos grouped by when they are due, the deals due and your open deals by stage";
+  const rowCount = GROUPS.reduce((sum, { key }) => sum + groups[key].length, 0);
   const nothing = GROUPS.every(({ key }) => groups[key].length === 0);
   return renderPage({
     title: note === "" ? "Today" : `Today, ${note}`,
@@ -115,14 +116,16 @@ export async function todayPage(ctx: PageContext): Promise<string> {
 </div>
 <p class="today-summary">${openLine(summary)}</p>
 ${waiting === 0 ? "" : html`<p class="pending-note"><a href="/pending">${count(waiting, "change")} from your AI app ${waiting === 1 ? "is" : "are"} waiting. Review ${waiting === 1 ? "it" : "them"}.</a></p>`}
-${addButtons("today", ["deal", "lead", "import"], true)}
 </div>
 ${stageCounts(summary)}
 </div>
-<div data-region="today-list">
+<div data-region="today-add" data-keep>
 ${quickAddForm(ctx)}
+</div>
+<div data-region="today-list" data-count-text="${count(rowCount, "to-do")}">
 ${taskTools(view)}
 ${nothing ? empty("Nothing to do.", "Add a to-do above, or add a task on a deal or contact page.") : await groupSections(groups, ctx, tz)}
-</div>`,
+</div>
+<div class="today-foot">${addButtons("today", ["deal", "lead", "import"], true)}</div>`,
   });
 }

@@ -5,7 +5,7 @@ import { test } from "node:test";
 import { countingDb } from "../../tests/helpers/counting-db.ts";
 import { createTestDb } from "../db/sqlite-d1.ts";
 import { DEFAULT_TZ } from "../time.ts";
-import { type TodayItem, todayRows, type TodayView } from "./today.ts";
+import { PROJECT_TASK_LIMIT, type TodayItem, todayRows, type TodayView } from "./today.ts";
 
 const NOW = new Date("2026-11-20T18:00:00.000Z");
 const YESTERDAY = "2026-11-19T17:00:00.000Z";
@@ -184,13 +184,55 @@ test("at most 200 task rows are read, and the cut is said", async () => {
   assert.equal((await todayRows(await seeded([{ id: "x" }]), NOW, DEFAULT_TZ, due)).cut, null);
 });
 
-test("a long dated list never pushes the undated ones out, nor the overdue ones", async () => {
-  const db = await seeded([{ id: "undated" }, { id: "overdue", dueAt: EARLIER }]);
-  const values = Array.from({ length: 230 }, (_, i) => `('tk_${i}', 'Task ${i}', '2031-01-01T17:00:00.000Z', '2026-11-01T10:00:00.000Z', '2026-11-01T10:00:00.000Z')`);
-  db.exec(`INSERT INTO tasks (id, title, due_at, created_at, updated_at) VALUES ${values.join(",")}`);
+test("at most 200 rows in all: the dated first, the undated fill the rest, and the cut says so", async () => {
+  const db = await seeded([{ id: "overdue", dueAt: EARLIER }]);
+  const many = (from: number, count: number, due: string) =>
+    Array.from({ length: count }, (_, i) => `('tk_${from + i}', 'Task ${from + i}', ${due}, '2026-11-01T10:00:00.000Z', '2026-11-01T10:00:00.000Z')`);
+  db.exec(`INSERT INTO tasks (id, title, due_at, created_at, updated_at) VALUES ${[...many(0, 100, "'2031-01-01T17:00:00.000Z'"), ...many(100, 150, "NULL")].join(",")}`);
   const groups = await todayRows(db, NOW, DEFAULT_TZ, due);
-  assert.deepEqual(keys(groups.undated), ["undated"]);
   assert.deepEqual(keys(groups.overdue), ["overdue"]);
+  assert.equal(groups.upcoming.length, 100);
+  assert.equal(groups.undated.length, 99, "200 less the 101 dated");
+  assert.deepEqual(groups.cut, { shown: 200, total: 251 });
+});
+
+test("a project counts only tasks that are open and awake, or have one below them", async () => {
+  const db = await seeded([
+    { id: "a", project: "pj_1", position: 1 },
+    { id: "asleep", project: "pj_1", position: 2, snoozed: "2026-11-22T17:00:00.000Z" },
+    { id: "asleep-kid", project: "pj_1", parent: "asleep", position: 1, snoozed: "2026-11-22T17:00:00.000Z" },
+    { id: "done-top", project: "pj_1", position: 3, doneAt: "2026-11-18T18:00:00.000Z" },
+    { id: "live-kid", project: "pj_1", parent: "done-top", position: 1 },
+  ]);
+  const row = (await todayRows(db, NOW, DEFAULT_TZ, due)).undated[0];
+  assert.ok(row?.kind === "project");
+  assert.equal(row.project.topLevel, 2, "a, and done-top for its awake sub-task; asleep has nothing awake");
+  assert.deepEqual(row.project.tasks.map((t) => t.id), ["a", "done-top"]);
+  assert.equal(row.project.truncated, false);
+});
+
+test("a minute either side of the owner's midnight: overdue, today, upcoming", async () => {
+  // Nov 20 in Los Angeles runs from 08:00 UTC on the 20th to 08:00 UTC on the 21st.
+  const db = await seeded([
+    { id: "before-start", dueAt: "2026-11-20T07:59:00.000Z" },
+    { id: "after-start", dueAt: "2026-11-20T08:01:00.000Z" },
+    { id: "before-end", dueAt: "2026-11-21T07:59:00.000Z" },
+    { id: "after-end", dueAt: "2026-11-21T08:01:00.000Z" },
+  ]);
+  const groups = await todayRows(db, NOW, DEFAULT_TZ, due);
+  assert.deepEqual(keys(groups.overdue), ["before-start"]);
+  assert.deepEqual(keys(groups.today), ["after-start", "before-end"]);
+  assert.deepEqual(keys(groups.upcoming), ["after-end"]);
+});
+
+test("a project's tasks read is cut at 500 and its rows say so", async () => {
+  const db = await seeded();
+  const values = Array.from({ length: 520 }, (_, i) => `('tk_p${i}', 'pj_1', ${i + 1}, 'Task ${i}', '2026-11-01T10:00:00.000Z', '2026-11-01T10:00:00.000Z')`);
+  db.exec(`INSERT INTO tasks (id, project_id, position, title, created_at, updated_at) VALUES ${values.join(",")}`);
+  const row = (await todayRows(db, NOW, DEFAULT_TZ, due)).undated[0];
+  assert.ok(row?.kind === "project");
+  assert.equal(row.project.truncated, true);
+  assert.equal(row.project.topLevel, PROJECT_TASK_LIMIT);
 });
 
 test("one D1 call reads everything", async () => {

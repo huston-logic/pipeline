@@ -82,7 +82,7 @@
     const next = $$("[data-region]", doc);
     for (const cur of $$("[data-region]")) {
       const n = next.find((x) => x.dataset.region === cur.dataset.region);
-      if (!n) continue;
+      if (!n || (cur.hasAttribute("data-keep") && form.matches("[data-autosubmit]"))) continue;
       if (cur.dataset.region === "corner") swapCorner(cur, n);
       else adopt(cur, n);
     }
@@ -208,6 +208,8 @@
     if (text === null) return form.submit();
     history.replaceState(null, "", url);
     swap(new DOMParser().parseFromString(text, "text/html"), form, e.target);
+    const n = $("[data-count-text]");
+    if (n) say(form, `Showing ${n.dataset.countText}.`);
   });
 
   if (matchMedia("(max-width: 39.99rem)").matches) for (const d of $$("details[data-close-narrow]")) d.open = false;

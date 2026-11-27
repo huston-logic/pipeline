@@ -19,10 +19,10 @@ import {
 
 export type TodayView = { sort: "due" | "newest" | "subject"; show: "all" | "linked" | "standalone" };
 
-/** At most this many loose task rows are read; the cut is said (`cut`). */
+/** At most this many loose task rows are shown in all (dated first); the cut is said (`cut`). */
 export const TODAY_TASK_LIMIT = 200;
 /** At most this many tasks of projects are read for the project rows. */
-const PROJECT_TASK_LIMIT = 500;
+export const PROJECT_TASK_LIMIT = 500;
 
 export interface TodayProject {
   id: string;
@@ -41,6 +41,8 @@ export interface TodayProject {
   tasks: TaskNode[];
   /** When the newest of its tasks was made, for the newest-first sort. */
   createdAt: string;
+  /** The read of projects' tasks was cut at `PROJECT_TASK_LIMIT`, so this tree may lack its deepest tasks. */
+  truncated: boolean;
 }
 
 export type TodayItem =
@@ -58,10 +60,9 @@ export interface TodayGroups {
 }
 
 const isOpen = (node: TaskNode): boolean => node.doneAt === null;
-const hasOpen = (node: TaskNode): boolean => isOpen(node) || node.children.some(hasOpen);
 
 /** The projects' rows from their tasks (parents first, siblings in position order). */
-function projectItems(found: TaskJoin[], now: Date, tz: string, startIso: string): TodayProject[] {
+function projectItems(found: TaskJoin[], now: Date, tz: string, startIso: string, truncated: boolean): TodayProject[] {
   const byProject = new Map<string, { row: TaskJoin; nodes: Map<string, TaskNode>; top: TaskNode[]; createdAt: string }>();
   for (const row of found) {
     if (row.project_ref === null) continue;
@@ -74,12 +75,14 @@ function projectItems(found: TaskJoin[], now: Date, tz: string, startIso: string
     else entry.nodes.get(node.parentId)?.children.push(node);
   }
   const awake = (node: TaskNode) => isOpen(node) && (node.snoozedUntil === null || node.snoozedUntil <= now.toISOString());
+  // Counted: open and awake, or with an open, awake task anywhere below it (ruling 9; a snoozed one is not a to-do now).
+  const hasLive = (node: TaskNode): boolean => awake(node) || node.children.some(hasLive);
   const projects: TodayProject[] = [];
   for (const [id, { row, nodes, top, createdAt }] of byProject) {
     const live = [...nodes.values()].filter(awake);
     if (live.length === 0) continue;
     const dated = live.filter((node) => node.dueAt !== null).sort((a, b) => (a.dueAt ?? "").localeCompare(b.dueAt ?? ""));
-    const tasks = top.filter(hasOpen);
+    const tasks = top.filter(hasLive);
     projects.push({
       id,
       name: row.project_name ?? id,
@@ -91,6 +94,7 @@ function projectItems(found: TaskJoin[], now: Date, tz: string, startIso: string
       soonestLocal: dated[0]?.dueAtLocal ?? null,
       tasks,
       createdAt,
+      truncated,
     });
   }
   return projects;
@@ -141,7 +145,7 @@ export async function todayRows(db: Db, now: Date, tz: string, view: TodayView):
              (SELECT k.project_id FROM tasks k WHERE ${awake("k")} AND k.project_id IS NOT NULL)
            ORDER BY depth, t.position, t.created_at, t.id LIMIT ?`,
         )
-        .bind(nowIso, PROJECT_TASK_LIMIT),
+        .bind(nowIso, PROJECT_TASK_LIMIT + 1),
       db
         .prepare(
           `SELECT d.*, c.name AS contact_name, c.untrusted_fields AS contact_untrusted, s.label AS stage_label
@@ -152,10 +156,14 @@ export async function todayRows(db: Db, now: Date, tz: string, view: TodayView):
     );
   }
   const [datedRows, undatedRows, counted, projectRows, dealRows] = await db.batch(statements);
-  const tasks = [...(datedRows?.results ?? []), ...(undatedRows?.results ?? [])].map(
+  // At most TODAY_TASK_LIMIT rows in all: the dated first, the undated fill what is left.
+  const dated = datedRows?.results ?? [];
+  const tasks = [...dated, ...(undatedRows?.results ?? []).slice(0, Math.max(0, TODAY_TASK_LIMIT - dated.length))].map(
     (row): TodayItem => ({ kind: "task", task: { ...toTaskItem(row as TaskJoin, tz), createdAt: (row as TaskJoin).created_at } }),
   );
-  const projects = projectItems((projectRows?.results ?? []) as TaskJoin[], now, tz, startIso).map((project): TodayItem => ({ kind: "project", project }));
+  const projectFound = (projectRows?.results ?? []) as TaskJoin[];
+  const cutProjects = projectFound.length > PROJECT_TASK_LIMIT;
+  const projects = projectItems(projectFound.slice(0, PROJECT_TASK_LIMIT), now, tz, startIso, cutProjects).map((project): TodayItem => ({ kind: "project", project }));
   const deals = ((dealRows?.results ?? []) as DealJoin[]).map((row): TodayItem => ({ kind: "deal", deal: toDealItem(row, now, tz) }));
   const total = ((counted?.results ?? []) as { n: number }[])[0]?.n ?? 0;
 

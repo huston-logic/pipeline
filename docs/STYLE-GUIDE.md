@@ -139,29 +139,32 @@ The home page is **Today** (`/`): one dense list of rows (§7.24) in one column.
 ```
 Phone (390)                          Wide (1440)
 ┌ app bar ───────────────────────┐   ┌ side bar ┬ content ────────────────────────────────────┐
-│ Today  Thu Nov 26              │   │ Today    │ Today  Thu Nov 26               New inquiry 2 │
-│ summary line                   │   │ Deals    │ summary line                    Replied     1 │
-│ New inquiry 2  Replied 1  ...  │   │ People   │ [Add a deal] [Add a lead] [Import]  Call done 2│
-│ [Add a deal][Add a lead][Import]│  │ ...      │ Title [.........] Due [....] [Add]            │
-│ Title [.......] Due [..] [Add] │   │          │ Sort and filter  Sort [Due date] Show [All]   │
-│ Sort and filter (closed)       │   │          │ Overdue                                       │
-│ Overdue                        │   │          │ [ ] Email Jamie ...   Tue Nov 24   Jamie      │
-│ [ ] Email Jamie about quoti. v │   │          │ Today                                         │
-│     Tue Nov 24  Jamie Bernal   │   │          │  >  Test the website editor  Today 8 PM  7 tasks│
-│ Upcoming, No due date          │   │          │ Upcoming, No due date                         │
-├────────────────────────────────┤   └──────────┴───────────────────────────────────────────────┘
-│ Today Deals People ... More    │  fixed tab bar, safe-area inset below
+│ Today  Thu Nov 26              │   │ Today    │ Today  Thu Nov 26     New inquiry 2 Replied 1 │
+│ summary line                   │   │ Deals    │ summary line          Call booked 0 Call done 2│
+│ New inquiry 2 Replied 1 ...    │   │ People   │ Title [..........] Due [....] [Add]           │
+│ Call done 2  Proposal sent 0   │   │ ...      │ Sort and filter  Sort [Due date] Show [All]   │
+│ Title [..................]     │   │          │ Overdue                                       │
+│ Due [.........]  [Add]         │   │          │ [ ] Email Jamie ...  Tue Nov 24, 9 AM  Jamie  │
+│ Sort and filter (closed)       │   │          │  >  Test the website editor  7 tasks, 0 overdue│
+│ Overdue                        │   │          │ Today / Upcoming / No due date                │
+│ [ ] Email Jamie about quoting  │   │          │ [Add a deal] [Add a lead] [Import]  (the foot) │
+│     Tue Nov 24, 9 AM  Jamie    │   └──────────┴───────────────────────────────────────────────┘
+├────────────────────────────────┤
+│ Today Deals People ... More    │  fixed tab bar
 └────────────────────────────────┘
 ```
 
 Order on Today: the head (the H1 with the date beside it, one summary line, a line for changes waiting from the AI app
-when there are any, Add a deal, Add a lead and Import as one small quiet line, and the open deals by stage as label and
-count pairs, each label a link to its column; top right from 60rem, a wrapped line on a phone), the add line (Title,
-Due, Add), Sort and filter (a `details`, open on a laptop and closed under 40rem; with scripts on a choice applies at
-once), then plain h2 groups: Overdue, Today, Upcoming and No due date (an empty one is left out), each one
-`ul.task-rows` panel with 24px of space between groups, none inside rows. A row is a task, a deal whose next step is
-due (an empty Done cell; opened, its next step and Open the deal) or a project ("N tasks, M overdue", its tasks inside
-when opened). There is no Latest brief block: the brief has its own page.
+when there are any, and the open deals by stage as label and count pairs in three columns, each label a 44px link to
+its column; top right from 60rem, a wrapped block on a phone), the add line (Title, Due, Add; on a phone Title has its
+own line), Sort and filter (a `details`, open on a laptop and closed under 40rem; with scripts on a choice applies at
+once, the corner says "Showing N to-dos." and a half-typed to-do stays), then plain h2 groups: Overdue, Today,
+Upcoming and No due date (an empty one is left out), each one `ul.task-rows` panel with 24px of space between groups,
+and last Add a deal, Add a lead and Import as one small quiet line. A row is a task, a deal whose next step is due (an
+empty Done cell; opened, its next step and Open the deal) or a project (a chevron in the Done cell's place that turns
+when it is open, "N tasks, M overdue", its tasks inside when opened). At most 200 rows show, the dated first. On a
+phone the Overdue heading says the word once, so the rows under it leave it out. There is no Latest brief block: the
+brief has its own page.
 
 ## 6. Signature elements
 

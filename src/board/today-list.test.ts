@@ -114,7 +114,7 @@ test("the list shows at most 200 dated to-dos, overdue first, with a Showing lin
   assert.match(body, /<p class="stage-more">Showing 200 of 263 to-dos\.<\/p>/);
 });
 
-test("Today reads at most 200 dated tasks from the database, however many are open", async () => {
+test("Today shows at most 200 tasks in all and reads few more, however many are open", async () => {
   const db = await seededDb();
   addStandalone(db, 600, true);
   let read = 0;
@@ -126,7 +126,7 @@ test("Today reads at most 200 dated tasks from the database, however many are op
   };
   const body = (await load(devEnv(db), "/")).body;
   assert.equal(padRows(body), 197, "200 dated: three seeded tasks, the overdue pad and 196 more pads");
-  assert.match(body, /<p class="stage-more">Showing 201 of 605 to-dos\.<\/p>/, "the undated seeded one is the 201st");
+  assert.match(body, /<p class="stage-more">Showing 200 of 605 to-dos\.<\/p>/, "never more than 200 shown");
   assert.ok(read <= 201, `read ${read} task rows`);
 });
 
@@ -141,7 +141,16 @@ test("no Showing line at 200 or fewer", async () => {
 test("Today has no Latest brief block and no second column", async () => {
   const body = (await load(devEnv(await seededDb()), "/")).body;
   assert.doesNotMatch(body, /Latest brief|brief-heading|today-columns|today-glance/);
-  assert.match(body, /<dl class="stage-counts" aria-label="Open deals by stage">[\s\S]*<a href="\/pipeline#stage-1">New inquiry<\/a><\/dt><dd>2<\/dd>/);
+  assert.match(body, /<div role="group" aria-labelledby="stage-counts-name"><span class="visually-hidden" id="stage-counts-name">Open deals by stage<\/span><dl class="stage-counts">[\s\S]*<a href="\/pipeline#stage-1">New inquiry<\/a><\/dt><dd>2<\/dd>/);
+});
+
+test("the add form has its own region that a filter leaves alone, the list says its count, and the add buttons close the page", async () => {
+  const body = (await load(devEnv(await seededDb()), "/")).body;
+  assert.match(body, /<div data-region="today-add" data-keep>\n<form class="quick-add"/);
+  assert.match(body, /<div data-region="today-list" data-count-text="\d+ to-dos?">/);
+  assert.ok(body.indexOf("today-foot") > body.indexOf("today-list"), "buttons after the list");
+  assert.doesNotMatch(body.slice(0, body.indexOf("today-list")), /today-actions/, "none in the head");
+  assert.match(body, /<div class="today-foot"><p class="page-action today-actions">/);
 });
 
 test("the groups are plain h2s in order, and an empty one is left out", async () => {
@@ -178,7 +187,7 @@ test("a project is one row with its tasks inside it; an outside name is labelled
   const row = shown.slice(shown.indexOf(`<li class="task-row project-row" data-task-row id="p-${project.projectId}">`));
   assert.ok(row.length > 0 && shown.includes(`id="p-${project.projectId}"`));
   assert.match(row, /<span class="task-title">Retrofit<\/span>/);
-  assert.match(row, /<span class="task-belongs">1 task, 0 overdue<\/span>/);
+  assert.match(row, /<span class="task-belongs"><span class="visually-hidden">, <\/span>1 task, 0 overdue<\/span>/);
   assert.match(row, /<span class="task-title">Order anchors<\/span>[\s\S]*1 open sub-task/);
   assert.match(row, /Pick supplier/, "the sub-task is under its parent");
   assert.match(row, new RegExp(`<a href="/projects/${project.projectId}">Open the project</a>`));
