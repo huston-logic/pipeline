@@ -65,7 +65,7 @@ test("a status view as a table: a region wrapper, a caption, scoped headers, the
   assert.equal(heads.length, 2);
   assert.match(heads[0] ?? "", /^<a href="\/contacts\/ct_seed01">Pat Example<\/a>$/);
   assert.equal(main.match(/<li class="card">/g), null, "no cards in the table layout");
-  assert.doesNotMatch(body.replace('<script src="/live.js" defer></script>', ""), /<script/, "no page script");
+  assert.doesNotMatch(body.replace('<script src="/live.js" defer></script>\n<script src="/clock.js" defer></script>', ""), /<script/, "no page script");
   assert.doesNotMatch(body, /\sstyle=/i);
   assert.match(titleOf(body), /^Partner as a table · /);
 });

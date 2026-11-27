@@ -1,58 +1,34 @@
 // In place (decision 0062): a data-live form posts with fetch and swaps in the [data-region]s of the page it names;
-// anything else falls back to the plain post. Also the clock, filters and row forms.
+// anything else falls back to the plain post. Also filters and row forms; the clock is clock.js.
 (() => {
   const $ = (sel, root = document) => root.querySelector(sel);
   const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
   const calm = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
   const busy = new WeakSet();
-  let ticker = null;
+  // clock.js restarts the clock and measures the corner again.
+  const changed = () => document.dispatchEvent(new Event("board:changed"));
 
   const hm = (ms) => {
     const m = Math.max(0, Math.floor(ms / 60000));
     return `${Math.floor(m / 60)}:${String(m % 60).padStart(2, "0")}`;
   };
 
-  // The corner's height, so a control scrolled into view stops below it (WCAG 2.4.11).
-  const room = () => {
-    const c = $(".corner");
-    if (c) document.documentElement.style.setProperty("--corner-h", `${Math.ceil(c.getBoundingClientRect().height + 8)}px`);
-  };
-
-  const tick = () => {
-    const now = Date.now();
-    const clocks = $$("time[data-since]");
-    for (const t of clocks) t.textContent = hm(now - Date.parse(t.dataset.since));
-    for (const n of $$("[data-expires]")) {
-      if (Date.parse(n.dataset.expires) > now) continue;
-      if (n.contains(document.activeElement)) $("main").focus();
-      n.parentNode.replaceChildren();
-    }
-    room();
-    return clocks.length > 0 || !!$("[data-expires]");
-  };
-
-  const watch = () => {
-    if (tick() && !ticker) {
-      ticker = setInterval(() => {
-        if (!tick()) ticker = clearInterval(ticker);
-      }, 15000);
-    }
-  };
-
   const init = () => {
     for (const h of $$("[data-autosubmit-hide]")) h.hidden = true;
-    watch();
+    changed();
   };
 
-  const say = (form, text) => {
+  const note = (text) => {
     const n = $(".corner-notice");
-    if (!n) return form.submit();
+    if (!n) return;
     const p = document.createElement("p");
     p.className = "corner-text";
     p.textContent = text;
     n.replaceChildren(p);
-    room();
+    changed();
+    return n;
   };
+  const say = (form, text) => note(text) || form.submit();
 
   const key = (u) => {
     const q = new URLSearchParams(u.search);
@@ -213,14 +189,27 @@
     if (n) say(form, `Showing ${n.dataset.countText}.`);
   });
 
-  // Opening a row unfolds its <noscript> forms (task-row.ts); a swapped-in one holds elements.
+  // An opened row's forms (task-row.ts): a row swapped in by a post holds them in its <noscript> already; else they
+  // come from the server. The <noscript>'s text is never read.
   document.addEventListener(
     "toggle",
-    ({ target: d }) => {
-      for (const n of d.open ? $$(":scope > div > noscript", d) : []) {
-        const kids = n.firstElementChild ? n.childNodes : new DOMParser().parseFromString(n.textContent, "text/html").body.childNodes;
-        n.replaceWith(...Array.from(kids, (c) => document.importNode(c, true)));
+    async ({ target: d }) => {
+      const b = d.open && $(":scope > [data-actions]", d);
+      const n = b && $(":scope > noscript", b);
+      if (!n || busy.has(n)) return;
+      if (n.firstElementChild) return n.replaceWith(...n.childNodes);
+      busy.add(n);
+      let r = null;
+      try {
+        const url = new URL(b.dataset.actions + "&back=" + encodeURIComponent(location.pathname + location.search), location.href);
+        const text = url.origin === location.origin && (await read(url));
+        r = text && $('[data-region^="actions-"]', new DOMParser().parseFromString(text, "text/html"));
+      } catch {
+        r = null;
       }
+      busy.delete(n);
+      if (r) n.replaceWith(...Array.from(r.childNodes, (c) => document.importNode(c, true)));
+      else note("Couldn't load. Check your connection and try again.");
     },
     true,
   );

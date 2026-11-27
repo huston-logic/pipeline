@@ -2,7 +2,8 @@
 // sub-tasks under another. Every list of tasks that is not Today's draws its rows here. Outside text is labelled and
 // never a link's text; the row's text is plain, because the whole line opens the disclosure.
 // A row's forms are sent inside a <noscript>: with scripts off the browser draws them as they are; with scripts on they
-// are one text node until the row opens and public/live.js puts them in place, so a list of a hundred rows loads light.
+// are one text node, never read, and when the row opens public/live.js fetches the same forms from /tasks/<id>/actions
+// (pages/task-actions.ts), so a list of a hundred rows loads light.
 import { dayBoundsUtc, formatLocal, localDate } from "../time.ts";
 import { type FormContext, postForm } from "./forms.ts";
 import { type Html, html } from "./html.ts";
@@ -148,22 +149,38 @@ function doneBox(task: RowTask, form: FormContext, after: string | undefined): H
   );
 }
 
+/** An open row's actions (Start timer, Snooze, Edit, and on a project tree Add a sub-task and Move): its <noscript> and /tasks/<id>/actions both draw them here. */
+export function rowActions(task: RowTask, form: FormContext, tz: string): Promise<Html> {
+  const canAdd = task.onProject && task.level < MAX_LEVEL;
+  const extra = html`${canAdd ? subTaskForm(task, form) : ""}${task.onProject ? moveForm(task, form) : ""}`;
+  return taskActions(task, form, tz, { withDone: false, extra });
+}
+
+/**
+ * Where public/live.js reads an opened row's actions, with how the row was drawn: `tree` is its level in a project tree
+ * (0 when it is not in one), `up` and `down` that it has siblings to move past. Built from the id and the row's place only.
+ */
+export function actionsHref(task: RowTask): string {
+  const query = new URLSearchParams({ tree: task.onProject ? String(task.level) : "0" });
+  if (task.onProject && task.hasSiblingsBefore === true) query.set("up", "1");
+  if (task.onProject && task.hasSiblingsAfter === true) query.set("down", "1");
+  return `/tasks/${encodeURIComponent(task.id)}/actions?${query}`;
+}
+
 async function openContent(task: RowTask, opts: RowOptions, form: FormContext): Promise<Html> {
   const done = task.doneAt !== undefined && task.doneAt !== null;
   const snoozed = snoozedTo(task, opts.now);
   const long = task.title.length > FULL_TITLE_OVER;
   const byRule = task.source !== undefined && task.source !== "owner";
   const who = opts.showBelongs ? belongsOf(task) : null;
-  const canAdd = task.onProject && task.level < MAX_LEVEL;
-  const extra = html`${canAdd ? subTaskForm(task, form) : ""}${task.onProject ? moveForm(task, form) : ""}`;
-  return html`<div class="task-open-body">
+  return html`<div class="task-open-body"${done ? "" : html` data-actions="${actionsHref(task)}"`}>
 ${long ? html`<p class="task-fulltitle">${labelled(task.title, outsideIn(task, "title"))}</p>` : ""}
 ${who === null ? "" : html`<p class="task-for">For ${who}</p>`}
 ${snoozed === null ? "" : html`<p class="task-note">Snoozed until ${when(snoozed, formatLocal(snoozed, opts.tz))}</p>`}
 ${byRule ? html`<p class="task-note">Added by rule ${task.source}</p>` : ""}
 ${descriptionLine(task)}
 ${linksLine(task)}
-${done ? "" : html`<noscript>${await taskActions(task, form, opts.tz, { withDone: false, extra })}</noscript>`}
+${done ? "" : html`<noscript>${await rowActions(task, form, opts.tz)}</noscript>`}
 </div>`;
 }
 

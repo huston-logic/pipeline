@@ -460,6 +460,12 @@ export async function listTaskItems(db: Db, filter: TaskListFilter, tz: string):
   return found.map((row) => ({ ...toTaskItem(row, tz), doneAt: row.done_at }));
 }
 
+/** One task that is not done, by id, or null: a task row's actions on the board (run 12). */
+export async function openTaskItem(db: Db, id: string, tz: string): Promise<TaskItem | null> {
+  const [found] = await rows<TaskJoin>(db, `${TASK_SELECT} WHERE t.id = ? AND t.done_at IS NULL`, [id]);
+  return found === undefined ? null : toTaskItem(found, tz);
+}
+
 /** A project's tasks for its page: the open ones (snoozed too) due first, or the done ones, latest done first. */
 export async function projectTaskItems(db: Db, projectId: string, status: "open" | "done", tz: string, limit: number): Promise<TaskItem[]> {
   const order = status === "open" ? "t.due_at IS NULL, t.due_at, t.created_at, t.id" : "t.done_at DESC, t.id DESC";

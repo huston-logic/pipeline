@@ -57,10 +57,11 @@ const navOf = (body: string) => /<nav class="app-nav"[\s\S]*?<\/nav>/.exec(body)
 /** The one script the board ships (decision 0014), loaded only by the pipeline's board view. */
 // Opening tags only: any extra or inline script still shows up as another (or a different) opening tag.
 const BOARD_JS = '<script src="/board.js" defer>';
-/** Every signed-in page also loads /live.js (decision 0062). */
+/** Every signed-in page also loads /live.js and /clock.js (decision 0062). */
 const LIVE_JS = '<script src="/live.js" defer>';
+const CLOCK_JS = '<script src="/clock.js" defer>';
 const scriptsOf = (body: string) => [...body.matchAll(/<script\b[^>]*>/gi)].map((m) => m[0]);
-const withoutLive = (body: string) => body.replace(`${LIVE_JS}</script>\n`, "");
+const withoutLive = (body: string) => body.replace(`${LIVE_JS}</script>\n${CLOCK_JS}</script>\n`, "");
 const cardTitles = (body: string) => [...body.matchAll(/<h2 class="card-title">([\s\S]*?)<\/h2>/g)].map((m) => m[1] ?? "");
 
 function assertPage(body: string, path: string) {
@@ -72,7 +73,7 @@ function assertPage(body: string, path: string) {
   // /board.js: dragging on the pipeline board, the phone actions and Copy prompt on deal and contact pages (decision 0021).
   // /deals/new and /contacts/new are the Add a deal and Add contact forms, not record pages.
   const scripted = path === "/pipeline" || /^\/deals\/(?!new$)[^/]+$/.test(path) || /^\/contacts\/(?!new$)[^/]+$/.test(path) || path.startsWith("/timer/done") || path.startsWith("/timer/notes");
-  assert.deepEqual(scriptsOf(body), scripted ? [LIVE_JS, BOARD_JS] : [LIVE_JS], `${path}: scripts`);
+  assert.deepEqual(scriptsOf(body), scripted ? [LIVE_JS, CLOCK_JS, BOARD_JS] : [LIVE_JS, CLOCK_JS], `${path}: scripts`);
   assert.doesNotMatch(body, /\sstyle=/i, `${path}: no inline styles (the CSP refuses them)`);
 }
 
@@ -235,7 +236,7 @@ test("the pipeline board: one column per open stage in order, with its count and
     ["not_now", "Not now", "0 deals"],
   ]);
   assert.doesNotMatch(main, /Salon booking site/, "closed deals are not cards");
-  assert.deepEqual(scriptsOf(body), [LIVE_JS, BOARD_JS]);
+  assert.deepEqual(scriptsOf(body), [LIVE_JS, CLOCK_JS, BOARD_JS]);
 });
 
 test("pipeline cards show title, contact, value and next date, overdue in words, and a Move to form that works without JavaScript", async () => {

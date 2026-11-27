@@ -130,7 +130,7 @@ test("a task snoozed into the future says so in the due cell; a rule's task says
 
 test("a row's actions come as one noscript, so a long list loads light; its text and links stay outside it", async () => {
   const out = await text(task("a", { onProject: true, hasSiblingsAfter: true, description: "See https://example.com/plan", dealId: "dl_aaaaaaaaaaaa" }));
-  const body = /<div class="task-open-body">([^]*)<\/div>\s*<\/details>/.exec(out)?.[1] ?? "";
+  const body = /<div class="task-open-body"[^>]*>([^]*)<\/div>\s*<\/details>/.exec(out)?.[1] ?? "";
   assert.equal(body.match(/<noscript>/g)?.length, 1);
   const kept = /<noscript>([^]*)<\/noscript>/.exec(body)?.[1] ?? "";
   for (const part of ['class="task-actions"', 'class="task-snooze"', 'class="task-edit"', 'class="task-subadd"', 'class="task-move"']) {
@@ -140,7 +140,14 @@ test("a row's actions come as one noscript, so a long list loads light; its text
   assert.match(outside, /<p class="task-description">/);
   assert.match(outside, /Open the deal/);
   assert.doesNotMatch(outside, /<form/);
-  assert.doesNotMatch(await text(task("b", { doneAt: "2026-11-18T20:00:00.000Z" })), /noscript/);
+  assert.doesNotMatch(await text(task("b", { doneAt: "2026-11-18T20:00:00.000Z" })), /noscript|data-actions/);
+});
+
+test("with scripts on, an opened row's actions come from /tasks/<id>/actions, which says how the row was drawn", async () => {
+  const tree = await text(task("a", { onProject: true, level: 2, hasSiblingsBefore: true, hasSiblingsAfter: true }));
+  assert.match(tree, /<div class="task-open-body" data-actions="\/tasks\/tk_aaaaaaaaaaaa\/actions\?tree=2&amp;up=1&amp;down=1">/);
+  assert.match(await text(task("b", { onProject: true })), /data-actions="\/tasks\/tk_baaaaaaaaaaa\/actions\?tree=1">/);
+  assert.match(await text(task("c")), /data-actions="\/tasks\/tk_caaaaaaaaaaa\/actions\?tree=0">/);
 });
 
 test("a list with any sub-tasks row is marked, so every row reserves the same width", async () => {

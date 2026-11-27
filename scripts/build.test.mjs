@@ -51,12 +51,28 @@ test("live.js stays small and plain: under 3 KB gzipped, no eval, no HTML string
   assert.match(script, /new DOMParser\(\)\.parseFromString\(/);
 });
 
-test("live.js changes nothing on screen at load and unfolds a row's noscript actions when the row opens", () => {
+test("clock.js (the timer clock and the note's expiry, split from live.js) stays small and plain and never fetches", () => {
+  const script = read("clock.js");
+  assert.ok(gzipSync(script).length < 3 * 1024, `${gzipSync(script).length} bytes gzipped`);
+  assert.doesNotMatch(script, /\beval\(|new Function|innerHTML|outerHTML|insertAdjacentHTML|document\.write|\bfetch\(|XMLHttpRequest|import\(|https?:\/\/|DOMParser|history\./);
+  assert.doesNotThrow(() => new Script(script), "clock.js parses");
+  assert.match(script, /addEventListener\("board:changed"/);
+  assert.match(read("live.js"), /dispatchEvent\(new Event\("board:changed"\)\)/, "live.js says when it changed the page");
+  assert.doesNotMatch(read("live.js"), /data-since|data-expires|setInterval/, "the clock is clock.js's");
+});
+
+test("live.js changes nothing on screen at load, and an opened row's actions come from the server, never from page text", () => {
   const script = read("live.js");
   assert.doesNotMatch(script, /close-narrow|\.open = false/, "a disclosure closed after the first paint moves the page (layout shift)");
   assert.match(script, /addEventListener\(\s*"toggle"[^]*?,\s*true,?\s*\)/, "toggle does not bubble, so it is caught on the way down");
   assert.match(script, /noscript/);
-  assert.match(script, /parseFromString\(n\.textContent, "text\/html"\)/, "the markup the server sent, parsed, never innerHTML");
+  // Only a fetched response is ever parsed as markup: text read from the page never is (CodeQL js/xss-through-dom).
+  const parsed = [...script.matchAll(/parseFromString\(([^,]+),/g)].map((m) => m[1]);
+  assert.ok(parsed.length >= 3, parsed.join());
+  assert.deepEqual(new Set(parsed), new Set(["text"]));
+  assert.doesNotMatch(script, /\.innerText\b|textContent\)/);
+  assert.match(script, /dataset\.actions \+ "&back=" \+ encodeURIComponent\(location\.pathname \+ location\.search\)/);
+  assert.match(script, /\[data-region\^="actions-"\]/);
 });
 
 test("board.js copies prompts with the clipboard API and moves focus to the Log button after Call, Text or Email (decision 0021)", () => {
