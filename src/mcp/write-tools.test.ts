@@ -344,12 +344,17 @@ test("settings tools: get shows the owner emails, update changes the rest and re
     timeTracking: false,
     campaigns: false,
     projects: false,
+    brief: true, // the fixture seed's copy has the brief switch on
     postalAddress: null,
     campaignDailyLimit: 90,
     projectFacts: ["status", "person", "deal", "start", "target"],
     lastBriefAt: "2026-11-18T17:30:00.000Z",
     lastBriefSentAt: null,
   });
+  const off = await ok(c, "update_settings", { brief: false });
+  assert.match(off.headline, /^Updated settings: the brief switch off \(change chg_[a-z0-9]{12}\)$/);
+  assert.equal(dataOf<{ brief: boolean }>(await ok(c, "get_settings")).brief, false);
+  await ok(c, "update_settings", { brief: true });
 
   const changed = await ok(c, "update_settings", { timezone: "Europe/London", briefHour: 8, briefEmail: "owner@example.com", briefEnabled: true });
   assert.match(changed.headline, /^Updated settings: timezone to Europe\/London, brief hour to 8:00, brief email to owner@example\.com and the daily brief on \(change chg_[a-z0-9]{12}\)$/);

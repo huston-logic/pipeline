@@ -36,12 +36,27 @@ test("getSettings shows the settings with the owner emails as a list", async () 
     timeTracking: false,
     campaigns: false,
     projects: false,
+    brief: false,
     postalAddress: null,
     campaignDailyLimit: 90,
     projectFacts: ["status", "person", "deal", "start", "target"],
     lastBriefAt: null,
     lastBriefSentAt: null,
   });
+});
+
+test("the brief switch is off by default, turning it on and off is audited and undoable", async () => {
+  const db = await openTestDb();
+  assert.equal((await getSettings(db)).brief, false);
+  const on = await updateSettings(ctxFor(db), { brief: true });
+  assert.match(on.summary, /^Updated settings: the brief switch on \(change chg_/);
+  assert.equal((await getSettings(db)).brief, true);
+  assert.match((await updateSettings(ctxFor(db), { brief: false })).summary, /the brief switch off/);
+  assert.equal((await getSettings(db)).brief, false);
+  assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM audit_log").first<{ n: number }>())?.n, 2);
+  const again = await updateSettings(ctxFor(db), { brief: true });
+  await undoChange(ctxFor(db, "undo_change", LATER), again.changeId);
+  assert.equal((await getSettings(db)).brief, false);
 });
 
 test("updateSettings changes only what is given, in one audited change", async () => {
@@ -71,6 +86,7 @@ test("updateSettings changes only what is given, in one audited change", async (
     timeTracking: false,
     campaigns: false,
     projects: false,
+    brief: false,
     postalAddress: null,
     campaignDailyLimit: 90,
     projectFacts: ["status", "person", "deal", "start", "target"],

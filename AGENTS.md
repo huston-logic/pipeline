@@ -88,6 +88,7 @@ hooks and the commands are in `CLAUDE.md`.
   0030): on the tap, ask for permission, register `/sw.js`, subscribe, fill the form's hidden fields and submit it; on
   load, mark this browser's own row "This phone" and offer Turn off on this phone. No innerHTML, fetch or pop-ups in
   either.
+- **The brief is a switch** (run 12, `settings.brief`, migration 0028, off by default for every copy; `update_settings brief`): off means no `/brief` or `/notifications` (404, posts too), no More items, no brief composed, stored, emailed or pushed (`runBrief` returns first); the rules job is unaffected. `brief_enabled` still gates only the email.
 - **Brief notification** (decision 0030): `public/sw.js` is the only service worker, registered only by `push.js`. It
   shows one fixed notification on `push` and opens `/brief` on `notificationclick`, nothing else: no `fetch` handler,
   no `caches`, no `importScripts` (`scripts/no-service-worker.test.mjs`). `src/push/` sends each push from the Worker:

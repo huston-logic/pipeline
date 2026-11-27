@@ -18,6 +18,7 @@ const envFor = (db: Db) => ({ DB: db }) as unknown as Env;
 test("the hourly run fires the rules and logs only a fixed event name and counts", async (t) => {
   const logged = t.mock.method(console, "log", () => {});
   const db = await openTestDb();
+  await db.prepare("UPDATE settings SET brief = 1").run();
   const lead = await addDeal(ctxFor(db, "add_deal"), { name: "Pat Example", dealTitle: "Website refresh" });
   await updateDeal(ctxFor(db, "update_deal"), lead.dealId, { stage: "Proposal sent" });
   await addRule(ctxFor(db, "add_rule"), { type: "stage_followup", stage: "proposal_sent", days: 3 });
@@ -39,6 +40,28 @@ test("the hourly run fires the rules and logs only a fixed event name and counts
     { event: "cron_proposals_done", deleted: 0 },
   ]);
   assert.doesNotMatch(JSON.stringify(lines), /Pat|Website/);
+});
+
+test("with the brief off the follow-up rules still fire, and no brief is stored, emailed or pushed; on, it is stored", async (t) => {
+  t.mock.method(console, "log", () => {});
+  const fetched = t.mock.method(globalThis, "fetch", async () => new Response("{}", { status: 200 }));
+  const db = await openTestDb();
+  const lead = await addDeal(ctxFor(db, "add_deal"), { name: "Pat Example", dealTitle: "Website refresh" });
+  await updateDeal(ctxFor(db, "update_deal"), lead.dealId, { stage: "Proposal sent" });
+  await addRule(ctxFor(db, "add_rule"), { type: "stage_followup", stage: "proposal_sent", days: 3 });
+  const ready = { DB: db, BRIEF_SENDING: "on", RESEND_API_KEY: "re_fake_key", BRIEF_FROM: "brief@example.test" } as unknown as Env;
+  const count = async (sql: string) => (await db.prepare(sql).first<{ n: number }>())?.n;
+  assert.equal(await count("SELECT COUNT(*) AS n FROM settings WHERE brief = 0"), 1, "off by default");
+
+  await runScheduled(ready, later(3));
+  assert.equal(await count("SELECT COUNT(*) AS n FROM tasks WHERE title LIKE 'Follow up with%'"), 1, "the rule fired");
+  assert.equal(await count("SELECT COUNT(*) AS n FROM rule_firings"), 1, "its firing is recorded");
+  assert.equal(await count("SELECT COUNT(*) AS n FROM briefs"), 0, "no brief stored");
+  assert.equal(fetched.mock.callCount(), 0, "no email or push attempted");
+
+  await db.prepare("UPDATE settings SET brief = 1").run();
+  await runScheduled(ready, later(3.05));
+  assert.equal(await count("SELECT COUNT(*) AS n FROM briefs"), 1, "on: the brief is stored");
 });
 
 test("a failing job logs a fixed failure event without details, and the other jobs still run", async (t) => {
@@ -97,6 +120,7 @@ test("the hourly run deletes expired import drafts and logs only the count (deci
 test("the brief includes a task the rules created in the same run, and logs no text from it", async (t) => {
   const logged = t.mock.method(console, "log", () => {});
   const db = await openTestDb();
+  await db.prepare("UPDATE settings SET brief = 1").run();
   const lead = await addDeal(ctxFor(db, "add_deal"), { name: "Pat Example", dealTitle: "Website refresh" });
   await updateDeal(ctxFor(db, "update_deal"), lead.dealId, { stage: "Proposal sent" });
   await addRule(ctxFor(db, "add_rule"), { type: "stage_followup", stage: "proposal_sent", days: 3 });

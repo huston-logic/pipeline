@@ -41,7 +41,7 @@ test("the layout adds no <h1> and no script of its own", () => {
 });
 
 const hrefsOf = (out: string) => [...out.matchAll(/<nav[\s\S]*?<\/nav>/g)].flatMap((nav) => [...nav[0].matchAll(/<a href="([^"]+)"/g)].map((m) => m[1]));
-const framed = (current: string, on: { projects?: boolean; campaigns?: boolean }) =>
+const framed = (current: string, on: { projects?: boolean; campaigns?: boolean; brief?: boolean }) =>
   renderPage({ title: "T", description: "D", body: html`<h1>H</h1>`, current, frame: { look: { name: "Pipeline" }, ...on } });
 
 test("with projects and campaigns off the tab bar has four tabs: Today, Deals, People and More", () => {
@@ -93,7 +93,8 @@ test("Deals, Projects and Marketing sections: a deal is in Deals, a project in P
 });
 
 test("the nav lists Today, Deals, People and More, then Time, Templates, Brief, Rules, Changes, Pending changes, What it caught, Export, Import, Notifications and Email logging under More", () => {
-  const out = page("/");
+  assert.ok(!hrefsOf(page("/")).some((href) => href === "/brief" || href === "/notifications"), "off by default: neither item");
+  const out = framed("/", { brief: true });
   assert.deepEqual(hrefsOf(out), [
     "/",
     "/pipeline",

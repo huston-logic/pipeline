@@ -358,6 +358,12 @@ From run 11 on, "On the board only" means nothing applies at once. Small changes
 a timer) wait there too, even if you turned on "Apply small changes" earlier, and so do changes to your rules (add,
 change, pause, resume). Each shows on Pending changes in plain words. "In chat" works as before.
 
+## Run 12: after you update
+
+The daily brief is off after this update, on every copy (migration 0028). Until you turn it on there is no Brief page,
+no Notifications page, no brief email and no phone notification. Follow-up rules keep running as before. To turn it on,
+ask the AI app: "Turn the daily brief on." Stored briefs are kept and show again once it is on.
+
 ## Before a release that has a new migration
 
 Migrations only go forward: there is no "undo" for a database change. Try a release on a copy's preview database

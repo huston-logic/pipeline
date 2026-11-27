@@ -12,7 +12,7 @@ const HOUR = 3_600_000;
 /** Runs the hourly cron for `hours` ticks from `from` and returns the briefs it stored. */
 async function hourly(briefHour: number, from: string, hours: number): Promise<BriefRow[]> {
   const db: Db = await openTestDb();
-  await db.prepare("UPDATE settings SET brief_hour = ?").bind(briefHour).run();
+  await db.prepare("UPDATE settings SET brief_hour = ?, brief = 1").bind(briefHour).run();
   const env = { DB: db } as unknown as Env;
   const start = new Date(from).getTime();
   for (let i = 0; i < hours; i++) await runBrief(env, new Date(start + i * HOUR));

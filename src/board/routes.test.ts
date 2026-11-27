@@ -6,8 +6,8 @@ import { boardRoutes, LIGHTHOUSE_MAX_ROUTES, lighthouseRoutes, moreItems, moreIt
 
 test("Time is in More only when time tracking is on", async () => {
   assert.ok(!moreItems.some((item) => item.href === "/time"), "the fixed list has no Time");
-  const time = { timeTracking: true, campaigns: false };
-  const none = { timeTracking: false, campaigns: false };
+  const time = { timeTracking: true, campaigns: false, brief: true };
+  const none = { timeTracking: false, campaigns: false, brief: true };
   assert.ok(moreItemsFor(time).some((item) => item.href === "/time" && item.label === "Time"));
   assert.ok(!moreItemsFor(none).some((item) => item.href === "/time"));
   assert.deepEqual(moreItemsFor(none), moreItems);

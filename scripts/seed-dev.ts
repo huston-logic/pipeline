@@ -1410,7 +1410,7 @@ export function buildDevSeed(now: Date, tz: string): string {
     ...seed.deals.map((row) => insert("deals", row)),
     ...seed.activities.map((row) => insert("activities", row)),
     // Projects come before the rows that point at them (tasks, their note, their time).
-    "UPDATE settings SET projects = 1 WHERE id = 1;",
+    "UPDATE settings SET projects = 1, brief = 1 WHERE id = 1;",
     ...seed.projects.map((row) => insert("projects", row)),
     ...seed.tasks.map((row) => insert("tasks", row)),
     ...seed.rules.map((row) => insert("rules", row)),

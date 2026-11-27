@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { racing } from "../../tests/helpers/race-db.ts";
 import type { BriefRow, Db } from "../db/db.ts";
-import { openTestDb } from "../db/sqlite-d1.ts";
+import { openTestDb as openBareDb } from "../db/sqlite-d1.ts";
 import type { Env } from "../env.ts";
 import type { Ctx } from "../services/change.ts";
 import { addDeal } from "../services/add-deal.ts";
@@ -22,6 +22,13 @@ const SEVEN = new Date("2026-11-19T15:00:00.000Z");
 const ctxFor = (db: Db, now: Date, tool = "add_deal"): Ctx => ({ db, now, actor: "ai", tool });
 const envFor = (db: Db, extra: Partial<Env> = {}) => ({ DB: db, ...extra }) as unknown as Env;
 const READY = { BRIEF_SENDING: "on", RESEND_API_KEY: "re_fake_key", BRIEF_FROM: "brief@example.test" };
+
+/** A database whose owner turned the daily brief on; it is off by default (migration 0028). */
+async function openTestDb(): Promise<Db> {
+  const db = await openBareDb();
+  await db.prepare("UPDATE settings SET brief = 1").run();
+  return db;
+}
 
 const briefs = async (db: Db) => (await db.prepare("SELECT * FROM briefs ORDER BY local_date").all<BriefRow>()).results;
 const one = async <T>(db: Db, sql: string) => {
@@ -47,6 +54,15 @@ test("shouldRunBrief: once per local day, at or after the brief hour", () => {
   assert.equal(shouldRunBrief(SEVEN, settings, "2026-11-19"), false, "already composed today");
   assert.equal(shouldRunBrief(SEVEN, settings, "2026-11-18"), true, "yesterday's brief does not count");
   assert.equal(shouldRunBrief(new Date("2026-11-20T06:30:00.000Z"), settings, "2026-11-19"), false, "10:30 PM is still the 19th there");
+});
+
+test("with the brief off nothing is composed, stored, emailed or pushed, even at the brief hour with sending on", async (t) => {
+  const calls = mockFetch(t);
+  const db = await openBareDb();
+  await addTask(ctxFor(db, SEVEN, "add_task"), { title: "Buy printer ink", dueAt: "2026-11-18T09:00" });
+  assert.deepEqual(await runBrief(envFor(db, READY), SEVEN), { composed: 0, sent: 0, failed: 0 });
+  assert.equal((await briefs(db)).length, 0);
+  assert.equal(calls.length, 0);
 });
 
 test("the stored brief lists a standalone overdue task", async (t) => {

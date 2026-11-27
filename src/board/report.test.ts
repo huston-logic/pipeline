@@ -108,6 +108,7 @@ test("Previous and Next month links carry only a month, and Next appears once th
 test("a brief composed on the 1st reads back with its Last month section, in latestBrief and on the Brief page", async () => {
   const db = await createTestDb();
   seedMonth(db, "2026-11");
+  db.exec("UPDATE settings SET brief = 1");
   const first = new Date("2026-12-01T15:00:00.000Z"); // 7 AM on Dec 1 in Los Angeles
   assert.deepEqual(await runBrief({ DB: db } as unknown as Env, first), { composed: 1, sent: 0, failed: 0 });
 

@@ -24,7 +24,7 @@ function addCampaign(db: SqliteD1, id: string, name: string, status: string, sub
 test("Marketing is a tab from 60rem up while campaigns are on, and More lists it for phones", async () => {
   assert.ok(!moreItems.some((item) => item.href === "/campaigns"));
   assert.ok(moreItemsFor({ timeTracking: false, campaigns: true }).some((item) => item.href === "/campaigns" && item.label === "Marketing"));
-  assert.deepEqual(moreItemsFor({ timeTracking: false, campaigns: false }), moreItems);
+  assert.deepEqual(moreItemsFor({ timeTracking: false, campaigns: false, brief: true }), moreItems);
   const both = moreItemsFor({ timeTracking: true, campaigns: true }).map((item) => item.href);
   assert.ok(both.indexOf("/campaigns") > both.indexOf("/time"));
 

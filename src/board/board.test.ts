@@ -145,6 +145,7 @@ test("the business name from the settings is in the header and every title; Pipe
 
 test("an empty pipeline: every page answers 200 and says there is nothing yet, and how things get added", async () => {
   const db = await createTestDb();
+  db.exec("UPDATE settings SET brief = 1");
   const expected: Record<string, RegExp[]> = {
     "/": [/No deals yet/, /Nothing to do\./, /talking to your AI app/],
     "/pipeline": [/No deals yet/, /No open deals in this stage/],

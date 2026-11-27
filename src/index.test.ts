@@ -178,7 +178,9 @@ test("scheduled() runs the hourly rules, then the brief, then clears expired imp
   const logged = t.mock.method(console, "log", () => {});
   const failed = t.mock.method(console, "error", () => {});
   const controller = { cron: "0 * * * *", scheduledTime: Date.parse("2026-11-19T18:00:00.000Z"), noRetry() {} } as unknown as ScheduledController;
-  await worker.scheduled(controller, { ...fakeEnv(), DB: await openTestDb() }, ctx);
+  const db = await openTestDb();
+  await db.prepare("UPDATE settings SET brief = 1").run();
+  await worker.scheduled(controller, { ...fakeEnv(), DB: db }, ctx);
   assert.equal(failed.mock.callCount(), 0);
   assert.deepEqual(logged.mock.calls.map((call) => call.arguments[0]), [
     JSON.stringify({ event: "cron_rules_done", rules: 0, fired: 0, alreadyFired: 0, failed: 0, deferred: 0 }),

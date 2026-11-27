@@ -222,9 +222,15 @@ export const templatesItem: NavItem = {
 /** Marketing in More while campaigns are on (decision 0053): the phone's way to it. The side bar already has the tab. */
 export const marketingItem: NavItem = { href: marketingTab.href, label: marketingTab.label, icon: marketingTab.icon, description: marketingTab.description, phoneOnly: true };
 
-/** The More items for this copy: Time, Templates and Marketing, each when on, sit before the Brief. */
-export function moreItemsFor(on: { timeTracking: boolean; campaigns: boolean; projects?: boolean }): NavItem[] {
+/** The two items that exist only while the daily brief is on (run 12). */
+export const BRIEF_ITEM_PATHS: readonly string[] = ["/brief", "/notifications"];
+
+/**
+ * The More items for this copy: Time, Templates and Marketing, each when on, sit before the others; Brief and
+ * Notifications are left out unless `brief` is true.
+ */
+export function moreItemsFor(on: { timeTracking: boolean; campaigns: boolean; projects?: boolean; brief?: boolean }): NavItem[] {
   const extra = [...(on.timeTracking ? [timeItem] : []), ...(on.projects === true ? [templatesItem] : []), ...(on.campaigns ? [marketingItem] : [])];
-  if (extra.length === 0) return moreItems;
-  return [...extra, ...moreItems];
+  const fixed = on.brief === true ? moreItems : moreItems.filter((item) => !BRIEF_ITEM_PATHS.includes(item.href));
+  return [...extra, ...fixed];
 }

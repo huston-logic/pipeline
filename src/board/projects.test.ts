@@ -34,11 +34,11 @@ const descriptionOf = (body: string) => /<meta name="description" content="([^"]
 test("Projects is a tab, and More lists Templates after Time, only while projects are on", async () => {
   assert.ok(!moreItems.some((item) => item.href === "/projects"));
   assert.ok(!moreItemsFor({ timeTracking: true, campaigns: true, projects: true }).some((item) => item.href === "/projects"));
-  const all = moreItemsFor({ timeTracking: true, campaigns: true, projects: true }).map((item) => item.href);
+  const all = moreItemsFor({ timeTracking: true, campaigns: true, projects: true, brief: true }).map((item) => item.href);
   assert.ok(all.indexOf("/time") + 1 === all.indexOf("/templates") && all.indexOf("/templates") + 1 === all.indexOf("/campaigns") && all.indexOf("/campaigns") + 1 === all.indexOf("/brief"));
-  assert.deepEqual(moreItemsFor({ timeTracking: false, campaigns: false, projects: false }), moreItems);
-  assert.deepEqual(moreItemsFor({ timeTracking: false, campaigns: false }), moreItems);
-  assert.deepEqual(moreItemsFor({ timeTracking: false, campaigns: false, projects: true }).filter((item) => item.href !== "/templates"), moreItems);
+  assert.deepEqual(moreItemsFor({ timeTracking: false, campaigns: false, projects: false, brief: true }), moreItems);
+  assert.deepEqual(moreItemsFor({ timeTracking: false, campaigns: false, brief: true }), moreItems);
+  assert.deepEqual(moreItemsFor({ timeTracking: false, campaigns: false, projects: true, brief: true }).filter((item) => item.href !== "/templates"), moreItems);
 
   const on = await projectsDb();
   assert.match((await load(devEnv(on), "/")).body, /<li><a href="\/projects">/);

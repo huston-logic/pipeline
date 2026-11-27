@@ -775,6 +775,10 @@ export function registerWriteTools(server: McpServer, deps: ToolDeps): void {
         timeTracking: z.boolean().optional().describe("true to turn on time tracking (the timer, time entries, work types and rates), false to turn it off."),
         campaigns: z.boolean().optional().describe("true to turn on campaigns (email to a list of people), false to turn them off."),
         projects: z.boolean().optional().describe("true to turn on projects (delivery work after a sale), false to turn them off."),
+        brief: z
+          .boolean()
+          .optional()
+          .describe("Turn the daily brief on or off (off by default): the Brief page, its email and its phone notification. Follow-up rules run either way."),
         postalAddress: z
           .string()
           .nullable()

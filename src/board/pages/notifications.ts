@@ -74,7 +74,8 @@ ${postForm("push-test", `${NOTIFICATIONS_PATH}/test`, form, html`<button class="
 }
 
 /** `publicKey` is this copy's VAPID public key (public by design), or null when push isn't set up. */
-export async function notificationsPage(ctx: PageContext, publicKey: string | null): Promise<string> {
+export async function notificationsPage(ctx: PageContext, publicKey: string | null): Promise<string | null> {
+  if (ctx.brief !== true) return null;
   const note = pushNote(ctx.query);
   const head = html`<h1>Notifications</h1>
 <p class="lede">Get a notification on your phone when the daily brief is ready. It only says the brief is ready.</p>

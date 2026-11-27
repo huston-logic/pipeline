@@ -242,6 +242,8 @@ export function buildFixtureSeed(now: Date, tz: string): string {
     ...tasks.map((row) => insert("tasks", row)),
     ...rules.map((row) => insert("rules", row)),
     ...briefs.map((row) => insert("briefs", row)),
+    // A copy whose owner turned the daily brief on (it is off by default, migration 0028).
+    "UPDATE settings SET brief = 1 WHERE id = 1;",
     "",
   ].join("\n");
 }

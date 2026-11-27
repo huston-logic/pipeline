@@ -41,7 +41,8 @@ ${outside ? html`<p class="note">Lines marked From outside include text from a w
 ${brief.items.length === 0 ? empty("Nothing was due that day.") : sections}`;
 }
 
-export async function briefPage(ctx: PageContext): Promise<string> {
+export async function briefPage(ctx: PageContext): Promise<string | null> {
+  if (ctx.brief !== true) return null;
   const { db } = ctx;
   const settings = await getSettings(db);
   const brief = await latestBrief(db);
