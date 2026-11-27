@@ -1153,6 +1153,24 @@ test("0028 makes the brief a switch: every copy starts off, stored briefs and se
   assert.throws(() => db.exec("UPDATE settings SET brief = 2"), /CHECK/);
 });
 
+test("0029 indexes the audit log by tool and time: the rows stay and the timer read uses the index", async () => {
+  const db = new SqliteD1();
+  await applyMigrations(db, 28);
+  db.exec(FAKE_ROWS.audit_log ?? "");
+  const before = await count(db, "audit_log");
+  assert.ok(before > 0);
+
+  assert.deepEqual(await applyMigrations(db, 29), ["0029_audit_tool_index.sql"]);
+
+  assert.equal(await count(db, "audit_log"), before);
+  const index = await db.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'audit_log_tool_at'").first();
+  assert.ok(index);
+  const plan = await db
+    .prepare("EXPLAIN QUERY PLAN SELECT * FROM audit_log WHERE tool IN ('start_timer', 'stop_timer') ORDER BY at DESC LIMIT 1")
+    .all<{ detail: string }>();
+  assert.match(plan.results.map((row) => row.detail).join("\n"), /audit_log_tool_at/);
+});
+
 /**
  * Fake rows for every table, with only the columns the table had when it was created, so they load at any later
  * version. A migration that adds a table must add its rows here (the test below fails until it does).

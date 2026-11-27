@@ -103,16 +103,16 @@ test("Deals still opens as the board, and its List is one tap away", async () =>
   assert.match(main, /href="\/pipeline\?view=list"/);
 });
 
-test("only read-only list pages are a whole region; form pages and Today are not", async () => {
+test("list and board pages are a whole region; entry and edit forms, Today and the approval setting's page are not", async () => {
   const d = await db();
   const env = devEnv(d);
   const MAIN_REGION = /<main id="main" tabindex="-1" data-region="main">/;
-  for (const path of ["/pipeline", "/pipeline?view=list", "/contacts", "/leads", "/companies", "/people?status=partner", "/projects", "/templates", "/campaigns", "/changes", "/pending", "/more", "/time"]) {
+  for (const path of ["/pipeline", "/pipeline?view=list", "/contacts", "/leads", "/companies", "/people?status=partner", "/projects", "/templates", "/campaigns", "/changes", "/more", "/time"]) {
     const { res, body } = await load(env, path);
     assert.equal(res.status, 200, path);
     assert.match(body, MAIN_REGION, path);
   }
-  for (const path of ["/", "/contacts/new", "/contacts/ct_seed01/edit", "/deals/new", "/import", "/contacts/ct_seed01", "/rules"]) {
+  for (const path of ["/", "/contacts/new", "/contacts/ct_seed01/edit", "/deals/new", "/import", "/contacts/ct_seed01", "/rules", "/pending"]) {
     const { body } = await load(env, path);
     assert.match(body, /<main id="main" tabindex="-1">/, path);
     assert.doesNotMatch(body, MAIN_REGION, path);

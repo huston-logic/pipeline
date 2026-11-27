@@ -390,7 +390,7 @@ async function taskItem(names: Names, id: string, before: Row | null, after: Row
   show(names, "tasks", id, ["title", "deal_id", "contact_id", "project_id", "parent_id", "position", "due_at", "description", ...(after.source === "owner" ? ["source"] : [])]);
   const parent = await planned<TaskRow>(names, "tasks", (after.parent_id as string | null | undefined) ?? null);
   const under = parent ? [{ field: "under", to: `task ${taskTitle(parent)}` }] : [];
-  const about = typeof after.description === "string" ? [{ field: "description", to: cell(names, "tasks", after, "description", after.description) }] : [];
+  const about = typeof after.description === "string" ? [{ field: "description", to: short(cell(names, "tasks", after, "description", after.description), 80) }] : [];
   return {
     record: `New task ${taskTitle(after as unknown as { id: string; title: string })}`,
     id,

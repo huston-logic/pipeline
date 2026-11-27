@@ -184,8 +184,17 @@ test("a record form may be bigger than other board posts: 10,000 accented charac
 
   fields.set("notes", "x".repeat(130 * 1024));
   assert.equal((await post(devEnv(db), "/contacts/ct_seed01/edit", fields, { cookie, token })).res.status, 413, "128 KB is still a limit");
-  const big = await post(devEnv(db), "/deals/dl_seed01/tasks", { title: "x".repeat(17 * 1024) });
+  const big = await post(devEnv(db), "/tasks/quick", { title: "x".repeat(17 * 1024) });
   assert.equal(big.res.status, 413, "other board posts keep 16 KB");
+});
+
+test("an add-task form with a 10,000-character description of accents posts (the routes are big)", async () => {
+  const db = await seededDb();
+  const description = "é".repeat(10_000);
+  for (const path of ["/deals/dl_seed01/tasks", "/contacts/ct_seed01/tasks"]) {
+    const { res } = await post(devEnv(db), path, { title: "Send the plan", description });
+    assert.equal(res.status, 303, path);
+  }
 });
 
 test("clearing an optional field sets it to null", async () => {

@@ -330,7 +330,7 @@ test("settings tools: get shows the owner emails, update changes the rest and re
   const { db, c } = await setup();
   db.exec(`UPDATE settings SET owner_emails = '["owner@example.com"]'`);
   const before = await ok(c, "get_settings");
-  assert.equal(before.headline, "Timezone America/Los_Angeles; the daily brief is off (7:00 AM).");
+  assert.equal(before.headline, "Timezone America/Los_Angeles; the Brief is on (emailing it off, 7:00 AM).");
   assert.deepEqual(before.data, {
     timezone: "America/Los_Angeles",
     briefHour: 7,
@@ -353,7 +353,9 @@ test("settings tools: get shows the owner emails, update changes the rest and re
   });
   const off = await ok(c, "update_settings", { brief: false });
   assert.match(off.headline, /^Updated settings: the Brief off \(change chg_[a-z0-9]{12}\)$/);
-  assert.equal(dataOf<{ brief: boolean }>(await ok(c, "get_settings")).brief, false);
+  const offRead = await ok(c, "get_settings");
+  assert.equal(dataOf<{ brief: boolean }>(offRead).brief, false);
+  assert.equal(offRead.headline, "Timezone America/Los_Angeles; the Brief is off (emailing it off).");
   await ok(c, "update_settings", { brief: true });
 
   const changed = await ok(c, "update_settings", { timezone: "Europe/London", briefHour: 8, briefEmail: "owner@example.com", briefEnabled: true });

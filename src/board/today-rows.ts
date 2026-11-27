@@ -22,7 +22,7 @@ ${emptyCell}
 <summary><span class="task-title">${labelled(deal.title, deal.untrusted_fields.includes("title"))}</span> ${due} <span class="task-belongs"><span class="visually-hidden">, for </span>${labelled(deal.contactName, deal.untrusted_fields.includes("contactName"))}</span></summary>
 <div class="task-open-body">
 <p class="task-for">For ${labelled(deal.contactName, deal.untrusted_fields.includes("contactName"))}</p>
-<p>Next step: ${deal.nextStep ?? "Not written down"}</p>
+<p>Next step: ${deal.nextStep === null ? "Not written down" : labelled(deal.nextStep, deal.untrusted_fields.includes("nextStep"))}</p>
 <p class="task-links"><a href="${dealHref(deal.id)}">Open the deal</a></p>
 </div>
 </details>

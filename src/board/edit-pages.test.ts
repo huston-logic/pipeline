@@ -254,7 +254,7 @@ test("Today shows a standalone task with no Deal or Contact line, and its Done g
 test("empty states say what can be done on the board now", async () => {
   const env = devEnv(await createTestDb());
   const today = (await load(env, "/")).body;
-  assert.match(today, /<p class="empty-title">Nothing to do\.<\/p><p>Add a to-do above, or add a task on a deal or contact page\.<\/p>/);
+  assert.match(today, /<p class="empty-title">Nothing to do\.<\/p><p>Add a task above, or add one on a deal or person page\.<\/p>/);
   assert.match((await load(env, "/pipeline")).body, /Add one with Add a deal, or by talking to your AI app\. Inquiries from your website form/);
   assert.match((await load(env, "/contacts")).body, /Add one with Add a deal, Add contact or Add a lead, or by talking to your AI app\./);
   assert.match(today, /<footer class="app-footer">\n<p>Add leads, edit contacts and deals, and move, log and undo here, or change anything by talking to your AI app\.<\/p>/);

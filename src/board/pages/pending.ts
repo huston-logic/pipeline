@@ -99,7 +99,6 @@ export async function pendingPage(ctx: PageContext): Promise<string> {
   const board = settings.ai_approval === "board";
   const names = listNames(rows, tz);
   return renderPage({
-    region: true,
     title: "Pending changes",
     description: "Changes your AI app proposed that wait for your yes: approve or discard each list, and choose where AI changes are approved.",
     current: PENDING_PATH,

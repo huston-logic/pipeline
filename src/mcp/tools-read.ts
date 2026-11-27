@@ -540,7 +540,7 @@ export function registerReadTools(server: McpServer, deps: ToolDeps): void {
       title: "Read the settings",
       kind: "read",
       description:
-        "The owner's settings: timezone, the daily brief's hour, address and on/off switch, when the last brief was " +
+        "The owner's settings: timezone, whether the Brief is on (brief), and the Brief's email hour, address and emailing switch (briefEnabled), when the last brief was " +
         "composed and when one last went out by email, the board's business name and accent colour (null means the " +
         "defaults), AI edits (review_first or apply_small: whether small record changes apply at once, unless approveIn is board), and the owner emails that may sign in (shown here, never changeable through this server; the " +
         "brief address must be one of them).",
@@ -549,8 +549,9 @@ export function registerReadTools(server: McpServer, deps: ToolDeps): void {
         const settings = await getSettings(db);
         const hour = settings.briefHour;
         const at = `${hour % 12 === 0 ? 12 : hour % 12}:00 ${hour < 12 ? "AM" : "PM"}`;
+        const emailing = `emailing it ${settings.briefEnabled ? "on" : "off"}`;
         return toolResult(
-          `Timezone ${settings.timezone}; the daily brief is ${settings.briefEnabled ? "on" : "off"} (${at}).`,
+          `Timezone ${settings.timezone}; the Brief is ${settings.brief ? "on" : "off"} (${settings.brief ? `${emailing}, ${at}` : emailing}).`,
           settings,
         );
       },

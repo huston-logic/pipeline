@@ -225,7 +225,7 @@ async function saveFacts(ctx: ActionContext): Promise<ActionResult> {
 
 export const PROJECT_ROUTES: Route[] = [
   { path: /^\/projects\/(facts)$/, handle: (ctx) => saveFacts(ctx) },
-  { path: /^\/tasks\/([^/]+)\/subtasks$/, handle: addSubTask },
+  { path: /^\/tasks\/([^/]+)\/subtasks$/, handle: addSubTask, big: true },
   { path: /^\/tasks\/([^/]+)\/move$/, handle: move },
   { path: /^\/projects\/(new)$/, handle: (ctx) => addInternal(ctx), big: true },
   { path: /^\/contacts\/([^/]+)\/projects$/, handle: addOfContact, big: true },
@@ -233,6 +233,6 @@ export const PROJECT_ROUTES: Route[] = [
   { path: /^\/projects\/([^/]+)$/, handle: edit, big: true },
   { path: /^\/projects\/([^/]+)\/status$/, handle: saveStatus },
   { path: /^\/projects\/([^/]+)\/archive$/, handle: archive },
-  { path: /^\/projects\/([^/]+)\/tasks$/, handle: addTaskTo("project") },
+  { path: /^\/projects\/([^/]+)\/tasks$/, handle: addTaskTo("project"), big: true },
   { path: /^\/projects\/([^/]+)\/log$/, handle: logOn("project"), big: true },
 ];

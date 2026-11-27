@@ -42,7 +42,7 @@ hooks and the commands are in `CLAUDE.md`.
   each; `npm run test:lighthouse` (`scripts/lighthouse.mjs`) collects again, at most twice, only the pages whose runs
   crashed (Chrome's `NO_NAVSTART`), then checks scores once. Every new page goes in `boardRoutes`; a new kind of page
   also takes a `lighthouseRoutes` slot. `renderPage`'s `region: true` makes `<main>` a live region (`live.js` swaps it
-  whole after a corner action), set only on read-only list and board pages, never on a page with a form. The file also has the nav (`navItems`: Today, Pipeline, People, Brief, More; `moreItems`: Rules, Changes, Pending changes, What it caught, Export, Import, Notifications, Email logging; `moreItemsFor` adds Time, Projects and Templates, and Campaigns while each is on, decisions 0051, 0053, 0055). Pages are
+  whole after a corner action), set on list and board pages (their search, sort and Move to forms may be replaced by a corner action's refresh), never on a record edit or entry form. The file also has the nav (`navItems`: tabs are Today, Deals, People, Projects (when on), Marketing (when on; under More on phones), More; `moreItemsFor` lists Time, Templates, Brief and Notifications (while the Brief is on), Rules, Changes, Pending changes, What it caught, Export, Import, Email logging, with Time, Templates and Marketing only while each is on, decisions 0051, 0053, 0055). Pages are
   GET and HEAD with `Cache-Control: no-store`; a page that finds no CSRF cookie sets one.
 - **Board edits** (decisions 0014, 0017): every board write path is in the route table in `src/board/actions.ts`; a
   POST to any other path is 405. `src/board/post.ts` checks, in order, the sign-in, the same origin, a form body

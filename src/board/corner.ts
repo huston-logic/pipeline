@@ -70,7 +70,8 @@ ${postForm("corner-form", "/corner/close", form, html`${hidden("change", logged.
 
 function changeNotice({ change, name }: Notice, form: FormContext): Html {
   if (change.undone) return html`<p class="corner-text">${name === null ? "Undone." : `Undone: ${name}`}</p>`;
-  const after = canUndo(change) ? undoForm(change.changeId, form, "corner-form", true) : "";
+  // In place only for changes the corner has a verb for (tasks and timers); any other page may now be stale, so it reloads.
+  const after = canUndo(change) ? undoForm(change.changeId, form, "corner-form", change.tool in VERBS) : "";
   return html`<p class="corner-text">${noticeText(change, name)}</p>
 ${after}`;
 }

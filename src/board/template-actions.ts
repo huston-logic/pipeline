@@ -163,7 +163,7 @@ export const TEMPLATE_ROUTES: Route[] = [
   { path: /^\/templates\/([^/]+)$/, handle: save, big: true },
   { path: /^\/templates\/([^/]+)\/archive$/, handle: archive },
   { path: /^\/templates\/([^/]+)\/duplicate$/, handle: duplicate },
-  { path: /^\/templates\/([^/]+)\/tasks$/, handle: addTask },
+  { path: /^\/templates\/([^/]+)\/tasks$/, handle: addTask, big: true },
   { path: /^\/template-tasks\/([^/]+)$/, handle: editTask },
   { path: /^\/template-tasks\/([^/]+)\/move$/, handle: moveTask },
   { path: /^\/template-tasks\/([^/]+)\/archive$/, handle: removeTask },
