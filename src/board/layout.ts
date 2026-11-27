@@ -4,7 +4,7 @@ import type { SettingsRow } from "../db/db.ts";
 import { isUsableAccent } from "../services/accent.ts";
 import { type Html, html } from "./html.ts";
 import { icon } from "./icons.ts";
-import { moreItemsFor, type NavItem, navItems } from "./routes.ts";
+import { moreItemsFor, type NavItem, navItemsFor } from "./routes.ts";
 import { type CornerState, corner } from "./corner.ts";
 
 /**
@@ -48,7 +48,7 @@ function appTags(look: Look): Html {
  * The corner's forms need the page's token and path, which a page's context already has (`csrf`, `here`); the corner is
  * drawn only when all three are there.
  */
-export type PageFrame = { look: Look; corner?: CornerState; csrf?: string; here?: string; /** Time tracking is on, so More lists Time (decision 0051). */ timeTracking?: boolean; /** Campaigns are on, so More lists Campaigns (decision 0053). */ campaigns?: boolean; /** Projects are on, so More lists Projects (decision 0055). */ projects?: boolean };
+export type PageFrame = { look: Look; corner?: CornerState; csrf?: string; here?: string; /** Time tracking is on, so More lists Time (decision 0051). */ timeTracking?: boolean; /** Campaigns are on, so More lists Campaigns (decision 0053). */ campaigns?: boolean; /** Projects are on, so More lists Projects (decision 0055). */ projects?: boolean; /** The daily brief is on, so More lists Brief and Notifications (run 12). */ brief?: boolean };
 
 export type PageOptions = {
   /** The page's own title; the layout adds " · <business name>". */
@@ -63,6 +63,9 @@ export type PageOptions = {
   /** Loads /board.js (decision 0014): only pages whose forms it enhances. "push" loads /push.js instead, on the
    * Notifications page only (decision 0030). Every page with a `frame` also loads /live.js and /clock.js (decision 0062). */
   script?: boolean | "push";
+  /** Makes <main> a live region (live.js swaps it whole after a corner action). Only for read-only list and board pages:
+   * a page with a form would lose what was typed. */
+  region?: true;
 };
 
 /** /live.js and /clock.js (decision 0062) on every signed-in page, then the page's own script, if any. */
@@ -72,21 +75,23 @@ function scriptTag(script: boolean | "push", framed: boolean): Html | "" {
   return script ? html`${live}<script src="/board.js" defer></script>\n` : live;
 }
 
-/** The nav item a page belongs to without being it: a deal is in Pipeline; a contact, Leads, a new lead, Companies
- * and the People views (/people, decision 0042) are in People; Rules, Changes, Export, Notifications and Email
- * logging are in More. */
+/** The nav item a page belongs to without being it: a deal is in Deals; a contact, a new lead, Accounts and the
+ * People views (/people, decision 0042) are in People (the tab links /leads); a project is in Projects and a campaign
+ * in Marketing; Rules, Changes, Export, Notifications, Templates and Email logging are in More. */
 function sectionOf(path: string): string | null {
   if (path.startsWith("/deals/")) return "/pipeline";
-  const people = ["/companies", "/leads", "/people"];
-  if (path.startsWith("/contacts/") || people.includes(path) || path.startsWith("/leads/")) return "/contacts";
-  const inMore = ["/time/", "/campaigns/", "/projects/", "/templates/"].some((prefix) => path.startsWith(prefix));
-  if (moreItemsFor({ timeTracking: true, campaigns: true, projects: true }).some((item) => item.href === path) || inMore) {
+  if (path.startsWith("/contacts/") || ["/contacts", "/companies", "/people"].includes(path) || path.startsWith("/leads/")) return "/leads";
+  if (path.startsWith("/projects/")) return "/projects";
+  if (path.startsWith("/campaigns/")) return "/campaigns";
+  const inMore = ["/time/", "/templates/"].some((prefix) => path.startsWith(prefix));
+  if (moreItemsFor({ timeTracking: true, campaigns: true, projects: true, brief: true }).some((item) => item.href === path && item.phoneOnly !== true) || inMore) {
     return "/more";
   }
   return null;
 }
 
-function link(item: NavItem, current: string | undefined): Html {
+/** `phoneCurrent` marks the tab that stands in for a page whose own tab is hidden on phones (Marketing under More). */
+function link(item: NavItem, current: string | undefined, phoneCurrent = false): Html {
   const state =
     current === undefined
       ? ""
@@ -94,18 +99,24 @@ function link(item: NavItem, current: string | undefined): Html {
         ? html` aria-current="page"`
         : item.href === sectionOf(current)
           ? html` aria-current="true"`
-          : "";
+          : phoneCurrent
+            ? html` class="is-current-phone" aria-current="true"`
+            : "";
   const hint = item.hint === undefined ? "" : html`<span class="visually-hidden">${item.hint}</span>`;
   return html`<a href="${item.href}"${state}>${icon(item.icon)}<span class="nav-label">${item.label}</span>${hint}</a>`;
 }
 
-function nav(current: string | undefined, on: { timeTracking: boolean; campaigns: boolean; projects: boolean }): Html {
-  const items = navItems.map((item) =>
+function nav(current: string | undefined, on: { timeTracking: boolean; campaigns: boolean; projects: boolean; brief: boolean }): Html {
+  const items = navItemsFor(on).map((item) =>
     item.href === "/more"
-      ? html`<li class="nav-more">${link(item, current)}
-<ul class="nav-sub">${moreItemsFor(on).map((sub) => html`<li>${link(sub, current)}</li>`)}</ul>
+      ? html`<li class="nav-more">${link(item, current, on.campaigns && current !== undefined && (current === "/campaigns" || current.startsWith("/campaigns/")))}
+<ul class="nav-sub">${moreItemsFor(on)
+          .filter((sub) => sub.phoneOnly !== true)
+          .map((sub) => html`<li>${link(sub, current)}</li>`)}</ul>
 </li>`
-      : html`<li>${link(item, current)}</li>`,
+      : item.wideOnly === true
+        ? html`<li class="nav-wide-only">${link(item, current)}</li>`
+        : html`<li>${link(item, current)}</li>`,
   );
   return html`<nav class="app-nav" aria-label="Board pages">
 <ul class="nav-main">
@@ -123,8 +134,9 @@ function cornerOf(frame: PageFrame | undefined): Html | "" {
   return corner(frame.corner, { csrf: frame.csrf, here: frame.here });
 }
 
-export function renderPage({ title, description, body, current, frame, script = false }: PageOptions): string {
+export function renderPage({ title, description, body, current, frame, script = false, region }: PageOptions): string {
   const name = frame?.look.name ?? DEFAULT_NAME;
+  const mainRegion = region === true ? html` data-region="main"` : "";
   return html`<!doctype html>
 <html lang="en">
 <head>
@@ -140,10 +152,10 @@ ${frame ? html`<link rel="stylesheet" href="/theme.css">\n${appTags(frame.look)}
 <div class="app">
 <header class="app-header">
 <a class="brand" href="/"><span class="brand-mark" aria-hidden="true">${initial(name)}</span><span class="brand-name">${name}</span></a>
-${nav(current, { timeTracking: frame?.timeTracking === true, campaigns: frame?.campaigns === true, projects: frame?.projects === true })}
+${nav(current, { timeTracking: frame?.timeTracking === true, campaigns: frame?.campaigns === true, projects: frame?.projects === true, brief: frame?.brief === true })}
 </header>
 <div class="app-body">
-${cornerOf(frame)}<main id="main" tabindex="-1">
+${cornerOf(frame)}<main id="main" tabindex="-1"${mainRegion}>
 ${body}
 </main>
 <footer class="app-footer">

@@ -38,14 +38,14 @@ export const IMPORT_TEXT: Record<ImportModuleKey, ImportText> = {
     group: "Deal details",
     lede:
       "Bring in deals from a spreadsheet saved as a CSV file. Each deal goes to a person on file, found by contact id, email, or " +
-      "name and business, or adds them. You match the columns and check the result before anything is saved.",
+      "name and account, or adds them. You match the columns and check the result before anything is saved.",
     descriptions: {
       start: "Bring deals in from a spreadsheet: choose a CSV file or paste its rows, then match the columns.",
       map: "Match each column of the file to a deal detail or a field, or leave it out.",
       check: "What the import would do: new deals and people, details filled in, closed deals and lines skipped.",
       done: "The import's counts: new deals and people, details filled in, lines skipped. Undo takes it all back.",
     },
-    back: () => ({ href: "/pipeline", label: "See your pipeline" }),
+    back: () => ({ href: "/pipeline", label: "See your deals" }),
   },
   tasks: {
     heading: "Import tasks",

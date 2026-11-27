@@ -74,10 +74,10 @@ test("addLead with only a business names the lead after it; notes become a note 
   assert.equal(note.actor, "ai");
 });
 
-test("addLead needs a name or a business", async () => {
+test("addLead needs a name or an account", async () => {
   const db = await openTestDb();
-  await assert.rejects(addLead(ctxFor(db), {}), /^UserError: A lead needs a name or a business\.$/);
-  await assert.rejects(addLead(ctxFor(db), { name: "  ", business: " " }), /^UserError: A lead needs a name or a business\.$/);
+  await assert.rejects(addLead(ctxFor(db), {}), /^UserError: A lead needs a name or an account\.$/);
+  await assert.rejects(addLead(ctxFor(db), { name: "  ", business: " " }), /^UserError: A lead needs a name or an account\.$/);
   assert.equal((await contacts(db)).length, 0);
 });
 
@@ -109,7 +109,7 @@ test("addLead refuses a business already on file, ignoring case and spaces, unle
   await assert.rejects(
     addLead(ctxFor(db), { name: "Jo Example", business: "acme plumbing" }),
     new RegExp(
-      `^UserError: Sam Example \\(${first.contactId}\\) already has that business\\. Say allowDuplicate: true to add another lead anyway\\.$`,
+      `^UserError: Sam Example \\(${first.contactId}\\) already has that account\\. Say allowDuplicate: true to add another lead anyway\\.$`,
     ),
   );
   assert.equal((await contacts(db)).length, 1);

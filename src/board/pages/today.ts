@@ -125,7 +125,7 @@ ${quickAddForm(ctx)}
 </div>
 <div data-region="today-list" data-count-text="${count(rowCount, "to-do")}">
 ${taskTools(view)}
-${nothing ? empty("Nothing to do.", "Add a to-do above, or add a task on a deal or contact page.") : await groupSections(groups, ctx, tz)}
+${nothing ? empty("Nothing to do.", "Add a task above, or add one on a deal or person page.") : await groupSections(groups, ctx, tz)}
 </div>
 <div class="today-foot">${addButtons("today", ["deal", "lead", "import"], true)}</div>`,
   });

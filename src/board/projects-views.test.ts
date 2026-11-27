@@ -72,9 +72,9 @@ test("a view's table has a caption, scoped headers, aria-sort, custom field colu
   assert.match(body, /<table class="data-table">/);
   assert.match(body, /<caption class="visually-hidden">Wide: 4 projects, soonest target date first\.<\/caption>/);
   for (const header of ["Project", "Status", "Person", "Deal", "Start", "Target", "Open tasks", "Phase"]) {
-    assert.match(body, new RegExp(`<th scope="col"[^>]*>(?:<a [^>]*>)?${header}`), header);
+    assert.match(body, new RegExp(`<th scope="col"[^>]*>(?:<a [^>]*><span class="visually-hidden">Sort by </span>)?${header}`), header);
   }
-  assert.match(body, /<th scope="col" aria-sort="ascending"><a href="[^"]*sort=target-desc[^"]*">Target/);
+  assert.match(body, /<th scope="col" aria-sort="ascending"><a href="[^"]*sort=target-desc[^"]*"><span class="visually-hidden">Sort by <\/span>Target/);
   assert.match(body, /<th scope="row"><a href="\/projects\/pj_retro">Retrofit<\/a><\/th>/);
   assert.match(body, /<td>Build<\/td>/);
   assert.match(body, /<td>Internal<\/td>/);

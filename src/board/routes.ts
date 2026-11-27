@@ -36,7 +36,7 @@ export type IconName =
 
 /** `hint` is read out after the label but not shown, where the label alone says too little ("More" alone fails
  * Lighthouse's descriptive-link-text audit). */
-export type NavItem = { href: string; label: string; icon: IconName; description: string; hint?: string };
+export type NavItem = { href: string; label: string; icon: IconName; description: string; hint?: string; /** A tab shown from 60rem up only. */ wideOnly?: boolean; /** A More item the side bar leaves out because it has the tab. */ phoneOnly?: boolean };
 
 export const boardRoutes: string[] = [
   "/",
@@ -52,7 +52,7 @@ export const boardRoutes: string[] = [
   "/people?status=partner",
   "/people?view=vw_seed01",
   "/pipeline?view=vw_seed02",
-  "/contacts?layout=table",
+  "/contacts?layout=cards",
   "/people?view=vw_seed01&layout=table",
   "/brief",
   "/more",
@@ -153,20 +153,44 @@ export const lighthouseRoutes: string[] = [
 /** The phone tab bar and the top of the side bar, in this order. */
 export const navItems: NavItem[] = [
   { href: "/", label: "Today", icon: "today", description: "What is overdue and due today." },
-  { href: "/pipeline", label: "Pipeline", icon: "pipeline", description: "Open deals by stage." },
-  { href: "/contacts", label: "People", icon: "contacts", description: "Contacts, leads and companies." },
-  { href: "/brief", label: "Brief", icon: "brief", description: "The latest daily brief." },
+  { href: "/pipeline", label: "Deals", icon: "pipeline", description: "Open deals by stage." },
+  { href: "/leads", label: "People", icon: "contacts", description: "Leads, contacts and accounts." },
   {
     href: "/more",
     label: "More",
     icon: "more",
-    description: "Rules, changes, the monthly report, export, import, notifications and email logging.",
+    description: "Rules, changes, the monthly report, export, import and email logging.",
     hint: " pages",
   },
 ];
 
+/** Projects, a tab only while projects are on (decision 0055, run 12). */
+export const projectsTab: NavItem = {
+  href: "/projects",
+  label: "Projects",
+  icon: "projects",
+  description: "Delivery work after a sale: each project's tasks, notes and time.",
+};
+
+/** Marketing, a tab only while campaigns are on and only from 60rem up: six tabs leave it too little room on a phone,
+ * where More lists it instead (run 12, ruling 10). */
+export const marketingTab: NavItem = {
+  href: "/campaigns",
+  label: "Marketing",
+  icon: "campaigns",
+  description: "Email newsletters and invites: drafts, review, sending and results.",
+  wideOnly: true,
+};
+
+/** The tabs for this copy: Today, Deals, People, Projects and Marketing when each is on, then More. */
+export function navItemsFor(on: { projects: boolean; campaigns: boolean }): NavItem[] {
+  const more = navItems.slice(-1);
+  return [...navItems.slice(0, -1), ...(on.projects ? [projectsTab] : []), ...(on.campaigns ? [marketingTab] : []), ...more];
+}
+
 /** Under More: on the /more page on phones, listed in the side bar on wide screens. */
 export const moreItems: NavItem[] = [
+  { href: "/brief", label: "Brief", icon: "brief", description: "The latest daily brief." },
   { href: "/rules", label: "Rules", icon: "rules", description: "Your follow-up rules, and whether each one is on." },
   { href: "/changes", label: "Changes", icon: "changes", description: "Every change from the last 30 days, with its change id." },
   { href: "/pending", label: "Pending changes", icon: "changes", description: "Changes your AI app proposed, waiting for your yes." },
@@ -185,14 +209,6 @@ export const timeItem: NavItem = {
   description: "The week's time entries and totals, adding time by hand, and the month's CSV.",
 };
 
-/** Projects, under More only while projects are on (decision 0055). */
-export const projectsItem: NavItem = {
-  href: "/projects",
-  label: "Projects",
-  icon: "projects",
-  description: "Delivery work after a sale: each project's tasks, notes and time.",
-};
-
 /** Templates, under More only while projects are on: task lists a new project can start from. */
 export const templatesItem: NavItem = {
   href: "/templates",
@@ -201,18 +217,18 @@ export const templatesItem: NavItem = {
   description: "Task lists a new project can start from.",
 };
 
-/** Campaigns, under More only while campaigns are on (decision 0053). */
-export const campaignsItem: NavItem = {
-  href: "/campaigns",
-  label: "Campaigns",
-  icon: "campaigns",
-  description: "Email newsletters and invites: drafts, review, sending and results.",
-};
+/** Marketing in More while campaigns are on (decision 0053): the phone's way to it. The side bar already has the tab. */
+export const marketingItem: NavItem = { href: marketingTab.href, label: marketingTab.label, icon: marketingTab.icon, description: marketingTab.description, phoneOnly: true };
 
-/** The More items for this copy: Time, Projects, then Campaigns, sit after "What it caught" when each is on. */
-export function moreItemsFor(on: { timeTracking: boolean; campaigns: boolean; projects?: boolean }): NavItem[] {
-  const extra = [...(on.timeTracking ? [timeItem] : []), ...(on.projects === true ? [projectsItem, templatesItem] : []), ...(on.campaigns ? [campaignsItem] : [])];
-  if (extra.length === 0) return moreItems;
-  const at = moreItems.findIndex((item) => item.href === "/report") + 1;
-  return [...moreItems.slice(0, at), ...extra, ...moreItems.slice(at)];
+/** The two items that exist only while the daily brief is on (run 12). */
+export const BRIEF_ITEM_PATHS: readonly string[] = ["/brief", "/notifications"];
+
+/**
+ * The More items for this copy: Time, Templates and Marketing, each when on, sit before the others; Brief and
+ * Notifications are left out unless `brief` is true.
+ */
+export function moreItemsFor(on: { timeTracking: boolean; campaigns: boolean; projects?: boolean; brief?: boolean }): NavItem[] {
+  const extra = [...(on.timeTracking ? [timeItem] : []), ...(on.projects === true ? [templatesItem] : []), ...(on.campaigns ? [marketingItem] : [])];
+  const fixed = on.brief === true ? moreItems : moreItems.filter((item) => !BRIEF_ITEM_PATHS.includes(item.href));
+  return [...extra, ...fixed];
 }

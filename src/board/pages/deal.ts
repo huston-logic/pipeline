@@ -32,7 +32,7 @@ ${pairs([
   text("Name", "name", contact.name),
   text("Email", "email", contact.email),
   text("Phone", "phone", contact.phone),
-  text("Business", "business", contact.business),
+  text("Account", "business", contact.business),
   text("Source", "source", contact.source),
   text("Notes", "notes", contact.notes),
   ...customRows(contact.fields, labels, outside),
@@ -178,7 +178,7 @@ export async function dealPage(ctx: PageContext, id: string): Promise<string | n
     current: `/deals/${brief.deal.id}`,
     frame: ctx,
     script: true,
-    body: html`<p class="back"><a href="/pipeline">Back to the pipeline</a></p>
+    body: html`<p class="back"><a href="/pipeline">Back to deals</a></p>
 <h1>${labelled(brief.deal.title, titleOutside)}</h1>
 <p class="lede deal-status">${tag(brief.stage.label)} <span>${STATUS[brief.deal.status]}</span></p>
 ${note}

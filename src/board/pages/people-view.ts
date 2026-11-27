@@ -60,7 +60,7 @@ export async function peopleViewPage(ctx: PageContext): Promise<string | null> {
     const words = filterWords("people", filters, labels);
     const shows = `${words.length === 0 ? "Everyone" : `Shows ${words.join(", ")}`}; ${sortLine(sort)}.`;
     const shown = { name: view.name, shows, layout, sort, columns: parseColumns("people", view.columns), fields: labels.fields, tz };
-    return page(ctx, { kind: "saved", id: view.id }, layout, {
+    return page(ctx, { kind: "saved", id: view.id }, layout, "cards", {
       title: view.name,
       description: "A saved view of your people.",
       body: results(ctx, shown, list, empty("Nobody matches this view yet.", "Ask your AI app to change its filters, or give people the details it looks for.")),
@@ -71,20 +71,21 @@ export async function peopleViewPage(ctx: PageContext): Promise<string | null> {
   const status = await liveStatus(db, statusKey);
   if (status === null) return null;
   const sort = sortFromQuery("people", query, DEFAULT_SORT.people);
-  const layout = pickLayout(query, "cards");
+  const layout = pickLayout(query, "table");
   const [list, labels] = await Promise.all([peopleInView(db, now, tz, { person_status: status.key }, sort, VIEW_ROW_LIMIT), filterLabels(db)]);
   const shown = { name: status.label, shows: `Everyone whose person status is ${status.label}, ${sortLine(sort)}.`, layout, sort, columns: [...DEFAULT_COLUMNS.people], fields: labels.fields, tz };
-  return page(ctx, { kind: "status", id: status.key }, layout, {
+  return page(ctx, { kind: "status", id: status.key }, layout, "table", {
     title: status.label,
     description: "Everyone with this person status.",
     body: results(ctx, shown, list, empty(`Nobody has the person status ${status.label} yet.`, "Set it on a person's Edit page, or by talking to your AI app.")),
   });
 }
 
-async function page(ctx: PageContext, current: SwitchCurrent, layout: Layout, view: { title: string; description: string; body: Html }): Promise<string> {
+async function page(ctx: PageContext, current: SwitchCurrent, layout: Layout, usual: Layout, view: { title: string; description: string; body: Html }): Promise<string> {
   return renderPage({
-    title: layoutTitle(view.title, layout, "cards"),
-    description: layoutDescription(view.description, layout, "cards"),
+    region: true,
+    title: layoutTitle(view.title, layout, usual),
+    description: layoutDescription(view.description, layout, usual),
     current: PEOPLE_VIEW_PATH,
     frame: ctx,
     body: html`<h1>${view.title}</h1>

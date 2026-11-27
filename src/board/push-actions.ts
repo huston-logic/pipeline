@@ -1,6 +1,7 @@
 // The Notifications page's write routes (decision 0030), listed in the route table in actions.ts so post.ts runs the
 // sign-in, origin, body and CSRF checks first (decision 0017). Turn on and both Turn offs are audited owner changes; Send a
 // test pushes to every device that is on and comes back with counts only.
+import { getSettings } from "../db/queries.ts";
 import { isPushId } from "../ids.ts";
 import { sendBriefPush } from "../push/send.ts";
 import { removePush, removePushByEndpoint, subscribePush } from "../push/subscriptions.ts";
@@ -61,9 +62,14 @@ async function turnOffHere(ctx: ActionContext): Promise<ActionResult> {
   }
 }
 
+/** While the daily brief is off the Notifications page is a 404, so its posts are too. */
+const whileBriefOn =
+  (handle: Route["handle"]): Route["handle"] =>
+  async (ctx, id) => ((await getSettings(ctx.db)).brief === 1 ? handle(ctx, id) : notFound(ctx));
+
 export const PUSH_ROUTES: Route[] = [
-  { path: /^\/notifications\/(on)$/, handle: (ctx) => turnOn(ctx) },
-  { path: /^\/notifications\/(off)$/, handle: (ctx) => turnOffHere(ctx) },
-  { path: /^\/notifications\/(test)$/, handle: (ctx) => sendTest(ctx) },
-  { path: /^\/notifications\/([^/]+)\/off$/, handle: turnOff },
+  { path: /^\/notifications\/(on)$/, handle: whileBriefOn((ctx) => turnOn(ctx)) },
+  { path: /^\/notifications\/(off)$/, handle: whileBriefOn((ctx) => turnOffHere(ctx)) },
+  { path: /^\/notifications\/(test)$/, handle: whileBriefOn((ctx) => sendTest(ctx)) },
+  { path: /^\/notifications\/([^/]+)\/off$/, handle: whileBriefOn(turnOff) },
 ];

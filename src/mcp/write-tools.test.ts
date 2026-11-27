@@ -61,7 +61,7 @@ test("add_lead adds a person with status New and no deal; add_deal for that lead
   assert.equal(data.dealId, undefined);
   assert.equal(await deals(), before, "no deal");
 
-  assert.match(await fails(c, "add_lead", { name: "Jo Example", business: " acme  plumbing" }), /already has that business\. Say allowDuplicate: true/);
+  assert.match(await fails(c, "add_lead", { name: "Jo Example", business: " acme  plumbing" }), /already has that account\. Say allowDuplicate: true/);
   await approved(c, "add_lead", { name: "Jo Example", business: " acme  plumbing", allowDuplicate: true });
   assert.match(
     await fails(c, "add_lead", { name: "Pat", email: "pat@example.com" }),
@@ -330,7 +330,7 @@ test("settings tools: get shows the owner emails, update changes the rest and re
   const { db, c } = await setup();
   db.exec(`UPDATE settings SET owner_emails = '["owner@example.com"]'`);
   const before = await ok(c, "get_settings");
-  assert.equal(before.headline, "Timezone America/Los_Angeles; the daily brief is off (7:00 AM).");
+  assert.equal(before.headline, "Timezone America/Los_Angeles; the Brief is on (emailing it off, 7:00 AM).");
   assert.deepEqual(before.data, {
     timezone: "America/Los_Angeles",
     briefHour: 7,
@@ -344,15 +344,22 @@ test("settings tools: get shows the owner emails, update changes the rest and re
     timeTracking: false,
     campaigns: false,
     projects: false,
+    brief: true, // the fixture seed's copy has the brief switch on
     postalAddress: null,
     campaignDailyLimit: 90,
     projectFacts: ["status", "person", "deal", "start", "target"],
     lastBriefAt: "2026-11-18T17:30:00.000Z",
     lastBriefSentAt: null,
   });
+  const off = await ok(c, "update_settings", { brief: false });
+  assert.match(off.headline, /^Updated settings: the Brief off \(change chg_[a-z0-9]{12}\)$/);
+  const offRead = await ok(c, "get_settings");
+  assert.equal(dataOf<{ brief: boolean }>(offRead).brief, false);
+  assert.equal(offRead.headline, "Timezone America/Los_Angeles; the Brief is off (emailing it off).");
+  await ok(c, "update_settings", { brief: true });
 
   const changed = await ok(c, "update_settings", { timezone: "Europe/London", briefHour: 8, briefEmail: "owner@example.com", briefEnabled: true });
-  assert.match(changed.headline, /^Updated settings: timezone to Europe\/London, brief hour to 8:00, brief email to owner@example\.com and the daily brief on \(change chg_[a-z0-9]{12}\)$/);
+  assert.match(changed.headline, /^Updated settings: timezone to Europe\/London, brief hour to 8:00, brief email to owner@example\.com and emailing the brief on \(change chg_[a-z0-9]{12}\)$/);
   assert.match(await fails(c, "update_settings", { briefEmail: "me@example.com" }), /The brief can only go to an owner email \(owner@example\.com\)/);
   assert.match(await fails(c, "update_settings", { timezone: "Mars/Base" }), /isn't a timezone I know/);
   assert.match(await fails(c, "update_settings", { briefHour: 25 }), /"briefHour" must be at most 23/);

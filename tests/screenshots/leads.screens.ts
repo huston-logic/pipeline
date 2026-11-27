@@ -31,11 +31,11 @@ test("Add a lead, a lead's page, Qualify, then Undo", async ({ page }, testInfo)
   await page.goto("/leads/new?from=leads");
   await check(page, "lead-new");
   await page.getByRole("button", { name: "Add the lead" }).click();
-  await expect(page.getByRole("alert")).toContainText("Give a name or a business");
+  await expect(page.getByRole("alert")).toContainText("Give a name or an account");
   await check(page, "lead-new-error");
 
   await page.getByLabel("Name").fill(name);
-  await page.getByLabel("Business").fill(`Example Signs ${testInfo.project.name}`);
+  await page.getByLabel("Account").fill(`Example Signs ${testInfo.project.name}`);
   await page.getByLabel("Phone").fill("555-0123");
   await page.getByRole("button", { name: "Add the lead" }).click();
   await expect(page.getByRole("status")).toContainText(`Added lead ${name} (New)`);

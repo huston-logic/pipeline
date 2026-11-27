@@ -234,6 +234,8 @@ export async function resolveColumns(db: Db, module: ViewModule, input: readonly
   for (const raw of input) {
     const text = raw.trim();
     let key = Object.keys(builtIn).find((column) => column === text || sameText(builtIn[column] ?? "", text));
+    // The people column was headed "Company" before run 12; saved instructions that say so still work.
+    if (key === undefined && module === "people" && sameText(text, "Company")) key = "business";
     if (key === undefined) {
       const ref = text.startsWith(FIELD_COLUMN) ? text.slice(FIELD_COLUMN.length) : text;
       let def: FieldDefRow;
@@ -530,7 +532,7 @@ function statusItem(key: string, label: string): ViewItem {
     shows: `person status ${label}`,
     sort: DEFAULT_SORT.people.key,
     direction: DEFAULT_SORT.people.dir,
-    layout: "cards",
+    layout: "table",
     columns: [...DEFAULT_COLUMNS.people],
     position: null,
     archived: false,

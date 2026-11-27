@@ -104,7 +104,7 @@ async function newContact(ctx: ActionContext): Promise<ActionResult> {
       const message =
         error.by === "email"
           ? `${error.who} already uses that email, so they are on file already.`
-          : `${error.who} already has that business. To add another lead anyway, use Add a lead and tick Add anyway.`;
+          : `${error.who} already has that account. To add another lead anyway, use Add a lead and tick Add anyway.`;
       fieldError(collected, error.by, message);
       return refused();
     }
@@ -347,8 +347,8 @@ export const EDIT_ROUTES: Route[] = [
   { path: /^\/contacts\/(new)$/, handle: (ctx) => newContact(ctx), big: true },
   { path: /^\/contacts\/([^/]+)\/edit$/, handle: editContact, big: true },
   { path: /^\/deals\/([^/]+)\/edit$/, handle: editDeal, big: true },
-  { path: /^\/deals\/([^/]+)\/tasks$/, handle: addTaskTo("deal") },
-  { path: /^\/contacts\/([^/]+)\/tasks$/, handle: addTaskTo("contact") },
+  { path: /^\/deals\/([^/]+)\/tasks$/, handle: addTaskTo("deal"), big: true },
+  { path: /^\/contacts\/([^/]+)\/tasks$/, handle: addTaskTo("contact"), big: true },
   { path: /^\/tasks\/(quick)$/, handle: (ctx) => quickAdd(ctx) },
   { path: /^\/deals\/([^/]+)\/log$/, handle: logOn("deal"), big: true },
   { path: /^\/contacts\/([^/]+)\/log$/, handle: logOn("contact"), big: true },

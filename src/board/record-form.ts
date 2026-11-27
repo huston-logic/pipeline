@@ -91,7 +91,7 @@ export function contactSpecs(defs: FieldDefRow[], options: { notes?: boolean; ba
     line("name", "Name", "text", "contact", { required: true, requiredMessage: "Give the person's name." }),
     line("email", "Email", "email", "contact"),
     line("phone", "Phone", "tel", "contact"),
-    line("business", "Company", "text", "contact"),
+    line("business", "Account", "text", "contact"),
     line("source", "Source", "text", "contact", { hint: "Where they came from, for example a referral." }),
     ...status,
     ...(notes ? [line("notes", "Notes", "textarea", "contact")] : []),
@@ -127,11 +127,11 @@ export function personDealSpecs(defs: FieldDefRow[]): Spec[] {
   ];
 }
 
-/** Add a lead (/leads/new, add_lead): a name or a business is enough; notes are logged as a note on the person. */
+/** Add a lead (/leads/new, add_lead): a name or an account is enough; notes are logged as a note on the person. */
 export function newLeadSpecs(defs: FieldDefRow[]): Spec[] {
   return [
-    line("name", "Name", "text", "contact", { hint: "A name or a business is enough." }),
-    line("business", "Business", "text", "contact"),
+    line("name", "Name", "text", "contact", { hint: "A name or an account is enough." }),
+    line("business", "Account", "text", "contact"),
     line("email", "Email", "email", "contact"),
     line("phone", "Phone", "tel", "contact"),
     line("source", "Source", "text", "contact", { hint: "Where they came from, for example a referral." }),

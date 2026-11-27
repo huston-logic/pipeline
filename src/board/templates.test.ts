@@ -27,9 +27,9 @@ async function make(db: SqliteD1, name: string, tasks: TemplateTaskInput[] = [])
 const toolOf = async (db: SqliteD1, location: string) => (await auditOf(db, changeIdOf(location)))?.tool;
 const count = (body: string, text: string) => body.split(text).length - 1;
 
-test("More lists Templates after Projects only while projects are on, and the paths are in boardRoutes", async () => {
-  const hrefs = moreItemsFor({ timeTracking: false, campaigns: false, projects: true }).map((item) => item.href);
-  assert.equal(hrefs.indexOf("/templates"), hrefs.indexOf("/projects") + 1);
+test("More lists Templates before Brief only while projects are on, and the paths are in boardRoutes", async () => {
+  const hrefs = moreItemsFor({ timeTracking: false, campaigns: false, projects: true, brief: true }).map((item) => item.href);
+  assert.equal(hrefs.indexOf("/templates") + 1, hrefs.indexOf("/brief"));
   assert.ok(!moreItemsFor({ timeTracking: false, campaigns: false, projects: false }).some((item) => item.href === "/templates"));
   for (const path of ["/templates", "/templates?show=archived", "/templates/new", "/templates/tp_seed01", "/templates/tp_seed01/tasks/tt_seed01/edit"]) {
     assert.ok(boardRoutes.includes(path), path);
@@ -60,9 +60,13 @@ test("the list shows live templates with the first line and task count; Archived
   assert.equal(res.status, 200);
   assert.equal(h1Count(body), 1);
   assert.match(body, /Website build/);
-  assert.match(body, /First line\./);
+  assert.match(body, /<td>2<\/td><td>First line\.<\/td>/);
   assert.doesNotMatch(body, /Second line/);
-  assert.match(body, /2 tasks/);
+  const cards = (await load(env, "/templates?layout=cards")).body;
+  assert.match(cards, /<li class="card">/);
+  assert.match(cards, /First line\./);
+  assert.doesNotMatch(cards, /Second line/);
+  assert.match(cards, /2 tasks/);
   assert.doesNotMatch(body, /Old plan/);
   assert.match(body, /href="\/templates\/new"/);
   assert.match(body, /href="\/templates\?show=archived"/);

@@ -49,6 +49,7 @@ test("live.js stays small and plain: under 3 KB gzipped, no eval, no HTML string
   assert.match(script, /fetch\(form\.action, \{\s*method: "POST",\s*headers: \{ "X-Live": "1" \},[^]*credentials: "same-origin",?\s*\}\)/, "the form's own action, same origin");
   assert.match(script, /fetch\(url, \{ credentials: "same-origin" \}\)/, "a GET of a board path");
   assert.match(script, /new DOMParser\(\)\.parseFromString\(/);
+  assert.match(script, /text = await read\(to\)\.catch\(\(\) => null\);\s*if \(text === null\) return location\.assign\(to\)/, "after a 204 a failed page fetch reloads; it never says Couldn't save");
 });
 
 test("clock.js (the timer clock and the note's expiry, split from live.js) stays small and plain and never fetches", () => {

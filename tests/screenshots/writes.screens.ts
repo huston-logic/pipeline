@@ -87,8 +87,10 @@ test("drag a card to the next column: it moves, the banner shows, and Undo puts 
   await expect(page).toHaveURL(/\/pipeline\?change=chg_/);
   await expect(page.locator(`[data-deal="${dealId}"]`)).toHaveAttribute("data-stage", to);
   await check(page, "write-after-drag");
-  await page.getByRole("status").getByRole("button", { name: /^Undo/ }).click();
-  await expect(page.getByRole("status")).toContainText("Undone");
+  // The change banner is in the status corner now, not under the heading.
+  await page.locator(".corner-notice").getByRole("button", { name: /^Undo/ }).click();
+  await expect(page.locator(".corner-notice")).toContainText("Undone");
+  // The Undo is in place (decision 0062) and the page refreshes whole, with no reload.
   await expect(page.locator(`[data-deal="${dealId}"]`)).toHaveAttribute("data-stage", from);
 
   // Dropping on Won goes through the same confirm step as the form.

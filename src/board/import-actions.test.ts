@@ -361,7 +361,7 @@ test("from Leads, new people come in as leads; possible duplicates are left out 
   assert.match(mapping.body, /<input id="import-as-leads" name="as" type="radio" value="leads" checked>/);
   assert.equal((await matchColumns(env, session, id, {}, "leads")).res.status, 303);
   const { preview, res } = await applyImport(env, session, id, { allow_duplicates: "yes" });
-  assert.match(preview, /<h2 id="import-duplicates">Possible duplicates<\/h2>[\s\S]*<li>Line 2: the same business as <a href="\/contacts\/ct_seed01">Pat Example<\/a><\/li>/);
+  assert.match(preview, /<h2 id="import-duplicates">Possible duplicates<\/h2>[\s\S]*<li>Line 2: the same account as <a href="\/contacts\/ct_seed01">Pat Example<\/a><\/li>/);
   assert.match(preview, /Import possible duplicates too/);
   assert.equal(res.status, 303);
   const leads = (await db.prepare("SELECT name, lead_status FROM contacts WHERE name IN ('Nadia Fenwick', 'Oscar Lind') ORDER BY name").all()).results;
@@ -529,7 +529,7 @@ test("deals on the board: Import on Pipeline, no leads choice, closed deals coun
   assert.equal(await db.prepare("SELECT COUNT(*) AS n FROM deals WHERE title LIKE 'Secret%'").first("n"), 1);
   const shown = (await load(env, unticked.done, unticked.session.cookie)).body;
   assert.match(shown, /<dt>Closed deals brought in<\/dt><dd>0<\/dd>/);
-  assert.match(shown, /<a class="button" href="\/pipeline">See your pipeline<\/a><a class="form-cancel" href="\/import\?module=deals">Import another file<\/a>/);
+  assert.match(shown, /<a class="button" href="\/pipeline">See your deals<\/a><a class="form-cancel" href="\/import\?module=deals">Import another file<\/a>/);
 
   const ticked = await run(true);
   const closed = (await db.prepare("SELECT status FROM deals WHERE title LIKE 'Secret o%' OR title LIKE 'Secret lost%' ORDER BY status").all<{ status: string }>()).results;
@@ -637,7 +637,7 @@ test("the own-list box is on the People and Deals check steps, unticked, and nev
   assert.equal((await matchColumns(env, session, id, {})).res.status, 303);
   const { preview, res } = await applyImport(env, session, id);
   assert.match(preview, OWN_BOX, "unticked by default");
-  assert.match(preview, /<label for="import-own-list">This is my own list: show names, businesses, emails, phones and sources as mine\.<\/label>/);
+  assert.match(preview, /<label for="import-own-list">This is my own list: show names, accounts, emails, phones and sources as mine\.<\/label>/);
   assert.match(preview, /<p class="field-hint check-hint" id="import-own-list-hint">Leave it unticked if someone else made this file\.<\/p>/);
   assert.equal(res.status, 303);
   assert.deepEqual(JSON.parse((await contactByEmail(db, "nadia@example.net"))?.untrusted_fields ?? ""), ["name", "email"]);
@@ -646,7 +646,7 @@ test("the own-list box is on the People and Deals check steps, unticked, and nev
   const dealsId = draftIdOf(deals.location);
   assert.equal((await matchColumns(env, deals.session, dealsId, {})).res.status, 303);
   const ticked = await applyImport(env, deals.session, dealsId, { own_list: "yes" });
-  assert.match(ticked.preview, /<label for="import-own-list">This is my own list: show the people&#39;s names, businesses and emails as mine\.<\/label>/);
+  assert.match(ticked.preview, /<label for="import-own-list">This is my own list: show the people&#39;s names, accounts and emails as mine\.<\/label>/);
   assert.equal(ticked.res.status, 303);
   const oscar = await contactByEmail(db, "oscar@example.net");
   assert.deepEqual(JSON.parse(oscar?.untrusted_fields ?? ""), []);

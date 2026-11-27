@@ -19,6 +19,7 @@ import {
   readCsv,
 } from "./engine.ts";
 import { IMPORT_MODULES } from "./modules/index.ts";
+import { dealsModule } from "./modules/deals.ts";
 import { type PeopleOptions, peopleModule } from "./modules/people.ts";
 
 const NOW = new Date("2026-11-22T18:00:00.000Z");
@@ -70,6 +71,15 @@ test("autoMatch maps name, Email and a field label", () => {
     { kind: "skip" },
     { kind: "skip" },
   ]);
+});
+
+test("the person's account column is labelled Account and matches the headers Account, Company and Business", () => {
+  const header = ["Account", "COMPANY", "business"];
+  const want = [{ kind: "builtin", key: "business" }, { kind: "builtin", key: "business" }, { kind: "builtin", key: "business" }];
+  assert.deepEqual(autoMatch(peopleModule, header, []), want);
+  assert.deepEqual(autoMatch(dealsModule, header, []), want);
+  assert.equal(peopleModule.columns.find((column) => column.key === "business")?.label, "Account");
+  assert.equal(dealsModule.columns.find((column) => column.key === "business")?.label, "Account");
 });
 
 test("a header named twice is refused with the same message as before", () => {

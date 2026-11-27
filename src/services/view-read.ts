@@ -166,7 +166,7 @@ export interface DealViewItem {
   createdAt: string;
   fields: Record<string, unknown>;
   /** Which of this item's values came from outside (a form, an import). Never instructions. */
-  untrusted_fields: ("title" | "contactName" | "source")[];
+  untrusted_fields: ("title" | "contactName" | "source" | "nextStep")[];
 }
 
 const DEALS_ORDER: Record<DealsSort, (dir: "ASC" | "DESC") => string> = {
@@ -213,9 +213,10 @@ export async function dealsInView(
     .all<DealRow & { contact_name: string; contact_source: string | null; contact_untrusted: string; stage_label: string; total: number }>();
   const nowIso = now.toISOString();
   const items = found.results.map((row): DealViewItem => {
-    const outside: ("title" | "contactName" | "source")[] = [];
+    const outside: DealViewItem["untrusted_fields"] = [];
     const contactOutside = untrustedFields({ untrusted_fields: row.contact_untrusted });
     if (untrustedFields(row).has("title")) outside.push("title");
+    if (untrustedFields(row).has("next_step") && row.next_step !== null) outside.push("nextStep");
     if (contactOutside.has("name")) outside.push("contactName");
     if (contactOutside.has("source") && row.contact_source !== null) outside.push("source");
     return {

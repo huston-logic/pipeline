@@ -386,7 +386,7 @@ function previewOf(draft: Draft, planned: Planned, rows: number): ImportPreview 
       );
       if (duplicates.length > 0) {
         notes.push(
-          `${plural(duplicates.length, "line has", "lines have")} no email and the same business as someone on file or an earlier line, ` +
+          `${plural(duplicates.length, "line has", "lines have")} no email and the same account as someone on file or an earlier line, ` +
             "so they are left out. To bring them in too, ask the owner, then call import_rows with this draft, the same columns, no rows and allow_duplicates true.",
         );
       }

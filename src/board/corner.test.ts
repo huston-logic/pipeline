@@ -85,6 +85,12 @@ test("a change notice has its text and an Undo; an undone one says Undone. inste
   assert.match(draw({ ...EMPTY, notice: { change: change({ undone: true }), name: null } }), /<p class="corner-text">Undone\.<\/p>/);
 });
 
+test("a notice's Undo is in place only for a change the corner has a verb for", () => {
+  const other = draw({ ...EMPTY, notice: { change: change({ tool: "update_contact", summary: "Updated a person" }), name: null } });
+  assert.match(other, /action="\/changes\/chg_aaaaaaaaaaaa\/undo"/);
+  assert.doesNotMatch(other, /data-live/);
+});
+
 test("the Time logged note has the times, an edit link back to this page, Undo and Close, and wins over a notice", () => {
   const out = draw({
     ...EMPTY,

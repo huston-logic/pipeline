@@ -143,6 +143,11 @@ export async function todayRows(db: Db, now: Date, tz: string, view: TodayView):
         .prepare(
           `${TASK_SELECT} WHERE p.id IS NOT NULL AND t.project_id IN
              (SELECT k.project_id FROM tasks k WHERE ${awake("k")} AND k.project_id IS NOT NULL)
+           AND (t.done_at IS NULL OR EXISTS (
+             WITH RECURSIVE kids(id, n) AS (
+               SELECT c.id, 1 FROM tasks c WHERE c.parent_id = t.id
+               UNION SELECT x.id, kids.n + 1 FROM tasks x JOIN kids ON x.parent_id = kids.id WHERE kids.n < 50)
+             SELECT 1 FROM kids JOIN tasks o ON o.id = kids.id WHERE o.done_at IS NULL))
            ORDER BY depth, t.position, t.created_at, t.id LIMIT ?`,
         )
         .bind(nowIso, PROJECT_TASK_LIMIT + 1),

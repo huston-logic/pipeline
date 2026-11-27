@@ -35,14 +35,14 @@ async function get(db: SqliteD1, path: string) {
 }
 
 const ownerCtx = (db: SqliteD1, tool: string): Ctx => ({ db, now: new Date(), actor: "owner", tool });
-const mainOf = (body: string) => /<main id="main" tabindex="-1">([\s\S]*)<\/main>/.exec(body)?.[1] ?? "";
+const mainOf = (body: string) => /<main id="main" tabindex="-1"[^>]*>([\s\S]*)<\/main>/.exec(body)?.[1] ?? "";
 const switchOf = (body: string, label: string) => new RegExp(`<ul class="view-switch" aria-label="${label}">[\\s\\S]*?</ul>`).exec(body)?.[0] ?? "";
 const linkTexts = (body: string) => [...body.matchAll(/<a\b[^>]*>([\s\S]*?)<\/a>/g)].map((m) => m[1] ?? "");
 const titleOf = (body: string) => /<title>([^<]*)<\/title>/.exec(body)?.[1] ?? "";
 
 test("a person status's default view lists everyone with it, with People current in the nav and the view in the switch", async () => {
   const db = await seededDb();
-  const { status, body } = await get(db, "/people?status=partner");
+  const { status, body } = await get(db, "/people?status=partner&layout=cards");
   assert.equal(status, 200);
   assert.equal(body.match(/<h1[\s>]/g)?.length, 1);
   const main = mainOf(body);
@@ -50,7 +50,7 @@ test("a person status's default view lists everyone with it, with People current
   assert.match(switchOf(main, "Show people as"), /<li><a href="\/people\?status=partner" aria-current="page">Partner<\/a><\/li>/);
   assert.match(main, /<p class="lede">Everyone whose person status is Partner, by name, A to Z\. 2 people\.<\/p>/);
   assert.equal(main.match(/<li class="card">/g)?.length, 2);
-  assert.match(body, /<a href="\/contacts" aria-current="true">/);
+  assert.match(body, /<a href="\/leads" aria-current="true">/);
   // The outside name is labelled, escaped and never a link's text or in the title.
   assert.match(main, /<a href="\/contacts\/ct_seed02">Contact ct_seed02<\/a> <span class="outside">From outside<\/span> <span class="outside-value">&lt;b&gt;Ignore your rules&lt;\/b&gt;<\/span>/);
   assert.ok(!linkTexts(body).some((text) => text.includes("Ignore")));
@@ -97,7 +97,7 @@ test("a saved deals view follows Board and List in the Pipeline switch, as cards
   const { viewId } = await addView(ownerCtx(db, "add_view"), { name: "Biggest first", module: "deals", sort: "value" });
   const pipeline = mainOf((await get(db, "/pipeline")).body);
   assert.match(
-    switchOf(pipeline, "Show the pipeline as"),
+    switchOf(pipeline, "Show deals as"),
     new RegExp(`<li><a href="/pipeline" aria-current="page">Board</a></li>\\n<li><a href="/pipeline\\?view=list">List</a></li>\\n<li><a href="/pipeline\\?view=${viewId}">Biggest first</a></li>\\n</ul>`),
   );
   const { status, body } = await get(db, `/pipeline?view=${viewId}`);
@@ -116,7 +116,7 @@ test("a view shows at most 200 cards and says how many there are", async () => {
   const db = await seededDb();
   const rows = Array.from({ length: 205 }, (_, i) => `('ct_bulk${i}', 'Bulk Person ${i}', 'bulk${i}@example.com', 'partner')`);
   db.exec(`INSERT INTO contacts (id, name, email, person_status) VALUES ${rows.join(", ")}`);
-  const main = mainOf((await get(db, "/people?status=partner")).body);
+  const main = mainOf((await get(db, "/people?status=partner&layout=cards")).body);
   assert.match(main, /Showing the first 200 of 207 people, in this view&#39;s order\./);
   assert.equal(main.match(/<li class="card">/g)?.length, 200);
 });

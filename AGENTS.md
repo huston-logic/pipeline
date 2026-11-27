@@ -41,11 +41,12 @@ hooks and the commands are in `CLAUDE.md`.
   read it); `lighthouserc.cjs` scores `lighthouseRoutes`, one of each kind of page, at most 22 (a test checks), 3 runs
   each; `npm run test:lighthouse` (`scripts/lighthouse.mjs`) collects again, at most twice, only the pages whose runs
   crashed (Chrome's `NO_NAVSTART`), then checks scores once. Every new page goes in `boardRoutes`; a new kind of page
-  also takes a `lighthouseRoutes` slot. The file also has the nav (`navItems`: Today, Pipeline, People, Brief, More; `moreItems`: Rules, Changes, Pending changes, What it caught, Export, Import, Notifications, Email logging; `moreItemsFor` adds Time, Projects and Templates, and Campaigns while each is on, decisions 0051, 0053, 0055). Pages are
+  also takes a `lighthouseRoutes` slot. `renderPage`'s `region: true` makes `<main>` a live region (`live.js` swaps it
+  whole after a corner action), set on list and board pages (their search, sort and Move to forms may be replaced by a corner action's refresh), never on a record edit or entry form. The file also has the nav (`navItems`: tabs are Today, Deals, People, Projects (when on), Marketing (when on; under More on phones), More; `moreItemsFor` lists Time, Templates, Brief and Notifications (while the Brief is on), Rules, Changes, Pending changes, What it caught, Export, Import, Email logging, with Time, Templates and Marketing only while each is on, decisions 0051, 0053, 0055). Pages are
   GET and HEAD with `Cache-Control: no-store`; a page that finds no CSRF cookie sets one.
 - **Board edits** (decisions 0014, 0017): every board write path is in the route table in `src/board/actions.ts`; a
   POST to any other path is 405. `src/board/post.ts` checks, in order, the sign-in, the same origin, a form body
-  (`application/x-www-form-urlencoded`, at most 16 KB, or 128 KB on a route marked `big`: record forms and Log) and the
+  (`application/x-www-form-urlencoded`, at most 16 KB, or 128 KB on a route marked `big`: record forms, Log and every route that takes a task Description) and the
   CSRF token (hidden `csrf` field matching the cookie), before the handler. Only a route marked `upload` (the import's
   `POST /import`, decision 0036) takes `multipart/form-data`, and only that: its raw body is capped at
   `UPLOAD_MAX_BYTES` (1 MB plus 64 KB) before it is parsed, and the CSRF token is read from its form part. A handler calls the same service function as the matching MCP tool (actor `owner`, tool = that
@@ -87,6 +88,7 @@ hooks and the commands are in `CLAUDE.md`.
   0030): on the tap, ask for permission, register `/sw.js`, subscribe, fill the form's hidden fields and submit it; on
   load, mark this browser's own row "This phone" and offer Turn off on this phone. No innerHTML, fetch or pop-ups in
   either.
+- **The brief is a switch** (run 12, `settings.brief`, migration 0028, off by default for every copy; `update_settings brief`): off means no `/brief` or `/notifications` (404, posts too), no More items, no brief composed, stored, emailed or pushed (`runBrief` returns first); the rules job is unaffected. `brief_enabled` still gates only the email.
 - **Brief notification** (decision 0030): `public/sw.js` is the only service worker, registered only by `push.js`. It
   shows one fixed notification on `push` and opens `/brief` on `notificationclick`, nothing else: no `fetch` handler,
   no `caches`, no `importScripts` (`scripts/no-service-worker.test.mjs`). `src/push/` sends each push from the Worker:
@@ -228,7 +230,10 @@ hooks and the commands are in `CLAUDE.md`.
   Companies, the status views, then saved views; the Pipeline's Board, List, then saved views (`viewSwitch` in
   `src/board/people-switch.ts`). Addresses carry only status keys and view ids, never outside text; People stays one
   tab, so the phone tab bar keeps five items.
-- **Table layout** (decision 0043): Contacts, Leads, the People views, the Pipeline List and saved deals views show as
+- **Table layout** (decision 0043; run 12): the built-in lists open as tables by default (People/Contacts, Leads,
+  Accounts, the status views, Projects, Templates, Campaigns, Time and the Pipeline List); Show as keeps Cards one tap
+  away, and saved views keep their stored layout. Contacts, Leads, Accounts, the People views, the Pipeline List,
+  saved views, Templates and Campaigns show as
   cards or a table (`dataTable`, `layoutSwitch` and `withParams` in `src/board/table.ts`; the columns of a view in
   `src/board/view-table.ts`). `layout=cards|table` and `sort=<key>-<dir>` in the address override a view's stored ones
   for that visit and never write. A real `<table>` in a sideways-scrolling `role="region"` wrapper, a `<caption>`,

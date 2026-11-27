@@ -99,3 +99,18 @@ test("the sample, planned through the services: the list comes from the rows the
   assert.match(answer.list.add[0]?.id ?? "", /^ct_/);
   assert.equal(answer.list.update[0]?.id, "dl_seed06");
 });
+
+test("a single new task's description shows its first 80 characters with an ellipsis, never the whole text", async () => {
+  const db = await createTestDb();
+  db.exec(buildFixtureSeed(NOW, DEFAULT_TZ));
+  const description = `${"a".repeat(100)} tail`;
+  const answer = await proposeChanges(
+    { db, now: NOW, actor: "ai", tool: "propose_changes" },
+    { actions: [{ action: "add_task", contact: "Morgan", title: "Call back", description }] },
+    { extraOwnerEmails: [] },
+  );
+  assert.equal(answer.kind, "proposal");
+  if (answer.kind !== "proposal") return;
+  assert.match(answer.text, new RegExp(`description ${"a".repeat(79)}…`));
+  assert.doesNotMatch(answer.text, /tail/);
+});

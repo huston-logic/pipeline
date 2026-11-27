@@ -1,6 +1,6 @@
 // /leads: the People tab's Leads view (decision 0027). People you plan to approach, as cards, with a status filter, a
 // source filter, a search box and a sort control that work without JavaScript (a GET form). Reads only through
-// listLeads. A name, company or source from outside is labelled and never the text of a link (AGENTS.md). `layout=table`
+// listLeads. A name, account or source from outside is labelled and never the text of a link (AGENTS.md). `layout=table`
 // draws a table instead of cards (decision 0043).
 import { ownerTimezone } from "../../services/lookup.ts";
 import { LEAD_LIST_LIMIT, LEAD_SORTS, type LeadItem, type LeadSort, type LeadSource, leadCounts, listLeads } from "../../services/leads-read.ts";
@@ -58,7 +58,7 @@ function leadCard(lead: LeadItem, tz: string): Html {
 <h2 class="card-title">${contactLink(lead.id, lead.name, outside.has("name"))}</h2>
 </div>
 ${pairs([
-  lead.business !== null && lead.business.trim() !== "" && { name: "Company", value: labelled(lead.business, outside.has("business")) },
+  lead.business !== null && lead.business.trim() !== "" && { name: "Account", value: labelled(lead.business, outside.has("business")) },
   { name: "Status", value: lead.leadStatusLabel },
   { name: "Last contact", value: dateCell(lead.lastContactAt, tz, "No contact yet") },
   { name: "Next task", value: dateCell(lead.nextTaskAt, tz, "No task") },
@@ -78,7 +78,7 @@ function leadsTable(leads: LeadItem[], tz: string, params: URLSearchParams, curr
     { key: "name", header: "Name", cell: (l) => contactLink(l.id, l.name, l.untrusted_fields.includes("name")) },
     {
       key: "company",
-      header: "Company",
+      header: "Account",
       cell: (l) => (l.business === null || l.business.trim() === "" ? "None" : labelled(l.business, l.untrusted_fields.includes("business"))),
     },
     { key: "status", header: "Status", cell: (l) => l.leadStatusLabel },
@@ -123,7 +123,7 @@ function searchForm(asked: ReturnType<typeof leadsQuery>, sources: LeadSource[],
   return html`<form class="search search-filters" action="/leads" method="get" role="search" aria-label="Search leads">
 <div class="field field-grow">
 <label for="leads-q">Search leads</label>
-<p id="leads-q-hint" class="field-hint">Name, email, phone or company</p>
+<p id="leads-q-hint" class="field-hint">Name, email, phone or account</p>
 <input id="leads-q" type="search" name="q" value="${asked.query}" aria-describedby="leads-q-hint" maxlength="${QUERY_MAX}" autocomplete="off" enterkeyhint="search">
 </div>
 <div class="field">
@@ -141,7 +141,7 @@ ${sourceOptions(sources, selectedToken)}</select>
 <select id="leads-sort" name="sort">
 ${LEAD_SORTS.map((s) => html`<option value="${s}"${s === asked.sort ? " selected" : ""}>${SORT_LABELS[s]}</option>\n`)}</select>
 </div>
-${layout === "table" ? html`<input type="hidden" name="layout" value="table">\n` : ""}<button class="button" type="submit">Show leads</button>
+${layout === "cards" ? html`<input type="hidden" name="layout" value="cards">\n` : ""}<button class="button" type="submit">Show leads</button>
 </form>`;
 }
 
@@ -159,7 +159,7 @@ export async function leadsPage(ctx: PageContext): Promise<string> {
   const { db, now, query: params } = ctx;
   const tz = await ownerTimezone(db);
   const asked = leadsQuery(params);
-  const layout = pickLayout(params, "cards");
+  const layout = pickLayout(params, "table");
   const options = { statuses: [...asked.filter.statuses], query: asked.query, sort: asked.sort, limit: LEAD_LIST_LIMIT };
   // The source filter is an opaque token; the sources come from the same list call, so a token is resolved against
   // them and only a known one narrows the list (an unknown token means All sources, with no second query).
@@ -173,7 +173,7 @@ export async function leadsPage(ctx: PageContext): Promise<string> {
   const plain = asked.filter.value === "open" && asked.query === "" && token === "";
 
   const keep = new URLSearchParams();
-  if (layout === "table") keep.set("layout", "table");
+  if (layout === "cards") keep.set("layout", "cards");
   if (asked.filter.value !== "open") keep.set("status", asked.filter.value);
   if (token !== "") keep.set("source", token);
   if (asked.sort !== "next_task") keep.set("sort", asked.sort);
@@ -182,7 +182,7 @@ export async function leadsPage(ctx: PageContext): Promise<string> {
 
   let results: Html;
   if (list.total === 0 && asked.query !== "") {
-    results = html`${empty(`No leads match "${asked.query}".`, "Try part of a name, an email address, a phone number or a company.")}
+    results = html`${empty(`No leads match "${asked.query}".`, "Try part of a name, an email address, a phone number or an account.")}
 ${clear}`;
   } else if (list.total === 0 && token === "") {
     // One more query, only here: do any people hold a lead status at all?
@@ -198,8 +198,9 @@ ${clear}`;
 ${layout === "table" ? leadsTable(list.items, tz, params, asked.sort) : html`<ul class="cards">${list.items.map((lead) => leadCard(lead, tz))}</ul>`}`;
   }
   return renderPage({
-    title: layoutTitle(asked.filter.title, layout, "cards"),
-    description: layoutDescription(asked.filter.description, layout, "cards"),
+    region: true,
+    title: layoutTitle(asked.filter.title, layout, "table"),
+    description: layoutDescription(asked.filter.description, layout, "table"),
     current: "/leads",
     frame: ctx,
     body: html`<h1>Leads</h1>

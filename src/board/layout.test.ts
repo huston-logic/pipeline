@@ -40,15 +40,67 @@ test("the layout adds no <h1> and no script of its own", () => {
   assert.doesNotMatch(out, /<script/i);
 });
 
-test("the nav lists Today, Pipeline, People, Brief and More, then Rules, Changes, Pending changes, What it caught, Export, Import, Notifications and Email logging under More", () => {
-  const out = page("/");
-  const hrefs = [...out.matchAll(/<nav[\s\S]*?<\/nav>/g)].flatMap((nav) => [...nav[0].matchAll(/<a href="([^"]+)"/g)].map((m) => m[1]));
-  assert.deepEqual(hrefs, [
+const hrefsOf = (out: string) => [...out.matchAll(/<nav[\s\S]*?<\/nav>/g)].flatMap((nav) => [...nav[0].matchAll(/<a href="([^"]+)"/g)].map((m) => m[1]));
+const framed = (current: string, on: { projects?: boolean; campaigns?: boolean; brief?: boolean }) =>
+  renderPage({ title: "T", description: "D", body: html`<h1>H</h1>`, current, frame: { look: { name: "Pipeline" }, ...on } });
+
+test("with projects and campaigns off the tab bar has four tabs: Today, Deals, People and More", () => {
+  const out = framed("/", {});
+  assert.deepEqual(hrefsOf(out).slice(0, 4), ["/", "/pipeline", "/leads", "/more"]);
+  assert.deepEqual([...out.matchAll(/<span class="nav-label">([^<]+)<\/span>/g)].slice(0, 4).map((m) => m[1]), ["Today", "Deals", "People", "More"]);
+  assert.ok(!hrefsOf(out).includes("/projects"));
+  assert.ok(!hrefsOf(out).includes("/campaigns"));
+});
+
+test("Projects is a tab only while projects are on, Marketing only while campaigns are on, in that order before More", () => {
+  assert.deepEqual(hrefsOf(framed("/", { projects: true })).slice(0, 5), ["/", "/pipeline", "/leads", "/projects", "/more"]);
+  assert.deepEqual(hrefsOf(framed("/", { campaigns: true })).slice(0, 5), ["/", "/pipeline", "/leads", "/campaigns", "/more"]);
+  const both = framed("/", { projects: true, campaigns: true });
+  assert.deepEqual(hrefsOf(both).slice(0, 6), ["/", "/pipeline", "/leads", "/projects", "/campaigns", "/more"]);
+  assert.match(both, /<li class="nav-wide-only"><a href="\/campaigns">/, "Marketing is hidden on phones by CSS");
+  assert.equal(both.match(/nav-wide-only/g)?.length, 1);
+  assert.equal(hrefsOf(both).filter((href) => href === "/campaigns").length, 1, "the side bar's More list does not repeat Marketing");
+});
+
+test("on a campaign page the hidden Marketing tab is current and so is More, for phones only (is-current-phone)", () => {
+  for (const path of ["/campaigns", "/campaigns/cp_abc"]) {
+    const out = framed(path, { campaigns: true });
+    assert.match(out, /<a href="\/more" class="is-current-phone" aria-current="true">/, path);
+    assert.match(out, /<li class="nav-wide-only"><a href="\/campaigns" aria-current="(page|true)">/, path);
+  }
+  assert.doesNotMatch(framed("/campaigns", {}), /is-current-phone/);
+  assert.doesNotMatch(framed("/rules", { campaigns: true }), /is-current-phone/);
+  const css = readFileSync(new URL("../../public/board.css", import.meta.url), "utf8");
+  const wide = css.slice(css.lastIndexOf(".nav-wide-only {\n    display: list-item;"));
+  assert.match(wide, /\.nav-main a\.is-current-phone \{[^}]*background: none;/, "from 60rem the More tab does not show as current");
+  assert.match(css, /\.more-phone-only \{\s*display: none;/, "the More page's Marketing card is hidden from 60rem");
+});
+
+test("People links /leads and is current on the contact, lead, account and people-view pages", () => {
+  for (const path of ["/contacts", "/contacts/ct_abc", "/leads/new", "/companies", "/people", "/leads/ld_abc"]) {
+    assert.match(framed(path, {}), /<a href="\/leads" aria-current="true">/, path);
+  }
+  assert.match(framed("/leads", {}), /<a href="\/leads" aria-current="page">/);
+});
+
+test("Deals, Projects and Marketing sections: a deal is in Deals, a project in Projects, a campaign in Marketing, a template in More", () => {
+  assert.match(framed("/deals/dl_abc", {}), /<a href="\/pipeline" aria-current="true">/);
+  assert.match(framed("/projects/pj_abc", { projects: true }), /<a href="\/projects" aria-current="true">/);
+  assert.match(framed("/projects", { projects: true }), /<a href="\/projects" aria-current="page">/);
+  assert.match(framed("/campaigns/cp_abc", { campaigns: true }), /<a href="\/campaigns" aria-current="true">/);
+  assert.match(framed("/campaigns", { campaigns: true }), /<a href="\/campaigns" aria-current="page">/);
+  assert.match(framed("/templates", { projects: true }), /<a href="\/more" aria-current="true">/);
+});
+
+test("the nav lists Today, Deals, People and More, then Time, Templates, Brief, Rules, Changes, Pending changes, What it caught, Export, Import, Notifications and Email logging under More", () => {
+  assert.ok(!hrefsOf(page("/")).some((href) => href === "/brief" || href === "/notifications"), "off by default: neither item");
+  const out = framed("/", { brief: true });
+  assert.deepEqual(hrefsOf(out), [
     "/",
     "/pipeline",
-    "/contacts",
-    "/brief",
+    "/leads",
     "/more",
+    "/brief",
     "/rules",
     "/changes",
     "/pending",
@@ -78,8 +130,8 @@ test("the current page is aria-current=page; a page inside a section marks the s
   assert.equal(rules.match(/aria-current=/g)?.length, 2);
 
   assert.match(page("/deals/dl_abc"), /<a href="\/pipeline" aria-current="true">/);
-  for (const path of ["/leads", "/leads/new", "/companies", "/contacts/ct_abc"]) {
-    assert.match(page(path), /<a href="\/contacts" aria-current="true">/, path);
+  for (const path of ["/leads/new", "/companies", "/contacts/ct_abc"]) {
+    assert.match(page(path), /<a href="\/leads" aria-current="true">/, path);
   }
   assert.doesNotMatch(page(undefined), /aria-current/);
 });
@@ -148,6 +200,8 @@ test("the status corner is the first thing in the page body, one live region, an
   const out = renderPage({ title: "Pipeline", description: "x", body: html`<h1>Pipeline</h1>\n<p>Rest</p>`, frame });
   assert.match(out, /<div class="app-body">\n<div class="corner" data-region="corner">/);
   assert.match(out, /<main id="main" tabindex="-1">\n<h1>Pipeline<\/h1>\n<p>Rest<\/p>\n<\/main>/);
+  const listed = renderPage({ title: "T", description: "D", body: html`<h1>X</h1>`, region: true });
+  assert.match(listed, /<main id="main" tabindex="-1" data-region="main">/, "only the region option makes main a region");
   assert.equal(out.match(/role="status"/g)?.length, 1);
   assert.doesNotMatch(out, /class="banner/);
 });

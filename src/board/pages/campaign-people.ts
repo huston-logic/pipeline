@@ -32,7 +32,7 @@ function searchForm(path: string, query: string): Html {
   return html`<form class="search" action="${path}" method="get" role="search" aria-label="Search people">
 <div class="field field-grow">
 <label for="people-q">Find people</label>
-<p id="people-q-hint" class="field-hint">Name, email or company</p>
+<p id="people-q-hint" class="field-hint">Name, email or account</p>
 <input id="people-q" type="search" name="q" value="${query}" aria-describedby="people-q-hint" maxlength="${QUERY_MAX}" autocomplete="off" enterkeyhint="search">
 </div>
 <button class="button" type="submit">Search</button>

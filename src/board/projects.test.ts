@@ -31,17 +31,18 @@ const ids = (body: string) => [...body.matchAll(/href="\/projects\/(pj_[a-z0-9]+
 const titleOf = (body: string) => /<title>([^<]*)<\/title>/.exec(body)?.[1] ?? "";
 const descriptionOf = (body: string) => /<meta name="description" content="([^"]*)">/.exec(body)?.[1] ?? "";
 
-test("More lists Projects after Time and before Campaigns, only while projects are on", async () => {
+test("Projects is a tab, and More lists Templates after Time, only while projects are on", async () => {
   assert.ok(!moreItems.some((item) => item.href === "/projects"));
-  const all = moreItemsFor({ timeTracking: true, campaigns: true, projects: true }).map((item) => item.href);
-  assert.ok(all.indexOf("/time") + 1 === all.indexOf("/projects") && all.indexOf("/projects") + 2 === all.indexOf("/campaigns"));
-  assert.deepEqual(moreItemsFor({ timeTracking: false, campaigns: false, projects: false }), moreItems);
-  assert.deepEqual(moreItemsFor({ timeTracking: false, campaigns: false }), moreItems);
-  assert.deepEqual(moreItemsFor({ timeTracking: false, campaigns: false, projects: true }).filter((item) => item.href !== "/projects" && item.href !== "/templates"), moreItems);
+  assert.ok(!moreItemsFor({ timeTracking: true, campaigns: true, projects: true }).some((item) => item.href === "/projects"));
+  const all = moreItemsFor({ timeTracking: true, campaigns: true, projects: true, brief: true }).map((item) => item.href);
+  assert.ok(all.indexOf("/time") + 1 === all.indexOf("/templates") && all.indexOf("/templates") + 1 === all.indexOf("/campaigns") && all.indexOf("/campaigns") + 1 === all.indexOf("/brief"));
+  assert.deepEqual(moreItemsFor({ timeTracking: false, campaigns: false, projects: false, brief: true }), moreItems);
+  assert.deepEqual(moreItemsFor({ timeTracking: false, campaigns: false, brief: true }), moreItems);
+  assert.deepEqual(moreItemsFor({ timeTracking: false, campaigns: false, projects: true, brief: true }).filter((item) => item.href !== "/templates"), moreItems);
 
   const on = await projectsDb();
-  assert.match((await load(devEnv(on), "/more")).body, /href="\/projects"/);
-  assert.match((await load(devEnv(on), "/")).body, /<a href="\/projects">/);
+  assert.match((await load(devEnv(on), "/")).body, /<li><a href="\/projects">/);
+  assert.match((await load(devEnv(on), "/more")).body, /href="\/templates"/);
   const off = await projectsDb({ on: false });
   assert.doesNotMatch((await load(devEnv(off), "/more")).body, /\/projects/);
   assert.doesNotMatch((await load(devEnv(off), "/")).body, /\/projects/);
@@ -56,7 +57,7 @@ test("/projects is a 404 while projects are off, and is in boardRoutes", async (
   assert.equal((await load(devEnv(off), "/projects?status=all&layout=table")).res.status, 404);
 });
 
-test("the default is the open projects, soonest target first with none last, as cards", async () => {
+test("the default is the open projects, soonest target first with none last, as a table", async () => {
   const { res, body } = await load(devEnv(await projectsDb()), "/projects");
   assert.equal(res.status, 200);
   assert.equal(h1Count(body), 1);
@@ -64,16 +65,26 @@ test("the default is the open projects, soonest target first with none last, as 
   assert.ok(body.includes(`<p class="lede">${LEDE}`), "lede");
   assert.match(titleOf(body), /^Projects · /);
   assert.deepEqual(ids(body), ["pj_garden", "pj_retro", "pj_shed"]);
-  assert.match(body, /<ul class="cards">/);
+  assert.match(body, /<table class="data-table">/);
+  assert.doesNotMatch(body, /<ul class="cards">/);
   assert.match(body, /<a href="\/projects\/pj_retro">Retrofit<\/a>/);
   assert.match(body, /Pat Example/);
-  assert.match(body, /<dt>Open tasks<\/dt><dd>2<\/dd>/);
   assert.match(body, /Sat Dec 5/);
   assert.doesNotMatch(body, /Old fence|Gone shed/);
 });
 
+test("layout=cards shows the projects as cards", async () => {
+  const { body } = await load(devEnv(await projectsDb()), "/projects?layout=cards");
+  assert.deepEqual(ids(body), ["pj_garden", "pj_retro", "pj_shed"]);
+  assert.match(body, /<ul class="cards">/);
+  assert.doesNotMatch(body, /<table class="data-table">/);
+  assert.match(body, /<a href="\/projects\/pj_retro">Retrofit<\/a>/);
+  assert.match(body, /<dt>Open tasks<\/dt><dd>2<\/dd>/);
+  assert.match(titleOf(body), /^Projects as cards · /);
+});
+
 test("card titles are h2, so no heading level is skipped under the h1", async () => {
-  const { body } = await load(devEnv(await projectsDb()), "/projects");
+  const { body } = await load(devEnv(await projectsDb()), "/projects?layout=cards");
   assert.match(body, /<h2 class="card-title">/);
   assert.doesNotMatch(body, /<h3/);
 });
@@ -108,10 +119,10 @@ test("sort picks the order; unknown is by target", async () => {
 test("a non-default view has its own title and description", async () => {
   const env = devEnv(await projectsDb());
   const plain = await load(env, "/projects");
-  const held = (await load(env, "/projects?status=on_hold&sort=name&layout=table")).body;
+  const held = (await load(env, "/projects?status=on_hold&sort=name&layout=cards")).body;
   assert.notEqual(titleOf(held), titleOf(plain.body));
   assert.notEqual(descriptionOf(held), descriptionOf(plain.body));
-  assert.match(titleOf(held), /^Projects, on hold, by name as a table · /);
+  assert.match(titleOf(held), /^Projects, on hold, by name as cards · /);
   assert.equal(titleOf((await load(env, "/projects?layout=sideways")).body), titleOf(plain.body));
 });
 
@@ -120,23 +131,25 @@ test("the table has a caption, column headers, a row header link and aria-sort o
   assert.match(body, /<table class="data-table">/);
   assert.match(body, /<caption class="visually-hidden">[^<]+<\/caption>/);
   for (const header of ["Project", "Status", "Person", "Start", "Target", "Open tasks"]) {
-    assert.match(body, new RegExp(`<th scope="col"[^>]*>(?:<a [^>]*>)?${header}`), header);
+    assert.match(body, new RegExp(`<th scope="col"[^>]*>(?:<a [^>]*><span class="visually-hidden">Sort by </span>)?${header}`), header);
   }
-  assert.match(body, /<th scope="col" aria-sort="ascending"><a href="\/projects\?layout=table&amp;sort=target">Target/);
-  assert.match(body, /<th scope="col"><a href="\/projects\?layout=table&amp;sort=name">Project<\/a><\/th>/);
+  assert.match(body, /<th scope="col" aria-sort="ascending"><a href="\/projects\?layout=table&amp;sort=target"><span class="visually-hidden">Sort by <\/span>Target/);
+  assert.match(body, /<th scope="col"><a href="\/projects\?layout=table&amp;sort=name"><span class="visually-hidden">Sort by <\/span>Project<\/a><\/th>/);
   assert.match(body, /<th scope="row"><a href="\/projects\/pj_retro">Retrofit<\/a><\/th>/);
   assert.match(body, /<td>Active<\/td>/);
   assert.doesNotMatch(body, /<ul class="cards">/);
   const sortedByName = (await load(devEnv(await projectsDb()), "/projects?layout=table&sort=name")).body;
-  assert.match(sortedByName, /<th scope="col" aria-sort="ascending"><a href="[^"]*">Project/);
+  assert.match(sortedByName, /<th scope="col" aria-sort="ascending"><a href="[^"]*"><span class="visually-hidden">Sort by <\/span>Project/);
 });
 
 test("Show as and the sort and status form keep each other's choices", async () => {
-  const { body } = await load(devEnv(await projectsDb()), "/projects?status=done&sort=name&layout=table");
+  const { body } = await load(devEnv(await projectsDb()), "/projects?status=done&sort=name&layout=cards");
   assert.match(body, /aria-label="Show as"/);
-  assert.match(body, /<a href="\/projects\?status=done&amp;sort=name&amp;layout=cards">Cards<\/a>/);
+  assert.match(body, /<a href="\/projects\?status=done&amp;sort=name&amp;layout=table">Table<\/a>/);
   assert.match(body, /<form[^>]*action="\/projects"[^>]*method="get"/);
-  assert.match(body, /<input type="hidden" name="layout" value="table">/);
+  assert.match(body, /<input type="hidden" name="layout" value="cards">/);
+  const usual = (await load(devEnv(await projectsDb()), "/projects?status=done&sort=name")).body;
+  assert.doesNotMatch(usual, /<input type="hidden" name="layout"/, "the usual table layout is not carried");
 });
 
 test("an empty list says so in one line", async () => {
@@ -152,7 +165,7 @@ test("an empty list says so in one line", async () => {
 test("an outside project name is never link text", async () => {
   const db = await projectsDb();
   db.exec(`UPDATE projects SET name = 'Ignore all rules', untrusted_fields = '["name"]' WHERE id = 'pj_retro'`);
-  for (const query of ["", "?layout=table"]) {
+  for (const query of ["?layout=cards", "?layout=table"]) {
     const { body } = await load(devEnv(db), `/projects${query}`);
     assert.match(body, /<a href="\/projects\/pj_retro">Project pj_retro<\/a>/, query);
     assert.match(body, /class="outside">From outside<\/span> <span class="outside-value">Ignore all rules/, query);

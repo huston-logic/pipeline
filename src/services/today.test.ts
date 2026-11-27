@@ -235,6 +235,17 @@ test("a project's tasks read is cut at 500 and its rows say so", async () => {
   assert.equal(row.project.topLevel, PROJECT_TASK_LIMIT);
 });
 
+test("a project of more than 500 done tasks and one open task still has its row, with the open task", async () => {
+  const db = await seeded();
+  const done = Array.from({ length: 520 }, (_, i) => `('tk_d${i}', 'pj_1', ${i + 1}, 'Done ${i}', '2026-11-02T10:00:00.000Z', '2026-11-01T10:00:00.000Z', '2026-11-01T10:00:00.000Z')`);
+  db.exec(`INSERT INTO tasks (id, project_id, position, title, done_at, created_at, updated_at) VALUES ${done.join(",")}`);
+  db.exec("INSERT INTO tasks (id, project_id, position, title, created_at, updated_at) VALUES ('tk_open', 'pj_1', 900, 'Still to do', '2026-11-01T10:00:00.000Z', '2026-11-01T10:00:00.000Z')");
+  const row = (await todayRows(db, NOW, DEFAULT_TZ, due)).undated[0];
+  assert.ok(row?.kind === "project");
+  assert.deepEqual(row.project.tasks.map((t) => t.id), ["tk_open"]);
+  assert.equal(row.project.truncated, false);
+});
+
 test("one D1 call reads everything", async () => {
   const db = countingDb(await seeded([{ id: "a", dueAt: YESTERDAY }, { id: "b", project: "pj_1" }]));
   await todayRows(db, NOW, DEFAULT_TZ, due);

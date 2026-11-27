@@ -416,6 +416,14 @@ test("listDealsFiltered filters by stage, status, due window and quiet days", as
   await assert.rejects(listDealsFiltered(db, { quiet: 0 }, NOW, TZ), /whole number of days/);
 });
 
+test("a deal's next step that came from outside is listed in untrusted_fields", async () => {
+  const db = await seededDb();
+  await db.prepare(`UPDATE deals SET untrusted_fields = '["next_step"]' WHERE id = 'dl_seed01'`).run();
+  const items = await listDealsFiltered(db, {}, NOW, TZ);
+  assert.deepEqual(items.find((item) => item.id === "dl_seed01")?.untrusted_fields, ["nextStep"]);
+  assert.deepEqual(items.find((item) => item.id === "dl_seed04")?.untrusted_fields.includes("nextStep"), false);
+});
+
 test("recentChanges lists changes newest first with who, what and whether they were undone", async () => {
   const db = await openTestDb();
   const at = (iso: string, tool: string): Ctx => ({ db, now: new Date(iso), actor: "ai", tool });

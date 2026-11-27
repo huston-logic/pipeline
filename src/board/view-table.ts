@@ -140,7 +140,7 @@ function dealCell(key: string, deal: DealViewItem, tz: string): Html | string {
     case "value":
       return deal.value === null ? "None" : formatNumber(deal.value);
     case "next_step":
-      return textOr(deal.nextStep, false);
+      return textOr(deal.nextStep, outside.has("nextStep"));
     case "next_date":
       return deal.nextAt === null ? "None set" : html`${when(deal.nextAt, formatLocal(deal.nextAt, tz))}${deal.overdue ? html` ${tag("Overdue", true)}` : ""}`;
     case "days_in_stage":

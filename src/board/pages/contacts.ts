@@ -18,8 +18,8 @@ type Dir = "asc" | "desc";
 export const SORTS: { value: `${ContactSort}-${Dir}`; label: string }[] = [
   { value: "name-asc", label: "Name, A to Z" },
   { value: "name-desc", label: "Name, Z to A" },
-  { value: "company-asc", label: "Company, A to Z" },
-  { value: "company-desc", label: "Company, Z to A" },
+  { value: "company-asc", label: "Account, A to Z" },
+  { value: "company-desc", label: "Account, Z to A" },
   { value: "deals-desc", label: "Most open deals" },
   { value: "deals-asc", label: "Fewest open deals" },
   { value: "activity-desc", label: "Latest activity first" },
@@ -48,7 +48,7 @@ function contactCard(contact: ContactListItem): Html {
 <h2 class="card-title">${contactLink(contact.id, contact.name, outside.has("name"))}</h2>
 </div>
 ${pairs([
-  contact.business !== null && contact.business.trim() !== "" && { name: "Company", value: labelled(contact.business, outside.has("business")) },
+  contact.business !== null && contact.business.trim() !== "" && { name: "Account", value: labelled(contact.business, outside.has("business")) },
   { name: "Open deals", value: deals.length === 0 ? "None" : String(deals.length) },
   {
     name: "Last activity",
@@ -86,7 +86,7 @@ function contactsTable(contacts: ContactListItem[], params: URLSearchParams, cur
     { key: "name", header: "Name", sort: sortFor("name"), cell: (c) => contactLink(c.id, c.name, c.untrusted_fields.includes("name")) },
     {
       key: "company",
-      header: "Company",
+      header: "Account",
       sort: sortFor("company"),
       cell: (c) => (c.business === null || c.business.trim() === "" ? "None" : labelled(c.business, c.untrusted_fields.includes("business"))),
     },
@@ -105,7 +105,7 @@ function searchForm(query: string, sortValue: string, layout: Layout): Html {
   return html`<form class="search" action="/contacts" method="get" role="search" aria-label="Search contacts">
 <div class="field field-grow">
 <label for="contacts-q">Search contacts</label>
-<p id="contacts-q-hint" class="field-hint">Name, email, phone or company</p>
+<p id="contacts-q-hint" class="field-hint">Name, email, phone or account</p>
 <input id="contacts-q" type="search" name="q" value="${query}" aria-describedby="contacts-q-hint" maxlength="${QUERY_MAX}" autocomplete="off" enterkeyhint="search">
 </div>
 <div class="field">
@@ -113,7 +113,7 @@ function searchForm(query: string, sortValue: string, layout: Layout): Html {
 <select id="contacts-sort" name="sort">
 ${SORTS.map((s) => html`<option value="${s.value}"${s.value === sortValue ? " selected" : ""}>${s.label}</option>\n`)}</select>
 </div>
-${layout === "table" ? html`<input type="hidden" name="layout" value="table">\n` : ""}<button class="button" type="submit">Show contacts</button>
+${layout === "cards" ? html`<input type="hidden" name="layout" value="cards">\n` : ""}<button class="button" type="submit">Show contacts</button>
 </form>`;
 }
 
@@ -144,15 +144,15 @@ export async function contactsPage(ctx: PageContext): Promise<string> {
   const tz = await ownerTimezone(db);
   const { query, sort, dir, sortValue } = contactsQuery(params);
   const { contacts, total } = await listContacts(db, tz, { query, sort, dir, limit: CONTACT_LIST_LIMIT });
-  const layout = pickLayout(params, "cards");
+  const layout = pickLayout(params, "table");
   const clearBase = sortValue === DEFAULT_SORT ? "/contacts" : `/contacts?sort=${sortValue}`;
-  const clearHref = layout === "table" ? `${clearBase}${clearBase.includes("?") ? "&" : "?"}layout=table` : clearBase;
+  const clearHref = layout === "cards" ? `${clearBase}${clearBase.includes("?") ? "&" : "?"}layout=cards` : clearBase;
   const clear = query === "" ? "" : html`<p class="search-clear"><a href="${clearHref}">Clear search</a></p>`;
   let results: Html;
   if (total === 0 && query === "") {
     results = empty("No contacts yet.", "Add one with Add a deal, Add contact or Add a lead, or by talking to your AI app. People from your website form show up here too.");
   } else if (total === 0) {
-    results = html`${empty(`No contacts match "${query}".`, "Try part of a name, an email address, a phone number or a company.")}
+    results = html`${empty(`No contacts match "${query}".`, "Try part of a name, an email address, a phone number or an account.")}
 ${await leadsHint(ctx, tz, query)}${clear}`;
   } else {
     results = html`${clear}
@@ -160,8 +160,9 @@ ${await leadsHint(ctx, tz, query)}${clear}`;
 ${layout === "table" ? contactsTable(contacts, params, { sort, dir }) : html`<ul class="cards">${contacts.map(contactCard)}</ul>`}`;
   }
   return renderPage({
-    title: layoutTitle("Contacts", layout, "cards"),
-    description: layoutDescription("Everyone in your pipeline, with their company, open deals and last activity. Search and sort them.", layout, "cards"),
+    region: true,
+    title: layoutTitle("Contacts", layout, "table"),
+    description: layoutDescription("Everyone in your pipeline, with their account, open deals and last activity. Search and sort them.", layout, "table"),
     current: "/contacts",
     frame: ctx,
     body: html`<h1>Contacts</h1>

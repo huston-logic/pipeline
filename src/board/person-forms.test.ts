@@ -168,6 +168,6 @@ test("Add contact with Lead adds a lead as Add a lead does: notes as a note, a b
   const before = await auditCount(db);
   const again = await post(env, "/contacts/new", { name: "Jo Example", business: "acme plumbing", person_status: "lead" });
   assert.equal(again.res.status, 422);
-  assert.match(again.body, /<a href="#contact-business">Ann Example \(ct_[a-z0-9]+\) already has that business\. To add another lead anyway, use Add a lead and tick Add anyway\.<\/a>/);
+  assert.match(again.body, /<a href="#contact-business">Ann Example \(ct_[a-z0-9]+\) already has that account\. To add another lead anyway, use Add a lead and tick Add anyway\.<\/a>/);
   assert.equal(await auditCount(db), before);
 });

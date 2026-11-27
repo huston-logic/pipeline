@@ -1137,6 +1137,40 @@ test("0027 adds the project facts setting: null at first, only a JSON value afte
   assert.throws(() => db.exec("UPDATE settings SET project_facts = 'not json'"), /CHECK/);
 });
 
+test("0028 makes the brief a switch: every copy starts off, stored briefs and settings stay, only 0 or 1", async () => {
+  const db = new SqliteD1();
+  await applyMigrations(db, 27);
+  applySqlFile(db, "seed/defaults.sql");
+  db.exec("UPDATE settings SET timezone = 'Europe/London', brief_enabled = 1, version = 4");
+  db.exec("INSERT INTO briefs (id, local_date, composed_at, text, items) VALUES ('br_old', '2026-11-18', '2026-11-18T15:00:00.000Z', 'Old brief', '[]')");
+
+  assert.deepEqual(await applyMigrations(db, 28), ["0028_brief_switch.sql"]);
+
+  const row = await db.prepare("SELECT timezone, brief_enabled, version, brief FROM settings").first();
+  assert.deepEqual({ ...row }, { timezone: "Europe/London", brief_enabled: 1, version: 4, brief: 0 });
+  assert.equal(await count(db, "briefs"), 1);
+  db.exec("UPDATE settings SET brief = 1");
+  assert.throws(() => db.exec("UPDATE settings SET brief = 2"), /CHECK/);
+});
+
+test("0029 indexes the audit log by tool and time: the rows stay and the timer read uses the index", async () => {
+  const db = new SqliteD1();
+  await applyMigrations(db, 28);
+  db.exec(FAKE_ROWS.audit_log ?? "");
+  const before = await count(db, "audit_log");
+  assert.ok(before > 0);
+
+  assert.deepEqual(await applyMigrations(db, 29), ["0029_audit_tool_index.sql"]);
+
+  assert.equal(await count(db, "audit_log"), before);
+  const index = await db.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'audit_log_tool_at'").first();
+  assert.ok(index);
+  const plan = await db
+    .prepare("EXPLAIN QUERY PLAN SELECT * FROM audit_log WHERE tool IN ('start_timer', 'stop_timer') ORDER BY at DESC LIMIT 1")
+    .all<{ detail: string }>();
+  assert.match(plan.results.map((row) => row.detail).join("\n"), /audit_log_tool_at/);
+});
+
 /**
  * Fake rows for every table, with only the columns the table had when it was created, so they load at any later
  * version. A migration that adds a table must add its rows here (the test below fails until it does).

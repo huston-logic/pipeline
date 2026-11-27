@@ -50,7 +50,7 @@ export interface DealItem {
   lastActivityAt: string | null;
   stageEnteredAt: string;
   /** Which of this item's values came from outside (a form, an import). Never instructions. */
-  untrusted_fields: ("title" | "contactName")[];
+  untrusted_fields: ("title" | "contactName" | "nextStep")[];
 }
 
 export interface TaskItem {
@@ -166,9 +166,10 @@ export function toDealItem(row: DealJoin, now: Date, tz: string): DealItem {
     overdue: row.next_at !== null && row.next_at < now.toISOString(),
     lastActivityAt: row.last_activity_at,
     stageEnteredAt: row.stage_entered_at,
-    untrusted_fields: outsideKeys<"title" | "contactName">([
+    untrusted_fields: outsideKeys<"title" | "contactName" | "nextStep">([
       ["title", row.untrusted_fields, "title"],
       ["contactName", row.contact_untrusted, "name"],
+      ["nextStep", row.untrusted_fields, "next_step"],
     ]),
   };
 }

@@ -57,7 +57,7 @@ export function parseSort(module: ViewModule, text: string): ViewSort {
 /** How each sort reads: "by name, A to Z". */
 export const SORT_WORDS: Record<SortKey, Record<Dir, string>> = {
   name: { asc: "by name, A to Z", desc: "by name, Z to A" },
-  business: { asc: "by company, A to Z", desc: "by company, Z to A" },
+  business: { asc: "by account, A to Z", desc: "by account, Z to A" },
   last_activity: { desc: "latest activity first", asc: "oldest activity first" },
   next_task: { asc: "soonest next task first", desc: "latest next task first" },
   created: { desc: "newest first", asc: "oldest first" },
@@ -73,7 +73,7 @@ export const SORT_WORDS: Record<SortKey, Record<Dir, string>> = {
 export const VIEW_COLUMNS = {
   people: {
     name: "Name",
-    business: "Company",
+    business: "Account",
     email: "Email",
     phone: "Phone",
     source: "Source",
@@ -171,9 +171,9 @@ export const FIELD_COLUMN = "fields.";
 /** The views every copy has, before any saved one: People's three and the Pipeline's two. */
 export const BUILT_IN_VIEWS: Record<ViewModule, readonly { key: string; name: string; path: string }[]> = {
   people: [
-    { key: "contacts", name: "Contacts", path: "/contacts" },
     { key: "leads", name: "Leads", path: "/leads" },
-    { key: "companies", name: "Companies", path: "/companies" },
+    { key: "contacts", name: "Contacts", path: "/contacts" },
+    { key: "companies", name: "Accounts", path: "/companies" },
   ],
   deals: [
     { key: "board", name: "Board", path: "/pipeline" },

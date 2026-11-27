@@ -21,7 +21,7 @@ async function get(db: SqliteD1, path: string) {
   return { res, body: await res.text() };
 }
 
-const mainOf = (body: string) => /<main id="main" tabindex="-1">([\s\S]*)<\/main>/.exec(body)?.[1] ?? "";
+const mainOf = (body: string) => /<main id="main" tabindex="-1"[^>]*>([\s\S]*)<\/main>/.exec(body)?.[1] ?? "";
 const LAST = () => lastMonth(new Date(), DEFAULT_TZ);
 
 /** One rule, one deal, one nudge made 3 days into the month and completed, and two leads from sources. */
@@ -108,6 +108,7 @@ test("Previous and Next month links carry only a month, and Next appears once th
 test("a brief composed on the 1st reads back with its Last month section, in latestBrief and on the Brief page", async () => {
   const db = await createTestDb();
   seedMonth(db, "2026-11");
+  db.exec("UPDATE settings SET brief = 1");
   const first = new Date("2026-12-01T15:00:00.000Z"); // 7 AM on Dec 1 in Los Angeles
   assert.deepEqual(await runBrief({ DB: db } as unknown as Env, first), { composed: 1, sent: 0, failed: 0 });
 

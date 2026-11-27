@@ -34,21 +34,12 @@ async function get(db: SqliteD1, path: string) {
 }
 
 const owner = (db: SqliteD1, tool: string): Ctx => ({ db, now: new Date(), actor: "owner", tool });
-const mainOf = (body: string) => /<main id="main" tabindex="-1">([\s\S]*)<\/main>/.exec(body)?.[1] ?? "";
+const mainOf = (body: string) => /<main id="main" tabindex="-1"[^>]*>([\s\S]*)<\/main>/.exec(body)?.[1] ?? "";
 const titleOf = (body: string) => /<title>([^<]*)<\/title>/.exec(body)?.[1] ?? "";
 const tableOf = (main: string) => /<table class="data-table">[\s\S]*?<\/table>/.exec(main)?.[0] ?? "";
-// A header's visible label: the text between its tags, less the sort arrow. Split, not replaced, so no tag can be
-// rebuilt from the pieces (CodeQL js/incomplete-multi-character-sanitization).
-const SORT_ARROWS = new Set(["&uarr;", "&darr;"]);
+// A header's visible label, captured directly: the text after the link's hidden "Sort by " words, up to the sort arrow.
 const headers = (table: string) =>
-  [...table.matchAll(/<th scope="col"[^>]*>([\s\S]*?)<\/th>/g)].map((m) =>
-    (m[1] ?? "")
-      .split(/<[^>]*>/)
-      .filter((piece) => !SORT_ARROWS.has(piece))
-      .join("")
-      .replace(/\s+/g, " ")
-      .trim(),
-  );
+  [...table.matchAll(/<th scope="col"[^>]*>(?:<a [^>]*><span class="visually-hidden">Sort by <\/span>)?([^<]*)/g)].map((m) => (m[1] ?? "").trim());
 const rowHeads = (table: string) => [...table.matchAll(/<th scope="row">([\s\S]*?)<\/th>/g)].map((m) => m[1] ?? "");
 const switchOf = (main: string) => /<ul class="view-switch layout-switch" aria-label="Show as">[\s\S]*?<\/ul>/.exec(main)?.[0] ?? "";
 
@@ -60,28 +51,29 @@ test("a status view as a table: a region wrapper, a caption, scoped headers, the
   const main = mainOf(body);
   assert.match(main, /<div class="table-scroll" role="region" aria-label="Partner, as a table" tabindex="0">\n<table class="data-table">\n<caption class="visually-hidden">Partner: 2 people, by name, A to Z\.<\/caption>/);
   const table = tableOf(main);
-  assert.deepEqual(headers(table), ["Name", "Company", "Person status", "Sub-status", "Next task", "Last activity"]);
+  assert.deepEqual(headers(table), ["Name", "Account", "Person status", "Sub-status", "Next task", "Last activity"]);
   const heads = rowHeads(table);
   assert.equal(heads.length, 2);
   assert.match(heads[0] ?? "", /^<a href="\/contacts\/ct_seed01">Pat Example<\/a>$/);
   assert.equal(main.match(/<li class="card">/g), null, "no cards in the table layout");
   assert.doesNotMatch(body.replace('<script src="/live.js" defer></script>\n<script src="/clock.js" defer></script>', ""), /<script/, "no page script");
   assert.doesNotMatch(body, /\sstyle=/i);
-  assert.match(titleOf(body), /^Partner as a table · /);
+  assert.match(titleOf(body), /^Partner · /, "a table is the usual layout of a status view");
+  assert.match(titleOf((await get(db, "/people?status=partner&layout=cards")).body), /^Partner as cards · /);
 });
 
 test("sortable headers are links that keep every other parameter; the current one has aria-sort and an arrow", async () => {
   const db = await seededDb();
   const { body } = await get(db, "/people?status=partner&layout=table");
   const table = tableOf(mainOf(body));
-  assert.match(table, /<th scope="col" aria-sort="ascending"><a href="\/people\?status=partner&amp;layout=table&amp;sort=name-desc">Name <span aria-hidden="true">&uarr;<\/span><\/a><\/th>/);
-  assert.match(table, /<th scope="col"><a href="\/people\?status=partner&amp;layout=table&amp;sort=business-asc">Company<\/a><\/th>/);
-  assert.match(table, /<th scope="col"><a href="\/people\?status=partner&amp;layout=table&amp;sort=next_task-asc">Next task<\/a><\/th>/);
-  assert.match(table, /<th scope="col"><a href="\/people\?status=partner&amp;layout=table&amp;sort=last_activity-desc">Last activity<\/a><\/th>/);
+  assert.match(table, /<th scope="col" aria-sort="ascending"><a href="\/people\?status=partner&amp;layout=table&amp;sort=name-desc"><span class="visually-hidden">Sort by <\/span>Name <span aria-hidden="true">&uarr;<\/span><\/a><\/th>/);
+  assert.match(table, /<th scope="col"><a href="\/people\?status=partner&amp;layout=table&amp;sort=business-asc"><span class="visually-hidden">Sort by <\/span>Account<\/a><\/th>/);
+  assert.match(table, /<th scope="col"><a href="\/people\?status=partner&amp;layout=table&amp;sort=next_task-asc"><span class="visually-hidden">Sort by <\/span>Next task<\/a><\/th>/);
+  assert.match(table, /<th scope="col"><a href="\/people\?status=partner&amp;layout=table&amp;sort=last_activity-desc"><span class="visually-hidden">Sort by <\/span>Last activity<\/a><\/th>/);
   assert.match(table, /<th scope="col">Person status<\/th>/, "a column with no sort is not a link");
 
   const desc = tableOf(mainOf((await get(db, "/people?status=partner&layout=table&sort=name-desc&change=chg_x")).body));
-  assert.match(desc, /<th scope="col" aria-sort="descending"><a href="\/people\?status=partner&amp;layout=table&amp;sort=name-asc">Name <span aria-hidden="true">&darr;<\/span><\/a><\/th>/);
+  assert.match(desc, /<th scope="col" aria-sort="descending"><a href="\/people\?status=partner&amp;layout=table&amp;sort=name-asc"><span class="visually-hidden">Sort by <\/span>Name <span aria-hidden="true">&darr;<\/span><\/a><\/th>/);
   assert.deepEqual(rowHeads(desc).map((h) => /ct_seed0\d/.exec(h)?.[0]), ["ct_seed02", "ct_seed01"], "Z to A: Robin before Pat");
 });
 
@@ -90,11 +82,11 @@ test("an unknown sort or layout falls back to the defaults, with no error", asyn
   for (const path of ["/people?status=partner&layout=table&sort=nonsense", "/people?status=partner&layout=table&sort=name-sideways", "/people?status=partner&layout=table&sort=__proto__-asc"]) {
     const { status, body } = await get(db, path);
     assert.equal(status, 200, path);
-    assert.match(tableOf(mainOf(body)), /aria-sort="ascending"><a href="[^"]*">Name /, path);
+    assert.match(tableOf(mainOf(body)), /aria-sort="ascending"><a href="[^"]*"><span class="visually-hidden">Sort by <\/span>Name /, path);
   }
   const odd = await get(db, "/people?status=partner&layout=sideways");
   assert.equal(odd.status, 200);
-  assert.match(mainOf(odd.body), /<li class="card">/, "a layout that is neither is the page's own");
+  assert.match(tableOf(mainOf(odd.body)), /<table/, "a layout that is neither is the page's own, a table");
 });
 
 test("the Show as switch is a labelled list of two links, the shown one aria-current, keeping the other parameters", async () => {
@@ -102,9 +94,9 @@ test("the Show as switch is a labelled list of two links, the shown one aria-cur
   const table = switchOf(mainOf((await get(db, "/people?status=partner&layout=table&sort=name-desc")).body));
   assert.match(table, /<li><a href="\/people\?status=partner&amp;layout=cards&amp;sort=name-desc">Cards<\/a><\/li>/);
   assert.match(table, /<li><a href="\/people\?status=partner&amp;layout=table&amp;sort=name-desc" aria-current="page">Table<\/a><\/li>/);
-  const cards = switchOf(mainOf((await get(db, "/people?status=partner")).body));
-  assert.match(cards, /<li><a href="\/people\?status=partner&amp;layout=cards" aria-current="page">Cards<\/a><\/li>/);
-  assert.match(cards, /<li><a href="\/people\?status=partner&amp;layout=table">Table<\/a><\/li>/);
+  const usual = switchOf(mainOf((await get(db, "/people?status=partner")).body));
+  assert.match(usual, /<li><a href="\/people\?status=partner&amp;layout=cards">Cards<\/a><\/li>/);
+  assert.match(usual, /<li><a href="\/people\?status=partner&amp;layout=table" aria-current="page">Table<\/a><\/li>/);
 });
 
 test("a saved view's stored layout and columns decide the table; layout in the address overrides them for the visit and writes nothing", async () => {
@@ -125,7 +117,7 @@ test("a saved view's stored layout and columns decide the table; layout in the a
   assert.deepEqual(headers(table), ["Name", "Email", "Source", "Project type", "Added"]);
   assert.match(table, /<td>Commercial<\/td>/);
   assert.match(table, /<td><span class="outside">From outside<\/span> <span class="outside-value">Web page<\/span><\/td>/, "an outside custom field value is labelled");
-  assert.doesNotMatch(table, /<a href="[^"]*">Project type/, "a custom field column has no sort");
+  assert.doesNotMatch(table, /<a href="[^"]*">(?:<span class="visually-hidden">Sort by <\/span>)?Project type/, "a custom field column has no sort");
   assert.match(titleOf(stored.body), /^Partner list as a table · /);
 
   const snapshot = async () => ({
@@ -169,15 +161,16 @@ test("Contacts as a table: its own columns, sort links that keep the search, and
   const { body } = await get(db, "/contacts?layout=table&q=example");
   const main = mainOf(body);
   const table = tableOf(main);
-  assert.deepEqual(headers(table), ["Name", "Company", "Open deals", "Last activity"]);
-  assert.match(table, /<th scope="col" aria-sort="ascending"><a href="\/contacts\?layout=table&amp;q=example&amp;sort=name-desc">Name /);
-  assert.match(table, /<th scope="col"><a href="\/contacts\?layout=table&amp;q=example&amp;sort=company-asc">Company<\/a><\/th>/);
-  assert.match(table, /<th scope="col"><a href="\/contacts\?layout=table&amp;q=example&amp;sort=deals-desc">Open deals<\/a><\/th>/);
-  assert.match(main, /<input type="hidden" name="layout" value="table">/);
+  assert.deepEqual(headers(table), ["Name", "Account", "Open deals", "Last activity"]);
+  assert.match(table, /<th scope="col" aria-sort="ascending"><a href="\/contacts\?layout=table&amp;q=example&amp;sort=name-desc"><span class="visually-hidden">Sort by <\/span>Name /);
+  assert.match(table, /<th scope="col"><a href="\/contacts\?layout=table&amp;q=example&amp;sort=company-asc"><span class="visually-hidden">Sort by <\/span>Account<\/a><\/th>/);
+  assert.match(table, /<th scope="col"><a href="\/contacts\?layout=table&amp;q=example&amp;sort=deals-desc"><span class="visually-hidden">Sort by <\/span>Open deals<\/a><\/th>/);
+  assert.doesNotMatch(main, /<input type="hidden" name="layout"/, "the usual layout is not carried in the search form");
+  assert.match(mainOf((await get(db, "/contacts?layout=cards&q=example")).body), /<input type="hidden" name="layout" value="cards">/);
   assert.match(table, /<th scope="row"><a href="\/contacts\/ct_seed01">Pat Example<\/a><\/th>/);
   assert.match(main, /aria-label="Show as"/);
   const sorted = await get(db, "/contacts?layout=table&sort=company-desc");
-  assert.match(tableOf(mainOf(sorted.body)), /<th scope="col" aria-sort="descending"><a href="\/contacts\?layout=table&amp;sort=company-asc">Company /);
+  assert.match(tableOf(mainOf(sorted.body)), /<th scope="col" aria-sort="descending"><a href="\/contacts\?layout=table&amp;sort=company-asc"><span class="visually-hidden">Sort by <\/span>Account /);
   assert.equal((await get(db, "/contacts?layout=table&sort=bogus")).status, 200);
 });
 
@@ -188,11 +181,12 @@ test("Leads as a table: Status, Last contact and Next task columns; the sort lin
   const { body } = await get(db, "/leads?layout=table&status=new");
   const main = mainOf(body);
   const table = tableOf(main);
-  assert.deepEqual(headers(table), ["Name", "Company", "Status", "Last contact", "Next task", "Added"]);
-  assert.match(table, /<th scope="col" aria-sort="ascending"><a href="\/leads\?layout=table&amp;status=new&amp;sort=next_task">Next task /);
-  assert.match(table, /<th scope="col"><a href="\/leads\?layout=table&amp;status=new&amp;sort=last_contact">Last contact<\/a><\/th>/);
+  assert.deepEqual(headers(table), ["Name", "Account", "Status", "Last contact", "Next task", "Added"]);
+  assert.match(table, /<th scope="col" aria-sort="ascending"><a href="\/leads\?layout=table&amp;status=new&amp;sort=next_task"><span class="visually-hidden">Sort by <\/span>Next task /);
+  assert.match(table, /<th scope="col"><a href="\/leads\?layout=table&amp;status=new&amp;sort=last_contact"><span class="visually-hidden">Sort by <\/span>Last contact<\/a><\/th>/);
   assert.match(table, /<th scope="row"><a href="\/contacts\/ct_lead01">Imani Okoye<\/a><\/th>/);
-  assert.match(main, /<input type="hidden" name="layout" value="table">/);
+  assert.doesNotMatch(main, /<input type="hidden" name="layout"/);
+  assert.match(mainOf((await get(db, "/leads?layout=cards&status=new")).body), /<input type="hidden" name="layout" value="cards">/);
 });
 
 test("the Pipeline List is a table by default (not the Board's cards), with its sort links; layout=cards shows cards", async () => {
@@ -200,7 +194,7 @@ test("the Pipeline List is a table by default (not the Board's cards), with its 
   const { status, body } = await get(db, "/pipeline?view=list");
   assert.equal(status, 200);
   const main = mainOf(body);
-  assert.equal(titleOf(body), "Pipeline list · Pipeline");
+  assert.equal(titleOf(body), "Deals list · Pipeline");
   const table = tableOf(main);
   assert.match(main, /<div class="table-scroll" role="region" aria-label="Open deals, as a table" tabindex="0">/);
   assert.deepEqual(headers(table), ["Deal", "Person", "Stage", "Value", "Next step", "Days in stage"]);
@@ -209,8 +203,8 @@ test("the Pipeline List is a table by default (not the Board's cards), with its 
   assert.match(table, /<td><a href="\/contacts\/ct_seed01">Pat Example<\/a><\/td>/);
   assert.match(table, /<td>1,500<\/td>/);
   assert.match(table, /<td>Discovery call<\/td>/);
-  assert.match(table, /<th scope="col" aria-sort="descending"><a href="\/pipeline\?view=list&amp;sort=days_in_stage-asc">Days in stage /);
-  assert.match(table, /<th scope="col"><a href="\/pipeline\?view=list&amp;sort=value-desc">Value<\/a><\/th>/);
+  assert.match(table, /<th scope="col" aria-sort="descending"><a href="\/pipeline\?view=list&amp;sort=days_in_stage-asc"><span class="visually-hidden">Sort by <\/span>Days in stage /);
+  assert.match(table, /<th scope="col"><a href="\/pipeline\?view=list&amp;sort=value-desc"><span class="visually-hidden">Sort by <\/span>Value<\/a><\/th>/);
   assert.doesNotMatch(main, /deal-row|class="stage"|name="return_to"/, "no grouped rows and no move forms: it is a table");
   assert.match(switchOf(main), /<a href="\/pipeline\?view=list&amp;layout=cards">Cards<\/a>/);
   assert.match(switchOf(main), /<a href="\/pipeline\?view=list&amp;layout=table" aria-current="page">Table<\/a>/);
@@ -225,7 +219,7 @@ test("the Pipeline List is a table by default (not the Board's cards), with its 
 test("the Pipeline List sorts by value, and an outside deal title is labelled in its row header", async () => {
   const db = await seededDb();
   const table = tableOf(mainOf((await get(db, "/pipeline?view=list&sort=value-desc")).body));
-  assert.match(table, /<th scope="col" aria-sort="descending"><a href="\/pipeline\?view=list&amp;sort=value-asc">Value /);
+  assert.match(table, /<th scope="col" aria-sort="descending"><a href="\/pipeline\?view=list&amp;sort=value-asc"><span class="visually-hidden">Sort by <\/span>Value /);
   assert.match(
     table,
     /<th scope="row"><a href="\/deals\/dl_seed02">Deal dl_seed02<\/a> <span class="outside">From outside<\/span> <span class="outside-value">New website for Sample Bakery<\/span><\/th>/,
@@ -246,7 +240,7 @@ test("one stage's list is a table of that stage, up to 200 deals, with a way bac
   assert.match(tableOf(main), /sort=days_in_stage-asc&amp;stage=replied|stage=replied&amp;sort=days_in_stage-asc/);
   for (const stage of ["nope", "won"]) {
     const ignored = await get(db, `/pipeline?view=list&stage=${stage}`);
-    assert.equal(titleOf(ignored.body), "Pipeline list · Pipeline", stage);
+    assert.equal(titleOf(ignored.body), "Deals list · Pipeline", stage);
     assert.doesNotMatch(mainOf(ignored.body), /Show every stage/, stage);
   }
 });
@@ -257,7 +251,7 @@ test("a saved deals view follows its stored layout, and the Board stays the kanb
   const { body } = await get(db, `/pipeline?view=${viewId}`);
   const table = tableOf(mainOf(body));
   assert.deepEqual(headers(table), ["Deal", "Stage", "Next date", "Source"]);
-  assert.match(table, /<th scope="col"><a href="\/pipeline\?view=vw_[a-z2-7]{12}&amp;sort=next_date-asc">Next date<\/a><\/th>/);
+  assert.match(table, /<th scope="col"><a href="\/pipeline\?view=vw_[a-z2-7]{12}&amp;sort=next_date-asc"><span class="visually-hidden">Sort by <\/span>Next date<\/a><\/th>/);
   assert.match(table, /<th scope="col">Source<\/th>/, "Source is a person's field: it has no sort");
   assert.doesNotMatch(table, /aria-sort/, "the view is sorted by a column it does not show");
   assert.match(titleOf(body), /^Biggest first as a table · /);

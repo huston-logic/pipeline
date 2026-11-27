@@ -10,6 +10,11 @@
   let card = null;
 
   for (const each of board.querySelectorAll("[data-deal]")) each.draggable = true;
+  // An in-place refresh (live.js) swaps the board's elements for new ones: a card is draggable again as the pointer reaches it.
+  document.addEventListener("pointerover", (event) => {
+    const over = event.target instanceof Element ? event.target.closest("[data-deal]") : null;
+    if (over && !over.draggable) over.draggable = true;
+  });
 
   const show = (target) => {
     for (const each of targets()) each.classList.toggle("is-drop-target", each === target);
@@ -30,7 +35,7 @@
 
   document.addEventListener("dragstart", (event) => {
     const from = event.target instanceof Element ? event.target.closest("[data-deal]") : null;
-    if (!from || !board.contains(from) || !event.dataTransfer) return;
+    if (!from || !from.closest("[data-board]") || !event.dataTransfer) return;
     card = from;
     event.dataTransfer.effectAllowed = "move";
     event.dataTransfer.setData("text/plain", from.dataset.deal);

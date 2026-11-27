@@ -6,15 +6,19 @@ import { renderPage } from "../layout.ts";
 import { moreItemsFor } from "../routes.ts";
 
 export async function morePage(ctx: PageContext): Promise<string> {
-  const items = moreItemsFor({ timeTracking: ctx.timeTracking === true, campaigns: ctx.campaigns === true, projects: ctx.projects === true });
+  const items = moreItemsFor({ timeTracking: ctx.timeTracking === true, campaigns: ctx.campaigns === true, projects: ctx.projects === true, brief: ctx.brief === true });
   return renderPage({
+    region: true,
     title: "More",
-    description: "Your rules, the change log, the export download, the import, phone notifications and the email logging address.",
+    description:
+      ctx.brief === true
+        ? "Your rules, the change log, the export download, the import, phone notifications and the email logging address."
+        : "Your rules, the change log, the export download, the import and the email logging address.",
     current: "/more",
     frame: ctx,
     body: html`<h1>More</h1>
 <ul class="cards more-list">${items.map(
-      (item) => html`<li><a class="card card-link" href="${item.href}"><span class="tile">${icon(item.icon)}</span><span class="card-link-text"><span class="card-title">${item.label}</span>
+      (item) => html`<li${item.phoneOnly === true ? html` class="more-phone-only"` : ""}><a class="card card-link" href="${item.href}"><span class="tile">${icon(item.icon)}</span><span class="card-link-text"><span class="card-title">${item.label}</span>
 <span class="card-desc">${item.description}</span></span></a></li>`,
     )}</ul>`,
   });

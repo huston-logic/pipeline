@@ -62,10 +62,10 @@ export function registerWriteTools(server: McpServer, deps: ToolDeps): void {
       title: "Add a lead",
       kind: "write",
       description:
-        "Adds a lead: a person or business the owner means to approach, with lead status New and no deal. " +
+        "Adds a lead: a person or account the owner means to approach, with lead status New and no deal. " +
         `${SORTING_RULE} ` +
-        "Give a name or a business (with only a business, the lead is named after it). An email already on file is " +
-        "refused (use update_contact or add_deal for that person), and so is a business already on file when there is " +
+        "Give a name or an account (with only an account, the lead is named after it). An email already on file is " +
+        "refused (use update_contact or add_deal for that person), and so is an account already on file when there is " +
         "no email, unless allowDuplicate is true. Notes are logged as a note on the person. " +
         PROPOSES,
       input: addLeadInput,
@@ -103,7 +103,7 @@ export function registerWriteTools(server: McpServer, deps: ToolDeps): void {
         "past client or anyone who is neither a lead nor a deal. " +
         `${SORTING_RULE} ` +
         "An email already on file is refused (use update_contact for that person). Notes are kept on the person. A " +
-        "lead is added exactly as add_lead adds one (a business on file is refused unless allowDuplicate is true, notes " +
+        "lead is added exactly as add_lead adds one (an account on file is refused unless allowDuplicate is true, notes " +
         "are logged as a note). " +
         PROPOSES,
       input: addContactInput,
@@ -743,7 +743,7 @@ export function registerWriteTools(server: McpServer, deps: ToolDeps): void {
       destructive: true,
       idempotent: true,
       description:
-        "Changes the owner's timezone, the daily brief's hour, address or on/off switch, the board's business name " +
+        "Changes the owner's timezone, the Brief (on or off), the daily brief's hour and address and whether it is emailed, the board's business name " +
         "and accent colour, AI edits (review_first: every record change is proposed for the owner's yes; " +
         "apply_small: a call or note logged on a person or deal, completing a task, starting a timer and stopping one " +
         "without a next step apply at once, unless approveIn is board), where AI changes are approved (approveIn: chat, " +
@@ -754,7 +754,7 @@ export function registerWriteTools(server: McpServer, deps: ToolDeps): void {
         timezone: shortText("An IANA timezone name, for example America/Los_Angeles or Europe/London.").optional(),
         briefHour: z.number().int().min(0).max(23).optional().describe("The hour the daily brief goes out, 0 to 23 in the owner's timezone."),
         briefEmail: orNull(shortText("The address the brief is sent to (one of the owner emails), or null to clear it.")).optional(),
-        briefEnabled: z.boolean().optional().describe("true to send the daily brief, false to stop."),
+        briefEnabled: z.boolean().optional().describe("Email the daily brief (only while the Brief is on and email sending is set up). true to email it, false to stop."),
         businessName: orNull(
           shortText("The business name the board shows in its header and page titles (up to 60 characters), or null for \"Pipeline\"."),
         ).optional(),
@@ -775,6 +775,10 @@ export function registerWriteTools(server: McpServer, deps: ToolDeps): void {
         timeTracking: z.boolean().optional().describe("true to turn on time tracking (the timer, time entries, work types and rates), false to turn it off."),
         campaigns: z.boolean().optional().describe("true to turn on campaigns (email to a list of people), false to turn them off."),
         projects: z.boolean().optional().describe("true to turn on projects (delivery work after a sale), false to turn them off."),
+        brief: z
+          .boolean()
+          .optional()
+          .describe("Turn the Brief on or off (off by default): its page, composing it each day, its email and its phone notification. Follow-up rules run either way."),
         postalAddress: z
           .string()
           .nullable()

@@ -199,6 +199,32 @@ Changes to scope, product or a decision since run 3, one line each:
 
 # History (kept from earlier runs; facts re-checked on 2026-11-23)
 
+## Changelog lines for runs 6 to 10 (moved from docs/STATUS.md on 2026-11-27)
+
+- 2026-11-23 to 2026-11-24, run 6, "Daily work": the plan (#61); approve before change (#62); the "AI edits" setting (#63); standalone to-dos (#64); Today as a list (#65); capture and `list_tasks` (#66); time and rates, data and MCP (#67); the timer on the board (#68); the time pages and CSV (#69); the final-review fixes (#70: D1 calls, Today's database sort, the list showing every column it writes); closing docs and status (#71).
+- 2026-11-24, run 7, "Speed": fast commit check, one e2e Worker and the CI scope script (#73); PROCESS.md, check:process, the docs diet and the CLAUDE.md/AGENTS.md merge (#74); the owner batch for the hook, CI and agents (#75).
+- 2026-11-24 to 25, run 8, "Campaigns, step 1": core, data and the AI door (#76); the board pages (#77); sending, unsubscribe and delivery results (#78); closing docs and acceptance (#79).
+- 2026-11-24, "Managed hosting" docs run: decision 0054, the hosting and offboarding docs, a PROCESS.md rule (#80); the copies prompts name the hosting account (#81).
+- 2026-11-25, run 9, "Projects": core, data and the AI app (#82); the board pages (#83); exports, acceptance 35 to 38 and the final-review fixes.
+- 2026-11-25, run 10, "Projects, finished": projects shaped by the owner (#87); sub-tasks (#88); AI task plans (#89); project templates (#90); approve on the board and the closing docs (#91).
+
+## Run 11, Board approval, strict (2026-11-25)
+
+Plan: `docs/superpowers/plans/2026-11-25-run11-board-approval-strict.md`. Decision 0061, no migration, no new dependency. The brief was complete. Run 10 is in the history file.
+
+| PR | What | Work window | Commits | Checks | CI |
+|---|---|---|---|---|---|
+| A #92 | small changes and rule tools wait on the board; docs | 23:42 (first commit) to 23:53 (PR opened), 11 min of build and review after planning | 4 (5 with this row) | check:fast per commit (3 to 11 s); full check 30 s before push; 2 reviewers per task | auto-merge queued at open; CI result not known when this was written |
+
+Judgment calls (one line each):
+
+- Rule changes are proposal actions, not a second approval store, so one list can mix them with record changes and Pending changes shows both.
+- In chat, `propose_changes` refuses rule actions, so chat behaves exactly as before; a list holds at most 10 rule changes (D1 budget).
+- The AI's `aiEdits` value is kept under the board setting (it only stops applying), so it works again when the owner goes back to chat.
+- The e2e acceptance sentences 49 and 50 reuse run 10's file because they need approval already on the board.
+
+Queued: none new.
+
 ## Run 10, Projects, finished (2026-11-25)
 
 Plan: `docs/superpowers/plans/2026-11-25-run10-projects-finished.md`. Design: `docs/superpowers/specs/2026-11-25-projects-finished-design.md`. Decisions 0056 to 0060, migrations 0021 to 0025. The brief was complete. No new dependencies. Run 9 is in the history file.

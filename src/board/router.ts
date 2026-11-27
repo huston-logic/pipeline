@@ -163,6 +163,7 @@ async function contextFor({ db, now, url, csrf, campaignEnv, closedChange = null
     timeTracking: settings.time_tracking === 1,
     campaigns: settings.campaigns === 1,
     projects: settings.projects === 1,
+    brief: settings.brief === 1,
     origin: url.origin,
     ...(campaignEnv === undefined ? {} : { campaignEnv }),
   };

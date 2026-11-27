@@ -8,7 +8,7 @@ import { addField } from "../services/fields.ts";
 
 const titleOf = (body: string) => /<title>([^<]*)<\/title>/.exec(body)?.[1] ?? "";
 const descriptionOf = (body: string) => /<meta name="description" content="([^"]*)">/.exec(body)?.[1] ?? "";
-const mainOf = (body: string) => /<main id="main" tabindex="-1">([\s\S]*)<\/main>/.exec(body)?.[1] ?? "";
+const mainOf = (body: string) => /<main id="main" tabindex="-1"[^>]*>([\s\S]*)<\/main>/.exec(body)?.[1] ?? "";
 const labels = (body: string) => [...body.matchAll(/<label\b[^>]*>([\s\S]*?)<\/label>/g)].map((m) => m[1] ?? "");
 const linkTexts = (body: string) => [...body.matchAll(/<a\b[^>]*>([\s\S]*?)<\/a>/g)].map((m) => m[1] ?? "");
 /** The form posting to `action`, as markup. */
@@ -46,7 +46,7 @@ test("Add a deal: one h1, every field labelled, name required in words, the toke
   assert.match(form, /<input type="hidden" name="return_to" value="\/contacts">/);
   assertLabelled(form, "/deals/new");
   assert.match(form, /<label for="deal-name">Name <span class="field-required">\(required\)<\/span><\/label>/);
-  for (const label of ["Email", "Phone", "Company", "Source", "Deal title", "Value", "Next step", "Notes"]) {
+  for (const label of ["Email", "Phone", "Account", "Source", "Deal title", "Value", "Next step", "Notes"]) {
     assert.ok(labels(form).some((text) => text.startsWith(label)), label);
   }
   assert.match(form, /<legend>Next date<\/legend>/);
@@ -100,7 +100,7 @@ test("Edit contact: the stored values, outside ones labelled beside their label,
   assert.match(form, /<button class="button" type="submit">Save changes<\/button>/);
   assert.match(form, /<a class="form-cancel" href="\/contacts\/ct_seed02">Cancel<\/a>/);
   assert.match(mainOf(body), /stays marked until you change it/);
-  assert.match(body, /<a href="\/contacts" aria-current="true">/);
+  assert.match(body, /<a href="\/leads" aria-current="true">/);
 });
 
 test("Edit deal: title, value, next step and the next date in the owner's time; no stage field", async () => {
@@ -254,7 +254,7 @@ test("Today shows a standalone task with no Deal or Contact line, and its Done g
 test("empty states say what can be done on the board now", async () => {
   const env = devEnv(await createTestDb());
   const today = (await load(env, "/")).body;
-  assert.match(today, /<p class="empty-title">Nothing to do\.<\/p><p>Add a to-do above, or add a task on a deal or contact page\.<\/p>/);
+  assert.match(today, /<p class="empty-title">Nothing to do\.<\/p><p>Add a task above, or add one on a deal or person page\.<\/p>/);
   assert.match((await load(env, "/pipeline")).body, /Add one with Add a deal, or by talking to your AI app\. Inquiries from your website form/);
   assert.match((await load(env, "/contacts")).body, /Add one with Add a deal, Add contact or Add a lead, or by talking to your AI app\./);
   assert.match(today, /<footer class="app-footer">\n<p>Add leads, edit contacts and deals, and move, log and undo here, or change anything by talking to your AI app\.<\/p>/);

@@ -152,7 +152,7 @@ export function registerReadTools(server: McpServer, deps: ToolDeps): void {
       title: "Search contacts",
       kind: "read",
       description:
-        "Contacts whose name, email, business or phone contains the text (up to 20, by name), each with their deals. " +
+        "Contacts whose name, email, account or phone contains the text (up to 20, by name), each with their deals. " +
         "An empty query lists the first 20 contacts. Each result has its person status and sub-status (keys and " +
         "labels) and its lead status (null for someone who was never a lead). The filters combine: leadStatus, " +
         "personStatus with an optional subStatus (for example contact and client, or partner), and a custom contact " +
@@ -191,14 +191,14 @@ export function registerReadTools(server: McpServer, deps: ToolDeps): void {
         "New, Contacted and Not now; Not a fit, Bad lead and Qualified only when named in statuses. Every filter is " +
         "optional and they combine: source, quietDays (no form, email, call, meeting or text for that many days), " +
         "dueWithinDays (an open task due by the end of the day that many days ahead, overdue included), query (name, " +
-        "email, phone or business). For \"who should I reach out to\", call it with statuses [\"new\"] and again with " +
+        "email, phone or account). For \"who should I reach out to\", call it with statuses [\"new\"] and again with " +
         "dueWithinDays (New leads plus leads with a follow-up due). Up to 200 are listed, with the total.",
       input: z.strictObject({
         statuses: leadStatusList("Only these lead statuses (default: new, contacted, not_now).").optional(),
         source: shortText("Only leads from this source, ignoring case and spacing.").optional(),
         quietDays: z.number().int().min(1).max(3650).optional().describe("No contact for at least this many days."),
         dueWithinDays: z.number().int().min(0).max(365).optional().describe("A follow-up task is due within this many days (0: today or overdue). A snoozed task counts from the day it wakes."),
-        query: shortText("Text to look for in name, email, phone or business.").optional(),
+        query: shortText("Text to look for in name, email, phone or account.").optional(),
         sort: z.enum(LEAD_SORTS).optional().describe("next_task (default), last_contact (longest ago first) or added (newest first)."),
       }),
       async run(args, { db, now }) {
@@ -540,7 +540,7 @@ export function registerReadTools(server: McpServer, deps: ToolDeps): void {
       title: "Read the settings",
       kind: "read",
       description:
-        "The owner's settings: timezone, the daily brief's hour, address and on/off switch, when the last brief was " +
+        "The owner's settings: timezone, whether the Brief is on (brief), and the Brief's email hour, address and emailing switch (briefEnabled), when the last brief was " +
         "composed and when one last went out by email, the board's business name and accent colour (null means the " +
         "defaults), AI edits (review_first or apply_small: whether small record changes apply at once, unless approveIn is board), and the owner emails that may sign in (shown here, never changeable through this server; the " +
         "brief address must be one of them).",
@@ -549,8 +549,9 @@ export function registerReadTools(server: McpServer, deps: ToolDeps): void {
         const settings = await getSettings(db);
         const hour = settings.briefHour;
         const at = `${hour % 12 === 0 ? 12 : hour % 12}:00 ${hour < 12 ? "AM" : "PM"}`;
+        const emailing = `emailing it ${settings.briefEnabled ? "on" : "off"}`;
         return toolResult(
-          `Timezone ${settings.timezone}; the daily brief is ${settings.briefEnabled ? "on" : "off"} (${at}).`,
+          `Timezone ${settings.timezone}; the Brief is ${settings.brief ? "on" : "off"} (${settings.brief ? `${emailing}, ${at}` : emailing}).`,
           settings,
         );
       },

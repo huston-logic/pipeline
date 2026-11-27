@@ -36,7 +36,7 @@ async function mainOf(db: SqliteD1, path: string): Promise<{ status: number; tit
   return {
     status: res.status,
     title: /<title>([^<]*)<\/title>/.exec(body)?.[1] ?? "",
-    main: /<main id="main" tabindex="-1">([\s\S]*)<\/main>/.exec(body)?.[1] ?? "",
+    main: /<main id="main" tabindex="-1"[^>]*>([\s\S]*)<\/main>/.exec(body)?.[1] ?? "",
   };
 }
 
@@ -89,10 +89,10 @@ test("a stage that is unknown, closed or given to the board view is ignored", as
   const db = await pipelineDb({ new_inquiry: 2, replied: 3 });
   for (const path of ["/pipeline?view=list&stage=nope", "/pipeline?view=list&stage=won"]) {
     const { title, main } = await mainOf(db, path);
-    assert.equal(title, "Pipeline list · Pipeline", path);
+    assert.equal(title, "Deals list · Pipeline", path);
     assert.doesNotMatch(main, /Show every stage/, path);
   }
   const board = await mainOf(db, "/pipeline?stage=replied");
-  assert.equal(board.title, "Pipeline · Pipeline");
+  assert.equal(board.title, "Deals · Pipeline");
   assert.equal(board.main.match(/<section class="column"/g)?.length, 5);
 });

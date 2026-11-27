@@ -28,8 +28,13 @@ test("the deal page with Add a task, Log and a task's Snooze open", async ({ pag
   await page.goto("/deals/dl_seed01");
   await page.getByText("Add a task", { exact: true }).click();
   await page.getByText("Log a call, email or note", { exact: true }).click();
-  const snooze = page.locator("details.task-snooze summary").first();
-  if ((await snooze.count()) > 0) await snooze.click();
+  // Snooze sits inside an opened task row now: open the first row, then its Snooze.
+  const row = page.locator("details.task-open").first();
+  if ((await row.count()) > 0) {
+    await row.locator("summary").first().click();
+    await row.locator("details.task-snooze summary").first().click();
+    await expect(row.locator("details.task-snooze[open]")).toHaveCount(1);
+  }
   await expect(page.locator('form[action="/deals/dl_seed01/tasks"] input[name="title"]')).toBeVisible();
   await check(page, "edit-deal-forms");
 });

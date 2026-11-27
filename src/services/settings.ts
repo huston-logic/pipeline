@@ -92,6 +92,8 @@ export interface SettingsView {
   campaigns: boolean;
   /** Whether projects are on; off by default. */
   projects: boolean;
+  /** Whether the daily brief is on (page, email, phone notification); off by default. */
+  brief: boolean;
   /** Printed in every campaign email; null until the owner adds it. */
   postalAddress: string | null;
   /** Emails a day the campaign cron may send. */
@@ -126,6 +128,8 @@ export interface SettingsPatch {
   campaigns?: boolean;
   /** true turns projects on. */
   projects?: boolean;
+  /** true turns the daily brief on (page, email, phone notification); the follow-up rules run either way. */
+  brief?: boolean;
   /** 1 to 300 characters, line breaks kept; null clears it (an empty string is refused). */
   postalAddress?: string | null;
   /** A whole number, 1 to 5000. */
@@ -158,6 +162,7 @@ export async function getSettings(db: Db): Promise<SettingsView> {
     timeTracking: row.time_tracking === 1,
     campaigns: row.campaigns === 1,
     projects: row.projects === 1,
+    brief: row.brief === 1,
     postalAddress: row.postal_address,
     campaignDailyLimit: row.campaign_daily_limit,
     projectFacts: projectFacts(row, (await listFieldDefs(db, { entity: "project" })).map((def) => def.key), row.time_tracking === 1),
@@ -267,7 +272,7 @@ export async function updateSettings(ctx: Ctx, patch: SettingsPatch, options: Se
   }
   if (patch.briefEnabled !== undefined && (patch.briefEnabled ? 1 : 0) !== before.brief_enabled) {
     set.brief_enabled = patch.briefEnabled ? 1 : 0;
-    parts.push(`the daily brief ${patch.briefEnabled ? "on" : "off"}`);
+    parts.push(`emailing the brief ${patch.briefEnabled ? "on" : "off"}`);
   }
   if (patch.businessName !== undefined) {
     const name = checkBusinessName(patch.businessName);
@@ -313,6 +318,10 @@ export async function updateSettings(ctx: Ctx, patch: SettingsPatch, options: Se
   if (patch.projects !== undefined && (patch.projects ? 1 : 0) !== before.projects) {
     set.projects = patch.projects ? 1 : 0;
     parts.push(`projects ${patch.projects ? "on" : "off"}`);
+  }
+  if (patch.brief !== undefined && (patch.brief ? 1 : 0) !== before.brief) {
+    set.brief = patch.brief ? 1 : 0;
+    parts.push(`the Brief ${patch.brief ? "on" : "off"}`);
   }
   if (patch.postalAddress !== undefined) {
     const address = patch.postalAddress === null ? null : checkPostalAddress(patch.postalAddress);

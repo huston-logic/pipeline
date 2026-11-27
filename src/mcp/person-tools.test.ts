@@ -76,7 +76,7 @@ test("add_contact with a Lead adds them exactly as add_lead does: the business c
   assert.deepEqual(note, { type: "note", summary: "Met at the fair." });
   assert.match(
     await fails(c, "add_contact", { name: "Jo Example", business: " acme  plumbing", personStatus: "Lead" }),
-    /already has that business\. Say allowDuplicate: true to add another lead anyway\.$/,
+    /already has that account\. Say allowDuplicate: true to add another lead anyway\.$/,
   );
   await approved(c, "add_contact", { name: "Jo Example", business: "Acme Plumbing", personStatus: "lead", allowDuplicate: true });
   const reached = await approved(c, "add_contact", { name: "Kim Example", personStatus: "lead", subStatus: "Contacted" });

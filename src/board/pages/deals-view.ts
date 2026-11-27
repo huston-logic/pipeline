@@ -45,6 +45,7 @@ ${dealsList(list.items, {
   summary: tableSummary(list.items.length, list.total, "deal", "deals", sort),
 })}`;
   return renderPage({
+    region: true,
     title: layoutTitle(view.name, layout, "cards"),
     description: layoutDescription("A saved view of your deals.", layout, "cards"),
     current: "/pipeline",

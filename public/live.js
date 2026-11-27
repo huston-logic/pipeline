@@ -137,7 +137,7 @@
         const to = new URL(sent.headers.get("X-Location") || location.href, location.href);
         if (to.origin !== location.origin) return location.reload();
         if (key(to) !== key(location)) return location.assign(to);
-        text = await read(to);
+        text = await read(to).catch(() => null);
         if (text === null) return location.assign(to);
       } catch {
         say(form, "Couldn't save. Check your connection and try again.");

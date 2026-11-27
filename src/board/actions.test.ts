@@ -150,7 +150,7 @@ test("the status corner shows the summary in a status region with an Undo button
     page.body,
     new RegExp(`<div class="corner-notice" role="status" tabindex="-1">\\n<p class="corner-text">Moved &quot;Website refresh for Example Plumbing&quot; \\(Pat Example\\) to Call done \\(change ${changeId}\\)</p>`),
   );
-  assert.match(page.body, new RegExp(`<form class="corner-form" method="post" action="/changes/${changeId}/undo" data-live>`));
+  assert.match(page.body, new RegExp(`<form class="corner-form" method="post" action="/changes/${changeId}/undo"><input type="hidden" name="csrf"`), "a deal move has no corner verb, so its Undo reloads the page");
   assert.match(page.body, /<input type="hidden" name="return_to" value="\/pipeline\?view=list">/, "Undo comes back here, without the old change id");
 
   const undo = await post(env, `/changes/${changeId}/undo`, { return_to: "/pipeline?view=list" });

@@ -136,6 +136,8 @@ export async function runBrief(env: Env, now: Date, push: PushOptions = {}): Pro
   const { DB: db } = env;
   const counts: BriefRunCounts = { composed: 0, sent: 0, failed: 0 };
   const settings = await getSettings(db);
+  // The brief is a switch (migration 0028): off composes, stores, emails and pushes nothing. The rules job is separate.
+  if (settings.brief !== 1) return counts;
   const previous = await db
     .prepare("SELECT local_date, composed_at FROM briefs ORDER BY local_date DESC LIMIT 1")
     .first<Pick<BriefRow, "local_date" | "composed_at">>();
