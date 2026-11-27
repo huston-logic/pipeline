@@ -743,7 +743,7 @@ export function registerWriteTools(server: McpServer, deps: ToolDeps): void {
       destructive: true,
       idempotent: true,
       description:
-        "Changes the owner's timezone, the daily brief's hour, address or on/off switch, the board's business name " +
+        "Changes the owner's timezone, the Brief (on or off), the daily brief's hour and address and whether it is emailed, the board's business name " +
         "and accent colour, AI edits (review_first: every record change is proposed for the owner's yes; " +
         "apply_small: a call or note logged on a person or deal, completing a task, starting a timer and stopping one " +
         "without a next step apply at once, unless approveIn is board), where AI changes are approved (approveIn: chat, " +

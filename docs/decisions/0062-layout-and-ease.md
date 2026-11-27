@@ -46,3 +46,28 @@ Also decided:
 - Today and the project page are held to at most 20 D1 calls a render, counted by a unit test.
 - The brief is off by default for every copy, existing ones included. An owner turns it on by asking the AI app.
   Stored `briefs` rows stay.
+
+## Rulings made during the build
+
+One line each, cost to change in brackets. Rulings 1 to 12 above are the spec's.
+
+- Work happens in the main checkout on feature branches, not in a worktree. [cost: none noted]
+- Project task rows reuse the task edit form function (`taskEditForm`) unchanged. [cost: none noted]
+- The close cookie is `pipeline_corner`, exported from the corner module as `CORNER_COOKIE`. [cost: none noted]
+- The browser test that writes to the preview data restores it by Undo at the end. [cost: none noted]
+- Autosubmit is an in-place GET swap with `replaceState`, not a page load. [cost: one extra code path in `live.js`]
+- Tab order in a task row: Done, the row, the open content, then the sub-tasks. [cost: open rows put actions before the sub-task toggle]
+- Add a deal, Add a lead and Import sit on a quiet line at the foot of Today. [cost: one more scroll to add a deal from Today]
+- At most 200 task rows on Today in all, dated rows first. [cost: very busy owners see fewer undated rows]
+- A project's count on Today counts only open, awake tasks (top level, or with an open one below). [cost: none known]
+- "Overdue" stays on every overdue row; on a phone, the due date and "belongs to" share line 2 with an ellipsis. [cost: "belongs to" is cut on phone rows]
+- A project's status is the head tag only; the facts pairs do not repeat it. [cost: the owner can hide the tag only through the facts chooser]
+- "Notes" appears twice on the project page (the facts block and the notes section). [cost: two things named Notes]
+- More is `aria-current` on `/campaigns` at every width, and the wide CSS hides its look. [cost: wide-screen readers hear More as current too]
+- `renderPage` takes `region: true` only on read-only list and board pages, never on form pages. [cost: other pages need a reload to show a corner Undo's effect]
+- The corner's Undo works in place only for task and timer changes. [cost: other Undos reload the page]
+- Row actions are in a `<noscript>` for scripts off, and fetched from `/tasks/<id>/actions` with scripts on (Lighthouse and CodeQL). [cost: one small request per row open]
+- The timer clock, the note's expiry and the corner's scroll room moved to `public/clock.js`, loaded on every signed-in page. [cost: one more script on every signed-in page]
+- Migration 0029 adds an `audit_log (tool, time)` index. [cost: one more migration]
+- The Brief and emailing the brief are named apart in change text and settings. [cost: none noted]
+- At most two pages added to the a11y list (`/projects/facts`, `/timer/notes`). The `/pending` region and the two `layout=cards` entries were removed. [cost: less axe coverage of card fallbacks]

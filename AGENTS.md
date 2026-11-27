@@ -46,7 +46,7 @@ hooks and the commands are in `CLAUDE.md`.
   GET and HEAD with `Cache-Control: no-store`; a page that finds no CSRF cookie sets one.
 - **Board edits** (decisions 0014, 0017): every board write path is in the route table in `src/board/actions.ts`; a
   POST to any other path is 405. `src/board/post.ts` checks, in order, the sign-in, the same origin, a form body
-  (`application/x-www-form-urlencoded`, at most 16 KB, or 128 KB on a route marked `big`: record forms and Log) and the
+  (`application/x-www-form-urlencoded`, at most 16 KB, or 128 KB on a route marked `big`: record forms, Log and every route that takes a task Description) and the
   CSRF token (hidden `csrf` field matching the cookie), before the handler. Only a route marked `upload` (the import's
   `POST /import`, decision 0036) takes `multipart/form-data`, and only that: its raw body is capped at
   `UPLOAD_MAX_BYTES` (1 MB plus 64 KB) before it is parsed, and the CSRF token is read from its form part. A handler calls the same service function as the matching MCP tool (actor `owner`, tool = that
