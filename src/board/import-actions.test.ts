@@ -541,7 +541,7 @@ test("deals on the board: Import on Pipeline, no leads choice, closed deals coun
 test("tasks on the board: Import on Today, no New field or notes, an unmatched row skipped with its reason, one change and Undo", async () => {
   const db = await seededDb();
   const env = devEnv(db);
-  assert.match((await load(env, "/")).body, /<a class="button button-quiet" href="\/import\?module=tasks">Import<\/a>/);
+  assert.match((await load(env, "/")).body, /<a class="button button-quiet button-small" href="\/import\?module=tasks">Import<\/a>/);
   const csv = "title,due,deal_id,email\r\nSecret call,2026-12-01,dl_seed01,\r\nSecret card,,,robin@example.com\r\nSecret nobody,,,nobody@example.net\r\n";
   const { location, session } = await upload(env, { csv, module: "tasks" });
   const id = draftIdOf(location);

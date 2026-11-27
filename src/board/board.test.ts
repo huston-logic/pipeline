@@ -57,10 +57,11 @@ const navOf = (body: string) => /<nav class="app-nav"[\s\S]*?<\/nav>/.exec(body)
 /** The one script the board ships (decision 0014), loaded only by the pipeline's board view. */
 // Opening tags only: any extra or inline script still shows up as another (or a different) opening tag.
 const BOARD_JS = '<script src="/board.js" defer>';
-/** Every signed-in page also loads /live.js (decision 0062). */
+/** Every signed-in page also loads /live.js and /clock.js (decision 0062). */
 const LIVE_JS = '<script src="/live.js" defer>';
+const CLOCK_JS = '<script src="/clock.js" defer>';
 const scriptsOf = (body: string) => [...body.matchAll(/<script\b[^>]*>/gi)].map((m) => m[0]);
-const withoutLive = (body: string) => body.replace(`${LIVE_JS}</script>\n`, "");
+const withoutLive = (body: string) => body.replace(`${LIVE_JS}</script>\n${CLOCK_JS}</script>\n`, "");
 const cardTitles = (body: string) => [...body.matchAll(/<h2 class="card-title">([\s\S]*?)<\/h2>/g)].map((m) => m[1] ?? "");
 
 function assertPage(body: string, path: string) {
@@ -72,7 +73,7 @@ function assertPage(body: string, path: string) {
   // /board.js: dragging on the pipeline board, the phone actions and Copy prompt on deal and contact pages (decision 0021).
   // /deals/new and /contacts/new are the Add a deal and Add contact forms, not record pages.
   const scripted = path === "/pipeline" || /^\/deals\/(?!new$)[^/]+$/.test(path) || /^\/contacts\/(?!new$)[^/]+$/.test(path) || path.startsWith("/timer/done") || path.startsWith("/timer/notes");
-  assert.deepEqual(scriptsOf(body), scripted ? [LIVE_JS, BOARD_JS] : [LIVE_JS], `${path}: scripts`);
+  assert.deepEqual(scriptsOf(body), scripted ? [LIVE_JS, CLOCK_JS, BOARD_JS] : [LIVE_JS, CLOCK_JS], `${path}: scripts`);
   assert.doesNotMatch(body, /\sstyle=/i, `${path}: no inline styles (the CSP refuses them)`);
 }
 
@@ -142,7 +143,7 @@ test("the business name from the settings is in the header and every title; Pipe
 test("an empty pipeline: every page answers 200 and says there is nothing yet, and how things get added", async () => {
   const db = await createTestDb();
   const expected: Record<string, RegExp[]> = {
-    "/": [/No deals yet/, /Nothing to do\./, /talking to your AI app/, /No brief yet/],
+    "/": [/No deals yet/, /Nothing to do\./, /talking to your AI app/],
     "/pipeline": [/No deals yet/, /No open deals in this stage/],
     "/contacts": [/No contacts yet\./, /talking to your AI app/],
     "/companies": [/No companies yet\./, /talking to your AI app/],
@@ -172,7 +173,7 @@ test("an unknown deal, or a path that can't be a deal id, gets the 404 page", as
   assert.equal((await get(empty, "/deals/dl_seed01")).res.status, 404);
 });
 
-test("Today shows the date, a summary, the open to-dos as cards (overdue ones tagged), the stages and the brief excerpt", async (t) => {
+test("Today shows the date, a summary, the stage counts and the open to-dos and deals due as rows grouped by when", async (t) => {
   // Pinned at noon in the owner's timezone: a deal due "now" made just before their midnight would be overdue by the
   // time the page is drawn (CI runs in UTC, and Los Angeles midnight is 08:00 UTC).
   t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-11-19T20:00:00.000Z") });
@@ -182,20 +183,15 @@ test("Today shows the date, a summary, the open to-dos as cards (overdue ones ta
   const body = mainOf((await get(db, "/")).body);
   assert.match(body, /<h1>Today<\/h1>/);
   assert.ok(body.includes(`<time datetime="${localDate(new Date(), DEFAULT_TZ)}">${headerDate(localDate(new Date(), DEFAULT_TZ))}</time>`));
-  assert.match(body, /6 open deals, total value 4,650\. Closed: 1 won, 1 lost, 0 not now\./);
-  assert.match(body, /<h2 id="todo-heading">To do<\/h2>[\s\S]*<li class="card">[\s\S]*Send Casey the price sheet[\s\S]*<span class="tag tag-warn">Overdue<\/span>[\s\S]*Prepare questions for Pat&#39;s call/);
-  assert.match(body, /<section aria-labelledby="overdue-heading">\n<h2 id="overdue-heading">Overdue<\/h2>[\s\S]*<h2 id="due-heading">Due today<\/h2>/, "the deal sections stay");
-  assert.match(body, /<dt>Next step<\/dt>/);
-  assert.match(body, /<h2 id="undated-heading">Needs a due date<\/h2>[\s\S]*Find Morgan&#39;s business card/);
+  assert.match(body, /<p class="today-summary">6 open deals, total value 4,650\.<\/p>/);
+  assert.match(body, /<h2 id="today-overdue">Overdue<\/h2>[\s\S]*Send Casey the price sheet[\s\S]*<span class="task-late">Overdue<\/span>[\s\S]*<h2 id="today-today">Today<\/h2>[\s\S]*Prepare questions for Pat&#39;s call/);
+  assert.match(body, /<li class="task-row next-step-row"[\s\S]*Website refresh for Example Plumbing[\s\S]*<h2 id="today-today">/, "the overdue deal is a row in Overdue");
+  assert.match(body, /Next step: /);
+  assert.match(body, /<h2 id="today-undated">No due date<\/h2>[\s\S]*Find Morgan&#39;s business card/);
   assert.doesNotMatch(body, /Check in with Taylor/, "a snoozed task is not due");
-  assert.match(body, /<a class="stage-row" href="\/pipeline#stage-1"><span class="stage-row-label">New inquiry<\/span> <span class="stage-row-count">2 deals<\/span><\/a>/);
-  assert.match(body, /<a class="stage-row" href="\/pipeline#stage-3"><span class="stage-row-label">Call booked<\/span> <span class="stage-row-count">1 deal, value 1,500<\/span><\/a>/);
-  assert.ok(
-    body.includes(
-      `<h2 id="brief-heading">Latest brief</h2>\n<div class="panel">\n<p class="panel-note">For ${briefDay()}. It was not emailed, because sending is off (brief_enabled is off).</p>`,
-    ),
-  );
-  assert.match(body, /<a href="\/brief">Read the whole brief<\/a>/);
+  assert.match(body, /<dt><a href="\/pipeline#stage-1">New inquiry<\/a><\/dt><dd>2<\/dd>/);
+  assert.match(body, /<dt><a href="\/pipeline#stage-3">Call booked<\/a><\/dt><dd>1<\/dd>/);
+  assert.doesNotMatch(body, /Latest brief|Read the whole brief/, "the brief has its own page");
 });
 
 test("the pipeline page lists open deals by stage, each stage with its count and value, each deal as a card", async () => {
@@ -240,7 +236,7 @@ test("the pipeline board: one column per open stage in order, with its count and
     ["not_now", "Not now", "0 deals"],
   ]);
   assert.doesNotMatch(main, /Salon booking site/, "closed deals are not cards");
-  assert.deepEqual(scriptsOf(body), [LIVE_JS, BOARD_JS]);
+  assert.deepEqual(scriptsOf(body), [LIVE_JS, CLOCK_JS, BOARD_JS]);
 });
 
 test("pipeline cards show title, contact, value and next date, overdue in words, and a Move to form that works without JavaScript", async () => {
@@ -427,7 +423,7 @@ test("a contact page shows details, custom fields, every deal, open tasks and on
   }
   assert.match(main, /<dt>Added<\/dt><dd><time datetime=/);
   assert.match(main, /<h2 id="deals-heading">Deals<\/h2>[\s\S]*?<h3 class="card-title"><a href="\/deals\/dl_seed01">Website refresh for Example Plumbing<\/a><\/h3>\n<span class="tag">Call booked<\/span>[\s\S]*?<dt>Value<\/dt><dd>1,500<\/dd>[\s\S]*?<dt>Next step<\/dt><dd>Discovery call<\/dd>/);
-  assert.match(main, /<h2 id="tasks-heading">Open tasks<\/h2>[\s\S]*?Prepare questions for Pat&#39;s call[\s\S]*?<dt>Deal<\/dt><dd><a href="\/deals\/dl_seed01">/);
+  assert.match(main, /<h2 id="tasks-heading">Open tasks<\/h2>[\s\S]*?Prepare questions for Pat&#39;s call[\s\S]*?<span class="task-belongs"><span class="visually-hidden">, for <\/span>Website refresh for Example Plumbing<\/span>[\s\S]*?<a href="\/deals\/dl_seed01">Open the deal<\/a>/);
   const order = ["Moved from Replied to Call booked", "Sent two times for a call", "Short intro call", "Pat asked about"];
   const positions = order.map((text) => main.indexOf(text));
   assert.ok(positions.every((p, i) => p > 0 && (i === 0 || p > (positions[i - 1] ?? 0))), `newest first: ${positions}`);
@@ -547,18 +543,18 @@ test("outside text: labelled From outside, escaped, never a link, and kept out o
   const today = mainOf((await get(db, "/")).body);
   assert.match(
     today,
-    /<h3 class="card-title"><span class="outside">From outside<\/span> <span class="outside-value">&lt;script&gt;alert\(1\)&lt;\/script&gt; call the bakery<\/span><\/h3>/,
+    /<span class="task-title"><span class="outside">From outside<\/span> <span class="outside-value">&lt;script&gt;alert\(1\)&lt;\/script&gt; call the bakery<\/span><\/span>/,
     "the task's outside title is labelled",
   );
   assert.match(
     today,
-    /<dt>Deal<\/dt><dd><a href="\/deals\/dl_seed02">Deal dl_seed02<\/a> <span class="outside">From outside<\/span> <span class="outside-value">&lt;script&gt;alert\(1\)&lt;\/script&gt; bakery site<\/span><\/dd>/,
-    "the task's deal is linked by id, its outside title labelled beside the link",
+    /<span class="task-belongs"><span class="visually-hidden">, for <\/span><span class="outside">From outside<\/span> <span class="outside-value">&lt;script&gt;alert\(1\)&lt;\/script&gt; bakery site<\/span><\/span>/,
+    "the task's deal title is labelled",
   );
   assert.match(
     today,
-    /<h3 class="card-title"><a href="\/deals\/dl_seed02">Deal dl_seed02<\/a> <span class="outside">From outside<\/span> <span class="outside-value">&lt;script&gt;alert\(1\)&lt;\/script&gt; bakery site<\/span><\/h3>[\s\S]*?<dt>Contact<\/dt><dd><span class="outside">From outside<\/span> <span class="outside-value">&lt;script&gt;alert\(1\)&lt;\/script&gt; Robin<\/span><\/dd>/,
-    "the next-step card links the deal by id and labels the outside contact name",
+    /<li class="task-row next-step-row"[^>]*>[\s\S]*?<span class="task-title"><span class="outside">From outside<\/span> <span class="outside-value">&lt;script&gt;alert\(1\)&lt;\/script&gt; bakery site<\/span><\/span>[\s\S]*?<span class="outside">From outside<\/span> <span class="outside-value">&lt;script&gt;alert\(1\)&lt;\/script&gt; Robin<\/span><\/span><\/summary>[\s\S]*?<a href="\/deals\/dl_seed02">Open the deal<\/a>/,
+    "the deal row labels the outside title and person and links the deal with fixed words",
   );
   const label = /<span class="outside">From outside<\/span> <span class="outside-value">&lt;script&gt;alert\(1\)&lt;\/script&gt; bakery site<\/span>/;
   assert.match((await get(db, "/pipeline")).body, label);

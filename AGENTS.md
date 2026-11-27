@@ -63,7 +63,7 @@ hooks and the commands are in `CLAUDE.md`.
   posted field. Record forms are `novalidate` (the server checks; outside data can break the browser's rules). A
   refused form is a 422 with the values kept. Dates are a date plus an optional time, read in the owner's timezone.
 - **Browser JavaScript** (decisions 0014, 0062): only first-party files from `public/`, loaded with `defer`, as
-  progressive enhancement. `renderPage` loads `/live.js` on every page that has a `frame` (signed in), and also
+  progressive enhancement. `renderPage` loads `/live.js` and `/clock.js` on every page that has a `frame` (signed in), and also
   `/board.js` or `/push.js` when the page passes `script` (`true` or `"push"`). Every action must also work as a plain
   form with JavaScript off, except turning notifications on, which needs the browser (the page then says so in one
   line). No framework, no build step, no third-party code, no eval, never `innerHTML`/`outerHTML`, each file at most
@@ -73,8 +73,14 @@ hooks and the commands are in `CLAUDE.md`.
   local board, `liveDone` in `src/http/respond.ts`), `live.js` fetches that page, and, when it is the page already
   open, swaps its `[data-region]` parts (`DOMParser`, `replaceWith`, `replaceChildren`; the
   corner's live region keeps its element); any refusal, other page or odd answer falls back to the plain post. It also
-  runs the timer clock, the Time logged note's expiry, the discard confirm, `data-autosubmit` filters and the corner's
-  scroll room (`--corner-h`); it never pushes `history` (only a filter's `replaceState`). After a swap, focus goes to the
+  runs the discard confirm and `data-autosubmit` filters, and fills a task row's forms: `src/board/task-row.ts` sends
+  them inside a `<noscript>` (drawn as they are with scripts off, one text node with them on, never read), and opening
+  the row fetches the same forms from `GET /tasks/<id>/actions?tree=&up=&down=&back=` (`src/board/pages/task-actions.ts`,
+  not in `boardRoutes`; `back` checked by `boardReturnPath`) and imports its `[data-region^="actions-"]` children, so a
+  long list loads light. Only a fetched response is ever parsed as markup, never text read from the page (CodeQL
+  `js/xss-through-dom`). `public/clock.js` runs the timer clock, the Time logged note's expiry and the corner's scroll
+  room (`--corner-h`); live.js sends it `board:changed` after it changes the page. Nothing is closed, opened or moved after the first paint (a
+  layout shift); a disclosure that differs by width is styled (`::details-content`). It never pushes `history` (only a filter's `replaceState`). After a swap, focus goes to the
   form's `data-after` element, the control's old id, the corner notice (`tabindex="-1"`), then `main`, never the timer chip. `public/board.js`: drag a pipeline card to another stage, which
   submits the card's Move to form; on deal and contact pages, after Call, Text or Email, focus the matching one-tap
   Log button, and Copy prompt for Ask Claude (decision 0021). `public/push.js` (Notifications page only, decision
@@ -303,7 +309,7 @@ hooks and the commands are in `CLAUDE.md`.
   (`src/board/project-tree.ts`) and reads at most 500 tasks. Task plans (decision 0058, migration 0023):
   `add_task_plan` (`src/services/task-plan.ts`, in `RECORD_ACTIONS`) is one action holding at most 100 tasks in a proposal,
   a flat list whose `under` is the 1-based number of an earlier item; `dueDays` needs the project's start date;
-  `proposals-d1.test.ts` holds a 100-task plan to the 40-call ceiling.
+  `proposals-d1.test.ts` holds a 100-task plan to the 40-call ceiling. The project page's facts are `settings.project_facts` (migration 0027, a JSON array of keys, null for the default; `projectFacts` and `checkProjectFacts` in `view-spec.ts`; `update_settings projectFacts`; the board's `/projects/facts` page; decision 0062): `status` is the tag beside the name, the rest are label and value pairs.
 - **Templates** (decision 0059, migration 0024): `project_templates` (`tp_`) and `template_tasks` (`tt_`) are change
   tables (`src/services/templates.ts`, `template-read.ts`, `template-copy.ts`); `add_project {template}` copies the live
   tree and keeps no link to the project (editing a template never changes a project). `add_template`,

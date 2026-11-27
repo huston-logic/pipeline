@@ -77,7 +77,7 @@ test("GET / returns the board as HTML with one <h1>, lang and a meta description
   assert.match(body, /<html lang="en">/);
   assert.match(body, /<meta name="description" content="[^"]+">/);
   assert.match(body, /<title>Today · Pipeline<\/title>/);
-  assert.doesNotMatch(body.replace('<script src="/live.js" defer></script>', ""), /<script/i);
+  assert.doesNotMatch(body.replace('<script src="/live.js" defer></script>\n<script src="/clock.js" defer></script>', ""), /<script/i);
   assertSecurityHeaders(res);
 });
 

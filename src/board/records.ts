@@ -2,11 +2,10 @@
 // explains the "From outside" label. Outside text is labelled and never a link's text (see parts.ts).
 import type { ActivityType, Actor, DealStatus } from "../db/db.ts";
 import type { TaskItem, TimelineItem } from "../services/read.ts";
-import { formatLocal } from "../time.ts";
 import type { FormContext } from "./forms.ts";
 import { type Html, html } from "./html.ts";
-import { descriptionLine, taskActions } from "./task-forms.ts";
-import { dealLink, labelled, OUTSIDE_LABEL, outsideLabel, type Pair, pairs, projectLink, tag, when } from "./parts.ts";
+import { type RowTask, taskRows } from "./task-row.ts";
+import { dealLink, labelled, OUTSIDE_LABEL, outsideLabel, type Pair, projectLink, tag, when } from "./parts.ts";
 
 export const STATUS: Record<DealStatus, string> = { open: "Open", won: "Won", lost: "Lost", not_now: "Not now" };
 
@@ -35,31 +34,17 @@ export function customRows(fields: Record<string, unknown>, labels: Map<string, 
 }
 
 /**
- * A task as a card. `showDeal` adds a link to its deal, for pages that list more than one deal's tasks; `form` adds
- * Done and Snooze. A task on a project always names it, except on the project's own page (`onProjectPage`).
+ * A deal's or a person's open tasks as rows (task-row.ts). The page's own record is left out of each row: a deal page
+ * shows no "belongs" and no link back, a person page names the project or deal a task is on.
  */
-export async function taskCard(task: TaskItem, now: Date, tz: string, showDeal = false, form?: FormContext, onProjectPage = false): Promise<Html> {
-  const snoozed = task.snoozedUntil !== null && task.snoozedUntil > now.toISOString() ? task.snoozedUntil : null;
-  const outside = task.untrusted_fields;
-  return html`<li class="card">
-<div class="card-head">
-<h3 class="card-title">${labelled(task.title, outside.includes("title"))}</h3>
-${snoozed !== null ? tag("Snoozed") : ""}
-</div>
-${pairs([
-  { name: "Due", value: task.dueAt !== null && task.dueAtLocal !== null ? when(task.dueAt, task.dueAtLocal) : "No due date" },
-  snoozed !== null && { name: "Snoozed until", value: when(snoozed, formatLocal(snoozed, tz)) },
-  !onProjectPage &&
-    task.projectId !== null &&
-    task.projectName !== null && { name: "Project", value: projectLink(task.projectId, task.projectName, outside.includes("projectName")) },
-  showDeal &&
-    task.dealId !== null &&
-    task.dealTitle !== null && { name: "Deal", value: dealLink(task.dealId, task.dealTitle, outside.includes("dealTitle")) },
-  task.source !== "owner" && { name: "Added by", value: `rule ${task.source}` },
-])}
-${descriptionLine(task)}
-${form === undefined ? "" : await taskActions(task, form, tz)}
-</li>`;
+export function openTaskRows(tasks: TaskItem[], page: "deal" | "contact", now: Date, tz: string, form: FormContext): Promise<Html> {
+  const rows: RowTask[] = tasks.map((task) => ({
+    ...task,
+    ...(page === "deal" ? { dealId: null, dealTitle: null, contactId: null, contactName: null } : { contactId: null, contactName: null }),
+    level: 1,
+    onProject: false,
+  }));
+  return taskRows(rows, { now, tz, showBelongs: page === "contact" }, form);
 }
 
 /** One timeline entry. `deal` adds a line linking the deal it is on, for the contact page (tagged when archived). */

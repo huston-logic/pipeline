@@ -21,7 +21,7 @@ the slow underline (§7), sentence-case labels, and the banned list (§13). Depa
   The board never uses the Huston Logic mark: each copy belongs to its owner.
 - **Cards are allowed for records.** A deal, a contact, a task and a rule are "objects you could hold" in v3's terms
   (v3 §4), so each gets a card. Lists of lines (the brief, the change log, a timeline) stay unboxed rows on one panel,
-  separated by dividers.
+  separated by dividers. So are tasks (run 12): a list of tasks is one panel of rows (§7.24), not a card each.
 - **One subtle glow at the top of the page** (v3's `glow-green`, small and faint), behind the app bar. No other glows.
 - **The accent comes from the settings.** v3's green is the default `--accent`; the owner can set another (§2).
 
@@ -124,37 +124,48 @@ lists become an auto-filling grid (`minmax(17rem, 1fr)`) from 40rem up.
 | `--shadow-card` | Cards and panels: a 1px contact shadow plus a soft drop (lighter than v3's hero card, because a board shows many cards at once) |
 | `--shadow-bar` | The phone tab bar, lifting it off the content |
 
-**Cards vs. no cards.** A card is a record: a deal, a task, a contact, a rule, a "More" destination. Lines of a
-document (the brief, the change log, a timeline, the download list) sit as rows on one white panel with dividers.
+**Cards vs. no cards.** A card is a record: a deal, a contact, a rule, a "More" destination. Lines of a
+document (the brief, the change log, a timeline, the download list) and lists of tasks (§7.24) sit as rows on one
+white panel with dividers.
 Facts are label/value pairs (`dl`): one grid per list, labels in `ink-2` in a column as wide as the longest label,
 values beside them.
 
 ## 5. Layout: the Home first screen
 
-The home page is **Today** (`/`). Measured at 375 × 812 and 1280 × 800 (`npm run screenshots`).
+The home page is **Today** (`/`): one dense list of rows (§7.24) in one column. Measured at 390 × 844 and 1440 × 900
+(`npm run screenshots`); `tests/a11y/today-density.spec.ts` holds at least 12 rows fully in view on the wide screen and
+6 on the phone, with the demo seed.
 
 ```
-Phone (375)                          Wide (1280)
-┌ app bar ───────────────────────┐   ┌ side bar ───┬ content ─────────────────────────────────┐
-│ [F] Fernwood Engineering       │   │ [F] Fernwood│ Today  Wednesday Nov 18                  │
-├────────────────────────────────┤   │             │ summary sentence                         │
-│ Today  Wednesday Nov 18        │   │  Today      │ Overdue                  Pipeline        │
-│ summary sentence               │   │  Pipeline   │ ┌ task card ─────────┐   ┌ stage rows ─┐ │
-│ Overdue                        │   │  Contacts   │ └────────────────────┘   └─────────────┘ │
-│ ┌ task card ────────────────┐  │   │  Brief      │ Due today                Latest brief    │
-│ └───────────────────────────┘  │   │  More       │ ┌ task card ─────────┐   ┌ 4 lines ────┐ │
-│ Due today                      │   │    Rules    │ └────────────────────┘   └─────────────┘ │
-│ ┌ task card ────────────────┐  │   │    Changes  │                                          │
-│ Pipeline (stage rows)          │   │    Export   │ footer                                   │
-│ Latest brief                   │   └─────────────┴──────────────────────────────────────────┘
+Phone (390)                          Wide (1440)
+┌ app bar ───────────────────────┐   ┌ side bar ┬ content ────────────────────────────────────┐
+│ Today  Thu Nov 26              │   │ Today    │ Today  Thu Nov 26     New inquiry 2 Replied 1 │
+│ summary line                   │   │ Deals    │ summary line          Call booked 0 Call done 2│
+│ New inquiry 2 Replied 1 ...    │   │ People   │ Title [..........] Due [....] [Add]           │
+│ Call done 2  Proposal sent 0   │   │ ...      │ Sort and filter  Sort [Due date] Show [All]   │
+│ Title [..................]     │   │          │ Overdue                                       │
+│ Due [.........]  [Add]         │   │          │ [ ] Email Jamie ...  Tue Nov 24, 9 AM  Jamie  │
+│ Sort and filter (closed)       │   │          │  >  Test the website editor  7 tasks, 0 overdue│
+│ Overdue                        │   │          │ Today / Upcoming / No due date                │
+│ [ ] Email Jamie about quoting  │   │          │ [Add a deal] [Add a lead] [Import]  (the foot) │
+│     Tue Nov 24, 9 AM  Jamie    │   └──────────┴───────────────────────────────────────────────┘
 ├────────────────────────────────┤
-│ Today Pipeline Contacts Brief More │  fixed tab bar, safe-area inset below
+│ Today Deals People ... More    │  fixed tab bar
 └────────────────────────────────┘
 ```
 
-Order on Today: the H1 with the owner's date beside it, one summary sentence, Overdue, Due today (or the empty
-state), then Pipeline (one row per open stage with its count, each a link to that stage on `/pipeline`) and Latest
-brief. From 72rem the due cards take the left column (3fr) and Pipeline and Latest brief the right (2fr).
+Order on Today: the head (the H1 with the date beside it, one summary line, a line for changes waiting from the AI app
+when there are any, and the open deals by stage as label and count pairs in three columns, each label a 44px link to
+its column; top right from 60rem, a wrapped block on a phone), the add line (Title, Due, Add; on a phone Title has its
+own line), Sort and filter (a `details`, open on a laptop and closed under 40rem; with scripts on a choice applies at
+once, the corner says "Showing N to-dos." and a half-typed to-do stays), then plain h2 groups: Overdue, Today,
+Upcoming and No due date (an empty one is left out), each one `ul.task-rows` panel with 24px of space between groups,
+and last Add a deal, Add a lead and Import as one small quiet line. A row is a task, a deal whose next step is due (an
+empty Done cell; opened, its next step and Open the deal) or a project (a chevron in the Done cell's place that turns
+when it is open, "N tasks, M overdue", its tasks inside when opened). At most 200 rows show, the dated first. On a
+phone a row is its title (up to two lines) and one line with the due, "Overdue" in words, and who it is for, cut with an
+ellipsis; opened, the row says who in full ("For ..."). A project's due is the day only. There is no Latest brief block: the
+brief has its own page.
 
 ## 6. Signature elements
 
@@ -328,6 +339,28 @@ script can use the clipboard; it starts `hidden`), a polite live line in `ink-2`
 prompt" disclosure (`ink-2` 600, like Snooze) holding the prompt in a labelled read-only textarea (§7.20 field).
 Nothing pops up and nothing disappears on its own.
 
+### 7.24 Task row (`.task-rows`, `.task-row`; run 12)
+One list of tasks is one white panel (`--white`, 1px `--edge`, `--r-card`, no shadow, no padding); rows are split by
+1px `--divider`. Each row (`li.task-row`, min 44px) holds, left to right: the Done box (a 24px box in a 44px target;
+hidden words "Done: <task>"; a static filled box when the task is done), the row line (`details.task-open`'s
+`summary`, plain text, no links) and, when the task has sub-tasks, `details.task-subs` whose summary ("3 open
+sub-tasks") sits at the row's right edge (the row line reserves its width).
+- **Row line, 40rem and up:** a grid `minmax(0,1fr) 10rem 12rem 1.5rem`: title (17px, one line, ellipsis), due
+  (15px `--ink-2`, tabular figures, "Overdue" in rust beside it when it was due before today), belongs (project, deal
+  or person; left out where the page already says it), then a CSS chevron that turns when open.
+- **Phone:** the title up to two lines, then the due and belongs cells side by side on a second line in `--ink-2` 15px.
+- **Open content:** 12px padding, a `--divider` top line; the description, one links line (Open the deal, Open the
+  person, Open the project), then one wrapping action line with 8px gaps (Start timer, Snooze, Edit, Add a sub-task,
+  Move up, Move down).
+- **Nested rows** (sub-tasks): the same panel without its own border, set in 44px per level, a divider on top.
+- **Phone sub-tasks toggle:** under 40rem the sub-tasks summary is its own 44px line below the row line, indented to the
+  title's column; from 40rem it sits at the right edge, and every row of a list with sub-tasks reserves that width so
+  the due and belongs columns line up.
+- **Reading and tab order:** the cells read "Due <day>" and ", for <belongs>" (hidden words); a snoozed task says "Snoozed
+  to <day>" in the due cell; a title over 40 characters is shown in full as the first line of the open content. Tab
+  order: Done box, row line, the open content (when open), then the sub-tasks toggle.
+- No hover lift. The focus ring (§7.10) is on the row line, the Done box and every button. Today keeps cards until its own task.
+
 ### 7.25 Status corner (`.corner`; run 12)
 Replaces the old change banner and Stop bar. `<div class="corner" data-region="corner">` is the first thing in
 `.app-body`, `position: sticky; top: 0` above the content, its chips aligned to the right edge (16px side padding,
@@ -391,9 +424,12 @@ Checked at 375 and 1280px wide with no horizontal scroll (`npm run screenshots`)
 ## 12. Performance budget (the `lighthouse` check: 90 or higher on mobile, all four categories)
 
 - No font files, no images. Two small stylesheets (`/board.css` static, `/theme.css` from the Worker). Small scripts,
-  each under 3 KB gzipped and `defer`: `/live.js` on every signed-in page (decision 0062), `/board.js` on the
+  each under 3 KB gzipped and `defer`: `/live.js` and `/clock.js` on every signed-in page (decision 0062), `/board.js` on the
   pipeline board, deal pages and contact pages (decision 0021), `/push.js` on Notifications (decision 0030); a page
   outside the sign-in has none.
+- Long lists load light: a task row's forms come inside a `<noscript>` for scripts off; with scripts on, `/live.js`
+  fetches them from `/tasks/<id>/actions` when the row opens (Today with the demo seed is about 1,650 elements with scripts on). No script changes the layout after the first
+  paint: Today's Sort and filter is sent closed and shown from 40rem by `::details-content`.
 - The glow is one CSS radial gradient; no `filter`, no `backdrop-filter`.
 - Icons are inline SVG.
 

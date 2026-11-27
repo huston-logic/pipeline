@@ -107,7 +107,7 @@ test("a saved deals view follows Board and List in the Pipeline switch, as cards
   assert.match(main, /<p class="lede">Every open deal; highest value first\. \d+ deals?\.<\/p>/);
   assert.match(main, /<dt>In this stage<\/dt>/);
   assert.match(body, /<a href="\/pipeline" aria-current="page">/, "Pipeline is the current nav page");
-  assert.doesNotMatch(body.replace('<script src="/live.js" defer></script>', ""), /<script/, "no board.js: there is nothing to drag");
+  assert.doesNotMatch(body.replace('<script src="/live.js" defer></script>\n<script src="/clock.js" defer></script>', ""), /<script/, "no board.js: there is nothing to drag");
   assert.equal((await get(db, "/pipeline?view=vw_nothing")).status, 404);
   assert.equal((await get(db, "/pipeline?view=nonsense")).status, 200, "anything else is still the board");
 });

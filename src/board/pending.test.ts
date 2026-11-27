@@ -146,7 +146,7 @@ test("Today shows the notice only while a list waits, and More lists Pending cha
   assert.doesNotMatch((await load(env, "/")).body, /from your AI app/);
   await propose(db, TASK);
   const today = (await load(env, "/")).body;
-  assert.match(today, /<a class="button button-quiet" href="\/pending">1 change from your AI app is waiting\. Review it\.<\/a>/);
+  assert.match(today, /<a href="\/pending">1 change from your AI app is waiting\. Review it\.<\/a>/);
   assert.match((await load(env, "/more")).body, /href="\/pending"[^]*Pending changes/);
 });
 

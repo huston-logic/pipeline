@@ -2,14 +2,15 @@
 // (decision 0005): the patch type has no field for them. The brief can only be sent to an owner email, so no text
 // that talks the AI into a new address can redirect the brief (decision 0005, addendum).
 import type { Db, SettingsRow } from "../db/db.ts";
-import { getSettings as getSettingsRow } from "../db/queries.ts";
+import { getSettings as getSettingsRow, listFieldDefs } from "../db/queries.ts";
 import { checkAccent } from "./accent.ts";
 import { type ChangeResult, commitChange, type Ctx, updatedRow } from "./change.ts";
 import { joinAnd } from "./describe.ts";
 import { UserError } from "./errors.ts";
 import { checkEmail, clean } from "./input.ts";
 import { parseStringArray } from "./lookup.ts";
-import { type Reader, settingsRow } from "./memo.ts";
+import { fieldDefRows, type Reader, settingsRow } from "./memo.ts";
+import { checkProjectFacts, projectFacts } from "./view-spec.ts";
 
 /** settings.ai_edits (decision 0045): "review" is Review first, "small" is Apply small changes. */
 export type AiEdits = SettingsRow["ai_edits"];
@@ -95,6 +96,8 @@ export interface SettingsView {
   postalAddress: string | null;
   /** Emails a day the campaign cron may send. */
   campaignDailyLimit: number;
+  /** The facts the project page shows, in order: the chosen list, or the default. */
+  projectFacts: string[];
   /** When the latest brief was composed (the briefs log), or null before the first one. */
   lastBriefAt: string | null;
   /** When a brief last went out by email, or null when none has. */
@@ -127,6 +130,8 @@ export interface SettingsPatch {
   postalAddress?: string | null;
   /** A whole number, 1 to 5000. */
   campaignDailyLimit?: number;
+  /** Fact keys for the project page, in order (view-spec.ts); null restores the default. */
+  projectFacts?: string[] | null;
 }
 
 export interface SettingsOptions {
@@ -155,6 +160,7 @@ export async function getSettings(db: Db): Promise<SettingsView> {
     projects: row.projects === 1,
     postalAddress: row.postal_address,
     campaignDailyLimit: row.campaign_daily_limit,
+    projectFacts: projectFacts(row, (await listFieldDefs(db, { entity: "project" })).map((def) => def.key), row.time_tracking === 1),
     lastBriefAt: latest?.composed_at ?? null,
     lastBriefSentAt: sent?.at ?? null,
   };
@@ -313,6 +319,15 @@ export async function updateSettings(ctx: Ctx, patch: SettingsPatch, options: Se
     if (address !== before.postal_address) {
       set.postal_address = address;
       parts.push(address === null ? "postal address cleared" : "postal address set");
+    }
+  }
+  if (patch.projectFacts !== undefined) {
+    const live = (await fieldDefRows(ctx, { entity: "project" })).map((def) => def.key);
+    const keys = patch.projectFacts === null ? null : checkProjectFacts(patch.projectFacts, live);
+    const stored = keys === null ? null : JSON.stringify(keys);
+    if (stored !== before.project_facts) {
+      set.project_facts = stored;
+      parts.push(keys === null ? "project facts back to the default" : `project facts to ${keys.length === 0 ? "none" : keys.join(", ")}`);
     }
   }
   if (patch.campaignDailyLimit !== undefined) {

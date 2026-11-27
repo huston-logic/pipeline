@@ -61,13 +61,13 @@ export type PageOptions = {
    * says "Pipeline" and links no /theme.css, which needs a sign-in. */
   frame?: PageFrame;
   /** Loads /board.js (decision 0014): only pages whose forms it enhances. "push" loads /push.js instead, on the
-   * Notifications page only (decision 0030). Every page with a `frame` also loads /live.js (decision 0062). */
+   * Notifications page only (decision 0030). Every page with a `frame` also loads /live.js and /clock.js (decision 0062). */
   script?: boolean | "push";
 };
 
-/** /live.js (decision 0062) on every signed-in page, then the page's own script, if any. */
+/** /live.js and /clock.js (decision 0062) on every signed-in page, then the page's own script, if any. */
 function scriptTag(script: boolean | "push", framed: boolean): Html | "" {
-  const live = framed ? html`<script src="/live.js" defer></script>\n` : "";
+  const live = framed ? html`<script src="/live.js" defer></script>\n<script src="/clock.js" defer></script>\n` : "";
   if (script === "push") return html`${live}<script src="/push.js" defer></script>\n`;
   return script ? html`${live}<script src="/board.js" defer></script>\n` : live;
 }

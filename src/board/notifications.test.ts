@@ -54,7 +54,7 @@ test("without the keys the page says so and has nothing to tap, and loads no scr
     assert.match(page.body, /This copy has no notification keys yet\./);
     assert.doesNotMatch(page.body, /<form/);
     assert.doesNotMatch(page.body, /<button/);
-    assert.doesNotMatch(page.body.replace('<script src="/live.js" defer></script>', ""), /<script/);
+    assert.doesNotMatch(page.body.replace('<script src="/live.js" defer></script>\n<script src="/clock.js" defer></script>', ""), /<script/);
   }
 });
 

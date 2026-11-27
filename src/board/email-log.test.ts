@@ -45,7 +45,7 @@ test("without EMAIL_LOG_ADDRESS the page says it isn't set up, with no field and
     const main = mainOf(body);
     assert.match(main, /Email logging isn&#39;t set up for this copy\.|Email logging isn't set up for this copy\./);
     assert.doesNotMatch(main, /<input|data-copy/);
-    assert.doesNotMatch(body.replace('<script src="/live.js" defer></script>', ""), /<script/);
+    assert.doesNotMatch(body.replace('<script src="/live.js" defer></script>\n<script src="/clock.js" defer></script>', ""), /<script/);
   }
 });
 

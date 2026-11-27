@@ -994,34 +994,6 @@ ol.panel {
   font-weight: 600;
 }
 
-/* Today (decision 0047): the quick add form, and the sort and show form (a GET form, no JavaScript). */
-.quick-add {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 0.75rem;
-  align-items: end;
-  max-width: 52rem;
-  margin: 0 0 1rem;
-}
-
-.quick-add > .field:first-of-type {
-  grid-column: 1 / -1;
-}
-
-.quick-add .button {
-  border: 0;
-  font-family: inherit;
-  cursor: pointer;
-}
-
-.search.todo-filter {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.todo-filter .button {
-  grid-column: 1 / -1;
-}
-
 /* More: one card per destination; the whole card is the link. */
 .card-link {
   display: flex;
@@ -1868,7 +1840,7 @@ html:has(.corner-chip, .corner-notice:not(:empty)) {
   border-left: 2px solid var(--divider);
 }
 
-.task-row {
+.task-node > .task-row {
   margin: 0 0 0.75rem;
   padding: 0.75rem;
   border: 1px solid var(--edge);
@@ -1876,7 +1848,7 @@ html:has(.corner-chip, .corner-notice:not(:empty)) {
   background: var(--white);
 }
 
-.task-row p {
+.task-node > .task-row p {
   margin: 0 0 0.25rem;
   overflow-wrap: anywhere;
 }
@@ -1895,7 +1867,627 @@ html:has(.corner-chip, .corner-notice:not(:empty)) {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
-  margin: 0 0 0.75rem;
+  margin: 0;
+}
+
+/* The shared task row (§7.24): one white panel, a row per task, the actions and sub-tasks under disclosures. */
+.task-rows {
+  margin: 0 0 1rem;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--edge);
+  border-radius: var(--r-card);
+  background: var(--white);
+  overflow: hidden;
+}
+
+.task-rows-nested {
+  margin: 0 0 0 44px;
+  border: 0;
+  border-top: 1px solid var(--divider);
+  border-radius: 0;
+}
+
+.task-row {
+  position: relative;
+  min-height: 44px;
+}
+
+.task-row + .task-row {
+  border-top: 1px solid var(--divider);
+}
+
+.task-row > .task-done,
+.task-row > .task-done-static {
+  position: absolute;
+  top: 0;
+  left: 0;
+  margin: 0;
+}
+
+.task-done-box {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.task-box {
+  position: relative;
+  display: block;
+  width: 24px;
+  height: 24px;
+  border: 2px solid var(--ink-2);
+  border-radius: var(--r-field);
+  background: var(--white);
+}
+
+.task-done-static {
+  cursor: default;
+}
+
+.task-done-static .task-box {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+.task-done-static .task-box::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 6px;
+  width: 6px;
+  height: 11px;
+  border: solid var(--on-accent);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.task-done-box:focus-visible {
+  outline: 2px solid var(--rust);
+  outline-offset: -3px;
+  border-radius: var(--r-btn);
+}
+
+.task-open > summary {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) 1.5rem;
+  grid-template-areas:
+    "title title chev"
+    "due belongs chev";
+  align-items: center;
+  column-gap: 12px;
+  min-height: 44px;
+  padding: 0.375rem 12px 0.375rem 44px;
+  color: var(--ink);
+  list-style: none;
+  cursor: pointer;
+}
+
+.task-open > summary::-webkit-details-marker {
+  display: none;
+}
+
+.task-open > summary::after {
+  content: "";
+  grid-area: chev;
+  justify-self: end;
+  width: 8px;
+  height: 8px;
+  border: solid var(--ink-2);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.task-open[open] > summary::after {
+  transform: rotate(-135deg);
+}
+
+.task-open > summary:focus-visible,
+.task-subs > summary:focus-visible {
+  outline: 2px solid var(--rust);
+  outline-offset: -3px;
+  border-radius: var(--r-btn);
+}
+
+.task-title {
+  grid-area: title;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: 1.0625rem;
+  overflow-wrap: anywhere;
+}
+
+.task-due,
+.task-belongs {
+  color: var(--ink-2);
+  font-size: 0.9375rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.task-due {
+  grid-area: due;
+}
+
+.task-belongs {
+  grid-area: belongs;
+  overflow-wrap: anywhere;
+}
+
+.task-late {
+  color: var(--rust);
+  font-weight: 600;
+}
+
+.task-open-body {
+  padding: 12px 12px 12px 44px;
+  border-top: 1px solid var(--divider);
+}
+
+.task-for {
+  color: var(--ink-2);
+}
+
+.task-fulltitle {
+  font-weight: 600;
+}
+
+.task-open-body > p {
+  margin: 0 0 0.5rem;
+  overflow-wrap: anywhere;
+}
+
+.task-open-body .task-description {
+  margin-top: 0;
+}
+
+.task-open-body .task-actions {
+  gap: 0.5rem;
+  margin: 0;
+  padding-top: 0.25rem;
+  border-top: 0;
+}
+
+.task-subadd {
+  flex: 1 1 12rem;
+}
+
+.task-subadd > summary {
+  display: list-item;
+  min-height: 44px;
+  padding: 0.625rem 0 0;
+  color: var(--ink-2);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.task-subs > summary {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 44px;
+  padding: 0 12px 0 44px;
+  color: var(--ink-2);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  list-style: none;
+  cursor: pointer;
+}
+
+.task-subs > summary::-webkit-details-marker {
+  display: none;
+}
+
+.task-subs > summary::after {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border: solid var(--ink-2);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.task-subs[open] > summary::after {
+  transform: rotate(-135deg);
+}
+
+.task-deeper {
+  margin: 0;
+  padding: 0 12px 12px 44px;
+}
+
+.no-belongs > .task-open > summary {
+  grid-template-areas:
+    "title title chev"
+    "due due chev";
+}
+
+@media (min-width: 40rem) {
+  .task-open > summary {
+    grid-template-columns: minmax(0, 1fr) 10rem 12rem 1.5rem;
+    grid-template-areas: "title due belongs chev";
+  }
+
+  .no-belongs > .task-open > summary {
+    grid-template-columns: minmax(0, 1fr) 10rem 1.5rem;
+    grid-template-areas: "title due chev";
+  }
+
+  .has-subs > .task-row > .task-open > summary {
+    padding-right: 11rem;
+  }
+
+  .task-subs > summary {
+    position: absolute;
+    top: 0;
+    right: 0;
+    padding-left: 12px;
+  }
+
+  .task-title {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+/* Today (run 12, §5): a head with the summary and the stage counts, one add line, one tools line, the groups, and the
+   add buttons at the foot. */
+.today-head h1 {
+  margin: 0;
+  font-size: 1.875rem;
+}
+
+.today-head {
+  margin-top: -1rem;
+}
+
+.today-head .page-head {
+  gap: 0 0.75rem;
+}
+
+.today-head .page-date {
+  margin: 0;
+  font-size: 0.9375rem;
+}
+
+.today-summary,
+.pending-note {
+  max-width: 44rem;
+  margin: 0;
+  color: var(--ink-2);
+  font-size: 0.9375rem;
+  line-height: 1.4;
+}
+
+.pending-note a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  font-weight: 600;
+}
+
+.today-foot {
+  margin-top: 1.5rem;
+}
+
+.today-actions {
+  gap: 0.5rem;
+  margin: 0;
+}
+
+/* The open deals by stage: label and count pairs, each label a 44px target; columns, so they stay a short block. */
+.stage-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 1rem;
+  margin: 0;
+  font-size: 0.9375rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.stage-counts > div {
+  display: flex;
+  gap: 0.375rem;
+  align-items: center;
+}
+
+.stage-counts dt,
+.stage-counts dd {
+  margin: 0;
+}
+
+.stage-counts dt a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--ink-2);
+}
+
+.stage-counts dd {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* Add a to-do: Title on its own line on a phone, then Due and Add; one line from 40rem. */
+.quick-add {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0 0.5rem;
+  align-items: end;
+  margin: 0;
+}
+
+.quick-add > .field:first-of-type {
+  grid-column: 1 / -1;
+}
+
+.quick-add .field {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.quick-add .field label {
+  flex: none;
+  white-space: nowrap;
+  font-size: 0.9375rem;
+}
+
+.quick-add .field input {
+  min-height: 44px;
+}
+
+.quick-add .button {
+  border: 0;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.today-tools > summary {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--ink-2);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.today-filter {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.25rem 0.5rem;
+  align-items: end;
+  margin: 0 0 0.5rem;
+}
+
+.today-filter .field {
+  gap: 0.125rem;
+}
+
+.today-filter .field label {
+  font-size: 0.9375rem;
+}
+
+.today-filter .button {
+  grid-column: 1 / -1;
+  justify-self: start;
+  border: 0;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.today-group h2 {
+  margin: 1.5rem 0 0.25rem;
+  font-size: 1.0625rem;
+}
+
+.today-group:first-of-type h2 {
+  margin-top: 0;
+}
+
+.today-group .task-rows {
+  margin-bottom: 0;
+}
+
+.task-row > .task-done-cell {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 44px;
+  height: 44px;
+}
+
+/* A project reads as a group: a chevron in the Done cell's place, turned when the row is open. */
+.project-row > .task-open > summary::before {
+  content: "";
+  position: absolute;
+  top: 17px;
+  left: 18px;
+  width: 8px;
+  height: 8px;
+  border: solid var(--ink-2);
+  border-width: 0 2px 2px 0;
+  transform: rotate(-45deg);
+}
+
+.project-row > .task-open[open] > summary::before {
+  transform: rotate(45deg);
+}
+
+.project-tasks.task-open-body {
+  padding: 0;
+}
+
+.project-tasks > .task-rows {
+  margin: 0 0 0 44px;
+  border: 0;
+  border-radius: 0;
+}
+
+.project-tasks > .task-links,
+.project-tasks > .task-more-note {
+  margin: 0;
+  padding: 0.25rem 12px 0.75rem 44px;
+}
+
+.next-step-row .task-open-body > p {
+  margin: 0 0 0.25rem;
+}
+
+/* Today's rows are tight. A phone: the title (up to two lines), then the due and who it is for, which goes to a line of
+   its own only when there is no room beside the due. From 48rem: one line in columns. */
+.today-group .task-open > summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 8px;
+  padding: 0.125rem 1.75rem 0.125rem 44px;
+}
+
+.today-group .task-open > summary::after {
+  position: absolute;
+  top: 15px;
+  right: 10px;
+}
+
+.today-group .task-title,
+.today-group .task-due,
+.today-group .task-belongs {
+  line-height: 1.3;
+}
+
+.today-group .task-title {
+  flex: 1 1 100%;
+}
+
+.today-group .task-due {
+  flex: none;
+  white-space: nowrap;
+}
+
+/* The person shares the due's line and is cut with an ellipsis; opened, the row says it in full. A project's count stays whole. */
+.today-group .task-belongs {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.today-group .project-row > .task-open > summary .task-belongs {
+  flex: none;
+}
+
+@media (min-width: 40rem) {
+  .quick-add {
+    grid-template-columns: minmax(0, 1fr) 14rem auto;
+  }
+
+  .quick-add > .field:first-of-type {
+    grid-column: auto;
+  }
+
+  .quick-add .field-hint,
+  .quick-add .field-error {
+    flex-basis: 100%;
+  }
+
+  .today-tools {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    column-gap: 1rem;
+  }
+
+  .today-tools > summary {
+    flex: none;
+  }
+
+  /* Sent closed (a phone keeps it closed); here it is shown by style alone, so nothing shifts after the first paint.
+     A browser without ::details-content keeps the Sort and filter disclosure. */
+  @supports selector(::details-content) {
+    .today-tools > summary {
+      display: none;
+    }
+
+    .today-tools::details-content {
+      content-visibility: visible;
+      display: contents;
+    }
+  }
+
+  .today-filter {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0 1rem;
+    margin: 0;
+  }
+
+  .today-filter .field {
+    flex-direction: row;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .today-filter .field label {
+    flex: none;
+  }
+
+  .today-filter .field select {
+    width: auto;
+  }
+}
+
+@media (min-width: 48rem) {
+  .today-group .task-open > summary {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 14.5rem 11rem 1.5rem;
+    grid-template-areas: "title due belongs chev";
+    align-items: center;
+    padding: 0.375rem 12px 0.375rem 44px;
+  }
+
+  .today-group .task-open > summary::after {
+    position: static;
+  }
+
+  .today-group .task-belongs {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+@media (min-width: 60rem) {
+  .today-head {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: 2rem;
+    align-items: start;
+  }
+
+  .stage-counts {
+    display: grid;
+    grid-template-columns: repeat(3, auto);
+    justify-content: end;
+    gap: 0 1.5rem;
+  }
+
 }
 
 /* The time pages (decision 0051): the week's links, each day's table and the month's CSV form. */
@@ -2328,22 +2920,6 @@ html:has(.corner-chip, .corner-notice:not(:empty)) {
     grid-column: 1 / -1;
   }
 
-  .quick-add {
-    grid-template-columns: minmax(0, 1fr) 12rem auto;
-  }
-
-  .quick-add > .field:first-of-type {
-    grid-column: auto;
-  }
-
-  .search.todo-filter {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
-  }
-
-  .todo-filter .button {
-    grid-column: auto;
-  }
-
   .panel {
     padding-inline: 1.25rem;
   }
@@ -2550,18 +3126,6 @@ html:has(.corner-chip, .corner-notice:not(:empty)) {
 }
 
 @media (min-width: 72rem) {
-  /* Today: what is due on the left, the pipeline and the brief beside it. */
-  .today-columns {
-    display: grid;
-    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
-    gap: 0 2rem;
-    align-items: start;
-  }
-
-  .today-due .cards {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
   .deal-columns,
   .detail-columns {
     display: grid;
@@ -2639,6 +3203,249 @@ html:has(.corner-chip, .corner-notice:not(:empty)) {
   overflow-wrap: anywhere;
 }
 
+/* Project page, one column (run 12): head row, facts, one-line Add a task, tasks, Done. */
+.project-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.75rem;
+  margin: 0 0 1rem;
+}
+
+.project-head h1 {
+  margin: 0;
+}
+
+.project-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  margin-left: auto;
+}
+
+.project-actions > a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  font-weight: 600;
+}
+
+.project-facts {
+  max-width: 60rem;
+  margin: 0 0 1.5rem;
+}
+
+.fact-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem 1.5rem;
+  margin: 0 0 0.5rem;
+}
+
+.fact-grid > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 0.5rem;
+  align-items: baseline;
+  min-width: 0;
+}
+
+.fact-grid dt {
+  color: var(--ink-2);
+  font-size: 0.9375rem;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.fact-grid dd {
+  margin: 0;
+  font-size: 1.0625rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.fact-grid dd a {
+  font-weight: 600;
+}
+
+.fact-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1.25rem;
+}
+
+.fact-actions > a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  font-weight: 600;
+}
+
+.project-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+}
+
+.project-status .field {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+}
+
+.project-status .field > label {
+  flex: none;
+  margin: 0;
+  white-space: nowrap;
+  color: var(--ink-2);
+  font-size: 0.9375rem;
+  font-weight: 500;
+}
+
+.project-notes,
+.done-details {
+  margin: 0.5rem 0 0;
+}
+
+.project-notes summary,
+.done-details summary {
+  display: list-item;
+  min-height: 44px;
+  padding: 0.625rem 0;
+  color: var(--accent);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.project-notes-text {
+  max-width: 44rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.add-task-line .inline-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.75rem;
+  align-items: end;
+  margin: 0 0 0.5rem;
+}
+
+.add-task-line .field textarea {
+  min-height: 3rem;
+  height: 3rem;
+}
+
+/* The hint stays for a screen reader (aria-describedby) but takes no room in the one-line form. */
+.add-task-line .field-hint {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.add-task-line .when-row {
+  flex-wrap: nowrap;
+}
+
+/* "Date" and "Time" stay as accessible names; the Due legend above them is the visible label. */
+.add-task-line .when-part label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.add-task-line .field-when legend {
+  margin-bottom: 0.5rem;
+}
+
+.section-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0 1rem;
+  margin: 2rem 0 0.875rem;
+}
+
+.section-head h2 {
+  margin: 0;
+}
+
+.task-count {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: 0.9375rem;
+  font-weight: 500;
+}
+
+.facts-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.facts-table th,
+.facts-table td {
+  padding: 0.5rem 0.75rem 0.5rem 0;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.facts-table td label {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+}
+
+.facts-table input[type="checkbox"] {
+  width: 1.5rem;
+  height: 1.5rem;
+  vertical-align: middle;
+}
+
+.facts-table input[type="number"] {
+  width: 4.5rem;
+  min-height: 44px;
+  padding: 0 0.5rem;
+  border: 1px solid var(--ink-2);
+  border-radius: var(--r-field);
+  font: inherit;
+}
+
+.form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1.25rem;
+  margin: 1rem 0;
+}
+
+@media (min-width: 40rem) {
+  .fact-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 2.5rem;
+  }
+}
+
+@media (min-width: 60rem) {
+  .add-task-line .inline-form {
+    grid-template-columns: minmax(12rem, 2fr) auto minmax(12rem, 2fr) auto;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -2679,14 +3486,6 @@ html:has(.corner-chip, .corner-notice:not(:empty)) {
 }
 
 /* ---------- Pending changes (run 10) ---------- */
-
-.pending-note .button {
-  max-width: 100%;
-  height: auto;
-  white-space: normal;
-  overflow-wrap: anywhere;
-  text-align: left;
-}
 
 .list-heading {
   margin: 1.25rem 0 0.5rem;

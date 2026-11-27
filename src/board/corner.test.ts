@@ -107,8 +107,12 @@ async function corner_(db: SqliteD1, now: Date, options: { change?: string; clos
   return buildCorner(db, now, settings, { changeId: options.change ?? null, closed: options.closed ?? null });
 }
 
+// Noon in the owner's timezone (Los Angeles), so the timer's start and stop fall on the same local day whenever the
+// suite runs; the real clock made the note show a date just after midnight.
+const MIDDAY = "2026-11-25T20:00:00.000Z";
+
 async function ranTimer(minutesAgo: number, tool: "stop_timer" | "cancel_timer" = "stop_timer") {
-  const stopAt = new Date();
+  const stopAt = new Date(MIDDAY);
   const db = await timeDb(stopAt);
   const begin = new Date(stopAt.getTime() - minutesAgo * 60_000 - 30 * 60_000);
   await startTimer(ctxFor(db, begin, "start_timer"), { contact: "ct_seed01" });

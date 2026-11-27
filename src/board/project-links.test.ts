@@ -100,15 +100,17 @@ test("while projects are off the person page has nothing about projects", async 
   assert.doesNotMatch(body, /Start a project|>Projects<\/h2>|\/projects\//);
 });
 
-test("a project task shows its Project pair on Today and on the person page's task card, before Contact", async () => {
+test("a project task shows its Project pair on Today and the person page's task row names it, before Contact", async () => {
   const db = await projectDb();
   personProject(db);
   await addTask(ctxFor(db, "add_task"), { project: "pj_retro", title: "Order anchors", dueAt: "2026-11-19" });
   const today = (await load(devEnv(db), "/")).body;
-  assert.match(today, /Project<\/dt><dd><a href="\/projects\/pj_retro">Retrofit<\/a>/);
-  assert.ok(today.indexOf("Project</dt>") < today.indexOf("Contact</dt>"));
+  const row = today.slice(today.indexOf('id="p-pj_retro"'));
+  assert.match(row, /<span class="task-title">Retrofit<\/span>[\s\S]*1 task, 1 overdue<\/span>/, "a project is one row");
+  assert.match(row, /<span class="task-title">Order anchors<\/span>[\s\S]*<a href="\/projects\/pj_retro">Open the project<\/a>/, "its task is inside it");
+  assert.equal(today.match(/<span class="task-title">Order anchors/g)?.length, 1, "the task has no row of its own");
   const person = (await load(devEnv(db), "/contacts/ct_seed01")).body;
-  assert.match(person, /Project<\/dt><dd><a href="\/projects\/pj_retro">Retrofit<\/a>/);
+  assert.match(person, /<span class="task-belongs"><span class="visually-hidden">, for <\/span>Retrofit<\/span>[^]*<a href="\/projects\/pj_retro">Open the project<\/a>/);
 });
 
 test("a project task's Project pair is gone while projects are off", async () => {

@@ -2,6 +2,7 @@
 // after. Pure: no database. Stored filters use the keys of migration 0013 (person_status, sub_status, source, q,
 // fields, stage); the MCP tools take and answer the same filters in camelCase, like every other tool input.
 import type { ViewLayout, ViewModule } from "../db/db.ts";
+import { UserError } from "./errors.ts";
 import { parseObject, parseStringArray } from "./lookup.ts";
 
 export const VIEW_MODULES = ["people", "deals", "projects"] as const satisfies readonly ViewModule[];
@@ -105,6 +106,55 @@ export const VIEW_COLUMNS = {
 } as const satisfies Record<ViewModule, Record<string, string>>;
 
 export const columnsOf = (module: ViewModule): Record<string, string> => VIEW_COLUMNS[module];
+
+/** The facts a project page can show (run 12, ruling 8): the projects columns but the name, plus the total time. */
+export const PROJECT_FACT_KEYS = [...(Object.keys(VIEW_COLUMNS.projects) as (keyof typeof VIEW_COLUMNS.projects)[]).filter((key) => key !== "project"), "time"] as const;
+export const PROJECT_FACT_LABELS: Record<string, string> = { ...VIEW_COLUMNS.projects, time: "Time" };
+export const MAX_PROJECT_FACTS = 20;
+const FACT_FIELD = "fields.";
+
+/** The facts shown with nothing chosen: the standard ones, then every live custom project field. */
+const defaultFacts = (liveFieldKeys: readonly string[], timeTracking: boolean): string[] => [
+  "status", "person", "deal", "start", "target",
+  ...(timeTracking ? ["time"] : []),
+  ...liveFieldKeys.map((key) => `${FACT_FIELD}${key}`),
+];
+
+/** Every fact that can be chosen now, in the order the chooser lists the unchosen ones. */
+export const possibleFacts = (liveFieldKeys: readonly string[], timeTracking: boolean): string[] => [
+  ...PROJECT_FACT_KEYS.filter((key) => key !== "time" || timeTracking),
+  ...liveFieldKeys.map((key) => `${FACT_FIELD}${key}`),
+];
+
+/** The facts the project page shows, in order: the stored list without keys that no longer apply, or the default. */
+export function projectFacts(stored: { project_facts: string | null }, liveFieldKeys: readonly string[], timeTracking: boolean): string[] {
+  const fallback = defaultFacts(liveFieldKeys, timeTracking);
+  if (stored.project_facts === null) return fallback;
+  let keys: string[];
+  try {
+    keys = parseStringArray(stored.project_facts);
+  } catch {
+    return fallback;
+  }
+  const live = new Set(liveFieldKeys.map((key) => `${FACT_FIELD}${key}`));
+  const known = new Set<string>(PROJECT_FACT_KEYS);
+  return keys.filter((key) => (known.has(key) && (key !== "time" || timeTracking)) || live.has(key));
+}
+
+/** The keys as given when each is a project fact, listed once, at most 20; a UserError in plain words otherwise. */
+export function checkProjectFacts(keys: readonly string[], liveFieldKeys: readonly string[]): string[] {
+  if (keys.length > MAX_PROJECT_FACTS) throw new UserError(`Choose at most ${MAX_PROJECT_FACTS} facts for the project page.`);
+  const allowed = new Set<string>([...PROJECT_FACT_KEYS, ...liveFieldKeys.map((key) => `${FACT_FIELD}${key}`)]);
+  const seen = new Set<string>();
+  for (const key of keys) {
+    if (!allowed.has(key)) {
+      throw new UserError(`Unknown fact: ${key}. Choose from ${PROJECT_FACT_KEYS.join(", ")}, or fields.<key> of a project field.`);
+    }
+    if (seen.has(key)) throw new UserError(`The fact ${key} is listed twice. List each fact once.`);
+    seen.add(key);
+  }
+  return [...keys];
+}
 
 /** The column every view of the module starts with: it links to the record. */
 export const FIRST_COLUMN: Record<ViewModule, string> = { people: "name", deals: "deal", projects: "project" };

@@ -169,7 +169,7 @@ test("the deal page offers Edit deal, Add a task and Log, and each task card has
   const log = formOf(body, "/deals/dl_seed01/log", "inline-form");
   assertLabelled(log, "log");
   assert.match(log, /<select id="log-dl_seed01-type" name="type">\n<option value="note" selected>Note<\/option>\n<option value="call">Call<\/option>/);
-  assert.match(formOf(body, "/tasks/tk_seed01/complete"), /<button class="button button-quiet button-small" type="submit">Done<span class="visually-hidden">: Prepare questions for Pat&#39;s call<\/span><\/button>/);
+  assert.match(formOf(body, "/tasks/tk_seed01/complete"), /<button class="task-done-box" id="done-tk_seed01" type="submit"><span class="task-box" aria-hidden="true"><\/span><span class="visually-hidden">Done: Prepare questions for Pat&#39;s call<\/span><\/button>/);
   const presets = formOf(body, "/tasks/tk_seed01/snooze");
   assert.match(presets, /<button class="button button-quiet button-small" type="submit" name="preset" value="tomorrow">Tomorrow morning<span class="visually-hidden">: Prepare questions/);
   assert.match(presets, /value="next_week">Next week/);
@@ -191,7 +191,7 @@ test("an outside task title never names a button: the task's id does", async () 
   const db = await seededDb();
   db.exec(`UPDATE tasks SET title = 'Robin Sample says hi', untrusted_fields = '["title"]' WHERE id = 'tk_seed01'`);
   const { body } = await load(devEnv(db), "/deals/dl_seed01");
-  assert.match(body, /Done<span class="visually-hidden">: task tk_seed01<\/span>/);
+  assert.match(body, /<span class="visually-hidden">Done: task tk_seed01<\/span>/);
   assert.doesNotMatch(body, /visually-hidden">: Robin/);
 });
 
@@ -205,9 +205,15 @@ test("Today, Pipeline and Contacts each have Add a deal and Add a lead buttons t
     const importing = `<a class="button button-quiet" href="/import\\?module=${module}">Import</a>`;
     // Contacts has Add contact too (decision 0041).
     const contact = from === "contacts" ? `<a class="button button-quiet" href="/contacts/new\\?from=contacts">Add contact</a>` : "";
+    // Today's are one small quiet line (run 12).
+    const small = from === "today";
+    const first = small ? "button button-quiet button-small" : "button";
+    const quiet = small ? "button button-quiet button-small" : "button button-quiet";
+    const wrapper = small ? "page-action today-actions" : "page-action";
+    const importLink = importing.replace("button button-quiet", quiet);
     assert.match(
       (await load(env, path)).body,
-      new RegExp(`<p class="page-action"><a class="button" href="/deals/new\\?from=${from}">Add a deal</a>${contact}<a class="button button-quiet" href="/leads/new\\?from=${from}">Add a lead</a>${importing}</p>`),
+      new RegExp(`<p class="${wrapper}"><a class="${first}" href="/deals/new\\?from=${from}">Add a deal</a>${contact}<a class="${quiet}" href="/leads/new\\?from=${from}">Add a lead</a>${importLink}</p>`),
       path,
     );
   }
@@ -231,12 +237,12 @@ test("Today shows a standalone task with no Deal or Contact line, and its Done g
   assert.doesNotMatch(body, /undefined|null/);
   const card = (id: string) => {
     const end = body.indexOf(`action="/tasks/${id}/complete"`);
-    return body.slice(body.lastIndexOf('<li class="card">', end), body.indexOf("</li>", end));
+    return body.slice(body.lastIndexOf('<li class="task-row', end), body.indexOf("</li>", end));
   };
-  assert.match(card("tk_mine"), /<h3 class="card-title">Buy printer ink<\/h3>/);
-  assert.doesNotMatch(card("tk_mine"), /<dt>(Deal|Contact)<\/dt>/);
-  assert.match(card("tk_mine"), /Done<span class="visually-hidden">: Buy printer ink<\/span>/);
-  assert.match(card("tk_mine2"), /Done<span class="visually-hidden">: task tk_mine2<\/span>/);
+  assert.match(card("tk_mine"), /<span class="task-title">Buy printer ink<\/span>/);
+  assert.match(card("tk_mine"), /<span class="task-belongs"><\/span>/, "no deal or person to name");
+  assert.match(card("tk_mine"), /Done: Buy printer ink<\/span>/);
+  assert.match(card("tk_mine2"), /Done: task tk_mine2<\/span>/);
   assert.doesNotMatch(titleOf(body), /Robin|printer/);
 
   const done = await post(env, "/tasks/tk_mine/complete", { return_to: "/" });

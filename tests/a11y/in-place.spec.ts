@@ -9,7 +9,9 @@ const TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa", "best-prac
 const notice = (page: Page) => page.locator(".corner-notice");
 const chip = (page: Page) => page.locator(".corner-chip");
 const press = (page: Page, name: RegExp) => page.getByRole("button", { name }).first();
-const mark = (page: Page) => page.evaluate(() => (window as unknown as { __marker?: number }).__marker);
+// Start timer lives in a task row's actions, which open with the row.
+const openFirstTask = (page: Page) => page.locator(".today-group > ul > li.task-row:not(.next-step-row):not(.project-row) > details.task-open > summary").first().click();
+const mark =(page: Page) => page.evaluate(() => (window as unknown as { __marker?: number }).__marker);
 
 async function expectClean(page: Page, label: string) {
   const { violations } = await new AxeBuilder({ page }).withTags(TAGS).analyze();
@@ -44,6 +46,7 @@ test.describe.serial("with scripts on", () => {
     await expect(notice(page)).toContainText("Undone");
     await inPlace();
 
+    await openFirstTask(page);
     await press(page, /^Start timer/).click();
     await expect(chip(page)).toBeVisible();
     await inPlace();
@@ -60,6 +63,24 @@ test.describe.serial("with scripts on", () => {
     await expect(chip(page)).toHaveCount(0);
     await inPlace();
   });
+
+  // A row's forms arrive as <noscript> markup and are unfolded when the row opens; the unfolded Edit still saves in place.
+  test("an opened row's Edit form saves in place", async ({ page }) => {
+    await page.goto("/", { waitUntil: "networkidle" });
+    await page.evaluate(() => {
+      (window as unknown as { __marker?: number }).__marker = 1;
+    });
+    const row = page.locator(".today-group > ul > li.task-row:not(.next-step-row):not(.project-row)").first();
+    await row.locator(":scope > details.task-open > summary").click();
+    await row.locator("details.task-edit > summary").click();
+    await row.locator("details.task-edit textarea").fill("Bring last quarter's receipts.");
+    await row.locator("details.task-edit").getByRole("button", { name: /^Save/ }).click();
+    await expect(notice(page)).toContainText("Saved");
+    expect(await mark(page), "the page was not reloaded").toBe(1);
+    await notice(page).getByRole("button", { name: /^Undo/ }).click();
+    await expect(notice(page)).toContainText("Undone");
+    expect(await mark(page), "the page was not reloaded").toBe(1);
+  });
 });
 
 test.describe.serial("with scripts off", () => {
@@ -73,6 +94,7 @@ test.describe.serial("with scripts off", () => {
     await notice(page).getByRole("button", { name: /^Undo/ }).click();
     await expect(notice(page)).toContainText("Undone");
 
+    await openFirstTask(page);
     await press(page, /^Start timer/).click();
     await expect(chip(page)).toContainText("since");
     await chip(page).getByRole("button", { name: /^Stop/ }).click();

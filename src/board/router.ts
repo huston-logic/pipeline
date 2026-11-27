@@ -9,7 +9,7 @@ import { herePath, type PageContext } from "./context.ts";
 import { lookOf } from "./layout.ts";
 import { briefPage } from "./pages/brief.ts";
 import { changesPage } from "./pages/changes.ts";
-import { isCampaignId, isContactId, isDealId, isImportId, isProjectId, isTemplateId, isTimeEntryId } from "../ids.ts";
+import { isCampaignId, isContactId, isDealId, isImportId, isProjectId, isTaskId, isTemplateId, isTimeEntryId } from "../ids.ts";
 import { companiesPage } from "./pages/companies.ts";
 import { contactPage } from "./pages/contact.ts";
 import { contactEditPage } from "./pages/contact-edit.ts";
@@ -33,6 +33,7 @@ import { PEOPLE_VIEW_PATH, peopleViewPage } from "./pages/people-view.ts";
 import { pipelinePage } from "./pages/pipeline.ts";
 import { REPORT_PATH, reportPage } from "./pages/report.ts";
 import { rulesPage } from "./pages/rules.ts";
+import { TASK_ACTIONS_PATH, taskActionsPage } from "./pages/task-actions.ts";
 import { todayPage } from "./pages/today.ts";
 import { timerDonePage, TIMER_DONE_PATH } from "./pages/timer-done.ts";
 import { timerNotesPage, TIMER_NOTES_PATH } from "./pages/timer-notes.ts";
@@ -49,6 +50,7 @@ import { campaignSettingsPage } from "./pages/campaign-settings.ts";
 import { PROJECTS_PATH, projectsPage } from "./pages/projects.ts";
 import { projectPage } from "./pages/project.ts";
 import { projectEditPage } from "./pages/project-edit.ts";
+import { PROJECT_FACTS_PATH, projectFactsPage } from "./pages/project-facts.ts";
 import { newInternalProjectPage, newProjectOfContactPage, newProjectOfDealPage } from "./pages/project-new.ts";
 import { templatePage } from "./pages/template.ts";
 import { templateTaskEditPage } from "./pages/template-task-edit.ts";
@@ -104,6 +106,7 @@ const PAGES = new Map<string, Page>([
   [TIME_NEW_PATH, (ctx) => timeNewPage(ctx)],
   [PROJECTS_PATH, (ctx) => projectsPage(ctx)],
   ["/projects/new", (ctx) => newInternalProjectPage(ctx)],
+  [PROJECT_FACTS_PATH, (ctx) => projectFactsPage(ctx)],
   [TEMPLATES_PATH, (ctx) => templatesPage(ctx)],
   [TEMPLATES_NEW_PATH, (ctx) => templateNewPage(ctx)],
   [CAMPAIGNS_PATH, (ctx) => campaignsPage(ctx)],
@@ -134,6 +137,8 @@ const RECORD_PATHS: { path: RegExp; isId: (id: string) => boolean; page: RecordP
   { path: /^\/campaigns\/([^/]+)\/people$/, isId: isCampaignId, page: (ctx, id) => campaignPeoplePage(ctx, id) },
   { path: /^\/import\/([^/]+)$/, isId: isImportId, page: importDraft, gone: importGonePage },
   { path: /^\/import\/([^/]+)\/preview$/, isId: isImportId, page: importPreview, gone: importGonePage },
+  // An open task row's actions for public/live.js (run 12); not in boardRoutes, the row's <noscript> has them too.
+  { path: TASK_ACTIONS_PATH, isId: isTaskId, page: (ctx, id) => taskActionsPage(ctx, id) },
 ];
 
 /** /templates/<tp id>/tasks/<tt id>/edit: the one page with two ids in its address. */

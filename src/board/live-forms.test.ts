@@ -21,8 +21,8 @@ test("a live form is marked data-live; an after id adds data-after and a hidden 
 test("every signed-in page loads /live.js with defer, before any page script; a page with no frame loads none", () => {
   const frame = { look: { name: "Pipeline" } };
   const page = renderPage({ title: "T", description: "d", body: html`<h1>T</h1>`, frame, script: true });
-  assert.match(page, /<script src="\/live.js" defer><\/script>\n<script src="\/board.js" defer><\/script>\n<\/head>/);
-  assert.match(renderPage({ title: "T", description: "d", body: html`<h1>T</h1>`, frame }), /<script src="\/live.js" defer><\/script>\n<\/head>/);
+  assert.match(page, /<script src="\/live.js" defer><\/script>\n<script src="\/clock.js" defer><\/script>\n<script src="\/board.js" defer><\/script>\n<\/head>/);
+  assert.match(renderPage({ title: "T", description: "d", body: html`<h1>T</h1>`, frame }), /<script src="\/live.js" defer><\/script>\n<script src="\/clock.js" defer><\/script>\n<\/head>/);
   assert.doesNotMatch(renderPage({ title: "T", description: "d", body: html`<h1>T</h1>` }), /live\.js/);
 });
 

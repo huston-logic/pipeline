@@ -33,7 +33,7 @@ test("/projects/pj_seed01 is in boardRoutes", () => {
   assert.ok(boardRoutes.includes("/projects/pj_seed01"));
 });
 
-test("the page has the Project card first, then Open tasks, Done and Notes", async () => {
+test("the page is one column: head, facts, Add a task, Open tasks, Done and Notes in that order", async () => {
   const db = await projectDb();
   const open = await addTask(ctxFor(db, "add_task"), { project: "pj_retro", title: "Order anchors", dueAt: "2026-11-25" });
   const done = await addTask(ctxFor(db, "add_task"), { project: "pj_retro", title: "Pour footing" });
@@ -43,22 +43,105 @@ test("the page has the Project card first, then Open tasks, Done and Notes", asy
   assert.equal(h1Count(body), 1);
   assert.match(body, /<h1>Retrofit<\/h1>/);
   assert.match(titleOf(body), /^Retrofit · /);
-  assert.match(body, /<a href="\/projects">Back to projects<\/a>/);
-  const order = ["Project</h2>", "Time</h2>", "Open tasks</h2>", "Done</h2>", "Notes</h2>"].map((heading) => at(body, heading));
+  assert.doesNotMatch(body, /deal-columns/);
+  const order = [
+    "Back to projects",
+    "<h1>",
+    'data-region="project-facts"',
+    'action="/projects/pj_retro/status"',
+    'action="/projects/pj_retro/tasks"',
+    "Open tasks</h2>",
+    'id="done-list"',
+    "Notes</h2>",
+    'action="/projects/pj_retro/log"',
+  ].map((marker) => at(body, marker));
   assert.deepEqual(order, [...order].sort((a, b) => a - b));
   assert.match(body, /Permit pending\./);
   assert.match(body, /<a href="\/contacts\/ct_seed01">Pat Example<\/a>/);
   assert.match(body, /Sat Dec 5/);
-  assert.match(body, /<a href="\/projects\/pj_retro\/edit">Edit project<\/a>/);
+  assert.match(body, /<a href="\/projects\/pj_retro\/edit">Edit<span class="visually-hidden"> project<\/span><\/a>/);
   assert.match(body, /Order anchors/);
   assert.match(body, /action="\/tasks\/[^"]*\/complete"/);
-  assert.match(body, /action="\/projects\/pj_retro\/tasks"/);
-  assert.match(body, /action="\/projects\/pj_retro\/log"/);
-  assert.match(body, /action="\/projects\/pj_retro\/status"/);
   assert.match(body, /<option value="on_hold">/);
   assert.match(body, /action="\/projects\/pj_retro\/archive"[^]*name="archived" value="1"[^]*Archive/);
   assert.ok(open.taskId !== "");
   assert.match(body, /Pour footing/);
+});
+
+test("the head row has the name, the status tag and, on the right, Edit and Archive", async () => {
+  const { body } = await load(devEnv(await projectDb()), "/projects/pj_retro");
+  assert.match(body, /<div class="project-head">\s*<h1>Retrofit<\/h1>\s*<span class="tag">Active<\/span>[^]*?<div class="project-actions"><a href="\/projects\/pj_retro\/edit">Edit<span class="visually-hidden"> project<\/span><\/a>[^]*?action="\/projects\/pj_retro\/archive"[^]*?Archive<span class="visually-hidden"> project<\/span>/);
+});
+
+test("the facts are label and value pairs in the default order, with Choose facts and the status form at the end", async () => {
+  const { body } = await load(devEnv(await projectDb()), "/projects/pj_retro");
+  const facts = /data-region="project-facts">([^]*?)<\/div>\s*<div data-region="project-tasks"/.exec(body)?.[1] ?? "";
+  const labels = [...facts.matchAll(/<dt>([^<]*)<\/dt>/g)].map((m) => m[1]);
+  assert.deepEqual(labels, ["Person", "Start", "Target", "Time"]);
+  assert.doesNotMatch(facts, /<dt>Status<\/dt>/);
+  assert.match(facts, /<label for="status-pj_retro">Status<\/label>/);
+  assert.match(facts, /<dt>Person<\/dt><dd><a href="\/contacts\/ct_seed01">Pat Example<\/a><\/dd>/);
+  assert.ok(at(facts, "<dt>Target</dt>") < at(facts, 'action="/projects/pj_retro/status"'));
+  assert.ok(at(facts, 'action="/projects/pj_retro/status"') < at(facts, '<a href="/projects/facts">Choose facts</a>'));
+});
+
+test("the chosen facts show in the chosen order and nothing else", async () => {
+  const db = await projectDb();
+  db.exec(`UPDATE settings SET project_facts = '["target","person","open_tasks"]'`);
+  await addTask(ctxFor(db, "add_task"), { project: "pj_retro", title: "Order anchors" });
+  const { body } = await load(devEnv(db), "/projects/pj_retro");
+  const facts = /data-region="project-facts">([^]*?)<\/div>\s*<div data-region="project-tasks"/.exec(body)?.[1] ?? "";
+  assert.deepEqual([...facts.matchAll(/<dt>([^<]*)<\/dt>/g)].map((m) => m[1]), ["Target", "Person", "Open tasks"]);
+  assert.match(facts, /<dt>Open tasks<\/dt><dd>1<\/dd>/);
+  db.exec(`UPDATE settings SET project_facts = '[]'`);
+  const none = (await load(devEnv(db), "/projects/pj_retro")).body;
+  assert.doesNotMatch(none, /<dt>/);
+  assert.doesNotMatch(none, /<span class="tag">Active<\/span>/);
+  assert.match(none, /<label for="status-pj_retro">Status<\/label>/);
+  db.exec(`UPDATE settings SET project_facts = '["status"]'`);
+  const only = (await load(devEnv(db), "/projects/pj_retro")).body;
+  assert.match(only, /<span class="tag">Active<\/span>/);
+  assert.doesNotMatch(only, /<dt>/);
+});
+
+test("Notes and a long custom field wait behind a closed Notes disclosure; a short field is a fact", async () => {
+  const db = await projectDb();
+  db.exec(`INSERT INTO field_defs (id, entity, key, label, type) VALUES ('fd_pj1', 'project', 'site', 'Site', 'text'), ('fd_pj2', 'project', 'scope', 'Scope', 'text')`);
+  const long = "x".repeat(81);
+  db.exec(`UPDATE projects SET fields = '{"site":"Back lot","scope":"${long}"}' WHERE id = 'pj_retro'`);
+  const { body } = await load(devEnv(db), "/projects/pj_retro");
+  assert.match(body, /<dt>Site<\/dt><dd>Back lot<\/dd>/);
+  assert.ok(at(body, "<dt>Scope</dt>") > at(body, '<details class="project-notes">'));
+  const details = /<details class="project-notes">([^]*?)<\/details>/.exec(body)?.[1] ?? "";
+  assert.match(details, /^\s*<summary>Notes<\/summary>/);
+  assert.match(details, /Permit pending\./);
+  assert.match(details, new RegExp(`<dt>Scope</dt><dd>${long}</dd>`));
+  assert.match(details, /<p class="project-notes-text">Permit pending\.<\/p>/);
+  db.exec("UPDATE projects SET notes = NULL, fields = '{}' WHERE id = 'pj_retro'");
+  assert.doesNotMatch((await load(devEnv(db), "/projects/pj_retro")).body, /project-notes/);
+});
+
+test("Add a task is an open one-line form, then Open tasks with how many are done at every level", async () => {
+  const db = await projectDb();
+  const parent = await addTask(ctxFor(db, "add_task"), { project: "pj_retro", title: "Pour footing" });
+  const child = await addTask(ctxFor(db, "add_task"), { parent: parent.taskId, title: "Mix concrete" });
+  await addTask(ctxFor(db, "add_task"), { parent: parent.taskId, title: "Level forms" });
+  await completeTask(ctxFor(db, "complete_task"), child.taskId);
+  const { body } = await load(devEnv(db), "/projects/pj_retro");
+  const region = /<div data-region="project-tasks">([^]*?)<\/div>\s*<div data-region="project-done"/.exec(body)?.[1] ?? "";
+  assert.match(region, /<div class="add-task-line" id="add-pj_retro">\s*<form class="inline-form"[^>]*action="\/projects\/pj_retro\/tasks"/);
+  assert.doesNotMatch(region, /<details class="add-details"/);
+  assert.match(region, /<div class="section-head">\s*<h2 id="tasks-heading">Open tasks<\/h2>\s*<p class="task-count">1 of 3 done<\/p>\s*<\/div>/);
+  assert.ok(at(region, "add-task-line") < at(region, "Open tasks</h2>"));
+});
+
+test("Done is a closed disclosure holding the latest done rows", async () => {
+  const db = await projectDb();
+  const done = await addTask(ctxFor(db, "add_task"), { project: "pj_retro", title: "Pour footing" });
+  await completeTask(ctxFor(db, "complete_task"), done.taskId);
+  const { body } = await load(devEnv(db), "/projects/pj_retro");
+  assert.match(body, /<div data-region="project-done"><details class="done-details" id="done-list"><summary>Done<\/summary>[^]*Pour footing/);
+  assert.doesNotMatch(body, /<details class="done-details" id="done-list" open/);
 });
 
 test("Done and Notes show an empty line when there is nothing", async () => {
@@ -68,19 +151,20 @@ test("Done and Notes show an empty line when there is nothing", async () => {
   assert.match(body, /Nothing logged yet\./);
 });
 
-test("the Time card shows totals only with time tracking on, and offers Start timer with the project", async () => {
+test("the Time fact shows the total and the amount only with time tracking on, and Start timer stays in the block", async () => {
   const db = await projectDb();
-  await addTimeEntry(ctxFor(db, "add_time_entry"), { project: "pj_retro", startedAt: "2026-11-17T09:00", minutes: 90 });
+  await addTimeEntry(ctxFor(db, "add_time_entry"), { project: "pj_retro", startedAt: "2026-11-17T09:00", minutes: 60, workType: "Admin" });
+  assert.match((await load(devEnv(db), "/projects/pj_retro")).body, /<dt>Time<\/dt><dd>1 h<\/dd>/);
+  await addTimeEntry(ctxFor(db, "add_time_entry"), { project: "pj_retro", startedAt: "2026-11-18T09:00", minutes: 30, workType: "Design" });
   const { body } = await load(devEnv(db), "/projects/pj_retro");
-  assert.match(body, /Time<\/h2>/);
-  assert.match(body, /<dt>Total<\/dt><dd>1 h 30 min<\/dd>/);
-  assert.match(body, /<dt>Billable<\/dt>/);
-  assert.match(body, /<dt>Not billable<\/dt>/);
-  assert.match(body, /<dt>Amount<\/dt><dd>\$/);
-  assert.match(body, /<form class="timer-start" method="post" action="\/timer\/start" data-live>[^]*<input type="hidden" name="project" value="pj_retro">/);
-  assert.match(body, /<a href="\/time">See time<\/a>/);
+  assert.match(body, /<dt>Time<\/dt><dd>1 h 30 min, \$47\.50<\/dd>/);
+  assert.doesNotMatch(body, /Time<\/h2>|See time/);
+  const facts = /data-region="project-facts">([^]*?)<div data-region="project-tasks"/.exec(body)?.[1] ?? "";
+  assert.match(facts, /<form class="timer-start" method="post" action="\/timer\/start" data-live>[^]*<input type="hidden" name="project" value="pj_retro">/);
   const off = (await load(devEnv(await projectDb({ tracking: false })), "/projects/pj_retro")).body;
-  assert.doesNotMatch(off, /Time<\/h2>|\/timer\/start|See time/);
+  assert.doesNotMatch(off, /<dt>Time<\/dt>|\/timer\/start|See time/);
+  const none = await projectDb();
+  assert.match((await load(devEnv(none), "/projects/pj_retro")).body, /<dt>Time<\/dt><dd>0 min<\/dd>/);
 });
 
 test("a running timer says so and hides the second Start", async () => {

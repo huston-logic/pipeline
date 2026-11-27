@@ -14,7 +14,7 @@ import { logForm } from "../log-form.ts";
 import { askSection } from "../ask-claude.ts";
 import { backToLeadsForm, offersBackToLeads } from "../lead-forms.ts";
 import { reachActions } from "../reach.ts";
-import { customRows, outsideNote, STATUS, taskCard, timelineItem } from "../records.ts";
+import { customRows, openTaskRows, outsideNote, STATUS, timelineItem } from "../records.ts";
 import { addTaskForm, type Subject } from "../task-forms.ts";
 import { startTimerForm } from "../timer-start.ts";
 import { dealEditPath } from "./deal-edit.ts";
@@ -125,15 +125,10 @@ ${edit}
 }
 
 async function tasksSection(brief: DealBrief, now: Date, tz: string, form: FormContext, subject: Subject): Promise<Html> {
-  const cards = await Promise.all(brief.openTasks.map((task) => taskCard(task, now, tz, false, form)));
   return html`<div data-region="tasks">${section(
     "tasks-heading",
     "Open tasks",
-    html`${
-      brief.openTasks.length === 0
-        ? empty("No open tasks.")
-        : html`<ul class="cards cards-single">${cards}</ul>`
-    }
+    html`${brief.openTasks.length === 0 ? empty("No open tasks.") : await openTaskRows(brief.openTasks, "deal", now, tz, form)}
 ${addTaskForm(subject, form)}`,
   )}</div>`;
 }

@@ -1,7 +1,10 @@
 // The project page's posts (decision 0055): Save status and Archive or Bring back (update_project), Add a task
 // (add_task) and Log it (log_activity). Each calls the service the matching MCP tool calls, as the owner under that tool's
 // name. While projects are off, or for an id that is no project, every path here is a 404.
-import { getContact, getSettings } from "../db/queries.ts";
+import { getContact, getSettings, listFieldDefs } from "../db/queries.ts";
+import { updateSettings } from "../services/settings.ts";
+import { possibleFacts } from "../services/view-spec.ts";
+import { MAX_POSITION, PROJECT_FACTS_PATH } from "./pages/project-facts.ts";
 import { isContactId, isProjectId, isTaskId } from "../ids.ts";
 import { ownerTimezone, projectById, taskById } from "../services/lookup.ts";
 import { projectStatusRows } from "../services/memo.ts";
@@ -187,7 +190,41 @@ async function move(ctx: ActionContext, id: string): Promise<ActionResult> {
   }
 }
 
+const BAD_POSITION = "Position must be a whole number from 1 to 20.";
+
+/** POST /projects/facts: the ticked facts in position order (or the default, with `default`), through update_settings. */
+async function saveFacts(ctx: ActionContext): Promise<ActionResult> {
+  const row = await getSettings(ctx.db);
+  if (row.projects !== 1) return notFound(ctx);
+  const back = backTo(ctx, PROJECT_FACTS_PATH);
+  const refused = (message: string) => page(422, refusedPage(ctx, "The facts weren't saved", message, back, "", PROJECT_FACTS_PATH));
+  let facts: string[] | null = null;
+  if (ctx.form.get("default") !== "1") {
+    const live = (await listFieldDefs(ctx.db, { entity: "project" })).map((def) => def.key);
+    const ticked: { key: string; position: number }[] = [];
+    // possibleFacts leaves out `time` while time tracking is off, so a posted Time is dropped; its fixed order is also
+    // the tie-break for equal positions (the sort is stable).
+    for (const key of possibleFacts(live, row.time_tracking === 1)) {
+      if (ctx.form.get(`show.${key}`) !== "yes") continue;
+      const asked = (ctx.form.get(`pos.${key}`) ?? "").trim();
+      const position = Number(asked);
+      if (!/^\d+$/.test(asked) || position < 1 || position > MAX_POSITION) return refused(BAD_POSITION);
+      ticked.push({ key, position });
+    }
+    facts = ticked.sort((a, b) => a.position - b.position).map((fact) => fact.key);
+  }
+  const stored = facts === null ? null : JSON.stringify(facts);
+  if (stored === row.project_facts) return redirect(back);
+  try {
+    const result = await updateSettings(asOwner(ctx, "update_settings"), { projectFacts: facts });
+    return redirect(withChange(back, result.changeId));
+  } catch (error) {
+    return refused(refusal(error, "settings"));
+  }
+}
+
 export const PROJECT_ROUTES: Route[] = [
+  { path: /^\/projects\/(facts)$/, handle: (ctx) => saveFacts(ctx) },
   { path: /^\/tasks\/([^/]+)\/subtasks$/, handle: addSubTask },
   { path: /^\/tasks\/([^/]+)\/move$/, handle: move },
   { path: /^\/projects\/(new)$/, handle: (ctx) => addInternal(ctx), big: true },
