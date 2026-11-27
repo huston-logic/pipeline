@@ -163,7 +163,8 @@ Upcoming and No due date (an empty one is left out), each one `ul.task-rows` pan
 and last Add a deal, Add a lead and Import as one small quiet line. A row is a task, a deal whose next step is due (an
 empty Done cell; opened, its next step and Open the deal) or a project (a chevron in the Done cell's place that turns
 when it is open, "N tasks, M overdue", its tasks inside when opened). At most 200 rows show, the dated first. On a
-phone the Overdue heading says the word once, so the rows under it leave it out. There is no Latest brief block: the
+phone a row is its title (up to two lines) and one line with the due, "Overdue" in words, and who it is for, cut with an
+ellipsis; opened, the row says who in full ("For ..."). A project's due is the day only. There is no Latest brief block: the
 brief has its own page.
 
 ## 6. Signature elements

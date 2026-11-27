@@ -2034,6 +2034,10 @@ html:has(.corner-chip, .corner-notice:not(:empty)) {
   border-top: 1px solid var(--divider);
 }
 
+.task-for {
+  color: var(--ink-2);
+}
+
 .task-fulltitle {
   font-weight: 600;
 }
@@ -2360,11 +2364,6 @@ html:has(.corner-chip, .corner-notice:not(:empty)) {
   right: 10px;
 }
 
-/* Under the Overdue heading the word is said once; on a phone that keeps the due and the person on one line. */
-.today-group-overdue > ul > .task-row > .task-open > summary .task-late {
-  display: none;
-}
-
 .today-group .task-title,
 .today-group .task-due,
 .today-group .task-belongs {
@@ -2380,9 +2379,17 @@ html:has(.corner-chip, .corner-notice:not(:empty)) {
   white-space: nowrap;
 }
 
+/* The person shares the due's line and is cut with an ellipsis; opened, the row says it in full. A project's count stays whole. */
 .today-group .task-belongs {
-  flex: 1 1 auto;
+  flex: 1 1 0;
   min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.today-group .project-row > .task-open > summary .task-belongs {
+  flex: none;
 }
 
 @media (min-width: 40rem) {
@@ -2444,10 +2451,6 @@ html:has(.corner-chip, .corner-notice:not(:empty)) {
 
   .today-group .task-open > summary::after {
     position: static;
-  }
-
-  .today-group-overdue > ul > .task-row > .task-open > summary .task-late {
-    display: inline;
   }
 
   .today-group .task-belongs {

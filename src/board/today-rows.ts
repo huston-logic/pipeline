@@ -21,6 +21,7 @@ ${emptyCell}
 <details class="task-open" id="open-d-${deal.id}">
 <summary><span class="task-title">${labelled(deal.title, deal.untrusted_fields.includes("title"))}</span> ${due} <span class="task-belongs"><span class="visually-hidden">, for </span>${labelled(deal.contactName, deal.untrusted_fields.includes("contactName"))}</span></summary>
 <div class="task-open-body">
+<p class="task-for">For ${labelled(deal.contactName, deal.untrusted_fields.includes("contactName"))}</p>
 <p>Next step: ${deal.nextStep ?? "Not written down"}</p>
 <p class="task-links"><a href="${dealHref(deal.id)}">Open the deal</a></p>
 </div>
@@ -30,7 +31,7 @@ ${emptyCell}
 
 /** A project: its name, its soonest due, "N tasks, M overdue"; open, the top-level tasks as rows and a link to the project. */
 export async function projectRow(project: TodayProject, opts: RowOptions, form: FormContext): Promise<Html> {
-  const due = dueCell({ dueAt: project.soonest, dueAtLocal: project.soonestLocal, doneAt: null, snoozedUntil: null }, opts);
+  const due = dueCell({ dueAt: project.soonest, dueAtLocal: project.soonestLocal?.split(",")[0] ?? null, doneAt: null, snoozedUntil: null }, opts);
   return html`<li class="task-row project-row" data-task-row id="p-${project.id}">
 <details class="task-open" id="open-p-${project.id}">
 <summary><span class="task-title">${labelled(project.name, project.untrusted_fields.includes("name"))}</span> ${due} <span class="task-belongs"><span class="visually-hidden">, </span>${count(project.topLevel, "task")}, ${project.overdue} overdue</span></summary>

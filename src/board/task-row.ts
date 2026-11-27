@@ -105,15 +105,21 @@ export function dueCell(task: Pick<RowTask, "dueAt" | "dueAtLocal" | "doneAt" | 
   return html`<span class="task-due"><span class="visually-hidden">Due </span>${when(task.dueAt, task.dueAtLocal)}${late}</span>`;
 }
 
-function belongsCell(task: RowTask): Html {
+/** Who or what the task is for (its project, deal or person), labelled when it came from outside; null for none. */
+function belongsOf(task: RowTask): Html | null {
   const named: [string | null | undefined, string][] = [
     [task.projectName, "projectName"],
     [task.dealTitle, "dealTitle"],
     [task.contactName, "contactName"],
   ];
   const found = named.find(([value]) => value !== undefined && value !== null && value !== "");
-  if (found === undefined || found[0] === undefined || found[0] === null) return html`<span class="task-belongs"></span>`;
-  return html`<span class="task-belongs"><span class="visually-hidden">, for </span>${labelled(found[0], outsideIn(task, found[1]))}</span>`;
+  if (found === undefined || found[0] === undefined || found[0] === null) return null;
+  return labelled(found[0], outsideIn(task, found[1]));
+}
+
+function belongsCell(task: RowTask): Html {
+  const who = belongsOf(task);
+  return who === null ? html`<span class="task-belongs"></span>` : html`<span class="task-belongs"><span class="visually-hidden">, for </span>${who}</span>`;
 }
 
 function linksLine(task: RowTask): Html | "" {
@@ -145,10 +151,12 @@ async function openContent(task: RowTask, opts: RowOptions, form: FormContext): 
   const snoozed = snoozedTo(task, opts.now);
   const long = task.title.length > FULL_TITLE_OVER;
   const byRule = task.source !== undefined && task.source !== "owner";
+  const who = opts.showBelongs ? belongsOf(task) : null;
   const canAdd = task.onProject && task.level < MAX_LEVEL;
   const extra = html`${canAdd ? subTaskForm(task, form) : ""}${task.onProject ? moveForm(task, form) : ""}`;
   return html`<div class="task-open-body">
 ${long ? html`<p class="task-fulltitle">${labelled(task.title, outsideIn(task, "title"))}</p>` : ""}
+${who === null ? "" : html`<p class="task-for">For ${who}</p>`}
 ${snoozed === null ? "" : html`<p class="task-note">Snoozed until ${when(snoozed, formatLocal(snoozed, opts.tz))}</p>`}
 ${byRule ? html`<p class="task-note">Added by rule ${task.source}</p>` : ""}
 ${descriptionLine(task)}

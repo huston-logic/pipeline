@@ -153,6 +153,18 @@ test("the add form has its own region that a filter leaves alone, the list says 
   assert.match(body, /<div class="today-foot"><p class="page-action today-actions">/);
 });
 
+test("Overdue is in words on every overdue row, and who a row is for is said in full when it is open", async () => {
+  const db = await seededDb();
+  await db.prepare("UPDATE deals SET next_step = 'Send the quote', next_at = ? WHERE id = 'dl_seed01'").bind("2020-01-01T17:00:00.000Z").run();
+  const body = (await load(devEnv(db), "/")).body;
+  const overdue = body.slice(body.indexOf('id="today-overdue"'), body.indexOf('id="today-today"'));
+  const rows = overdue.split('<li class="task-row').slice(1);
+  assert.ok(rows.length > 0);
+  for (const row of rows) assert.match(row.split("</summary>")[0] ?? "", /<span class="task-late">Overdue<\/span>/);
+  assert.match(body, /<p class="task-for">For Pat Example<\/p>\n<p>Next step: Send the quote/);
+  assert.match(body, /<p class="task-for">For /, "a task shows its person or deal in full when opened");
+});
+
 test("the groups are plain h2s in order, and an empty one is left out", async () => {
   const body = (await load(devEnv(await seededDb()), "/")).body;
   const names = [...body.matchAll(/<h2 id="today-\w+">([^<]*)<\/h2>/g)].map((m) => m[1]);
