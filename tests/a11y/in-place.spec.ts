@@ -63,6 +63,24 @@ test.describe.serial("with scripts on", () => {
     await expect(chip(page)).toHaveCount(0);
     await inPlace();
   });
+
+  // A row's forms arrive as <noscript> markup and are unfolded when the row opens; the unfolded Edit still saves in place.
+  test("an opened row's Edit form saves in place", async ({ page }) => {
+    await page.goto("/", { waitUntil: "networkidle" });
+    await page.evaluate(() => {
+      (window as unknown as { __marker?: number }).__marker = 1;
+    });
+    const row = page.locator(".today-group > ul > li.task-row:not(.next-step-row):not(.project-row)").first();
+    await row.locator(":scope > details.task-open > summary").click();
+    await row.locator("details.task-edit > summary").click();
+    await row.locator("details.task-edit textarea").fill("Bring last quarter's receipts.");
+    await row.locator("details.task-edit").getByRole("button", { name: /^Save/ }).click();
+    await expect(notice(page)).toContainText("Saved");
+    expect(await mark(page), "the page was not reloaded").toBe(1);
+    await notice(page).getByRole("button", { name: /^Undo/ }).click();
+    await expect(notice(page)).toContainText("Undone");
+    expect(await mark(page), "the page was not reloaded").toBe(1);
+  });
 });
 
 test.describe.serial("with scripts off", () => {

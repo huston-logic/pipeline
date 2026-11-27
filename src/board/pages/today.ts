@@ -34,11 +34,12 @@ const SHOW_NOTE: Record<TaskShow, string> = { all: "", linked: "with a person or
 const viewNote = (view: TaskView): string => [SORT_NOTE[view.sort], SHOW_NOTE[view.show]].filter((part) => part !== "").join(", ");
 
 /**
- * Sort and filter as a plain GET form (decision 0047): the address carries only these two keys. Open on a laptop; the
- * script closes it on a phone and, when it runs, applies a choice at once and hides the button.
+ * Sort and filter as a plain GET form (decision 0047): the address carries only these two keys. Closed as sent, so
+ * nothing moves after the first paint; from 40rem the stylesheet shows its content. The script, when it runs, applies a
+ * choice at once and hides the button.
  */
 function taskTools(view: TaskView): Html {
-  return html`<details class="today-tools" open data-close-narrow>
+  return html`<details class="today-tools" id="today-tools">
 <summary>Sort and filter</summary>
 <form class="today-filter" action="/" method="get" aria-label="Sort and filter to-dos" data-autosubmit>
 ${choice("todo-sort", "sort", "Sort", TASK_SORTS, SORT_LABELS, view.sort)}

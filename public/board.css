@@ -2417,6 +2417,19 @@ html:has(.corner-chip, .corner-notice:not(:empty)) {
     flex: none;
   }
 
+  /* Sent closed (a phone keeps it closed); here it is shown by style alone, so nothing shifts after the first paint.
+     A browser without ::details-content keeps the Sort and filter disclosure. */
+  @supports selector(::details-content) {
+    .today-tools > summary {
+      display: none;
+    }
+
+    .today-tools::details-content {
+      content-visibility: visible;
+      display: contents;
+    }
+  }
+
   .today-filter {
     display: flex;
     flex-wrap: wrap;

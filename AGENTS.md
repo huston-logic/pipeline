@@ -74,7 +74,10 @@ hooks and the commands are in `CLAUDE.md`.
   open, swaps its `[data-region]` parts (`DOMParser`, `replaceWith`, `replaceChildren`; the
   corner's live region keeps its element); any refusal, other page or odd answer falls back to the plain post. It also
   runs the timer clock, the Time logged note's expiry, the discard confirm, `data-autosubmit` filters and the corner's
-  scroll room (`--corner-h`); it never pushes `history` (only a filter's `replaceState`). After a swap, focus goes to the
+  scroll room (`--corner-h`), and unfolds a task row's forms: `src/board/task-row.ts` sends them inside a `<noscript>`
+  (drawn as they are with scripts off, one text node with them on), and opening the row parses that markup into place
+  (`DOMParser`, `importNode`), so a long list loads light. Nothing is closed, opened or moved after the first paint (a
+  layout shift); a disclosure that differs by width is styled (`::details-content`). It never pushes `history` (only a filter's `replaceState`). After a swap, focus goes to the
   form's `data-after` element, the control's old id, the corner notice (`tabindex="-1"`), then `main`, never the timer chip. `public/board.js`: drag a pipeline card to another stage, which
   submits the card's Move to form; on deal and contact pages, after Call, Text or Email, focus the matching one-tap
   Log button, and Copy prompt for Ask Claude (decision 0021). `public/push.js` (Notifications page only, decision

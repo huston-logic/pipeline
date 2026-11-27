@@ -58,8 +58,10 @@ test("empty quick add is 422 with the value kept", async () => {
 test("Today with JavaScript off has the sort form as a GET form", async () => {
   const db = await seededDb();
   const { body } = await load(devEnv(db), "/?sort=newest&show=standalone");
-  const tools = /<details class="today-tools" open data-close-narrow>[\s\S]*?<\/details>/.exec(body)?.[0] ?? "";
-  assert.match(tools, /<summary>Sort and filter<\/summary>/, "open on a laptop; live.js closes it under 40rem");
+  // Closed as sent, so nothing moves after the first paint; from 40rem the stylesheet shows its content (no script).
+  const tools = /<details class="today-tools" id="today-tools">[\s\S]*?<\/details>/.exec(body)?.[0] ?? "";
+  assert.match(tools, /<summary>Sort and filter<\/summary>/);
+  assert.doesNotMatch(body, /data-close-narrow/);
   const form = /<form class="today-filter"[^>]*>[\s\S]*?<\/form>/.exec(tools)?.[0] ?? "";
   assert.match(form, /action="\/" method="get"[^>]* data-autosubmit>/);
   assert.doesNotMatch(form, /name="csrf"/);

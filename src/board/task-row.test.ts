@@ -128,6 +128,21 @@ test("a task snoozed into the future says so in the due cell; a rule's task says
   assert.doesNotMatch(await text(task("b", { source: "owner" })), /Added by rule/);
 });
 
+test("a row's actions come as one noscript, so a long list loads light; its text and links stay outside it", async () => {
+  const out = await text(task("a", { onProject: true, hasSiblingsAfter: true, description: "See https://example.com/plan", dealId: "dl_aaaaaaaaaaaa" }));
+  const body = /<div class="task-open-body">([^]*)<\/div>\s*<\/details>/.exec(out)?.[1] ?? "";
+  assert.equal(body.match(/<noscript>/g)?.length, 1);
+  const kept = /<noscript>([^]*)<\/noscript>/.exec(body)?.[1] ?? "";
+  for (const part of ['class="task-actions"', 'class="task-snooze"', 'class="task-edit"', 'class="task-subadd"', 'class="task-move"']) {
+    assert.ok(kept.includes(part), `${part} inside the noscript`);
+  }
+  const outside = body.replace(/<noscript>[^]*<\/noscript>/, "");
+  assert.match(outside, /<p class="task-description">/);
+  assert.match(outside, /Open the deal/);
+  assert.doesNotMatch(outside, /<form/);
+  assert.doesNotMatch(await text(task("b", { doneAt: "2026-11-18T20:00:00.000Z" })), /noscript/);
+});
+
 test("a list with any sub-tasks row is marked, so every row reserves the same width", async () => {
   const withKid = (await taskRows([task("a"), task("b", { children: [task("c", { level: 2 })] })], OPTS, FORM)).value;
   assert.match(withKid, /^<ul class="task-rows has-subs">/);

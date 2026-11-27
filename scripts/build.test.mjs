@@ -51,6 +51,14 @@ test("live.js stays small and plain: under 3 KB gzipped, no eval, no HTML string
   assert.match(script, /new DOMParser\(\)\.parseFromString\(/);
 });
 
+test("live.js changes nothing on screen at load and unfolds a row's noscript actions when the row opens", () => {
+  const script = read("live.js");
+  assert.doesNotMatch(script, /close-narrow|\.open = false/, "a disclosure closed after the first paint moves the page (layout shift)");
+  assert.match(script, /addEventListener\(\s*"toggle"[^]*?,\s*true,?\s*\)/, "toggle does not bubble, so it is caught on the way down");
+  assert.match(script, /noscript/);
+  assert.match(script, /parseFromString\(n\.textContent, "text\/html"\)/, "the markup the server sent, parsed, never innerHTML");
+});
+
 test("board.js copies prompts with the clipboard API and moves focus to the Log button after Call, Text or Email (decision 0021)", () => {
   const script = read("board.js");
   assert.match(script, /navigator\.clipboard\.writeText\(/);

@@ -1,6 +1,8 @@
 // The shared task row (run 12, docs/STYLE-GUIDE.md §7.24): one line while closed, the actions under a disclosure, the
 // sub-tasks under another. Every list of tasks that is not Today's draws its rows here. Outside text is labelled and
 // never a link's text; the row's text is plain, because the whole line opens the disclosure.
+// A row's forms are sent inside a <noscript>: with scripts off the browser draws them as they are; with scripts on they
+// are one text node until the row opens and public/live.js puts them in place, so a list of a hundred rows loads light.
 import { dayBoundsUtc, formatLocal, localDate } from "../time.ts";
 import { type FormContext, postForm } from "./forms.ts";
 import { type Html, html } from "./html.ts";
@@ -161,7 +163,7 @@ ${snoozed === null ? "" : html`<p class="task-note">Snoozed until ${when(snoozed
 ${byRule ? html`<p class="task-note">Added by rule ${task.source}</p>` : ""}
 ${descriptionLine(task)}
 ${linksLine(task)}
-${done ? "" : await taskActions(task, form, opts.tz, { withDone: false, extra })}
+${done ? "" : html`<noscript>${await taskActions(task, form, opts.tz, { withDone: false, extra })}</noscript>`}
 </div>`;
 }
 

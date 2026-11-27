@@ -1,5 +1,5 @@
-// In-place actions (decision 0062): a data-live form posts with fetch and swaps the [data-region] parts of the page
-// it names; anything unexpected falls back to the plain post. Also the timer clock and filters.
+// In place (decision 0062): a data-live form posts with fetch and swaps in the [data-region]s of the page it names;
+// anything else falls back to the plain post. Also the clock, filters and row forms.
 (() => {
   const $ = (sel, root = document) => root.querySelector(sel);
   const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
@@ -12,7 +12,7 @@
     return `${Math.floor(m / 60)}:${String(m % 60).padStart(2, "0")}`;
   };
 
-  // The corner's height, so a focused control scrolled into view stops below it (WCAG 2.4.11).
+  // The corner's height, so a control scrolled into view stops below it (WCAG 2.4.11).
   const room = () => {
     const c = $(".corner");
     if (c) document.documentElement.style.setProperty("--corner-h", `${Math.ceil(c.getBoundingClientRect().height + 8)}px`);
@@ -62,7 +62,7 @@
 
   const adopt = (cur, n) => cur.replaceWith(document.importNode(n, true));
 
-  // The corner's live region keeps its element (only its children change) so a screen reader announces the new text.
+  // The corner's live region keeps its element, so the new text is announced.
   const swapCorner = (cur, n) => {
     const oc = $(".corner-chip", cur);
     const nc = $(".corner-chip", n);
@@ -75,14 +75,15 @@
   };
 
   const swap = (doc, form, who) => {
-    // The disclosure the form sat in closes (its job is done); the others stay as they were.
-    const open = $$("details[id][open]").filter((d) => !d.contains(form)).map((d) => d.id);
+    // The disclosure a form (not a filter) sat in closes; the others stay as they were.
+    const auto = form.matches("[data-autosubmit]");
+    const open = $$("details[id][open]").filter((d) => auto || !d.contains(form)).map((d) => d.id);
     const { scrollX, scrollY } = window;
     const was = (who && who.id) || form.id;
     const next = $$("[data-region]", doc);
     for (const cur of $$("[data-region]")) {
       const n = next.find((x) => x.dataset.region === cur.dataset.region);
-      if (!n || (cur.hasAttribute("data-keep") && form.matches("[data-autosubmit]"))) continue;
+      if (!n || (cur.hasAttribute("data-keep") && auto)) continue;
       if (cur.dataset.region === "corner") swapCorner(cur, n);
       else adopt(cur, n);
     }
@@ -91,7 +92,7 @@
       if (d && d.tagName === "DETAILS") d.open = true;
     }
     scrollTo(scrollX, scrollY);
-    // Never the timer chip: Enter there would stop the timer.
+    // Never the timer chip: Enter there stops the timer.
     const n = $(".corner-notice");
     (document.getElementById(form.dataset.after || "") || (was && document.getElementById(was)) || (n && n.textContent.trim() && n) || $("main")).focus();
     init();
@@ -108,7 +109,7 @@
     form.submit();
   };
 
-  // A timer running over five minutes asks before it is discarded, in the corner, with no pop-up.
+  // Past five minutes, discarding a timer asks first, in the corner (no pop-up).
   const ask = (form, who) => {
     const box = document.createElement("div");
     const p = document.createElement("p");
@@ -154,9 +155,9 @@
           body: new URLSearchParams(new FormData(form, who)),
           credentials: "same-origin",
         });
-        // Anything but the 204 means nothing was written (a refusal, a confirm page): the plain post shows it.
+        // Not 204: nothing was written (a refusal, a confirm page); the plain post shows it.
         if (sent.status !== 204) return plain(form, who);
-        // The 204 means it was written, so a missing or foreign address reloads this page, never posts again.
+        // 204: written, so a missing or foreign address reloads this page, never posts again.
         const to = new URL(sent.headers.get("X-Location") || location.href, location.href);
         if (to.origin !== location.origin) return location.reload();
         if (key(to) !== key(location)) return location.assign(to);
@@ -193,7 +194,7 @@
     send(form, who);
   });
 
-  // A filter select changes the list in place (no navigation per arrow key) and the address, so a reload keeps it.
+  // A filter select changes the list and the address in place (not a page per arrow key).
   document.addEventListener("change", async (e) => {
     const form = e.target.closest("form[data-autosubmit]");
     if (!form || e.target.tagName !== "SELECT") return;
@@ -212,6 +213,17 @@
     if (n) say(form, `Showing ${n.dataset.countText}.`);
   });
 
-  if (matchMedia("(max-width: 39.99rem)").matches) for (const d of $$("details[data-close-narrow]")) d.open = false;
+  // Opening a row unfolds its <noscript> forms (task-row.ts); a swapped-in one holds elements.
+  document.addEventListener(
+    "toggle",
+    ({ target: d }) => {
+      for (const n of d.open ? $$(":scope > div > noscript", d) : []) {
+        const kids = n.firstElementChild ? n.childNodes : new DOMParser().parseFromString(n.textContent, "text/html").body.childNodes;
+        n.replaceWith(...Array.from(kids, (c) => document.importNode(c, true)));
+      }
+    },
+    true,
+  );
+
   init();
 })();

@@ -427,6 +427,9 @@ Checked at 375 and 1280px wide with no horizontal scroll (`npm run screenshots`)
   each under 3 KB gzipped and `defer`: `/live.js` on every signed-in page (decision 0062), `/board.js` on the
   pipeline board, deal pages and contact pages (decision 0021), `/push.js` on Notifications (decision 0030); a page
   outside the sign-in has none.
+- Long lists load light: a task row's forms come inside a `<noscript>` that `/live.js` unfolds when the row opens
+  (Today with the demo seed is about 1,650 elements with scripts on). No script changes the layout after the first
+  paint: Today's Sort and filter is sent closed and shown from 40rem by `::details-content`.
 - The glow is one CSS radial gradient; no `filter`, no `backdrop-filter`.
 - Icons are inline SVG.
 
