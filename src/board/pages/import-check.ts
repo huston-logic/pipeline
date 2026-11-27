@@ -101,10 +101,10 @@ function ownListBox(planned: DraftPlan): Html | "" {
   switch (planned.module) {
     case "people":
       if (planned.plan.create.length + planned.plan.merge.length + planned.plan.duplicates.length === 0) return "";
-      return ownListCheck("This is my own list: show names, businesses, emails, phones and sources as mine.");
+      return ownListCheck("This is my own list: show names, accounts, emails, phones and sources as mine.");
     case "deals":
       if (planned.plan.people.length + planned.plan.closed.length === 0) return "";
-      return ownListCheck("This is my own list: show the people's names, businesses and emails as mine.");
+      return ownListCheck("This is my own list: show the people's names, accounts and emails as mine.");
     case "tasks":
       return "";
   }
@@ -136,8 +136,8 @@ ${recordList(plan.merge, (row) => personOnFile(row.id, byId))}`,
             : section(
                 "import-duplicates",
                 "Possible duplicates",
-                html`<p class="section-note">No email, and the same business as someone on file or an earlier line. Left out unless you tick the box below.</p>
-${recordList(plan.duplicates, (row) => (row.ofId === null ? html`the same business as line ${formatNumber(row.ofLine ?? 0)}` : html`the same business as ${personOnFile(row.ofId, byId)}`))}`,
+                html`<p class="section-note">No email, and the same account as someone on file or an earlier line. Left out unless you tick the box below.</p>
+${recordList(plan.duplicates, (row) => (row.ofId === null ? html`the same account as line ${formatNumber(row.ofLine ?? 0)}` : html`the same account as ${personOnFile(row.ofId, byId)}`))}`,
               ),
         ],
         box:

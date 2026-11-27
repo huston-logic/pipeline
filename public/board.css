@@ -3094,6 +3094,22 @@ html:has(.corner-chip, .corner-notice:not(:empty)) {
     display: list-item;
   }
 
+  /* From 60rem the Marketing item carries the current state, so More does not. */
+  .nav-main a.is-current-phone {
+    background: none;
+    color: var(--ink-2);
+    font-weight: 600;
+  }
+
+  .nav-main a.is-current-phone .icon {
+    color: inherit;
+  }
+
+  /* The side bar has the Marketing item; the More page's card is for phones. */
+  .more-phone-only {
+    display: none;
+  }
+
   .nav-sub {
     display: flex;
     flex-direction: column;

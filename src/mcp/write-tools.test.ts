@@ -61,7 +61,7 @@ test("add_lead adds a person with status New and no deal; add_deal for that lead
   assert.equal(data.dealId, undefined);
   assert.equal(await deals(), before, "no deal");
 
-  assert.match(await fails(c, "add_lead", { name: "Jo Example", business: " acme  plumbing" }), /already has that business\. Say allowDuplicate: true/);
+  assert.match(await fails(c, "add_lead", { name: "Jo Example", business: " acme  plumbing" }), /already has that account\. Say allowDuplicate: true/);
   await approved(c, "add_lead", { name: "Jo Example", business: " acme  plumbing", allowDuplicate: true });
   assert.match(
     await fails(c, "add_lead", { name: "Pat", email: "pat@example.com" }),

@@ -68,7 +68,7 @@ async function newLead(ctx: ActionContext): Promise<ActionResult> {
       const message =
         error.by === "email"
           ? `${error.who} already uses that email, so they are on file already.`
-          : `${error.who} already has that business. Tick Add anyway to add another lead.`;
+          : `${error.who} already has that account. Tick Add anyway to add another lead.`;
       fieldError(collected, error.by, message);
       return refused(error.by === "business");
     }

@@ -62,6 +62,20 @@ test("Projects is a tab only while projects are on, Marketing only while campaig
   assert.equal(hrefsOf(both).filter((href) => href === "/campaigns").length, 1, "the side bar's More list does not repeat Marketing");
 });
 
+test("on a campaign page the hidden Marketing tab is current and so is More, for phones only (is-current-phone)", () => {
+  for (const path of ["/campaigns", "/campaigns/cp_abc"]) {
+    const out = framed(path, { campaigns: true });
+    assert.match(out, /<a href="\/more" class="is-current-phone" aria-current="true">/, path);
+    assert.match(out, /<li class="nav-wide-only"><a href="\/campaigns" aria-current="(page|true)">/, path);
+  }
+  assert.doesNotMatch(framed("/campaigns", {}), /is-current-phone/);
+  assert.doesNotMatch(framed("/rules", { campaigns: true }), /is-current-phone/);
+  const css = readFileSync(new URL("../../public/board.css", import.meta.url), "utf8");
+  const wide = css.slice(css.lastIndexOf(".nav-wide-only {\n    display: list-item;"));
+  assert.match(wide, /\.nav-main a\.is-current-phone \{[^}]*background: none;/, "from 60rem the More tab does not show as current");
+  assert.match(css, /\.more-phone-only \{\s*display: none;/, "the More page's Marketing card is hidden from 60rem");
+});
+
 test("People links /leads and is current on the contact, lead, account and people-view pages", () => {
   for (const path of ["/contacts", "/contacts/ct_abc", "/leads/new", "/companies", "/people", "/leads/ld_abc"]) {
     assert.match(framed(path, {}), /<a href="\/leads" aria-current="true">/, path);

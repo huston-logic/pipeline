@@ -14,7 +14,7 @@ export async function morePage(ctx: PageContext): Promise<string> {
     frame: ctx,
     body: html`<h1>More</h1>
 <ul class="cards more-list">${items.map(
-      (item) => html`<li><a class="card card-link" href="${item.href}"><span class="tile">${icon(item.icon)}</span><span class="card-link-text"><span class="card-title">${item.label}</span>
+      (item) => html`<li${item.phoneOnly === true ? html` class="more-phone-only"` : ""}><a class="card card-link" href="${item.href}"><span class="tile">${icon(item.icon)}</span><span class="card-link-text"><span class="card-title">${item.label}</span>
 <span class="card-desc">${item.description}</span></span></a></li>`,
     )}</ul>`,
   });

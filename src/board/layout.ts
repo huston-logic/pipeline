@@ -87,7 +87,8 @@ function sectionOf(path: string): string | null {
   return null;
 }
 
-function link(item: NavItem, current: string | undefined): Html {
+/** `phoneCurrent` marks the tab that stands in for a page whose own tab is hidden on phones (Marketing under More). */
+function link(item: NavItem, current: string | undefined, phoneCurrent = false): Html {
   const state =
     current === undefined
       ? ""
@@ -95,7 +96,9 @@ function link(item: NavItem, current: string | undefined): Html {
         ? html` aria-current="page"`
         : item.href === sectionOf(current)
           ? html` aria-current="true"`
-          : "";
+          : phoneCurrent
+            ? html` class="is-current-phone" aria-current="true"`
+            : "";
   const hint = item.hint === undefined ? "" : html`<span class="visually-hidden">${item.hint}</span>`;
   return html`<a href="${item.href}"${state}>${icon(item.icon)}<span class="nav-label">${item.label}</span>${hint}</a>`;
 }
@@ -103,7 +106,7 @@ function link(item: NavItem, current: string | undefined): Html {
 function nav(current: string | undefined, on: { timeTracking: boolean; campaigns: boolean; projects: boolean }): Html {
   const items = navItemsFor(on).map((item) =>
     item.href === "/more"
-      ? html`<li class="nav-more">${link(item, current)}
+      ? html`<li class="nav-more">${link(item, current, on.campaigns && current !== undefined && (current === "/campaigns" || current.startsWith("/campaigns/")))}
 <ul class="nav-sub">${moreItemsFor(on)
           .filter((sub) => sub.phoneOnly !== true)
           .map((sub) => html`<li>${link(sub, current)}</li>`)}</ul>

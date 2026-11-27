@@ -127,7 +127,7 @@ export function personDealSpecs(defs: FieldDefRow[]): Spec[] {
   ];
 }
 
-/** Add a lead (/leads/new, add_lead): a name or a business is enough; notes are logged as a note on the person. */
+/** Add a lead (/leads/new, add_lead): a name or an account is enough; notes are logged as a note on the person. */
 export function newLeadSpecs(defs: FieldDefRow[]): Spec[] {
   return [
     line("name", "Name", "text", "contact", { hint: "A name or an account is enough." }),

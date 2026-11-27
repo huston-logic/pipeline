@@ -118,6 +118,7 @@ test("add_view refuses a missing, long, duplicate or built-in name, an unknown s
   assert.equal(await add({ name: "X", module: "people", layout: "grid" as never }), 'A view\'s layout is cards or table (got "grid").');
   assert.equal(await add({ name: "X", module: "people", columns: ["business", "name"] }), "Start the columns with name: it links to each person.");
   assert.match(await add({ name: "X", module: "people", columns: ["name", "colour"] }), /^"colour" isn't a column of a people view\. Use name, business, .* or a contact field's key/);
+  assert.equal(await add({ name: "X", module: "people", columns: ["name", "Company", "business"] }), "The column business is listed twice. Give each column once.");
   assert.equal(await add({ name: "X", module: "people", columns: ["name", "Account", "business"] }), "The column business is listed twice. Give each column once.");
   assert.match(await add({ name: "X", module: "people", position: 3 }), /^The position must be a whole number between 1 and 2 \(got 3\)\.$/);
 

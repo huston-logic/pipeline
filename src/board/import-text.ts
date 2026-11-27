@@ -38,7 +38,7 @@ export const IMPORT_TEXT: Record<ImportModuleKey, ImportText> = {
     group: "Deal details",
     lede:
       "Bring in deals from a spreadsheet saved as a CSV file. Each deal goes to a person on file, found by contact id, email, or " +
-      "name and business, or adds them. You match the columns and check the result before anything is saved.",
+      "name and account, or adds them. You match the columns and check the result before anything is saved.",
     descriptions: {
       start: "Bring deals in from a spreadsheet: choose a CSV file or paste its rows, then match the columns.",
       map: "Match each column of the file to a deal detail or a field, or leave it out.",

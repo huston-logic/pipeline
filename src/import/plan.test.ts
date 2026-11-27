@@ -286,7 +286,7 @@ test("a plain import whose rows get a status from the column also skips possible
   assert.equal(planImport(csv, [pat], { ...plain, allowDuplicates: true }).create.length, 2);
 });
 
-test("possible duplicates (no email, same business as someone on file or an earlier row) are listed and skipped unless allowed", () => {
+test("possible duplicates (no email, same account as someone on file or an earlier row) are listed and skipped unless allowed", () => {
   const csv = [
     "name,email,business",
     "A One,,  sample   BAKERY ",

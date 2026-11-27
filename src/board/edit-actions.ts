@@ -104,7 +104,7 @@ async function newContact(ctx: ActionContext): Promise<ActionResult> {
       const message =
         error.by === "email"
           ? `${error.who} already uses that email, so they are on file already.`
-          : `${error.who} already has that business. To add another lead anyway, use Add a lead and tick Add anyway.`;
+          : `${error.who} already has that account. To add another lead anyway, use Add a lead and tick Add anyway.`;
       fieldError(collected, error.by, message);
       return refused();
     }

@@ -48,7 +48,7 @@ test("deals: a new person is created and a lead gets Qualified in the same chang
   const { ctx, plan: planned } = await plan(db, csv);
   assert.deepEqual(planned.skipped, []);
   assert.equal(planned.create.length, 3);
-  assert.equal(planned.people.length, 1, "the second row finds the person the first one adds, by name and business");
+  assert.equal(planned.people.length, 1, "the second row finds the person the first one adds, by name and account");
   assert.deepEqual(planned.qualify, ["ct_lead"]);
   const input = dealsModule.change(planned, ctx, NOW);
   assert.ok(input);
@@ -194,7 +194,7 @@ test("deals: a name shared by two people on file is not guessed", async () => {
   const db = await withPeople();
   db.exec(`INSERT INTO contacts (id, name, business, untrusted_fields) VALUES ('ct_twin1', 'Sam Twin', 'Twin Shop', '[]'), ('ct_twin2', 'Sam Twin', 'Twin Shop', '[]')`);
   const { plan: planned } = await plan(db, "title,name,business\r\nA sign,Sam Twin,Twin Shop\r\n");
-  assert.deepEqual(planned.skipped, [{ line: 2, reason: "more than one person on file has this name and business (contact ct_twin1, ct_twin2)" }]);
+  assert.deepEqual(planned.skipped, [{ line: 2, reason: "more than one person on file has this name and account (contact ct_twin1, ct_twin2)" }]);
 });
 
 test("deals: the export's fields column fills live deal fields (a field column wins), a merge only empty ones; archived rows never come in", async () => {

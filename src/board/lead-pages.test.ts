@@ -102,7 +102,7 @@ test("a business already on file is refused with an Add anyway box; ticking it a
   const refused = await post(env, "/leads/new", { name: "Lee Example", business: " example  PLUMBING ", return_to: "/leads" });
   assert.equal(refused.res.status, 422);
   assert.equal(await auditCount(db), before);
-  assert.match(refused.body, /Pat Example \(ct_seed01, pat@example\.com\) already has that business\. Tick Add anyway to add another lead\./);
+  assert.match(refused.body, /Pat Example \(ct_seed01, pat@example\.com\) already has that account\. Tick Add anyway to add another lead\./);
   assert.match(refused.body, /<input id="lead-allow_duplicate" name="allow_duplicate" type="checkbox" value="yes">/);
   assert.match(refused.body, /<label for="lead-allow_duplicate">Add anyway<\/label>/);
   assert.match(refused.body, /name="business" type="text" value=" example  PLUMBING "/);

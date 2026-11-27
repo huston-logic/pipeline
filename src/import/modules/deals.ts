@@ -168,7 +168,7 @@ export function planDeals(rows: readonly MappedRow[], ctx: DealsCtx, options: De
     const matches = byPerson.get(key) ?? [];
     const [only, ...others] = matches;
     if (only && others.length > 0) {
-      return { kind: "skip", reason: `more than one person on file has this name and business (${idList("contact", matches.map((c) => c.id))})` };
+      return { kind: "skip", reason: `more than one person on file has this name and account (${idList("contact", matches.map((c) => c.id))})` };
     }
     if (only) return { kind: "onFile", contact: only };
     const added = addedByPerson.get(key);

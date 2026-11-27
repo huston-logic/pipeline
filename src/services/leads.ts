@@ -76,7 +76,7 @@ async function sameBusiness(src: Source, business: string): Promise<ContactRow |
 export async function addLead(ctx: Ctx, input: NewLeadInput): Promise<AddLeadResult> {
   const business = clean(input.business);
   const name = clean(input.name) ?? business;
-  if (name === null) throw new UserError("A lead needs a name or a business.");
+  if (name === null) throw new UserError("A lead needs a name or an account.");
   const email = clean(input.email);
   if (email !== null) {
     checkEmail(email);
@@ -93,7 +93,7 @@ export async function addLead(ctx: Ctx, input: NewLeadInput): Promise<AddLeadRes
     const other = await sameBusiness(ctx, business);
     if (other) {
       const who = capitalize(contactRef(other));
-      throw new DuplicateLeadError(`${who} already has that business. Say allowDuplicate: true to add another lead anyway.`, "business", who);
+      throw new DuplicateLeadError(`${who} already has that account. Say allowDuplicate: true to add another lead anyway.`, "business", who);
     }
   }
   const fields = withoutNulls(input.fields ?? {});

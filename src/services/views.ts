@@ -234,6 +234,8 @@ export async function resolveColumns(db: Db, module: ViewModule, input: readonly
   for (const raw of input) {
     const text = raw.trim();
     let key = Object.keys(builtIn).find((column) => column === text || sameText(builtIn[column] ?? "", text));
+    // The people column was headed "Company" before run 12; saved instructions that say so still work.
+    if (key === undefined && module === "people" && sameText(text, "Company")) key = "business";
     if (key === undefined) {
       const ref = text.startsWith(FIELD_COLUMN) ? text.slice(FIELD_COLUMN.length) : text;
       let def: FieldDefRow;
