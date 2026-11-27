@@ -1123,6 +1123,20 @@ test("0026 adds the title line to an unchanged capture document and keeps an edi
   assert.deepEqual(await snapshot(edited, ["rulebook"]), before);
 });
 
+test("0027 adds the project facts setting: null at first, only a JSON value after", async () => {
+  const db = new SqliteD1();
+  await applyMigrations(db, 26);
+  applySqlFile(db, "seed/defaults.sql");
+  db.exec("UPDATE settings SET timezone = 'Europe/London', version = 4");
+
+  assert.deepEqual(await applyMigrations(db, 27), ["0027_project_facts.sql"]);
+
+  const row = await db.prepare("SELECT timezone, version, project_facts FROM settings").first();
+  assert.deepEqual({ ...row }, { timezone: "Europe/London", version: 4, project_facts: null });
+  db.exec(`UPDATE settings SET project_facts = '["status","person"]'`);
+  assert.throws(() => db.exec("UPDATE settings SET project_facts = 'not json'"), /CHECK/);
+});
+
 /**
  * Fake rows for every table, with only the columns the table had when it was created, so they load at any later
  * version. A migration that adds a table must add its rows here (the test below fails until it does).

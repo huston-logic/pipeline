@@ -98,6 +98,8 @@ export interface TaskTree {
   done: TaskNode[];
   /** There were more than 500 tasks; the deepest were left out. */
   truncated: boolean;
+  /** Every task read, at any level: how many there are and how many are done. */
+  counts: { done: number; total: number };
 }
 
 export const TREE_TASK_LIMIT = 500;
@@ -116,6 +118,7 @@ async function taskTree(db: Db, projectId: string, tz: string): Promise<TaskTree
     open: top.filter((node) => node.doneAt === null),
     done: top.filter((node) => node.doneAt !== null).sort(doneFirst).slice(0, SECTION_LIMIT),
     truncated: more,
+    counts: { done: tasks.filter((task) => task.doneAt !== null).length, total: tasks.length },
   };
 }
 

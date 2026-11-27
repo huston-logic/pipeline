@@ -153,6 +153,19 @@ ${inner}
 </details>`;
 }
 
+/** Add a task shown open as one line (the project page): Title, Due, Description and the button; they stack on a phone. */
+export function addTaskLine(subject: Subject, form: FormContext): Html {
+  const prefix = `task-${subject.id}`;
+  return html`<div class="add-task-line" id="add-${subject.id}">${postForm(
+    "inline-form",
+    addTaskAction(subject),
+    form,
+    html`${specFields(taskSpecs(), new Map(), prefix)}
+<button class="button button-small" type="submit">Add task</button>`,
+    { novalidate: true, live: {} },
+  )}</div>`;
+}
+
 export const QUICK_ADD_ACTION = "/tasks/quick";
 const QUICK_PREFIX = "quick";
 

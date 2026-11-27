@@ -346,6 +346,7 @@ test("settings tools: get shows the owner emails, update changes the rest and re
     projects: false,
     postalAddress: null,
     campaignDailyLimit: 90,
+    projectFacts: ["status", "person", "deal", "start", "target"],
     lastBriefAt: "2026-11-18T17:30:00.000Z",
     lastBriefSentAt: null,
   });
@@ -378,6 +379,19 @@ test("update_settings sets the business name and accent colour, get_settings sho
   await ok(c, "undo_change", { changeId: dataOf<{ changeId: string }>(changed).changeId });
   const after = dataOf<{ businessName: string | null; accentColor: string | null }>(await ok(c, "get_settings"));
   assert.deepEqual([after.businessName, after.accentColor], [null, null]);
+});
+
+test("update_settings sets the project facts, get_settings shows the effective list, null restores the default", async () => {
+  const { c } = await setup();
+  const shownFacts = async () => dataOf<{ projectFacts: string[] }>(await ok(c, "get_settings")).projectFacts;
+  assert.deepEqual(await shownFacts(), ["status", "person", "deal", "start", "target"]);
+  const changed = await ok(c, "update_settings", { projectFacts: ["target", "status"] });
+  assert.match(changed.headline, /^Updated settings: project facts to target, status \(change chg_[a-z0-9]{12}\)$/);
+  assert.deepEqual(await shownFacts(), ["target", "status"]);
+  assert.match(await fails(c, "update_settings", { projectFacts: ["colour"] }), /^Unknown fact: colour\. Choose from status, person, deal, start, target, open_tasks, time, or fields\.<key> of a project field\.$/);
+  assert.match(await fails(c, "update_settings", { projectFacts: Array.from({ length: 21 }, () => "status") }), /at most 20/);
+  assert.match((await ok(c, "update_settings", { projectFacts: null })).headline, /project facts back to the default/);
+  assert.deepEqual(await shownFacts(), ["status", "person", "deal", "start", "target"]);
 });
 
 test("update_settings accepts a brief email from the OWNER_EMAILS var too", async () => {

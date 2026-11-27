@@ -90,6 +90,7 @@ export const boardRoutes: string[] = [
   "/projects",
   "/projects?view=vw_seed03",
   "/projects/new",
+  "/projects/facts",
   "/projects/pj_seed01",
   "/projects/pj_seed01/edit",
   "/templates",

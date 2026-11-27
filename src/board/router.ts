@@ -49,6 +49,7 @@ import { campaignSettingsPage } from "./pages/campaign-settings.ts";
 import { PROJECTS_PATH, projectsPage } from "./pages/projects.ts";
 import { projectPage } from "./pages/project.ts";
 import { projectEditPage } from "./pages/project-edit.ts";
+import { PROJECT_FACTS_PATH, projectFactsPage } from "./pages/project-facts.ts";
 import { newInternalProjectPage, newProjectOfContactPage, newProjectOfDealPage } from "./pages/project-new.ts";
 import { templatePage } from "./pages/template.ts";
 import { templateTaskEditPage } from "./pages/template-task-edit.ts";
@@ -104,6 +105,7 @@ const PAGES = new Map<string, Page>([
   [TIME_NEW_PATH, (ctx) => timeNewPage(ctx)],
   [PROJECTS_PATH, (ctx) => projectsPage(ctx)],
   ["/projects/new", (ctx) => newInternalProjectPage(ctx)],
+  [PROJECT_FACTS_PATH, (ctx) => projectFactsPage(ctx)],
   [TEMPLATES_PATH, (ctx) => templatesPage(ctx)],
   [TEMPLATES_NEW_PATH, (ctx) => templateNewPage(ctx)],
   [CAMPAIGNS_PATH, (ctx) => campaignsPage(ctx)],

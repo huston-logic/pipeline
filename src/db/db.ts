@@ -83,6 +83,8 @@ export type SettingsRow = {
   projects: Flag;
   /** "chat" (the AI app asks for a yes, then apply_changes) or "board" (only the board approves; migration 0025). */
   ai_approval: "chat" | "board";
+  /** JSON array of project fact keys, in order; null shows the default list (migration 0027). */
+  project_facts: string | null;
 };
 
 export type StageRow = {

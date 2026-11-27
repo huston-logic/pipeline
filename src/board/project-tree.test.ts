@@ -109,7 +109,7 @@ test("a top-level move skips a hidden done sibling, so the visible order changes
   const moved = await post(devEnv(db), `/tasks/${b}/move`, { dir: "up", return_to: PAGE });
   assert.equal(moved.res.status, 303);
   const open = (await load(devEnv(db), PAGE)).body;
-  const shown = section(open, "Open tasks</h2>", "Done</h2>");
+  const shown = section(open, "Open tasks</h2>", "Done</summary>");
   assert.ok(shown.indexOf("Bravo") < shown.indexOf("Alpha"));
   const again = await post(devEnv(db), `/tasks/${b}/move`, { dir: "up", return_to: PAGE });
   assert.equal(again.res.status, 422);
@@ -145,8 +145,8 @@ test("a done top-level task goes to Done with its subtree, and done sub-tasks st
   await completeTask(ctxFor(db, "complete_task"), step);
   await completeTask(ctxFor(db, "complete_task"), old, { subTasks: "complete" });
   const { body } = await load(devEnv(db), PAGE);
-  const open = section(body, "Open tasks</h2>", "Done</h2>");
-  const done = section(body, "Done</h2>", "Notes</h2>");
+  const open = section(body, "Open tasks</h2>", "Done</summary>");
+  const done = section(body, "Done</summary>", "Notes</h2>");
   assert.match(open, /Live job[^]*Finished step/);
   assert.doesNotMatch(open, /Old job|Old step/);
   assert.match(done, /Old job[^]*Old step/);

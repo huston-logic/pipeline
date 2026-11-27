@@ -38,6 +38,7 @@ test("getSettings shows the settings with the owner emails as a list", async () 
     projects: false,
     postalAddress: null,
     campaignDailyLimit: 90,
+    projectFacts: ["status", "person", "deal", "start", "target"],
     lastBriefAt: null,
     lastBriefSentAt: null,
   });
@@ -72,6 +73,7 @@ test("updateSettings changes only what is given, in one audited change", async (
     projects: false,
     postalAddress: null,
     campaignDailyLimit: 90,
+    projectFacts: ["status", "person", "deal", "start", "target"],
     lastBriefAt: null,
     lastBriefSentAt: null,
   });

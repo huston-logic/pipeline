@@ -781,6 +781,14 @@ export function registerWriteTools(server: McpServer, deps: ToolDeps): void {
           .optional()
           .describe("The business's postal address, printed in every campaign email (1 to 300 characters, line breaks kept). null clears it."),
         campaignDailyLimit: z.number().optional().describe("Most campaign emails sent a day: a whole number from 1 to 5000 (default 90)."),
+        projectFacts: z
+          .array(z.string())
+          .max(20)
+          .nullable()
+          .optional()
+          .describe(
+            "Which facts the project page shows, in order: status, person, deal, start, target, open_tasks, time, or fields.<key>. null restores the default.",
+          ),
       }),
       async run(args, deps) {
         const result = await updateSettings(aiCtx(deps, "update_settings"), args, {
