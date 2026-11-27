@@ -532,7 +532,7 @@ function statusItem(key: string, label: string): ViewItem {
     shows: `person status ${label}`,
     sort: DEFAULT_SORT.people.key,
     direction: DEFAULT_SORT.people.dir,
-    layout: "cards",
+    layout: "table",
     columns: [...DEFAULT_COLUMNS.people],
     position: null,
     archived: false,

@@ -141,7 +141,7 @@ ${sourceOptions(sources, selectedToken)}</select>
 <select id="leads-sort" name="sort">
 ${LEAD_SORTS.map((s) => html`<option value="${s}"${s === asked.sort ? " selected" : ""}>${SORT_LABELS[s]}</option>\n`)}</select>
 </div>
-${layout === "table" ? html`<input type="hidden" name="layout" value="table">\n` : ""}<button class="button" type="submit">Show leads</button>
+${layout === "cards" ? html`<input type="hidden" name="layout" value="cards">\n` : ""}<button class="button" type="submit">Show leads</button>
 </form>`;
 }
 
@@ -159,7 +159,7 @@ export async function leadsPage(ctx: PageContext): Promise<string> {
   const { db, now, query: params } = ctx;
   const tz = await ownerTimezone(db);
   const asked = leadsQuery(params);
-  const layout = pickLayout(params, "cards");
+  const layout = pickLayout(params, "table");
   const options = { statuses: [...asked.filter.statuses], query: asked.query, sort: asked.sort, limit: LEAD_LIST_LIMIT };
   // The source filter is an opaque token; the sources come from the same list call, so a token is resolved against
   // them and only a known one narrows the list (an unknown token means All sources, with no second query).
@@ -173,7 +173,7 @@ export async function leadsPage(ctx: PageContext): Promise<string> {
   const plain = asked.filter.value === "open" && asked.query === "" && token === "";
 
   const keep = new URLSearchParams();
-  if (layout === "table") keep.set("layout", "table");
+  if (layout === "cards") keep.set("layout", "cards");
   if (asked.filter.value !== "open") keep.set("status", asked.filter.value);
   if (token !== "") keep.set("source", token);
   if (asked.sort !== "next_task") keep.set("sort", asked.sort);
@@ -198,8 +198,8 @@ ${clear}`;
 ${layout === "table" ? leadsTable(list.items, tz, params, asked.sort) : html`<ul class="cards">${list.items.map((lead) => leadCard(lead, tz))}</ul>`}`;
   }
   return renderPage({
-    title: layoutTitle(asked.filter.title, layout, "cards"),
-    description: layoutDescription(asked.filter.description, layout, "cards"),
+    title: layoutTitle(asked.filter.title, layout, "table"),
+    description: layoutDescription(asked.filter.description, layout, "table"),
     current: "/leads",
     frame: ctx,
     body: html`<h1>Leads</h1>

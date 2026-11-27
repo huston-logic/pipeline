@@ -90,8 +90,7 @@ test("drag a card to the next column: it moves, the banner shows, and Undo puts 
   // The change banner is in the status corner now, not under the heading.
   await page.locator(".corner-notice").getByRole("button", { name: /^Undo/ }).click();
   await expect(page.locator(".corner-notice")).toContainText("Undone");
-  // The Undo is in place (decision 0062) and the pipeline board is not a live region, so load it again to see the card back.
-  await page.goto("/pipeline");
+  // The Undo is in place (decision 0062) and the page refreshes whole, with no reload.
   await expect(page.locator(`[data-deal="${dealId}"]`)).toHaveAttribute("data-stage", from);
 
   // Dropping on Won goes through the same confirm step as the form.

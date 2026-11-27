@@ -52,7 +52,7 @@ export const boardRoutes: string[] = [
   "/people?status=partner",
   "/people?view=vw_seed01",
   "/pipeline?view=vw_seed02",
-  "/contacts?layout=table",
+  "/contacts?layout=cards",
   "/people?view=vw_seed01&layout=table",
   "/brief",
   "/more",

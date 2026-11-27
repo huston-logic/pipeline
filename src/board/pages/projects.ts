@@ -81,7 +81,7 @@ ${choices.map((o) => option(o.value, o.label, status))}</select>
 <select id="project-sort" name="sort">
 ${SORTS.map((key) => option(key, SORT_LABELS[key], sort))}</select>
 </div>
-${layout === "table" ? html`<input type="hidden" name="layout" value="table">` : ""}
+${layout === "cards" ? html`<input type="hidden" name="layout" value="cards">` : ""}
 <button class="button" type="submit">Show projects</button>
 </form>`;
 }
@@ -96,14 +96,14 @@ export async function projectsPage(ctx: PageContext): Promise<string | null> {
   const choices = choicesOf(statuses);
   const status = choices.find((c) => c.value === query.get("status"))?.value ?? DEFAULT_STATUS;
   const sort = sortOf(query);
-  const layout = pickLayout(query, "cards");
+  const layout = pickLayout(query, "table");
   const tz = await ownerTimezone(db);
   const found = await listProjects(db, { sort, ...listOptions(status) });
   const items = found.items;
   const label = choices.find((c) => c.value === status)?.label ?? "";
   const note = [status === DEFAULT_STATUS ? "" : status === "all" ? "all statuses" : label.toLowerCase(), SORT_NOTE[sort]].filter((part) => part !== "").join(", ");
   const description = "Your projects with their status, person, target date and open tasks.";
-  const title = layoutTitle(note === "" ? "Projects" : `Projects, ${note}`, layout, "cards");
+  const title = layoutTitle(note === "" ? "Projects" : `Projects, ${note}`, layout, "table");
   const summary = countLine(items.length, found.total, "project", "projects");
   const body =
     items.length === 0
@@ -114,7 +114,7 @@ export async function projectsPage(ctx: PageContext): Promise<string | null> {
   const shown = status === "open" ? { kind: "built_in" as const, id: "open" } : statuses.some((s) => s.key === status) ? { kind: "status" as const, id: status } : null;
   return renderPage({
     title,
-    description: layoutDescription(note === "" ? description : `${description.replace(/\.$/, "")}: ${note}.`, layout, "cards"),
+    description: layoutDescription(note === "" ? description : `${description.replace(/\.$/, "")}: ${note}.`, layout, "table"),
     current: PROJECTS_PATH,
     frame: ctx,
     body: html`<h1>Projects</h1>

@@ -133,6 +133,8 @@ function cornerOf(frame: PageFrame | undefined): Html | "" {
 
 export function renderPage({ title, description, body, current, frame, script = false }: PageOptions): string {
   const name = frame?.look.name ?? DEFAULT_NAME;
+  // A page with no region of its own is refreshed whole (live.js swaps any region present in both documents).
+  const mainRegion = body.value.includes("data-region=") ? "" : html` data-region="main"`;
   return html`<!doctype html>
 <html lang="en">
 <head>
@@ -151,7 +153,7 @@ ${frame ? html`<link rel="stylesheet" href="/theme.css">\n${appTags(frame.look)}
 ${nav(current, { timeTracking: frame?.timeTracking === true, campaigns: frame?.campaigns === true, projects: frame?.projects === true })}
 </header>
 <div class="app-body">
-${cornerOf(frame)}<main id="main" tabindex="-1">
+${cornerOf(frame)}<main id="main" tabindex="-1"${mainRegion}>
 ${body}
 </main>
 <footer class="app-footer">

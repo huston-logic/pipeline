@@ -8,7 +8,7 @@ import { addField } from "../services/fields.ts";
 
 const titleOf = (body: string) => /<title>([^<]*)<\/title>/.exec(body)?.[1] ?? "";
 const descriptionOf = (body: string) => /<meta name="description" content="([^"]*)">/.exec(body)?.[1] ?? "";
-const mainOf = (body: string) => /<main id="main" tabindex="-1">([\s\S]*)<\/main>/.exec(body)?.[1] ?? "";
+const mainOf = (body: string) => /<main id="main" tabindex="-1"[^>]*>([\s\S]*)<\/main>/.exec(body)?.[1] ?? "";
 const labels = (body: string) => [...body.matchAll(/<label\b[^>]*>([\s\S]*?)<\/label>/g)].map((m) => m[1] ?? "");
 const linkTexts = (body: string) => [...body.matchAll(/<a\b[^>]*>([\s\S]*?)<\/a>/g)].map((m) => m[1] ?? "");
 /** The form posting to `action`, as markup. */

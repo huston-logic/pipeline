@@ -34,7 +34,7 @@ async function get(db: SqliteD1, path: string) {
 }
 
 const owner = (db: SqliteD1, tool: string): Ctx => ({ db, now: new Date(), actor: "owner", tool });
-const mainOf = (body: string) => /<main id="main" tabindex="-1">([\s\S]*)<\/main>/.exec(body)?.[1] ?? "";
+const mainOf = (body: string) => /<main id="main" tabindex="-1"[^>]*>([\s\S]*)<\/main>/.exec(body)?.[1] ?? "";
 const titleOf = (body: string) => /<title>([^<]*)<\/title>/.exec(body)?.[1] ?? "";
 const tableOf = (main: string) => /<table class="data-table">[\s\S]*?<\/table>/.exec(main)?.[0] ?? "";
 // A header's visible label: the text between its tags, less the sort arrow. Split, not replaced, so no tag can be
@@ -67,7 +67,8 @@ test("a status view as a table: a region wrapper, a caption, scoped headers, the
   assert.equal(main.match(/<li class="card">/g), null, "no cards in the table layout");
   assert.doesNotMatch(body.replace('<script src="/live.js" defer></script>\n<script src="/clock.js" defer></script>', ""), /<script/, "no page script");
   assert.doesNotMatch(body, /\sstyle=/i);
-  assert.match(titleOf(body), /^Partner as a table · /);
+  assert.match(titleOf(body), /^Partner · /, "a table is the usual layout of a status view");
+  assert.match(titleOf((await get(db, "/people?status=partner&layout=cards")).body), /^Partner as cards · /);
 });
 
 test("sortable headers are links that keep every other parameter; the current one has aria-sort and an arrow", async () => {
@@ -94,7 +95,7 @@ test("an unknown sort or layout falls back to the defaults, with no error", asyn
   }
   const odd = await get(db, "/people?status=partner&layout=sideways");
   assert.equal(odd.status, 200);
-  assert.match(mainOf(odd.body), /<li class="card">/, "a layout that is neither is the page's own");
+  assert.match(tableOf(mainOf(odd.body)), /<table/, "a layout that is neither is the page's own, a table");
 });
 
 test("the Show as switch is a labelled list of two links, the shown one aria-current, keeping the other parameters", async () => {
@@ -102,9 +103,9 @@ test("the Show as switch is a labelled list of two links, the shown one aria-cur
   const table = switchOf(mainOf((await get(db, "/people?status=partner&layout=table&sort=name-desc")).body));
   assert.match(table, /<li><a href="\/people\?status=partner&amp;layout=cards&amp;sort=name-desc">Cards<\/a><\/li>/);
   assert.match(table, /<li><a href="\/people\?status=partner&amp;layout=table&amp;sort=name-desc" aria-current="page">Table<\/a><\/li>/);
-  const cards = switchOf(mainOf((await get(db, "/people?status=partner")).body));
-  assert.match(cards, /<li><a href="\/people\?status=partner&amp;layout=cards" aria-current="page">Cards<\/a><\/li>/);
-  assert.match(cards, /<li><a href="\/people\?status=partner&amp;layout=table">Table<\/a><\/li>/);
+  const usual = switchOf(mainOf((await get(db, "/people?status=partner")).body));
+  assert.match(usual, /<li><a href="\/people\?status=partner&amp;layout=cards">Cards<\/a><\/li>/);
+  assert.match(usual, /<li><a href="\/people\?status=partner&amp;layout=table" aria-current="page">Table<\/a><\/li>/);
 });
 
 test("a saved view's stored layout and columns decide the table; layout in the address overrides them for the visit and writes nothing", async () => {
@@ -173,7 +174,8 @@ test("Contacts as a table: its own columns, sort links that keep the search, and
   assert.match(table, /<th scope="col" aria-sort="ascending"><a href="\/contacts\?layout=table&amp;q=example&amp;sort=name-desc">Name /);
   assert.match(table, /<th scope="col"><a href="\/contacts\?layout=table&amp;q=example&amp;sort=company-asc">Account<\/a><\/th>/);
   assert.match(table, /<th scope="col"><a href="\/contacts\?layout=table&amp;q=example&amp;sort=deals-desc">Open deals<\/a><\/th>/);
-  assert.match(main, /<input type="hidden" name="layout" value="table">/);
+  assert.doesNotMatch(main, /<input type="hidden" name="layout"/, "the usual layout is not carried in the search form");
+  assert.match(mainOf((await get(db, "/contacts?layout=cards&q=example")).body), /<input type="hidden" name="layout" value="cards">/);
   assert.match(table, /<th scope="row"><a href="\/contacts\/ct_seed01">Pat Example<\/a><\/th>/);
   assert.match(main, /aria-label="Show as"/);
   const sorted = await get(db, "/contacts?layout=table&sort=company-desc");
@@ -192,7 +194,8 @@ test("Leads as a table: Status, Last contact and Next task columns; the sort lin
   assert.match(table, /<th scope="col" aria-sort="ascending"><a href="\/leads\?layout=table&amp;status=new&amp;sort=next_task">Next task /);
   assert.match(table, /<th scope="col"><a href="\/leads\?layout=table&amp;status=new&amp;sort=last_contact">Last contact<\/a><\/th>/);
   assert.match(table, /<th scope="row"><a href="\/contacts\/ct_lead01">Imani Okoye<\/a><\/th>/);
-  assert.match(main, /<input type="hidden" name="layout" value="table">/);
+  assert.doesNotMatch(main, /<input type="hidden" name="layout"/);
+  assert.match(mainOf((await get(db, "/leads?layout=cards&status=new")).body), /<input type="hidden" name="layout" value="cards">/);
 });
 
 test("the Pipeline List is a table by default (not the Board's cards), with its sort links; layout=cards shows cards", async () => {

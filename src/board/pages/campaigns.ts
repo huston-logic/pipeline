@@ -10,6 +10,7 @@ import type { PageContext } from "../context.ts";
 import { type Html, html } from "../html.ts";
 import { renderPage } from "../layout.ts";
 import { empty, pairs, section, when } from "../parts.ts";
+import { dataTable, layoutDescription, layoutSwitch, layoutTitle, pickLayout, type TableColumn } from "../table.ts";
 
 export const CAMPAIGNS_PATH = "/campaigns";
 export const CAMPAIGNS_NEW_PATH = "/campaigns/new";
@@ -59,16 +60,35 @@ export async function campaignsPage(ctx: PageContext): Promise<string | null> {
   const tz = await ownerTimezone(ctx.db);
   const items = await listCampaignItems(ctx.db);
   const groups = GROUPS.map((group) => ({ ...group, items: items.filter((item) => item.status === group.status) })).filter((group) => group.items.length > 0);
+  const layout = pickLayout(ctx.query, "table");
+  const ordered = groups.flatMap((group) => group.items);
+  const headingOf = (item: CampaignListItem): string => GROUPS.find((group) => group.status === item.status)?.heading ?? item.status;
+  const columns: TableColumn<CampaignListItem>[] = [
+    { key: "campaign", header: "Campaign", cell: (item) => html`<a href="${campaignPath(item.id)}">${item.name}</a>` },
+    { key: "status", header: "Status", cell: headingOf },
+    { key: "subject", header: "Subject", cell: (item) => item.subject },
+    {
+      key: "time",
+      header: "Date",
+      cell: (item) => {
+        const time = timeOf(item);
+        return time === null ? "" : html`${time.name} ${when(time.at, formatLocal(time.at, tz))}`;
+      },
+    },
+  ];
+  const list =
+    layout === "table"
+      ? dataTable({ label: "Campaigns, as a table", caption: "Campaigns by status, with their subject and date.", columns, rows: ordered })
+      : groups.map((group) => section(`campaigns-${group.status}`, group.heading, html`<ul class="cards">${group.items.map((item) => card(item, tz))}</ul>`));
   return renderPage({
-    title: "Campaigns",
-    description: "Email newsletters and invites: drafts, review, sending and results.",
+    title: layoutTitle("Campaigns", layout, "table"),
+    description: layoutDescription("Email newsletters and invites: drafts, review, sending and results.", layout, "table"),
     current: CAMPAIGNS_PATH,
     frame: ctx,
     body: html`<h1>Campaigns</h1>
 <p class="lede">Email newsletters and invites: drafts, review, sending and results.</p>
 <p class="page-action"><a class="button" href="${CAMPAIGNS_NEW_PATH}">New campaign</a><a class="button button-quiet" href="${CAMPAIGN_SETTINGS_PATH}">Campaign settings</a></p>
-${groups.length === 0
-  ? empty("No campaigns yet.", "Start one with New campaign, or ask your AI app to draft one.")
-  : groups.map((group) => section(`campaigns-${group.status}`, group.heading, html`<ul class="cards">${group.items.map((item) => card(item, tz))}</ul>`))}`,
+${groups.length === 0 ? "" : layoutSwitch(CAMPAIGNS_PATH, ctx.query, layout)}
+${groups.length === 0 ? empty("No campaigns yet.", "Start one with New campaign, or ask your AI app to draft one.") : list}`,
   });
 }

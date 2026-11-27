@@ -198,7 +198,9 @@ test("the status corner is the first thing in the page body, one live region, an
   const frame = { look: { name: "Pipeline" }, corner, csrf: "t".repeat(43), here: "/" };
   const out = renderPage({ title: "Pipeline", description: "x", body: html`<h1>Pipeline</h1>\n<p>Rest</p>`, frame });
   assert.match(out, /<div class="app-body">\n<div class="corner" data-region="corner">/);
-  assert.match(out, /<main id="main" tabindex="-1">\n<h1>Pipeline<\/h1>\n<p>Rest<\/p>\n<\/main>/);
+  assert.match(out, /<main id="main" tabindex="-1" data-region="main">\n<h1>Pipeline<\/h1>\n<p>Rest<\/p>\n<\/main>/);
+  const own = renderPage({ title: "T", description: "D", body: html`<h1>X</h1><div data-region="list">a</div>` });
+  assert.match(own, /<main id="main" tabindex="-1">/, "a page with a region of its own keeps it");
   assert.equal(out.match(/role="status"/g)?.length, 1);
   assert.doesNotMatch(out, /class="banner/);
 });

@@ -61,7 +61,14 @@ test("the list groups by status in order, leaves out archived and names the camp
   addCampaign(db, "cp_sched", "Spring sale", "scheduled", "Spring is here", "send_after='2026-12-01T17:00:00.000Z'");
   addCampaign(db, "cp_gone", "Old draft", "draft", "Nope", "", 1);
   addCampaign(db, "cp_cancel", "Called off", "cancelled", "Never mind");
-  const { res, body } = await load(devEnv(db), "/campaigns");
+  const table = (await load(devEnv(db), "/campaigns")).body;
+  assert.deepEqual(
+    [...table.matchAll(/<tr><th scope="row"><a href="\/campaigns\/(cp_\w+)">[^<]*<\/a><\/th><td>([^<]*)<\/td>/g)].map((m) => `${m[1]} ${m[2]}`),
+    ["cp_draft Draft", "cp_sched Scheduled", "cp_sent Sent", "cp_cancel Cancelled"],
+    "one table, in status order, archived left out",
+  );
+  assert.doesNotMatch(table, /Old draft/);
+  const { res, body } = await load(devEnv(db), "/campaigns?layout=cards");
   assert.equal(res.status, 200);
   assert.equal(h1Count(body), 1);
   assert.match(body, /<h1>Campaigns<\/h1>/);

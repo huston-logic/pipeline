@@ -35,14 +35,14 @@ async function get(db: SqliteD1, path: string) {
 }
 
 const ownerCtx = (db: SqliteD1, tool: string): Ctx => ({ db, now: new Date(), actor: "owner", tool });
-const mainOf = (body: string) => /<main id="main" tabindex="-1">([\s\S]*)<\/main>/.exec(body)?.[1] ?? "";
+const mainOf = (body: string) => /<main id="main" tabindex="-1"[^>]*>([\s\S]*)<\/main>/.exec(body)?.[1] ?? "";
 const switchOf = (body: string, label: string) => new RegExp(`<ul class="view-switch" aria-label="${label}">[\\s\\S]*?</ul>`).exec(body)?.[0] ?? "";
 const linkTexts = (body: string) => [...body.matchAll(/<a\b[^>]*>([\s\S]*?)<\/a>/g)].map((m) => m[1] ?? "");
 const titleOf = (body: string) => /<title>([^<]*)<\/title>/.exec(body)?.[1] ?? "";
 
 test("a person status's default view lists everyone with it, with People current in the nav and the view in the switch", async () => {
   const db = await seededDb();
-  const { status, body } = await get(db, "/people?status=partner");
+  const { status, body } = await get(db, "/people?status=partner&layout=cards");
   assert.equal(status, 200);
   assert.equal(body.match(/<h1[\s>]/g)?.length, 1);
   const main = mainOf(body);
@@ -116,7 +116,7 @@ test("a view shows at most 200 cards and says how many there are", async () => {
   const db = await seededDb();
   const rows = Array.from({ length: 205 }, (_, i) => `('ct_bulk${i}', 'Bulk Person ${i}', 'bulk${i}@example.com', 'partner')`);
   db.exec(`INSERT INTO contacts (id, name, email, person_status) VALUES ${rows.join(", ")}`);
-  const main = mainOf((await get(db, "/people?status=partner")).body);
+  const main = mainOf((await get(db, "/people?status=partner&layout=cards")).body);
   assert.match(main, /Showing the first 200 of 207 people, in this view&#39;s order\./);
   assert.equal(main.match(/<li class="card">/g)?.length, 200);
 });

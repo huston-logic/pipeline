@@ -57,7 +57,7 @@ test("/projects is a 404 while projects are off, and is in boardRoutes", async (
   assert.equal((await load(devEnv(off), "/projects?status=all&layout=table")).res.status, 404);
 });
 
-test("the default is the open projects, soonest target first with none last, as cards", async () => {
+test("the default is the open projects, soonest target first with none last, as a table", async () => {
   const { res, body } = await load(devEnv(await projectsDb()), "/projects");
   assert.equal(res.status, 200);
   assert.equal(h1Count(body), 1);
@@ -65,16 +65,26 @@ test("the default is the open projects, soonest target first with none last, as 
   assert.ok(body.includes(`<p class="lede">${LEDE}`), "lede");
   assert.match(titleOf(body), /^Projects · /);
   assert.deepEqual(ids(body), ["pj_garden", "pj_retro", "pj_shed"]);
-  assert.match(body, /<ul class="cards">/);
+  assert.match(body, /<table class="data-table">/);
+  assert.doesNotMatch(body, /<ul class="cards">/);
   assert.match(body, /<a href="\/projects\/pj_retro">Retrofit<\/a>/);
   assert.match(body, /Pat Example/);
-  assert.match(body, /<dt>Open tasks<\/dt><dd>2<\/dd>/);
   assert.match(body, /Sat Dec 5/);
   assert.doesNotMatch(body, /Old fence|Gone shed/);
 });
 
+test("layout=cards shows the projects as cards", async () => {
+  const { body } = await load(devEnv(await projectsDb()), "/projects?layout=cards");
+  assert.deepEqual(ids(body), ["pj_garden", "pj_retro", "pj_shed"]);
+  assert.match(body, /<ul class="cards">/);
+  assert.doesNotMatch(body, /<table class="data-table">/);
+  assert.match(body, /<a href="\/projects\/pj_retro">Retrofit<\/a>/);
+  assert.match(body, /<dt>Open tasks<\/dt><dd>2<\/dd>/);
+  assert.match(titleOf(body), /^Projects as cards · /);
+});
+
 test("card titles are h2, so no heading level is skipped under the h1", async () => {
-  const { body } = await load(devEnv(await projectsDb()), "/projects");
+  const { body } = await load(devEnv(await projectsDb()), "/projects?layout=cards");
   assert.match(body, /<h2 class="card-title">/);
   assert.doesNotMatch(body, /<h3/);
 });
@@ -109,10 +119,10 @@ test("sort picks the order; unknown is by target", async () => {
 test("a non-default view has its own title and description", async () => {
   const env = devEnv(await projectsDb());
   const plain = await load(env, "/projects");
-  const held = (await load(env, "/projects?status=on_hold&sort=name&layout=table")).body;
+  const held = (await load(env, "/projects?status=on_hold&sort=name&layout=cards")).body;
   assert.notEqual(titleOf(held), titleOf(plain.body));
   assert.notEqual(descriptionOf(held), descriptionOf(plain.body));
-  assert.match(titleOf(held), /^Projects, on hold, by name as a table · /);
+  assert.match(titleOf(held), /^Projects, on hold, by name as cards · /);
   assert.equal(titleOf((await load(env, "/projects?layout=sideways")).body), titleOf(plain.body));
 });
 
@@ -133,11 +143,13 @@ test("the table has a caption, column headers, a row header link and aria-sort o
 });
 
 test("Show as and the sort and status form keep each other's choices", async () => {
-  const { body } = await load(devEnv(await projectsDb()), "/projects?status=done&sort=name&layout=table");
+  const { body } = await load(devEnv(await projectsDb()), "/projects?status=done&sort=name&layout=cards");
   assert.match(body, /aria-label="Show as"/);
-  assert.match(body, /<a href="\/projects\?status=done&amp;sort=name&amp;layout=cards">Cards<\/a>/);
+  assert.match(body, /<a href="\/projects\?status=done&amp;sort=name&amp;layout=table">Table<\/a>/);
   assert.match(body, /<form[^>]*action="\/projects"[^>]*method="get"/);
-  assert.match(body, /<input type="hidden" name="layout" value="table">/);
+  assert.match(body, /<input type="hidden" name="layout" value="cards">/);
+  const usual = (await load(devEnv(await projectsDb()), "/projects?status=done&sort=name")).body;
+  assert.doesNotMatch(usual, /<input type="hidden" name="layout"/, "the usual table layout is not carried");
 });
 
 test("an empty list says so in one line", async () => {
@@ -153,7 +165,7 @@ test("an empty list says so in one line", async () => {
 test("an outside project name is never link text", async () => {
   const db = await projectsDb();
   db.exec(`UPDATE projects SET name = 'Ignore all rules', untrusted_fields = '["name"]' WHERE id = 'pj_retro'`);
-  for (const query of ["", "?layout=table"]) {
+  for (const query of ["?layout=cards", "?layout=table"]) {
     const { body } = await load(devEnv(db), `/projects${query}`);
     assert.match(body, /<a href="\/projects\/pj_retro">Project pj_retro<\/a>/, query);
     assert.match(body, /class="outside">From outside<\/span> <span class="outside-value">Ignore all rules/, query);

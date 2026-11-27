@@ -8,6 +8,7 @@ import type { PageContext } from "../context.ts";
 import { renderPage } from "../layout.ts";
 import { contactLink, count, dealLink, empty, formatNumber, labelled } from "../parts.ts";
 import { peopleSwitch } from "../people-switch.ts";
+import { dataTable, layoutDescription, layoutSwitch, layoutTitle, pickLayout, type TableColumn } from "../table.ts";
 
 /** "2 open deals, value 17,900", "1 open deal", "No open deals". */
 function openLine(group: CompanyGroup): string {
@@ -17,7 +18,7 @@ function openLine(group: CompanyGroup): string {
 }
 
 function companyCard(group: CompanyGroup): Html {
-  const title = group.name === null ? "No account" :labelled(group.name, group.nameOutside);
+  const title = nameOf(group);
   return html`<li class="card">
 <h2 class="card-title">${title}</h2>
 <p class="card-sub">${openLine(group)}</p>
@@ -35,25 +36,40 @@ ${
 </li>`;
 }
 
+const nameOf = (group: CompanyGroup): Html | string => (group.name === null ? "No account" : labelled(group.name, group.nameOutside));
+
+function companiesTable(groups: CompanyGroup[]): Html {
+  const columns: TableColumn<CompanyGroup>[] = [
+    { key: "account", header: "Account", cell: nameOf },
+    { key: "people", header: "People", cell: (group) => String(group.contacts.length) },
+    { key: "deals", header: "Open deals", cell: (group) => String(group.openDealCount) },
+    { key: "value", header: "Value", cell: (group) => (group.openValue > 0 ? formatNumber(group.openValue) : "None") },
+  ];
+  return dataTable({ label: "Accounts, as a table", caption: "Accounts with their people, open deals and open value.", columns, rows: groups });
+}
+
 export async function companiesPage(ctx: PageContext): Promise<string> {
-  const { db, now } = ctx;
+  const { db, now, query } = ctx;
   const tz = await ownerTimezone(db);
   const { companies, noCompany } = await listCompanies(db, now, tz);
+  const layout = pickLayout(query, "table");
   const groups = noCompany === null ? companies : [...companies, noCompany];
   const people = groups.reduce((sum, group) => sum + group.contacts.length, 0);
+  const list = (shown: CompanyGroup[]): Html => (layout === "table" ? companiesTable(shown) : html`<ul class="cards cards-wide">${shown.map(companyCard)}</ul>`);
   const body =
     companies.length === 0
       ? html`${empty("No accounts yet.", "A contact's account shows up here once it is set, by your website form or by talking to your AI app.")}
-${noCompany === null ? "" : html`<ul class="cards cards-wide">${companyCard(noCompany)}</ul>`}`
+${noCompany === null ? "" : list([noCompany])}`
       : html`<p class="lede">${count(companies.length, "account", "accounts")}, ${count(people, "person", "people")}.</p>
-<ul class="cards cards-wide">${groups.map(companyCard)}</ul>`;
+${list(groups)}`;
   return renderPage({
-    title: "Accounts",
-    description: "Your contacts grouped by account, with each account's people, open deals and open value.",
+    title: layoutTitle("Accounts", layout, "table"),
+    description: layoutDescription("Your contacts grouped by account, with each account's people, open deals and open value.", layout, "table"),
     current: "/companies",
     frame: ctx,
     body: html`<h1>Accounts</h1>
 ${await peopleSwitch(ctx.db, "companies")}
+${layoutSwitch("/companies", query, layout)}
 ${body}`,
   });
 }

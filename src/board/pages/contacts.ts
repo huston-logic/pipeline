@@ -113,7 +113,7 @@ function searchForm(query: string, sortValue: string, layout: Layout): Html {
 <select id="contacts-sort" name="sort">
 ${SORTS.map((s) => html`<option value="${s.value}"${s.value === sortValue ? " selected" : ""}>${s.label}</option>\n`)}</select>
 </div>
-${layout === "table" ? html`<input type="hidden" name="layout" value="table">\n` : ""}<button class="button" type="submit">Show contacts</button>
+${layout === "cards" ? html`<input type="hidden" name="layout" value="cards">\n` : ""}<button class="button" type="submit">Show contacts</button>
 </form>`;
 }
 
@@ -144,9 +144,9 @@ export async function contactsPage(ctx: PageContext): Promise<string> {
   const tz = await ownerTimezone(db);
   const { query, sort, dir, sortValue } = contactsQuery(params);
   const { contacts, total } = await listContacts(db, tz, { query, sort, dir, limit: CONTACT_LIST_LIMIT });
-  const layout = pickLayout(params, "cards");
+  const layout = pickLayout(params, "table");
   const clearBase = sortValue === DEFAULT_SORT ? "/contacts" : `/contacts?sort=${sortValue}`;
-  const clearHref = layout === "table" ? `${clearBase}${clearBase.includes("?") ? "&" : "?"}layout=table` : clearBase;
+  const clearHref = layout === "cards" ? `${clearBase}${clearBase.includes("?") ? "&" : "?"}layout=cards` : clearBase;
   const clear = query === "" ? "" : html`<p class="search-clear"><a href="${clearHref}">Clear search</a></p>`;
   let results: Html;
   if (total === 0 && query === "") {
@@ -160,8 +160,8 @@ ${await leadsHint(ctx, tz, query)}${clear}`;
 ${layout === "table" ? contactsTable(contacts, params, { sort, dir }) : html`<ul class="cards">${contacts.map(contactCard)}</ul>`}`;
   }
   return renderPage({
-    title: layoutTitle("Contacts", layout, "cards"),
-    description: layoutDescription("Everyone in your pipeline, with their account, open deals and last activity. Search and sort them.", layout, "cards"),
+    title: layoutTitle("Contacts", layout, "table"),
+    description: layoutDescription("Everyone in your pipeline, with their account, open deals and last activity. Search and sort them.", layout, "table"),
     current: "/contacts",
     frame: ctx,
     body: html`<h1>Contacts</h1>

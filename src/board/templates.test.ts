@@ -60,9 +60,13 @@ test("the list shows live templates with the first line and task count; Archived
   assert.equal(res.status, 200);
   assert.equal(h1Count(body), 1);
   assert.match(body, /Website build/);
-  assert.match(body, /First line\./);
+  assert.match(body, /<td>2<\/td><td>First line\.<\/td>/);
   assert.doesNotMatch(body, /Second line/);
-  assert.match(body, /2 tasks/);
+  const cards = (await load(env, "/templates?layout=cards")).body;
+  assert.match(cards, /<li class="card">/);
+  assert.match(cards, /First line\./);
+  assert.doesNotMatch(cards, /Second line/);
+  assert.match(cards, /2 tasks/);
   assert.doesNotMatch(body, /Old plan/);
   assert.match(body, /href="\/templates\/new"/);
   assert.match(body, /href="\/templates\?show=archived"/);
