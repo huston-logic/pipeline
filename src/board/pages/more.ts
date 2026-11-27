@@ -10,7 +10,10 @@ export async function morePage(ctx: PageContext): Promise<string> {
   return renderPage({
     region: true,
     title: "More",
-    description: "Your rules, the change log, the export download, the import, phone notifications and the email logging address.",
+    description:
+      ctx.brief === true
+        ? "Your rules, the change log, the export download, the import, phone notifications and the email logging address."
+        : "Your rules, the change log, the export download, the import and the email logging address.",
     current: "/more",
     frame: ctx,
     body: html`<h1>More</h1>

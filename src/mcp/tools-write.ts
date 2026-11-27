@@ -754,7 +754,7 @@ export function registerWriteTools(server: McpServer, deps: ToolDeps): void {
         timezone: shortText("An IANA timezone name, for example America/Los_Angeles or Europe/London.").optional(),
         briefHour: z.number().int().min(0).max(23).optional().describe("The hour the daily brief goes out, 0 to 23 in the owner's timezone."),
         briefEmail: orNull(shortText("The address the brief is sent to (one of the owner emails), or null to clear it.")).optional(),
-        briefEnabled: z.boolean().optional().describe("true to send the daily brief, false to stop."),
+        briefEnabled: z.boolean().optional().describe("Email the daily brief (only while the Brief is on and email sending is set up). true to email it, false to stop."),
         businessName: orNull(
           shortText("The business name the board shows in its header and page titles (up to 60 characters), or null for \"Pipeline\"."),
         ).optional(),
@@ -778,7 +778,7 @@ export function registerWriteTools(server: McpServer, deps: ToolDeps): void {
         brief: z
           .boolean()
           .optional()
-          .describe("Turn the daily brief on or off (off by default): the Brief page, its email and its phone notification. Follow-up rules run either way."),
+          .describe("Turn the Brief on or off (off by default): its page, composing it each day, its email and its phone notification. Follow-up rules run either way."),
         postalAddress: z
           .string()
           .nullable()

@@ -18,6 +18,7 @@ test("off: /brief and /notifications are 404s and the nav and More list neither"
   const more = await load(env, "/more");
   assert.doesNotMatch(more.body, /href="\/brief"|href="\/notifications"/);
   assert.match(more.body, /href="\/rules"/, "the other More items stay");
+  assert.doesNotMatch(more.body, /name="description" content="[^"]*notifications/, "the meta description leaves notifications out");
 });
 
 test("off: the notification posts, Send a test included, are 404s and push nothing", async () => {
@@ -38,5 +39,6 @@ test("on: the pages and nav items are back", async () => {
   const more = await load(env, "/more");
   assert.match(more.body, /href="\/brief"/);
   assert.match(more.body, /href="\/notifications"/);
+  assert.match(more.body, /name="description" content="[^"]*phone notifications/);
   assert.match(navOf((await load(env, "/")).body), /href="\/brief"/);
 });

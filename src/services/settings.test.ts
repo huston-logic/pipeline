@@ -49,9 +49,9 @@ test("the brief switch is off by default, turning it on and off is audited and u
   const db = await openTestDb();
   assert.equal((await getSettings(db)).brief, false);
   const on = await updateSettings(ctxFor(db), { brief: true });
-  assert.match(on.summary, /^Updated settings: the brief switch on \(change chg_/);
+  assert.match(on.summary, /^Updated settings: the Brief on \(change chg_/);
   assert.equal((await getSettings(db)).brief, true);
-  assert.match((await updateSettings(ctxFor(db), { brief: false })).summary, /the brief switch off/);
+  assert.match((await updateSettings(ctxFor(db), { brief: false })).summary, /the Brief off/);
   assert.equal((await getSettings(db)).brief, false);
   assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM audit_log").first<{ n: number }>())?.n, 2);
   const again = await updateSettings(ctxFor(db), { brief: true });
@@ -71,7 +71,7 @@ test("updateSettings changes only what is given, in one audited change", async (
 
   assert.equal(
     result.summary,
-    `Updated settings: timezone to Europe/London, brief hour to 8:00, brief email to me@example.com and the daily brief on (change ${result.changeId})`,
+    `Updated settings: timezone to Europe/London, brief hour to 8:00, brief email to me@example.com and emailing the brief on (change ${result.changeId})`,
   );
   assert.deepEqual(await getSettings(db), {
     timezone: "Europe/London",
@@ -98,7 +98,7 @@ test("updateSettings changes only what is given, in one audited change", async (
   assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM audit_log").first<{ n: number }>())?.n, 1);
 
   const cleared = await updateSettings(ctxFor(db), { briefEmail: null, briefEnabled: false });
-  assert.match(cleared.summary, /^Updated settings: brief email cleared and the daily brief off \(change /);
+  assert.match(cleared.summary, /^Updated settings: brief email cleared and emailing the brief off \(change /);
 });
 
 test("updateSettings checks the timezone, the hour and the email, and refuses a no-op", async () => {

@@ -272,7 +272,7 @@ export async function updateSettings(ctx: Ctx, patch: SettingsPatch, options: Se
   }
   if (patch.briefEnabled !== undefined && (patch.briefEnabled ? 1 : 0) !== before.brief_enabled) {
     set.brief_enabled = patch.briefEnabled ? 1 : 0;
-    parts.push(`the daily brief ${patch.briefEnabled ? "on" : "off"}`);
+    parts.push(`emailing the brief ${patch.briefEnabled ? "on" : "off"}`);
   }
   if (patch.businessName !== undefined) {
     const name = checkBusinessName(patch.businessName);
@@ -321,7 +321,7 @@ export async function updateSettings(ctx: Ctx, patch: SettingsPatch, options: Se
   }
   if (patch.brief !== undefined && (patch.brief ? 1 : 0) !== before.brief) {
     set.brief = patch.brief ? 1 : 0;
-    parts.push(`the brief switch ${patch.brief ? "on" : "off"}`);
+    parts.push(`the Brief ${patch.brief ? "on" : "off"}`);
   }
   if (patch.postalAddress !== undefined) {
     const address = patch.postalAddress === null ? null : checkPostalAddress(patch.postalAddress);

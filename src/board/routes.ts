@@ -161,7 +161,7 @@ export const navItems: NavItem[] = [
     href: "/more",
     label: "More",
     icon: "more",
-    description: "The brief, rules, changes, the monthly report, export, import, notifications and email logging.",
+    description: "Rules, changes, the monthly report, export, import and email logging.",
     hint: " pages",
   },
 ];
