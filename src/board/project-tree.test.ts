@@ -47,7 +47,7 @@ test("tasks nest to three levels, and a parent says how many of its sub-tasks ar
   const { body } = await load(devEnv(db), PAGE);
   assert.match(body, /3 open sub-tasks<span class="visually-hidden">: Build deck/);
   assert.match(body, /1 open sub-task<span class="visually-hidden">: Footings/);
-  assert.match(body, /<ul class="task-rows">[^]*Build deck[^]*<ul class="task-rows task-rows-nested">[^]*Footings[^]*<ul class="task-rows task-rows-nested">[^]*Dig holes/);
+  assert.match(body, /<ul class="task-rows has-subs">[^]*Build deck[^]*<ul class="task-rows task-rows-nested has-subs">[^]*Footings[^]*<ul class="task-rows task-rows-nested">[^]*Dig holes/);
   assert.match(body, /Rails[^]*Done/);
 });
 

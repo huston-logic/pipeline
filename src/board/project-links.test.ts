@@ -108,7 +108,7 @@ test("a project task shows its Project pair on Today and the person page's task 
   assert.match(today, /Project<\/dt><dd><a href="\/projects\/pj_retro">Retrofit<\/a>/);
   assert.ok(today.indexOf("Project</dt>") < today.indexOf("Contact</dt>"));
   const person = (await load(devEnv(db), "/contacts/ct_seed01")).body;
-  assert.match(person, /<span class="task-belongs">Retrofit<\/span>[^]*<a href="\/projects\/pj_retro">Open the project<\/a>/);
+  assert.match(person, /<span class="task-belongs"><span class="visually-hidden">, for <\/span>Retrofit<\/span>[^]*<a href="\/projects\/pj_retro">Open the project<\/a>/);
 });
 
 test("a project task's Project pair is gone while projects are off", async () => {

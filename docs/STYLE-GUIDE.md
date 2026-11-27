@@ -343,6 +343,12 @@ sub-tasks") sits at the row's right edge (the row line reserves its width).
   person, Open the project), then one wrapping action line with 8px gaps (Start timer, Snooze, Edit, Add a sub-task,
   Move up, Move down).
 - **Nested rows** (sub-tasks): the same panel without its own border, set in 44px per level, a divider on top.
+- **Phone sub-tasks toggle:** under 40rem the sub-tasks summary is its own 44px line below the row line, indented to the
+  title's column; from 40rem it sits at the right edge, and every row of a list with sub-tasks reserves that width so
+  the due and belongs columns line up.
+- **Reading and tab order:** the cells read "Due <day>" and ", for <belongs>" (hidden words); a snoozed task says "Snoozed
+  to <day>" in the due cell; a title over 40 characters is shown in full as the first line of the open content. Tab
+  order: Done box, row line, the open content (when open), then the sub-tasks toggle.
 - No hover lift. The focus ring (§7.10) is on the row line, the Done box and every button. Today keeps cards until its own task.
 
 ### 7.25 Status corner (`.corner`; run 12)

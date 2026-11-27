@@ -1954,7 +1954,7 @@ html:has(.corner-chip, .corner-notice:not(:empty)) {
   width: 24px;
   height: 24px;
   border: 2px solid var(--ink-2);
-  border-radius: 6px;
+  border-radius: var(--r-field);
   background: var(--white);
 }
 
@@ -2062,6 +2062,10 @@ html:has(.corner-chip, .corner-notice:not(:empty)) {
   border-top: 1px solid var(--divider);
 }
 
+.task-fulltitle {
+  font-weight: 600;
+}
+
 .task-open-body > p {
   margin: 0 0 0.5rem;
   overflow-wrap: anywhere;
@@ -2093,14 +2097,11 @@ html:has(.corner-chip, .corner-notice:not(:empty)) {
 }
 
 .task-subs > summary {
-  position: absolute;
-  top: 0;
-  right: 0;
   display: flex;
   align-items: center;
   gap: 0.5rem;
   min-height: 44px;
-  padding: 0 12px;
+  padding: 0 12px 0 44px;
   color: var(--ink-2);
   font-size: 0.9375rem;
   font-weight: 600;
@@ -2136,10 +2137,6 @@ html:has(.corner-chip, .corner-notice:not(:empty)) {
     "due due chev";
 }
 
-.has-subs > .task-open > summary {
-  padding-right: 11rem;
-}
-
 @media (min-width: 40rem) {
   .task-open > summary {
     grid-template-columns: minmax(0, 1fr) 10rem 12rem 1.5rem;
@@ -2149,6 +2146,17 @@ html:has(.corner-chip, .corner-notice:not(:empty)) {
   .no-belongs > .task-open > summary {
     grid-template-columns: minmax(0, 1fr) 10rem 1.5rem;
     grid-template-areas: "title due chev";
+  }
+
+  .has-subs > .task-row > .task-open > summary {
+    padding-right: 11rem;
+  }
+
+  .task-subs > summary {
+    position: absolute;
+    top: 0;
+    right: 0;
+    padding-left: 12px;
   }
 
   .task-title {

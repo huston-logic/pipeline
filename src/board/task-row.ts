@@ -9,6 +9,8 @@ import { specFields } from "./record-fields.ts";
 import { completeAction, descriptionLine, taskActions, taskName, taskSpecs, type TaskRef } from "./task-forms.ts";
 
 export const MAX_LEVEL = 3;
+/** A title longer than this is cut on one line at 40rem and up, so the open content shows it in full. */
+const FULL_TITLE_OVER = 40;
 
 export type RowTask = TaskRef & {
   dueAt: string | null;
@@ -23,6 +25,8 @@ export type RowTask = TaskRef & {
   projectId?: string | null;
   projectName?: string | null;
   parentId?: string | null;
+  /** "owner", or the id of the rule that made the task. */
+  source?: string;
   subTasks?: { open: number; done: number };
   children?: RowTask[];
   level: 1 | 2 | 3;
@@ -77,15 +81,28 @@ ${specFields(taskSpecs(), new Map(), `subtask-${task.id}`)}
 }
 
 /** The due cell: the day (or day and time), "Overdue" beside it in words when it was due before today, or "Done <day>". */
+const dayOf = (iso: string, tz: string): string => {
+  const text = formatLocal(iso, tz);
+  const comma = text.indexOf(",");
+  return comma === -1 ? text : text.slice(0, comma);
+};
+
+/** The future time a task is snoozed to, or null. */
+function snoozedTo(task: RowTask, now: Date): string | null {
+  const done = task.doneAt !== undefined && task.doneAt !== null;
+  return !done && task.snoozedUntil !== undefined && task.snoozedUntil !== null && task.snoozedUntil > now.toISOString() ? task.snoozedUntil : null;
+}
+
 function dueCell(task: RowTask, opts: RowOptions): Html {
   if (task.doneAt !== undefined && task.doneAt !== null) {
-    const done = formatLocal(task.doneAt, opts.tz);
-    return html`<span class="task-due">Done ${when(task.doneAt, done.slice(0, done.indexOf(",")))}</span>`;
+    return html`<span class="task-due">Done ${when(task.doneAt, dayOf(task.doneAt, opts.tz))}</span>`;
   }
+  const snoozed = snoozedTo(task, opts.now);
+  if (snoozed !== null) return html`<span class="task-due">Snoozed to ${when(snoozed, dayOf(snoozed, opts.tz))}</span>`;
   if (task.dueAt === null || task.dueAtLocal === null) return html`<span class="task-due"></span>`;
   const startOfToday = dayBoundsUtc(localDate(opts.now, opts.tz), opts.tz).start.toISOString();
   const late = task.dueAt < startOfToday ? html` <span class="task-late">Overdue</span>` : "";
-  return html`<span class="task-due">${when(task.dueAt, task.dueAtLocal)}${late}</span>`;
+  return html`<span class="task-due"><span class="visually-hidden">Due </span>${when(task.dueAt, task.dueAtLocal)}${late}</span>`;
 }
 
 function belongsCell(task: RowTask): Html {
@@ -96,7 +113,7 @@ function belongsCell(task: RowTask): Html {
   ];
   const found = named.find(([value]) => value !== undefined && value !== null && value !== "");
   if (found === undefined || found[0] === undefined || found[0] === null) return html`<span class="task-belongs"></span>`;
-  return html`<span class="task-belongs">${labelled(found[0], outsideIn(task, found[1]))}</span>`;
+  return html`<span class="task-belongs"><span class="visually-hidden">, for </span>${labelled(found[0], outsideIn(task, found[1]))}</span>`;
 }
 
 function linksLine(task: RowTask): Html | "" {
@@ -112,7 +129,7 @@ function doneBox(task: RowTask, form: FormContext, after: string | undefined): H
   const name = taskName(task);
   const box = html`<span class="task-box" aria-hidden="true"></span>`;
   if (task.doneAt !== undefined && task.doneAt !== null) {
-    return html`<span class="task-done-box task-done-static">${box}<span class="visually-hidden">Done</span></span>`;
+    return html`<span class="task-done-box task-done-static">${box}<span class="visually-hidden">Done: ${name}</span></span>`;
   }
   return postForm(
     "task-done",
@@ -125,11 +142,15 @@ function doneBox(task: RowTask, form: FormContext, after: string | undefined): H
 
 async function openContent(task: RowTask, opts: RowOptions, form: FormContext): Promise<Html> {
   const done = task.doneAt !== undefined && task.doneAt !== null;
-  const snoozed = !done && task.snoozedUntil !== undefined && task.snoozedUntil !== null && task.snoozedUntil > opts.now.toISOString() ? task.snoozedUntil : null;
+  const snoozed = snoozedTo(task, opts.now);
+  const long = task.title.length > FULL_TITLE_OVER;
+  const byRule = task.source !== undefined && task.source !== "owner";
   const canAdd = task.onProject && task.level < MAX_LEVEL;
   const extra = html`${canAdd ? subTaskForm(task, form) : ""}${task.onProject ? moveForm(task, form) : ""}`;
   return html`<div class="task-open-body">
+${long ? html`<p class="task-fulltitle">${labelled(task.title, outsideIn(task, "title"))}</p>` : ""}
 ${snoozed === null ? "" : html`<p class="task-note">Snoozed until ${when(snoozed, formatLocal(snoozed, opts.tz))}</p>`}
+${byRule ? html`<p class="task-note">Added by rule ${task.source}</p>` : ""}
 ${descriptionLine(task)}
 ${linksLine(task)}
 ${done ? "" : await taskActions(task, form, opts.tz, { withDone: false, extra })}
@@ -146,12 +167,12 @@ function subsSummary(task: RowTask, children: RowTask[]): Html {
 /** One row. `after` is the id of the next row's Done box, where focus goes when this one is done. */
 export async function taskRow(task: RowTask, opts: RowOptions, form: FormContext, after?: string): Promise<Html> {
   const children = task.level < MAX_LEVEL ? (task.children ?? []) : [];
-  const classes = `task-row${children.length > 0 ? " has-subs" : ""}${opts.showBelongs ? "" : " no-belongs"}`;
+  const classes = `task-row${opts.showBelongs ? "" : " no-belongs"}`;
   const deeper = task.level === MAX_LEVEL && (task.deeper ?? 0) > 0 ? html`<p class="field-hint task-deeper">Has ${count(task.deeper ?? 0, "more level")} below. Your AI app can show them.</p>` : "";
   return html`<li class="${classes}" data-task-row id="t-${task.id}">
 ${doneBox(task, form, after)}
 <details class="task-open" id="open-${task.id}">
-<summary><span class="task-title">${labelled(task.title, outsideIn(task, "title"))}</span>${dueCell(task, opts)}${opts.showBelongs ? belongsCell(task) : ""}</summary>
+<summary><span class="task-title">${labelled(task.title, outsideIn(task, "title"))}</span> ${dueCell(task, opts)} ${opts.showBelongs ? belongsCell(task) : ""}</summary>
 ${await openContent(task, opts, form)}
 </details>
 ${
@@ -176,5 +197,6 @@ export async function taskRows(rows: RowTask[], opts: RowOptions, form: FormCont
       return taskRow(row, opts, form, next === undefined ? undefined : `done-${next.id}`);
     }),
   );
-  return html`<ul class="task-rows${nested ? " task-rows-nested" : ""}">${drawn}</ul>`;
+  const subs = rows.some((row) => row.level < MAX_LEVEL && (row.children?.length ?? 0) > 0);
+  return html`<ul class="task-rows${nested ? " task-rows-nested" : ""}${subs ? " has-subs" : ""}">${drawn}</ul>`;
 }
