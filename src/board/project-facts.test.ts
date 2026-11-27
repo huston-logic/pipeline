@@ -83,6 +83,29 @@ test("Save writes the ticked facts in position order through update_settings as 
   assert.match(audit?.summary ?? "", /project facts to target, fields\.site, status/);
 });
 
+test("facts at the same position keep the fixed order of the chooser's keys", async () => {
+  const db = await factsDb();
+  const { res } = await post(devEnv(db), "/projects/facts", {
+    "show.target": "yes",
+    "pos.target": "1",
+    "show.person": "yes",
+    "pos.person": "1",
+    "show.status": "yes",
+    "pos.status": "1",
+    "show.time": "yes",
+    "pos.time": "1",
+    return_to: "/projects/facts",
+  });
+  assert.equal(res.status, 303);
+  assert.equal(await storedFacts(db), '["status","person","target","time"]');
+});
+
+test("a ticked Time is dropped while time tracking is off, as the page never lists it", async () => {
+  const db = await factsDb({ tracking: false });
+  await post(devEnv(db), "/projects/facts", { "show.time": "yes", "pos.time": "1", "show.status": "yes", "pos.status": "2", return_to: "/projects/facts" });
+  assert.equal(await storedFacts(db), '["status"]');
+});
+
 test("Save with nothing ticked stores an empty list, and an unchanged list writes nothing", async () => {
   const db = await factsDb();
   const first = await post(devEnv(db), "/projects/facts", { return_to: "/projects/facts" });

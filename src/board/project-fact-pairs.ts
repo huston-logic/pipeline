@@ -17,8 +17,6 @@ export const factLabel = (key: string, fieldLabels: Map<string, string>): string
 function valueOf(key: string, project: ProjectDetail, tz: string): { value: Pair["value"]; long: boolean } | null {
   const outside = new Set<string>(project.untrusted_fields);
   switch (key) {
-    case "status":
-      return { value: project.archived ? `${project.statusLabel}, archived` : project.statusLabel, long: false };
     case "person":
       return {
         value: project.contactId === null || project.contactName === null ? "Internal" : contactLink(project.contactId, project.contactName, outside.has("contactName")),
@@ -51,6 +49,7 @@ export function factPairs(keys: readonly string[], project: ProjectDetail, field
   const shown: Pair[] = [];
   const long: Pair[] = [];
   for (const key of keys) {
+    if (key === "status") continue; // drawn as the tag beside the name, not as a pair
     const fact = valueOf(key, project, tz);
     if (fact !== null) (fact.long ? long : shown).push({ name: factLabel(key, fieldLabels), value: fact.value });
   }

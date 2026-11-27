@@ -43,16 +43,17 @@ function archiveForm(project: ProjectDetail, form: FormContext): Html {
     "project-archive",
     `${projectHref(project.id)}/archive`,
     form,
-    html`${hidden("archived", project.archived ? "0" : "1")}<button class="button button-quiet button-small" type="submit">${project.archived ? "Bring back" : "Archive"}</button>`,
+    html`${hidden("archived", project.archived ? "0" : "1")}<button class="button button-quiet button-small" type="submit">${project.archived ? "Bring back" : "Archive"}<span class="visually-hidden"> project</span></button>`,
   );
 }
 
-function headRow(project: ProjectDetail, form: FormContext): Html {
+/** The head: the name, the status tag (the `status` fact), and Edit and Archive on the right. */
+function headRow(project: ProjectDetail, form: FormContext, showStatus: boolean): Html {
   const status = project.archived ? `${project.statusLabel}, archived` : project.statusLabel;
   return html`<div class="project-head">
 <h1>${labelled(project.name, project.untrusted_fields.includes("name"))}</h1>
-${tag(status)}
-<div class="project-actions"><a href="${projectEditPath(project.id)}">Edit</a>${archiveForm(project, form)}</div>
+${showStatus ? tag(status) : ""}
+<div class="project-actions"><a href="${projectEditPath(project.id)}">Edit<span class="visually-hidden"> project</span></a>${archiveForm(project, form)}</div>
 </div>`;
 }
 
@@ -160,7 +161,7 @@ export async function projectPage(ctx: PageContext, id: string): Promise<string 
     current: "/projects",
     frame: ctx,
     body: html`<p class="back"><a href="/projects">Back to projects</a></p>
-${headRow(project, ctx)}
+${headRow(project, ctx, keys.includes("status"))}
 ${hasOutsideText(project) ? outsideNote() : ""}
 ${factsBlock(project, statuses, { keys, labels, tz }, ctx, name)}
 ${await tasksRegion(project, now, tz, ctx, subject)}

@@ -303,7 +303,7 @@ hooks and the commands are in `CLAUDE.md`.
   (`src/board/project-tree.ts`) and reads at most 500 tasks. Task plans (decision 0058, migration 0023):
   `add_task_plan` (`src/services/task-plan.ts`, in `RECORD_ACTIONS`) is one action holding at most 100 tasks in a proposal,
   a flat list whose `under` is the 1-based number of an earlier item; `dueDays` needs the project's start date;
-  `proposals-d1.test.ts` holds a 100-task plan to the 40-call ceiling.
+  `proposals-d1.test.ts` holds a 100-task plan to the 40-call ceiling. The project page's facts are `settings.project_facts` (migration 0027, a JSON array of keys, null for the default; `projectFacts` and `checkProjectFacts` in `view-spec.ts`; `update_settings projectFacts`; the board's `/projects/facts` page; decision 0062): `status` is the tag beside the name, the rest are label and value pairs.
 - **Templates** (decision 0059, migration 0024): `project_templates` (`tp_`) and `template_tasks` (`tt_`) are change
   tables (`src/services/templates.ts`, `template-read.ts`, `template-copy.ts`); `add_project {template}` copies the live
   tree and keeps no link to the project (editing a template never changes a project). `add_template`,

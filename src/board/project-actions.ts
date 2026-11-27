@@ -202,6 +202,8 @@ async function saveFacts(ctx: ActionContext): Promise<ActionResult> {
   if (ctx.form.get("default") !== "1") {
     const live = (await listFieldDefs(ctx.db, { entity: "project" })).map((def) => def.key);
     const ticked: { key: string; position: number }[] = [];
+    // possibleFacts leaves out `time` while time tracking is off, so a posted Time is dropped; its fixed order is also
+    // the tie-break for equal positions (the sort is stable).
     for (const key of possibleFacts(live, row.time_tracking === 1)) {
       if (ctx.form.get(`show.${key}`) !== "yes") continue;
       const asked = (ctx.form.get(`pos.${key}`) ?? "").trim();

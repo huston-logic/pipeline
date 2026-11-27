@@ -59,7 +59,7 @@ test("the page is one column: head, facts, Add a task, Open tasks, Done and Note
   assert.match(body, /Permit pending\./);
   assert.match(body, /<a href="\/contacts\/ct_seed01">Pat Example<\/a>/);
   assert.match(body, /Sat Dec 5/);
-  assert.match(body, /<a href="\/projects\/pj_retro\/edit">Edit<\/a>/);
+  assert.match(body, /<a href="\/projects\/pj_retro\/edit">Edit<span class="visually-hidden"> project<\/span><\/a>/);
   assert.match(body, /Order anchors/);
   assert.match(body, /action="\/tasks\/[^"]*\/complete"/);
   assert.match(body, /<option value="on_hold">/);
@@ -70,15 +70,16 @@ test("the page is one column: head, facts, Add a task, Open tasks, Done and Note
 
 test("the head row has the name, the status tag and, on the right, Edit and Archive", async () => {
   const { body } = await load(devEnv(await projectDb()), "/projects/pj_retro");
-  assert.match(body, /<div class="project-head">\s*<h1>Retrofit<\/h1>\s*<span class="tag">Active<\/span>[^]*?<div class="project-actions"><a href="\/projects\/pj_retro\/edit">Edit<\/a>[^]*?action="\/projects\/pj_retro\/archive"/);
+  assert.match(body, /<div class="project-head">\s*<h1>Retrofit<\/h1>\s*<span class="tag">Active<\/span>[^]*?<div class="project-actions"><a href="\/projects\/pj_retro\/edit">Edit<span class="visually-hidden"> project<\/span><\/a>[^]*?action="\/projects\/pj_retro\/archive"[^]*?Archive<span class="visually-hidden"> project<\/span>/);
 });
 
 test("the facts are label and value pairs in the default order, with Choose facts and the status form at the end", async () => {
   const { body } = await load(devEnv(await projectDb()), "/projects/pj_retro");
   const facts = /data-region="project-facts">([^]*?)<\/div>\s*<div data-region="project-tasks"/.exec(body)?.[1] ?? "";
   const labels = [...facts.matchAll(/<dt>([^<]*)<\/dt>/g)].map((m) => m[1]);
-  assert.deepEqual(labels, ["Status", "Person", "Start", "Target", "Time"]);
-  assert.match(facts, /<dt>Status<\/dt><dd>Active<\/dd>/);
+  assert.deepEqual(labels, ["Person", "Start", "Target", "Time"]);
+  assert.doesNotMatch(facts, /<dt>Status<\/dt>/);
+  assert.match(facts, /<label for="status-pj_retro">Status<\/label>/);
   assert.match(facts, /<dt>Person<\/dt><dd><a href="\/contacts\/ct_seed01">Pat Example<\/a><\/dd>/);
   assert.ok(at(facts, "<dt>Target</dt>") < at(facts, 'action="/projects/pj_retro/status"'));
   assert.ok(at(facts, 'action="/projects/pj_retro/status"') < at(facts, '<a href="/projects/facts">Choose facts</a>'));
@@ -95,7 +96,12 @@ test("the chosen facts show in the chosen order and nothing else", async () => {
   db.exec(`UPDATE settings SET project_facts = '[]'`);
   const none = (await load(devEnv(db), "/projects/pj_retro")).body;
   assert.doesNotMatch(none, /<dt>/);
-  assert.match(none, /<span class="tag">Active<\/span>/);
+  assert.doesNotMatch(none, /<span class="tag">Active<\/span>/);
+  assert.match(none, /<label for="status-pj_retro">Status<\/label>/);
+  db.exec(`UPDATE settings SET project_facts = '["status"]'`);
+  const only = (await load(devEnv(db), "/projects/pj_retro")).body;
+  assert.match(only, /<span class="tag">Active<\/span>/);
+  assert.doesNotMatch(only, /<dt>/);
 });
 
 test("Notes and a long custom field wait behind a closed Notes disclosure; a short field is a fact", async () => {
