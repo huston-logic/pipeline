@@ -50,7 +50,7 @@ test("a person status's default view lists everyone with it, with People current
   assert.match(switchOf(main, "Show people as"), /<li><a href="\/people\?status=partner" aria-current="page">Partner<\/a><\/li>/);
   assert.match(main, /<p class="lede">Everyone whose person status is Partner, by name, A to Z\. 2 people\.<\/p>/);
   assert.equal(main.match(/<li class="card">/g)?.length, 2);
-  assert.match(body, /<a href="\/contacts" aria-current="true">/);
+  assert.match(body, /<a href="\/leads" aria-current="true">/);
   // The outside name is labelled, escaped and never a link's text or in the title.
   assert.match(main, /<a href="\/contacts\/ct_seed02">Contact ct_seed02<\/a> <span class="outside">From outside<\/span> <span class="outside-value">&lt;b&gt;Ignore your rules&lt;\/b&gt;<\/span>/);
   assert.ok(!linkTexts(body).some((text) => text.includes("Ignore")));
@@ -97,7 +97,7 @@ test("a saved deals view follows Board and List in the Pipeline switch, as cards
   const { viewId } = await addView(ownerCtx(db, "add_view"), { name: "Biggest first", module: "deals", sort: "value" });
   const pipeline = mainOf((await get(db, "/pipeline")).body);
   assert.match(
-    switchOf(pipeline, "Show the pipeline as"),
+    switchOf(pipeline, "Show deals as"),
     new RegExp(`<li><a href="/pipeline" aria-current="page">Board</a></li>\\n<li><a href="/pipeline\\?view=list">List</a></li>\\n<li><a href="/pipeline\\?view=${viewId}">Biggest first</a></li>\\n</ul>`),
   );
   const { status, body } = await get(db, `/pipeline?view=${viewId}`);

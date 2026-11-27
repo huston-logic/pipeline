@@ -21,7 +21,7 @@ export function personCard(person: PersonViewItem): Html {
 <h2 class="card-title">${contactLink(person.id, person.name, outside.has("name"))}</h2>
 </div>
 ${pairs([
-  person.business !== null && person.business.trim() !== "" && { name: "Company", value: labelled(person.business, outside.has("business")) },
+  person.business !== null && person.business.trim() !== "" && { name: "Account", value: labelled(person.business, outside.has("business")) },
   { name: "Person status", value: status },
   { name: "Last activity", value: dateOr(person.lastActivityAt, person.lastActivityAtLocal, "None logged yet") },
   { name: "Next task", value: dateOr(person.nextTaskAt, person.nextTaskAtLocal, "No task") },

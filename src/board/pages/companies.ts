@@ -17,7 +17,7 @@ function openLine(group: CompanyGroup): string {
 }
 
 function companyCard(group: CompanyGroup): Html {
-  const title = group.name === null ? "No company" : labelled(group.name, group.nameOutside);
+  const title = group.name === null ? "No account" :labelled(group.name, group.nameOutside);
   return html`<li class="card">
 <h2 class="card-title">${title}</h2>
 <p class="card-sub">${openLine(group)}</p>
@@ -43,16 +43,16 @@ export async function companiesPage(ctx: PageContext): Promise<string> {
   const people = groups.reduce((sum, group) => sum + group.contacts.length, 0);
   const body =
     companies.length === 0
-      ? html`${empty("No companies yet.", "A contact's company shows up here once it is set, by your website form or by talking to your AI app.")}
+      ? html`${empty("No accounts yet.", "A contact's account shows up here once it is set, by your website form or by talking to your AI app.")}
 ${noCompany === null ? "" : html`<ul class="cards cards-wide">${companyCard(noCompany)}</ul>`}`
-      : html`<p class="lede">${count(companies.length, "company", "companies")}, ${count(people, "person", "people")}.</p>
+      : html`<p class="lede">${count(companies.length, "account", "accounts")}, ${count(people, "person", "people")}.</p>
 <ul class="cards cards-wide">${groups.map(companyCard)}</ul>`;
   return renderPage({
-    title: "Companies",
-    description: "Your contacts grouped by company, with each company's people, open deals and open value.",
+    title: "Accounts",
+    description: "Your contacts grouped by account, with each account's people, open deals and open value.",
     current: "/companies",
     frame: ctx,
-    body: html`<h1>Companies</h1>
+    body: html`<h1>Accounts</h1>
 ${await peopleSwitch(ctx.db, "companies")}
 ${body}`,
   });

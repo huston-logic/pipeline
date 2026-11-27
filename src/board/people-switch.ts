@@ -13,7 +13,7 @@ export type SwitchCurrent = { kind: "built_in" | "status" | "saved"; id: string 
 
 export type PeopleView = "contacts" | "leads" | "companies";
 
-const LABELS: Record<ViewModule, string> = { people: "Show people as", deals: "Show the pipeline as", projects: "Show projects as" };
+const LABELS: Record<ViewModule, string> = { people: "Show people as", deals: "Show deals as", projects: "Show projects as" };
 
 /** The view switch of one module: a labelled list of links, the shown one marked aria-current="page". */
 export async function viewSwitch(db: Db, module: ViewModule, current: SwitchCurrent): Promise<Html> {

@@ -21,20 +21,20 @@ function addCampaign(db: SqliteD1, id: string, name: string, status: string, sub
     INSERT INTO campaign_steps (id, campaign_id, position, subject, body) VALUES ('cs_${id.slice(3)}', '${id}', 1, '${subject}', 'Body text.')`);
 }
 
-test("More lists Campaigns only while campaigns are on", async () => {
+test("Marketing is a tab from 60rem up while campaigns are on, and More lists it for phones", async () => {
   assert.ok(!moreItems.some((item) => item.href === "/campaigns"));
-  assert.ok(moreItemsFor({ timeTracking: false, campaigns: true }).some((item) => item.href === "/campaigns" && item.label === "Campaigns"));
+  assert.ok(moreItemsFor({ timeTracking: false, campaigns: true }).some((item) => item.href === "/campaigns" && item.label === "Marketing"));
   assert.deepEqual(moreItemsFor({ timeTracking: false, campaigns: false }), moreItems);
   const both = moreItemsFor({ timeTracking: true, campaigns: true }).map((item) => item.href);
   assert.ok(both.indexOf("/campaigns") > both.indexOf("/time"));
 
   const on = await campaignsDb();
   const off = await campaignsDb(false);
-  assert.match((await load(devEnv(on), "/more")).body, /<a class="card card-link" href="\/campaigns">[\s\S]*?<span class="card-title">Campaigns<\/span>/);
+  assert.match((await load(devEnv(on), "/more")).body, /<a class="card card-link" href="\/campaigns">[\s\S]*?<span class="card-title">Marketing<\/span>/);
   assert.doesNotMatch((await load(devEnv(off), "/more")).body, /href="\/campaigns"/);
-  assert.match((await load(devEnv(on), "/")).body, /<li><a href="\/campaigns">/);
-  assert.doesNotMatch((await load(devEnv(off), "/")).body, /<li><a href="\/campaigns">/);
-  assert.match((await load(devEnv(on), "/campaigns")).body, /<a href="\/more" aria-current="true">/);
+  assert.match((await load(devEnv(on), "/")).body, /<li class="nav-wide-only"><a href="\/campaigns">/);
+  assert.doesNotMatch((await load(devEnv(off), "/")).body, /href="\/campaigns"/);
+  assert.match((await load(devEnv(on), "/campaigns")).body, /<a href="\/campaigns" aria-current="page">/);
 });
 
 test("every campaigns path is a 404 while campaigns are off, for GET and POST", async () => {

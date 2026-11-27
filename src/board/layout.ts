@@ -4,7 +4,7 @@ import type { SettingsRow } from "../db/db.ts";
 import { isUsableAccent } from "../services/accent.ts";
 import { type Html, html } from "./html.ts";
 import { icon } from "./icons.ts";
-import { moreItemsFor, type NavItem, navItems } from "./routes.ts";
+import { moreItemsFor, type NavItem, navItemsFor } from "./routes.ts";
 import { type CornerState, corner } from "./corner.ts";
 
 /**
@@ -72,15 +72,16 @@ function scriptTag(script: boolean | "push", framed: boolean): Html | "" {
   return script ? html`${live}<script src="/board.js" defer></script>\n` : live;
 }
 
-/** The nav item a page belongs to without being it: a deal is in Pipeline; a contact, Leads, a new lead, Companies
- * and the People views (/people, decision 0042) are in People; Rules, Changes, Export, Notifications and Email
- * logging are in More. */
+/** The nav item a page belongs to without being it: a deal is in Deals; a contact, a new lead, Accounts and the
+ * People views (/people, decision 0042) are in People (the tab links /leads); a project is in Projects and a campaign
+ * in Marketing; Rules, Changes, Export, Notifications, Templates and Email logging are in More. */
 function sectionOf(path: string): string | null {
   if (path.startsWith("/deals/")) return "/pipeline";
-  const people = ["/companies", "/leads", "/people"];
-  if (path.startsWith("/contacts/") || people.includes(path) || path.startsWith("/leads/")) return "/contacts";
-  const inMore = ["/time/", "/campaigns/", "/projects/", "/templates/"].some((prefix) => path.startsWith(prefix));
-  if (moreItemsFor({ timeTracking: true, campaigns: true, projects: true }).some((item) => item.href === path) || inMore) {
+  if (path.startsWith("/contacts/") || ["/contacts", "/companies", "/people"].includes(path) || path.startsWith("/leads/")) return "/leads";
+  if (path.startsWith("/projects/")) return "/projects";
+  if (path.startsWith("/campaigns/")) return "/campaigns";
+  const inMore = ["/time/", "/templates/"].some((prefix) => path.startsWith(prefix));
+  if (moreItemsFor({ timeTracking: true, campaigns: true, projects: true }).some((item) => item.href === path && item.phoneOnly !== true) || inMore) {
     return "/more";
   }
   return null;
@@ -100,12 +101,16 @@ function link(item: NavItem, current: string | undefined): Html {
 }
 
 function nav(current: string | undefined, on: { timeTracking: boolean; campaigns: boolean; projects: boolean }): Html {
-  const items = navItems.map((item) =>
+  const items = navItemsFor(on).map((item) =>
     item.href === "/more"
       ? html`<li class="nav-more">${link(item, current)}
-<ul class="nav-sub">${moreItemsFor(on).map((sub) => html`<li>${link(sub, current)}</li>`)}</ul>
+<ul class="nav-sub">${moreItemsFor(on)
+          .filter((sub) => sub.phoneOnly !== true)
+          .map((sub) => html`<li>${link(sub, current)}</li>`)}</ul>
 </li>`
-      : html`<li>${link(item, current)}</li>`,
+      : item.wideOnly === true
+        ? html`<li class="nav-wide-only">${link(item, current)}</li>`
+        : html`<li>${link(item, current)}</li>`,
   );
   return html`<nav class="app-nav" aria-label="Board pages">
 <ul class="nav-main">

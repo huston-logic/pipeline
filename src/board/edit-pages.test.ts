@@ -46,7 +46,7 @@ test("Add a deal: one h1, every field labelled, name required in words, the toke
   assert.match(form, /<input type="hidden" name="return_to" value="\/contacts">/);
   assertLabelled(form, "/deals/new");
   assert.match(form, /<label for="deal-name">Name <span class="field-required">\(required\)<\/span><\/label>/);
-  for (const label of ["Email", "Phone", "Company", "Source", "Deal title", "Value", "Next step", "Notes"]) {
+  for (const label of ["Email", "Phone", "Account", "Source", "Deal title", "Value", "Next step", "Notes"]) {
     assert.ok(labels(form).some((text) => text.startsWith(label)), label);
   }
   assert.match(form, /<legend>Next date<\/legend>/);
@@ -100,7 +100,7 @@ test("Edit contact: the stored values, outside ones labelled beside their label,
   assert.match(form, /<button class="button" type="submit">Save changes<\/button>/);
   assert.match(form, /<a class="form-cancel" href="\/contacts\/ct_seed02">Cancel<\/a>/);
   assert.match(mainOf(body), /stays marked until you change it/);
-  assert.match(body, /<a href="\/contacts" aria-current="true">/);
+  assert.match(body, /<a href="\/leads" aria-current="true">/);
 });
 
 test("Edit deal: title, value, next step and the next date in the owner's time; no stage field", async () => {

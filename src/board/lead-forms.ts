@@ -18,7 +18,7 @@ import { formErrorSummary, specFields } from "./record-fields.ts";
 const FROM: Record<string, string> = { today: "/", pipeline: "/pipeline", contacts: "/contacts", leads: "/leads" };
 const BACK: Record<string, string> = {
   "/": "Back to today",
-  "/pipeline": "Back to the pipeline",
+  "/pipeline": "Back to deals",
   "/contacts": "Back to contacts",
   "/leads": "Back to leads",
 };
@@ -30,7 +30,7 @@ export const addCancel = (from: string | null, fallback: string): string =>
 /** A posted return_to, kept only when it is one of those pages. */
 export const addReturn = (path: string | null, fallback: string): string => (path !== null && Object.hasOwn(BACK, path) ? path : fallback);
 
-export const backText = (path: string): string => BACK[path] ?? "Back to the pipeline";
+export const backText = (path: string): string => BACK[path] ?? "Back to deals";
 
 /** The five statuses that are not Qualified, by the owner's current labels (decision 0041). */
 export const statusOptions = (labels: StatusLabels): { value: string; label: string }[] =>

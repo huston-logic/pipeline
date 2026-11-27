@@ -42,7 +42,7 @@ async function undo(env: Env, location: string, back: string): Promise<string> {
   return to;
 }
 
-test("Add a lead: the form has Name, Business, Email, Phone, Source and Notes, and Cancel goes back where it came from", async () => {
+test("Add a lead: the form has Name, Account, Email, Phone, Source and Notes, and Cancel goes back where it came from", async () => {
   const db = await seededDb();
   const env = devEnv(db);
   const { res, body } = await load(env, "/leads/new?from=leads");
@@ -53,13 +53,13 @@ test("Add a lead: the form has Name, Business, Email, Phone, Source and Notes, a
   const form = formOf(body, "/leads/new");
   assert.match(form, /<form class="record-form" method="post" action="\/leads\/new" novalidate>/);
   assert.match(form, /<label for="lead-name">Name<\/label>/, "a name is not required on its own");
-  assert.match(form, /<p class="field-hint" id="lead-name-hint">A name or a business is enough\.<\/p>/);
-  for (const label of ["Business", "Email", "Phone", "Source", "Notes"]) assert.match(form, new RegExp(`<label for="lead-[a-z]+">${label}</label>`), label);
+  assert.match(form, /<p class="field-hint" id="lead-name-hint">A name or an account is enough\.<\/p>/);
+  for (const label of ["Account", "Email", "Phone", "Source", "Notes"]) assert.match(form, new RegExp(`<label for="lead-[a-z]+">${label}</label>`), label);
   assert.doesNotMatch(form, /Deal title|name="value"/, "no deal fields");
   assert.match(form, /<a class="form-cancel" href="\/leads">Cancel<\/a>/);
   assert.match((await load(env, "/leads/new")).body, /<a class="form-cancel" href="\/leads">Cancel<\/a>/, "Leads by default");
   assert.match((await load(env, "/leads/new?from=pipeline")).body, /<a class="form-cancel" href="\/pipeline">Cancel<\/a>/);
-  assert.match(body, /<a href="\/contacts" aria-current="true">/, "in the People section");
+  assert.match(body, /<a href="\/leads" aria-current="true">/, "in the People section");
 });
 
 test("Add a lead: one add_lead change by the owner, the lead's page with the banner, and Undo takes it back to Leads", async () => {
@@ -90,7 +90,7 @@ test("Add a lead with only a business is named after it; with neither, a 422 wit
   assert.equal(res.status, 422);
   assert.equal(await auditCount(db), before);
   assert.match(titleOf(body), /^Error: Add a lead · /);
-  assert.match(body, /<li><a href="#lead-name">Give a name or a business\.<\/a><\/li>/);
+  assert.match(body, /<li><a href="#lead-name">Give a name or an account\.<\/a><\/li>/);
   assert.match(body, /name="phone" type="tel" value="555-0190"/);
   assert.match(body, /<a class="form-cancel" href="\/leads">Cancel<\/a>/);
 });

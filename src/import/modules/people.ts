@@ -86,10 +86,13 @@ const LABELS: Record<ImportColumn, string> = {
   name: "Name",
   email: "Email",
   phone: "Phone",
-  business: "Business",
+  business: "Account",
   source: "Source",
   notes: "Notes",
 };
+
+/** The person's account was called a company and a business before run 12; a file with either header still maps. */
+export const ACCOUNT_ALIASES: string[] = ["account", "company"];
 
 // The status column is read for new people only, by its value (an exact status key or label), the id only by its
 // shape, and the export's fields and archived columns only for what they hold, so none has a length limit of its own.
@@ -98,7 +101,7 @@ const PEOPLE_COLUMNS: readonly ColumnDef[] = [
   ...IMPORT_COLUMNS.map((key) => ({
     key,
     label: LABELS[key],
-    aliases: [],
+    aliases: key === "business" ? ACCOUNT_ALIASES : [],
     limit: IMPORT_LIMITS[key],
     multiline: key === "notes",
     required: key === "name",

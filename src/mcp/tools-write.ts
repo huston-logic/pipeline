@@ -62,10 +62,10 @@ export function registerWriteTools(server: McpServer, deps: ToolDeps): void {
       title: "Add a lead",
       kind: "write",
       description:
-        "Adds a lead: a person or business the owner means to approach, with lead status New and no deal. " +
+        "Adds a lead: a person or account the owner means to approach, with lead status New and no deal. " +
         `${SORTING_RULE} ` +
-        "Give a name or a business (with only a business, the lead is named after it). An email already on file is " +
-        "refused (use update_contact or add_deal for that person), and so is a business already on file when there is " +
+        "Give a name or an account (with only an account, the lead is named after it). An email already on file is " +
+        "refused (use update_contact or add_deal for that person), and so is an account already on file when there is " +
         "no email, unless allowDuplicate is true. Notes are logged as a note on the person. " +
         PROPOSES,
       input: addLeadInput,
@@ -103,7 +103,7 @@ export function registerWriteTools(server: McpServer, deps: ToolDeps): void {
         "past client or anyone who is neither a lead nor a deal. " +
         `${SORTING_RULE} ` +
         "An email already on file is refused (use update_contact for that person). Notes are kept on the person. A " +
-        "lead is added exactly as add_lead adds one (a business on file is refused unless allowDuplicate is true, notes " +
+        "lead is added exactly as add_lead adds one (an account on file is refused unless allowDuplicate is true, notes " +
         "are logged as a note). " +
         PROPOSES,
       input: addContactInput,

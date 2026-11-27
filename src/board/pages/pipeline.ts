@@ -166,7 +166,7 @@ ${dealsList(list.items, {
 })}`;
   }
   return renderPage({
-    title: layoutTitle(only === undefined ? "Pipeline list" : `${only.label} deals`, layout, "table"),
+    title: layoutTitle(only === undefined ? "Deals list" : `${only.label} deals`, layout, "table"),
     description: layoutDescription(
       only === undefined
         ? "Every open deal, one line each, with its person, stage, value and next step."
@@ -176,7 +176,7 @@ ${dealsList(list.items, {
     ),
     current: "/pipeline",
     frame: ctx,
-    body: html`<h1>Pipeline</h1>
+    body: html`<h1>Deals</h1>
 ${await viewSwitch(db, "deals", { kind: "built_in", id: "list" })}
 ${layoutSwitch("/pipeline", query, layout)}
 ${addButtons("pipeline", ["deal", "lead", "import"])}
@@ -199,12 +199,12 @@ export async function pipelinePage(ctx: PageContext): Promise<string | null> {
       ? empty("There are no open stages.", "Ask your AI app to add one.")
       : boardView(summary, stages, counts, ctx);
   return renderPage({
-    title: "Pipeline",
+    title: "Deals",
     description: "Your open deals as a board, one column per stage, with each deal's contact, value and next date.",
     current: "/pipeline",
     frame: ctx,
     script: true,
-    body: html`<h1>Pipeline</h1>
+    body: html`<h1>Deals</h1>
 ${await viewSwitch(db, "deals", { kind: "built_in", id: "board" })}
 <p class="lede">${openLine(summary)}</p>
 ${addButtons("pipeline", ["deal", "lead", "import"])}

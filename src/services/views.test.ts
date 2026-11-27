@@ -118,7 +118,7 @@ test("add_view refuses a missing, long, duplicate or built-in name, an unknown s
   assert.equal(await add({ name: "X", module: "people", layout: "grid" as never }), 'A view\'s layout is cards or table (got "grid").');
   assert.equal(await add({ name: "X", module: "people", columns: ["business", "name"] }), "Start the columns with name: it links to each person.");
   assert.match(await add({ name: "X", module: "people", columns: ["name", "colour"] }), /^"colour" isn't a column of a people view\. Use name, business, .* or a contact field's key/);
-  assert.equal(await add({ name: "X", module: "people", columns: ["name", "Company", "business"] }), "The column business is listed twice. Give each column once.");
+  assert.equal(await add({ name: "X", module: "people", columns: ["name", "Account", "business"] }), "The column business is listed twice. Give each column once.");
   assert.match(await add({ name: "X", module: "people", position: 3 }), /^The position must be a whole number between 1 and 2 \(got 3\)\.$/);
 
   const ok = await addView(ctxFor(db, "add_view"), { name: "Roles", module: "people", columns: ["name", "Person status", "Role", "fields.role "].slice(0, 3), layout: "table" });
@@ -168,7 +168,7 @@ test("archive_view takes it out of the switch and the list, keeps it with includ
   assert.equal(archived.summary, `Archived view Partners (change ${archived.changeId})`);
   assert.deepEqual(await order(db, "people"), ["1:Big jobs", "2:Partners (archived)"]);
   assert.deepEqual((await switchItems(db, "people")).map((item) => item.name), ["Partner", "Big jobs"]);
-  assert.deepEqual((await listViews(db, { module: "people" })).map((item) => item.name), ["Contacts", "Leads", "Companies", "Partner", "Big jobs"]);
+  assert.deepEqual((await listViews(db, { module: "people" })).map((item) => item.name), ["Leads", "Contacts", "Accounts", "Partner", "Big jobs"]);
   const all = await listViews(db, { module: "people", includeArchived: true });
   assert.equal(all.find((item) => item.id === a.viewId)?.archived, true);
   assert.match(await refusal(archiveView(ctxFor(db, "archive_view"), a.viewId)), /^Partners is already archived/);
@@ -186,9 +186,9 @@ test("list_views: built-in views, then each live status but Lead and Contact (no
   assert.deepEqual(
     views.map((item) => `${item.module} ${item.kind} ${item.name} ${item.path}`),
     [
-      "people built_in Contacts /contacts",
       "people built_in Leads /leads",
-      "people built_in Companies /companies",
+      "people built_in Contacts /contacts",
+      "people built_in Accounts /companies",
       "people status Partner /people?status=partner",
       "people status Supplier /people?status=supplier",
       "deals built_in Board /pipeline",

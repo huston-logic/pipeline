@@ -63,7 +63,7 @@ export function registerImportTools(server: McpServer, deps: ToolDeps): void {
         allow_duplicates: z
           .boolean()
           .optional()
-          .describe("People only: true to bring in possible duplicates too (no email, same business as someone), when the owner says so."),
+          .describe("People only: true to bring in possible duplicates too (no email, same account as someone), when the owner says so."),
         closed_deals: z
           .boolean()
           .optional()

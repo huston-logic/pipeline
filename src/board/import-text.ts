@@ -45,7 +45,7 @@ export const IMPORT_TEXT: Record<ImportModuleKey, ImportText> = {
       check: "What the import would do: new deals and people, details filled in, closed deals and lines skipped.",
       done: "The import's counts: new deals and people, details filled in, lines skipped. Undo takes it all back.",
     },
-    back: () => ({ href: "/pipeline", label: "See your pipeline" }),
+    back: () => ({ href: "/pipeline", label: "See your deals" }),
   },
   tasks: {
     heading: "Import tasks",

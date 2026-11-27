@@ -20,7 +20,7 @@ const filters = z
     subStatus: subStatusRef("People views, with personStatus: only people with this sub-status of it, by key or label.").optional(),
     stage: filterText("Deals views: only deals in this stage, open or closed, by key or label (see list_stages). Without it a deals view shows open deals.").optional(),
     source: filterText("Only people (or, for deals, the deal's person) with this source, ignoring case.").optional(),
-    q: filterText("Search text: the name, email, phone or company contains it (for deals, the deal's title too).").optional(),
+    q: filterText("Search text: the name, email, phone or account contains it (for deals, the deal's title too).").optional(),
     status: filterText(
       "Projects views: only projects in this status, by key or label (see list_projects), or open or closed for every " +
         "live status of that kind.",
@@ -72,7 +72,7 @@ export function registerViewTools(server: McpServer, deps: ToolDeps): void {
       kind: "read",
       description:
         "The ways the board shows people, deals and (while Projects is on) projects, in the order of its view switches: the " +
-        "built-in views (Contacts, Leads, Companies; Board, List; Open), then one default view for each person status other " +
+        "built-in views (Leads, Contacts, Accounts; Board, List; Open), then one default view for each person status other " +
         "than Lead and Contact, then the saved views. Each has its board path; saved ones have their id, filters, sort, " +
         "layout, columns and position.",
       input: z.strictObject({

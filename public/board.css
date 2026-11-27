@@ -248,7 +248,8 @@ a:hover {
 
 .nav-main {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
   max-width: 40rem;
   margin: 0 auto;
   padding: 0.25rem;
@@ -285,6 +286,11 @@ a:hover {
 }
 
 .nav-sub {
+  display: none;
+}
+
+/* Marketing: six tabs leave 53px each at 320px, too little for its label, so More lists it on a phone. */
+.nav-wide-only {
   display: none;
 }
 
@@ -3082,6 +3088,10 @@ html:has(.corner-chip, .corner-notice:not(:empty)) {
   .nav-main a[aria-current] .icon {
     background: none;
     color: var(--accent);
+  }
+
+  .nav-wide-only {
+    display: list-item;
   }
 
   .nav-sub {

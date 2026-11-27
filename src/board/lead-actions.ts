@@ -55,7 +55,7 @@ async function newLead(ctx: ActionContext): Promise<ActionResult> {
   const allow = ctx.form.get(ALLOW_DUPLICATE) === "yes";
   const input = collected.input as Omit<NewLeadInput, "allowDuplicate">;
   if (collected.errors.length === 0 && input.name === undefined && input.business === undefined) {
-    fieldError(collected, "name", "Give a name or a business.");
+    fieldError(collected, "name", "Give a name or an account.");
   }
   const refused = async (offerAnyway = false) =>
     page(422, await leadPage(pageContext(ctx, LEAD_PATH), stateOf(collected), cancel, offerAnyway || allow ? { checked: allow } : undefined));

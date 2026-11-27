@@ -1,6 +1,6 @@
 // /leads: the People tab's Leads view (decision 0027). People you plan to approach, as cards, with a status filter, a
 // source filter, a search box and a sort control that work without JavaScript (a GET form). Reads only through
-// listLeads. A name, company or source from outside is labelled and never the text of a link (AGENTS.md). `layout=table`
+// listLeads. A name, account or source from outside is labelled and never the text of a link (AGENTS.md). `layout=table`
 // draws a table instead of cards (decision 0043).
 import { ownerTimezone } from "../../services/lookup.ts";
 import { LEAD_LIST_LIMIT, LEAD_SORTS, type LeadItem, type LeadSort, type LeadSource, leadCounts, listLeads } from "../../services/leads-read.ts";
@@ -58,7 +58,7 @@ function leadCard(lead: LeadItem, tz: string): Html {
 <h2 class="card-title">${contactLink(lead.id, lead.name, outside.has("name"))}</h2>
 </div>
 ${pairs([
-  lead.business !== null && lead.business.trim() !== "" && { name: "Company", value: labelled(lead.business, outside.has("business")) },
+  lead.business !== null && lead.business.trim() !== "" && { name: "Account", value: labelled(lead.business, outside.has("business")) },
   { name: "Status", value: lead.leadStatusLabel },
   { name: "Last contact", value: dateCell(lead.lastContactAt, tz, "No contact yet") },
   { name: "Next task", value: dateCell(lead.nextTaskAt, tz, "No task") },
@@ -78,7 +78,7 @@ function leadsTable(leads: LeadItem[], tz: string, params: URLSearchParams, curr
     { key: "name", header: "Name", cell: (l) => contactLink(l.id, l.name, l.untrusted_fields.includes("name")) },
     {
       key: "company",
-      header: "Company",
+      header: "Account",
       cell: (l) => (l.business === null || l.business.trim() === "" ? "None" : labelled(l.business, l.untrusted_fields.includes("business"))),
     },
     { key: "status", header: "Status", cell: (l) => l.leadStatusLabel },
@@ -123,7 +123,7 @@ function searchForm(asked: ReturnType<typeof leadsQuery>, sources: LeadSource[],
   return html`<form class="search search-filters" action="/leads" method="get" role="search" aria-label="Search leads">
 <div class="field field-grow">
 <label for="leads-q">Search leads</label>
-<p id="leads-q-hint" class="field-hint">Name, email, phone or company</p>
+<p id="leads-q-hint" class="field-hint">Name, email, phone or account</p>
 <input id="leads-q" type="search" name="q" value="${asked.query}" aria-describedby="leads-q-hint" maxlength="${QUERY_MAX}" autocomplete="off" enterkeyhint="search">
 </div>
 <div class="field">
@@ -182,7 +182,7 @@ export async function leadsPage(ctx: PageContext): Promise<string> {
 
   let results: Html;
   if (list.total === 0 && asked.query !== "") {
-    results = html`${empty(`No leads match "${asked.query}".`, "Try part of a name, an email address, a phone number or a company.")}
+    results = html`${empty(`No leads match "${asked.query}".`, "Try part of a name, an email address, a phone number or an account.")}
 ${clear}`;
   } else if (list.total === 0 && token === "") {
     // One more query, only here: do any people hold a lead status at all?

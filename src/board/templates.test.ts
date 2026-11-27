@@ -27,9 +27,9 @@ async function make(db: SqliteD1, name: string, tasks: TemplateTaskInput[] = [])
 const toolOf = async (db: SqliteD1, location: string) => (await auditOf(db, changeIdOf(location)))?.tool;
 const count = (body: string, text: string) => body.split(text).length - 1;
 
-test("More lists Templates after Projects only while projects are on, and the paths are in boardRoutes", async () => {
+test("More lists Templates before Brief only while projects are on, and the paths are in boardRoutes", async () => {
   const hrefs = moreItemsFor({ timeTracking: false, campaigns: false, projects: true }).map((item) => item.href);
-  assert.equal(hrefs.indexOf("/templates"), hrefs.indexOf("/projects") + 1);
+  assert.equal(hrefs.indexOf("/templates") + 1, hrefs.indexOf("/brief"));
   assert.ok(!moreItemsFor({ timeTracking: false, campaigns: false, projects: false }).some((item) => item.href === "/templates"));
   for (const path of ["/templates", "/templates?show=archived", "/templates/new", "/templates/tp_seed01", "/templates/tp_seed01/tasks/tt_seed01/edit"]) {
     assert.ok(boardRoutes.includes(path), path);

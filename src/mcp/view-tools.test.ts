@@ -28,7 +28,7 @@ test('"give me a view of all my partners": add_view with personStatus partner, l
   assert.deepEqual({ ...audit }, { actor: "ai", tool: "add_view" });
 
   const listed = await ok(c, "list_views", { module: "people" });
-  assert.equal(listed.headline, "5 views: Contacts, Leads, Companies, Partner, Partners (saved).");
+  assert.equal(listed.headline, "5 views: Leads, Contacts, Accounts, Partner, Partners (saved).");
   const saved = viewsOf(listed.data).at(-1);
   assert.deepEqual(
     { kind: saved?.kind, id: saved?.id, path: saved?.path, filters: saved?.filters, shows: saved?.shows },

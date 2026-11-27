@@ -62,14 +62,14 @@ export const updateProjectInput = z.strictObject({
 const taskRef = () => z.string().min(1).max(100).describe("The task's id, tk_...");
 
 export const addLeadInput = z.strictObject({
-  name: shortText("The person's name. Needed unless business is given.").optional(),
-  business: shortText("Their business name.").optional(),
+  name: shortText("The person's name. Needed unless account is given.").optional(),
+  business: shortText("The person's account (their company).").optional(),
   email: shortText("Their email address. One already on file is refused.").optional(),
   phone: shortText("Their phone number.").optional(),
   source: shortText("Where the lead came from, for example \"referral\" or \"drove past\".").optional(),
   notes: longText("Anything worth remembering, in a few words; logged as a note on the person.").optional(),
   contactFields: fieldValues("contact").optional(),
-  allowDuplicate: z.boolean().optional().describe("true to add the lead even though someone on file has the same business."),
+  allowDuplicate: z.boolean().optional().describe("true to add the lead even though someone on file has the same account."),
 });
 
 export const addDealInput = z.strictObject({
@@ -79,7 +79,7 @@ export const addDealInput = z.strictObject({
   ).optional(),
   email: shortText("Their email address. A contact already using it gets the new deal.").optional(),
   phone: shortText("Their phone number.").optional(),
-  business: shortText("Their business name.").optional(),
+  business: shortText("The person's account (their company).").optional(),
   source: shortText("Where the lead came from, for example \"referral\" or \"trade fair\".").optional(),
   notes: longText("What they want, in a few words; logged as a note on the deal.").optional(),
   dealTitle: shortText("The deal's title; the default is \"<name> inquiry\".").optional(),
@@ -94,7 +94,7 @@ export const addContactInput = z.strictObject({
   name: shortText("The person's name."),
   email: shortText("Their email address. One already on file is refused.").optional(),
   phone: shortText("Their phone number.").optional(),
-  business: shortText("Their business name.").optional(),
+  business: shortText("The person's account (their company).").optional(),
   source: shortText("Where they came from, for example \"referral\".").optional(),
   notes: longText("Notes about the person.").optional(),
   personStatus: statusRef("Their person status: its key or label (see list_person_statuses). The default is contact.").optional(),
@@ -105,7 +105,7 @@ export const addContactInput = z.strictObject({
   allowDuplicate: z
     .boolean()
     .optional()
-    .describe("With a lead: true to add them even though someone on file has the same business, as add_lead."),
+    .describe("With a lead: true to add them even though someone on file has the same account, as add_lead."),
 });
 
 export const qualifyLeadInput = z.strictObject({
@@ -131,7 +131,7 @@ export const updateContactInput = z.strictObject({
   name: shortText("The new name.").optional(),
   email: orNull(shortText("The new email address, or null to clear it.")).optional(),
   phone: orNull(shortText("The new phone number, or null to clear it.")).optional(),
-  business: orNull(shortText("The new business name, or null to clear it.")).optional(),
+  business: orNull(shortText("The new account, or null to clear it.")).optional(),
   source: orNull(shortText("Where the lead came from, or null to clear it.")).optional(),
   notes: orNull(longText("Notes about the person, or null to clear them.")).optional(),
   fields: fieldValues("contact").optional(),

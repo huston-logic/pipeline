@@ -529,7 +529,7 @@ test("deals on the board: Import on Pipeline, no leads choice, closed deals coun
   assert.equal(await db.prepare("SELECT COUNT(*) AS n FROM deals WHERE title LIKE 'Secret%'").first("n"), 1);
   const shown = (await load(env, unticked.done, unticked.session.cookie)).body;
   assert.match(shown, /<dt>Closed deals brought in<\/dt><dd>0<\/dd>/);
-  assert.match(shown, /<a class="button" href="\/pipeline">See your pipeline<\/a><a class="form-cancel" href="\/import\?module=deals">Import another file<\/a>/);
+  assert.match(shown, /<a class="button" href="\/pipeline">See your deals<\/a><a class="form-cancel" href="\/import\?module=deals">Import another file<\/a>/);
 
   const ticked = await run(true);
   const closed = (await db.prepare("SELECT status FROM deals WHERE title LIKE 'Secret o%' OR title LIKE 'Secret lost%' ORDER BY status").all<{ status: string }>()).results;

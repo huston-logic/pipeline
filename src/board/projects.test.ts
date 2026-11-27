@@ -31,17 +31,18 @@ const ids = (body: string) => [...body.matchAll(/href="\/projects\/(pj_[a-z0-9]+
 const titleOf = (body: string) => /<title>([^<]*)<\/title>/.exec(body)?.[1] ?? "";
 const descriptionOf = (body: string) => /<meta name="description" content="([^"]*)">/.exec(body)?.[1] ?? "";
 
-test("More lists Projects after Time and before Campaigns, only while projects are on", async () => {
+test("Projects is a tab, and More lists Templates after Time, only while projects are on", async () => {
   assert.ok(!moreItems.some((item) => item.href === "/projects"));
+  assert.ok(!moreItemsFor({ timeTracking: true, campaigns: true, projects: true }).some((item) => item.href === "/projects"));
   const all = moreItemsFor({ timeTracking: true, campaigns: true, projects: true }).map((item) => item.href);
-  assert.ok(all.indexOf("/time") + 1 === all.indexOf("/projects") && all.indexOf("/projects") + 2 === all.indexOf("/campaigns"));
+  assert.ok(all.indexOf("/time") + 1 === all.indexOf("/templates") && all.indexOf("/templates") + 1 === all.indexOf("/campaigns") && all.indexOf("/campaigns") + 1 === all.indexOf("/brief"));
   assert.deepEqual(moreItemsFor({ timeTracking: false, campaigns: false, projects: false }), moreItems);
   assert.deepEqual(moreItemsFor({ timeTracking: false, campaigns: false }), moreItems);
-  assert.deepEqual(moreItemsFor({ timeTracking: false, campaigns: false, projects: true }).filter((item) => item.href !== "/projects" && item.href !== "/templates"), moreItems);
+  assert.deepEqual(moreItemsFor({ timeTracking: false, campaigns: false, projects: true }).filter((item) => item.href !== "/templates"), moreItems);
 
   const on = await projectsDb();
-  assert.match((await load(devEnv(on), "/more")).body, /href="\/projects"/);
-  assert.match((await load(devEnv(on), "/")).body, /<a href="\/projects">/);
+  assert.match((await load(devEnv(on), "/")).body, /<li><a href="\/projects">/);
+  assert.match((await load(devEnv(on), "/more")).body, /href="\/templates"/);
   const off = await projectsDb({ on: false });
   assert.doesNotMatch((await load(devEnv(off), "/more")).body, /\/projects/);
   assert.doesNotMatch((await load(devEnv(off), "/")).body, /\/projects/);

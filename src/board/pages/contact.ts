@@ -42,7 +42,7 @@ ${pairs([
   },
   text("Email", "email", contact.email),
   text("Phone", "phone", contact.phone),
-  text("Company", "business", contact.business),
+  text("Account", "business", contact.business),
   text("Source", "source", contact.source),
   ...customRows(contact.fields, labels, outside),
   text("Notes", "notes", contact.notes),

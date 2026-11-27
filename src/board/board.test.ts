@@ -118,10 +118,10 @@ test("the nav marks the current page with aria-current=page, and its section wit
     assert.equal(nav.match(/aria-current="page"/g)?.length, 1, item.href);
     assert.match(nav, new RegExp(`<a href="${item.href}" aria-current="page">`), item.href);
   }
-  for (const path of ["/companies", "/leads", "/leads?status=closed", "/contacts/ct_seed01"]) {
+  for (const path of ["/companies", "/contacts", "/contacts/ct_seed01"]) {
     const nav = navOf((await get(db, path)).body);
     assert.doesNotMatch(nav, /aria-current="page"/, path);
-    assert.match(nav, /<a href="\/contacts" aria-current="true">/, `${path} is in the People tab`);
+    assert.match(nav, /<a href="\/leads" aria-current="true">/, `${path} is in the People tab`);
   }
   for (const item of moreItems) assert.match((await get(db, item.href)).body, /<a href="\/more" aria-current="true">/, item.href);
   const deal = (await get(db, "/deals/dl_seed01")).body;
@@ -146,7 +146,7 @@ test("an empty pipeline: every page answers 200 and says there is nothing yet, a
     "/": [/No deals yet/, /Nothing to do\./, /talking to your AI app/],
     "/pipeline": [/No deals yet/, /No open deals in this stage/],
     "/contacts": [/No contacts yet\./, /talking to your AI app/],
-    "/companies": [/No companies yet\./, /talking to your AI app/],
+    "/companies": [/No accounts yet\./, /talking to your AI app/],
     "/leads": [/No leads yet\. A lead is someone you plan to approach who hasn(?:'|&#39;)t asked for anything yet\./],
     "/brief": [/No brief yet\.<\/p><p>The first one is composed at 7:00 \(America\/Los_Angeles time\)/],
     "/rules": [/No rules yet/],
@@ -197,7 +197,7 @@ test("Today shows the date, a summary, the stage counts and the open to-dos and 
 test("the pipeline page lists open deals by stage, each stage with its count and value, each deal as a card", async () => {
   const db = await seededDb();
   const body = mainOf((await get(db, "/pipeline")).body);
-  assert.match(body, /<h1>Pipeline<\/h1>/);
+  assert.match(body, /<h1>Deals<\/h1>/);
   assert.match(body, /<h2 id="stage-1">New inquiry<\/h2>\n<p class="stage-count">2 deals<\/p>/);
   assert.match(body, /<h2 id="stage-3">Call booked<\/h2>\n<p class="stage-count">1 deal, value 1,500<\/p>/);
   assert.match(body, /<h3 class="card-title"><a href="\/deals\/dl_seed01">Website refresh for Example Plumbing<\/a><\/h3>/);
@@ -216,7 +216,7 @@ test("the pipeline board: one column per open stage in order, with its count and
   const db = await seededDb();
   const { body } = await get(db, "/pipeline");
   const main = mainOf(body);
-  assert.match(main, /<h1>Pipeline<\/h1>\n<ul class="view-switch" aria-label="Show the pipeline as">\n<li><a href="\/pipeline" aria-current="page">Board<\/a><\/li>\n<li><a href="\/pipeline\?view=list">List<\/a><\/li>\n<\/ul>/);
+  assert.match(main, /<h1>Deals<\/h1>\n<ul class="view-switch" aria-label="Show deals as">\n<li><a href="\/pipeline" aria-current="page">Board<\/a><\/li>\n<li><a href="\/pipeline\?view=list">List<\/a><\/li>\n<\/ul>/);
   assert.match(main, /<p class="lede">6 open deals, total value 4,650\.<\/p>/);
   assert.match(main, /<div class="board" role="region" aria-label="Open stages" tabindex="0" data-board>/);
   const columns = [...main.matchAll(/<section class="column" aria-labelledby="(stage-\d)" data-drop-stage="([a-z_]+)">/g)].map((m) => [m[1], m[2]]);
@@ -288,7 +288,7 @@ test("the pipeline list view: every open deal as a table row (decision 0043), an
   const { res, body } = await get(db, "/pipeline?view=list");
   assert.equal(res.status, 200);
   assertPage(body, "/pipeline?view=list");
-  assert.equal(titleOf(body), "Pipeline list · Pipeline");
+  assert.equal(titleOf(body), "Deals list · Pipeline");
   const main = mainOf(body);
   assert.match(main, /<li><a href="\/pipeline">Board<\/a><\/li>\n<li><a href="\/pipeline\?view=list" aria-current="page">List<\/a><\/li>/);
   assert.equal(main.match(/<tbody>[\s\S]*<\/tbody>/)?.[0].match(/<tr>/g)?.length, 6);
@@ -323,7 +323,7 @@ test("the contacts page shows every contact that is not archived, by name, with 
     '<a href="/contacts/ct_seed02">Contact ct_seed02</a> <span class="outside">From outside</span> <span class="outside-value">Robin Sample</span>',
     '<a href="/contacts/ct_seed05">Taylor Testcase</a>',
   ]);
-  assert.match(body, /<a href="\/contacts\/ct_seed01">Pat Example<\/a><\/h2>[\s\S]*?<dt>Company<\/dt><dd>Example Plumbing<\/dd>[\s\S]*?<dt>Open deals<\/dt><dd>1<\/dd>[\s\S]*?<dt>Last activity<\/dt><dd><time datetime="[^"]+">[^<]+<\/time><\/dd>[\s\S]*?<a href="\/deals\/dl_seed01">Website refresh for Example Plumbing<\/a>/);
+  assert.match(body, /<a href="\/contacts\/ct_seed01">Pat Example<\/a><\/h2>[\s\S]*?<dt>Account<\/dt><dd>Example Plumbing<\/dd>[\s\S]*?<dt>Open deals<\/dt><dd>1<\/dd>[\s\S]*?<dt>Last activity<\/dt><dd><time datetime="[^"]+">[^<]+<\/time><\/dd>[\s\S]*?<a href="\/deals\/dl_seed01">Website refresh for Example Plumbing<\/a>/);
   assert.match(body, /Alex Sample<\/a><\/h2>[\s\S]*?<dt>Open deals<\/dt><dd>None<\/dd>/, "a won deal is not open");
   assert.match(body, /Morgan Demo<\/a><\/h2>[\s\S]*?<dt>Last activity<\/dt><dd>None logged yet<\/dd>/);
   assert.doesNotMatch(body, /Sam Example/, "archived contacts are left out");
@@ -335,14 +335,14 @@ test("the contacts page has a search form that works without JavaScript: a label
   assert.match(body, /<form class="search" action="\/contacts" method="get" role="search" aria-label="Search contacts">/);
   assert.match(body, /<label for="contacts-q">Search contacts<\/label>/);
   assert.match(body, /<input id="contacts-q" type="search" name="q" value="" aria-describedby="contacts-q-hint"/);
-  assert.match(body, /<p id="contacts-q-hint" class="field-hint">Name, email, phone or company<\/p>/);
+  assert.match(body, /<p id="contacts-q-hint" class="field-hint">Name, email, phone or account<\/p>/);
   assert.match(body, /<label for="contacts-sort">Sort<\/label>\n<select id="contacts-sort" name="sort">/);
   const options = [...body.matchAll(/<option value="([a-z]+-(?:asc|desc))"( selected)?>([^<]+)<\/option>/g)].map((m) => [m[1], m[2] === " selected", m[3]]);
   assert.deepEqual(options, [
     ["name-asc", true, "Name, A to Z"],
     ["name-desc", false, "Name, Z to A"],
-    ["company-asc", false, "Company, A to Z"],
-    ["company-desc", false, "Company, Z to A"],
+    ["company-asc", false, "Account, A to Z"],
+    ["company-desc", false, "Account, Z to A"],
     ["deals-desc", false, "Most open deals"],
     ["deals-asc", false, "Fewest open deals"],
     ["activity-desc", false, "Latest activity first"],
@@ -350,7 +350,7 @@ test("the contacts page has a search form that works without JavaScript: a label
   ]);
   assert.match(body, /<button class="button" type="submit">Show contacts<\/button>/);
   assert.doesNotMatch(body, /Clear search/, "nothing to clear yet");
-  assert.match(body, /<ul class="view-switch" aria-label="Show people as">\n<li><a href="\/contacts" aria-current="page">Contacts<\/a><\/li>\n<li><a href="\/leads">Leads<\/a><\/li>\n<li><a href="\/companies">Companies<\/a><\/li>\n<li><a href="\/people\?status=partner">Partner<\/a><\/li>\n<\/ul>/);
+  assert.match(body, /<ul class="view-switch" aria-label="Show people as">\n<li><a href="\/leads">Leads<\/a><\/li>\n<li><a href="\/contacts" aria-current="page">Contacts<\/a><\/li>\n<li><a href="\/companies">Accounts<\/a><\/li>\n<li><a href="\/people\?status=partner">Partner<\/a><\/li>\n<\/ul>/);
 });
 
 test("searching contacts: the count names the search, the box keeps it, and Clear search keeps the sort", async () => {
@@ -367,7 +367,7 @@ test("searching contacts: the count names the search, the box keeps it, and Clea
   assert.match(one, /<a href="\/contacts">Clear search<\/a>/, "the default sort needs no parameter");
 
   const none = mainOf((await get(db, "/contacts?q=nobody")).body);
-  assert.match(none, /<p class="empty-title">No contacts match &quot;nobody&quot;\.<\/p><p>Try part of a name, an email address, a phone number or a company\.<\/p>/);
+  assert.match(none, /<p class="empty-title">No contacts match &quot;nobody&quot;\.<\/p><p>Try part of a name, an email address, a phone number or an account\.<\/p>/);
   assert.match(none, /Clear search/);
 
   const { body: page } = await get(db, `/contacts?q=${encodeURIComponent(SCRIPT)}`);
@@ -414,7 +414,7 @@ test("a contact page shows details, custom fields, every deal, open tasks and on
   for (const [name, value] of [
     ["Email", "pat@example.com"],
     ["Phone", "555-0101"],
-    ["Company", "Example Plumbing"],
+    ["Account", "Example Plumbing"],
     ["Source", "referral"],
     ["Role", "Owner"],
     ["Notes", "Prefers mornings."],
@@ -486,11 +486,11 @@ test("the companies page groups people by company with open deals and value; no 
   const { res, body } = await get(db, "/companies");
   assert.equal(res.status, 200);
   assertPage(body, "/companies");
-  assert.equal(titleOf(body), "Companies · Pipeline");
+  assert.equal(titleOf(body), "Accounts · Pipeline");
   const main = mainOf(body);
-  assert.match(main, /<h1>Companies<\/h1>/);
-  assert.match(main, /<li><a href="\/contacts">Contacts<\/a><\/li>\n<li><a href="\/leads">Leads<\/a><\/li>\n<li><a href="\/companies" aria-current="page">Companies<\/a><\/li>/);
-  assert.match(main, /<p class="lede">8 companies, 10 people\.<\/p>/);
+  assert.match(main, /<h1>Accounts<\/h1>/);
+  assert.match(main, /<li><a href="\/leads">Leads<\/a><\/li>\n<li><a href="\/contacts">Contacts<\/a><\/li>\n<li><a href="\/companies" aria-current="page">Accounts<\/a><\/li>/);
+  assert.match(main, /<p class="lede">8 accounts, 10 people\.<\/p>/);
   const titles = cardTitles(main);
   assert.deepEqual(titles, [
     '<span class="outside">From outside</span> <span class="outside-value">&lt;script&gt;alert(1)&lt;/script&gt; Bakery</span>',
@@ -501,14 +501,14 @@ test("the companies page groups people by company with open deals and value; no 
     "Placeholder Landscaping",
     "Sample Salon",
     "Testcase Cafe",
-    "No company",
+    "No account",
   ]);
   assert.match(
     main,
     /<h2 class="card-title">Example Plumbing<\/h2>\n<p class="card-sub">1 open deal, value 1,500<\/p>\n<h3 class="card-sub-head">People<\/h3>\n<ul class="card-links"><li><a href="\/contacts\/ct_colleague">Lee Colleague<\/a><\/li><li><a href="\/contacts\/ct_seed01">Pat Example<\/a><\/li><\/ul>\n<h3 class="card-sub-head">Open deals<\/h3>\n<ul class="card-links"><li><a href="\/deals\/dl_seed01">Website refresh for Example Plumbing<\/a> <span class="card-link-meta">Call booked<\/span><\/li><\/ul>/,
   );
   assert.match(main, /<h2 class="card-title">Sample Salon<\/h2>\n<p class="card-sub">No open deals<\/p>/);
-  assert.match(main, /<h2 class="card-title">No company<\/h2>[\s\S]*?<a href="\/contacts\/ct_solo">Solo Person<\/a>/);
+  assert.match(main, /<h2 class="card-title">No account<\/h2>[\s\S]*?<a href="\/contacts\/ct_solo">Solo Person<\/a>/);
   for (const text of linkTexts(body)) assert.doesNotMatch(text, /script|bakery|Robin/i, `link text "${text}"`);
   assert.doesNotMatch(main, /href="[^"]*(bakery|script)/i, "no URL is built from a company name");
 });
@@ -562,7 +562,7 @@ test("outside text: labelled From outside, escaped, never a link, and kept out o
   assert.match((await get(db, "/pipeline")).body, /<a href="\/deals\/dl_seed02">Deal dl_seed02<\/a> <span class="outside">From outside<\/span>/);
   const contacts = (await get(db, "/contacts")).body;
   assert.match(contacts, /<h2 class="card-title"><a href="\/contacts\/ct_seed02">Contact ct_seed02<\/a> <span class="outside">From outside<\/span> <span class="outside-value">&lt;script&gt;alert\(1\)&lt;\/script&gt; Robin<\/span><\/h2>/);
-  assert.match(contacts, /<dt>Company<\/dt><dd><span class="outside">From outside<\/span> <span class="outside-value">&lt;script&gt;alert\(1\)&lt;\/script&gt; Bakery<\/span><\/dd>/);
+  assert.match(contacts, /<dt>Account<\/dt><dd><span class="outside">From outside<\/span> <span class="outside-value">&lt;script&gt;alert\(1\)&lt;\/script&gt; Bakery<\/span><\/dd>/);
 
   const deal = (await get(db, "/deals/dl_seed02")).body;
   assert.equal(titleOf(deal), "Deal dl_seed02 · Pipeline");
@@ -577,7 +577,7 @@ test("a deal page shows contact, deal, next step, open tasks and the timeline ne
   const db = await seededDb();
   const { body } = await get(db, "/deals/dl_seed01");
   assert.equal(titleOf(body), "Website refresh for Example Plumbing · Pipeline");
-  assert.match(body, /<a href="\/pipeline">Back to the pipeline<\/a>/);
+  assert.match(body, /<a href="\/pipeline">Back to deals<\/a>/);
   assert.match(body, /<h1>Website refresh for Example Plumbing<\/h1>/);
   assert.match(body, /<dt>Name<\/dt><dd>Pat Example<\/dd>/);
   assert.match(body, /<dt>Stage<\/dt><dd>Call booked<\/dd>/);
@@ -709,15 +709,15 @@ const leadIds = (body: string) =>
     .map((t) => /href="\/contacts\/([^"]+)"/.exec(t)?.[1])
     .sort();
 
-test("the nav says People, with Contacts, Leads and Companies as the built-in views, then Partner's default view", async () => {
+test("the nav says People and opens on Leads; the switch lists Leads, Contacts, Accounts, then Partner's default view", async () => {
   const db = await seededDb();
-  assert.match(navOf((await get(db, "/")).body), /<span class="nav-label">People<\/span>/);
-  assert.equal(navItems.find((item) => item.href === "/contacts")?.label, "People");
+  assert.match(navOf((await get(db, "/")).body), /<a href="\/leads"><svg [^>]*>[\s\S]*?<\/svg><span class="nav-label">People<\/span>/);
+  assert.equal(navItems.find((item) => item.href === "/leads")?.label, "People");
   for (const path of ["/contacts", "/leads", "/companies"]) {
     const main = mainOf((await get(db, path)).body);
     const switcher = /<ul class="view-switch" aria-label="Show people as">[\s\S]*?<\/ul>/.exec(main)?.[0] ?? "";
     assert.ok(switcher, path);
-    assert.equal(switcher.match(/<li>/g)?.length, 4, path);
+    assert.deepEqual([...switcher.matchAll(/<li><a [^>]*>([^<]+)<\/a>/g)].map((m) => m[1]), ["Leads", "Contacts", "Accounts", "Partner"], path);
     assert.match(switcher, /<li><a href="\/people\?status=partner">Partner<\/a><\/li>\n<\/ul>$/, path);
     assert.equal(switcher.match(/aria-current="page"/g)?.length, 1, path);
   }
@@ -782,7 +782,7 @@ test("the leads page lists open leads with name, company, status, last contact a
   assert.match(main, /<p class="lede">3 leads\.<\/p>/);
   assert.deepEqual(leadIds(body), ["ct_nohist", "ct_seed01", "ct_seed03"]);
   assert.doesNotMatch(main, /Jordan Fake|Taylor Testcase/, "closed out and qualified are not in the open view");
-  assert.match(main, /<a href="\/contacts\/ct_seed03">Casey Placeholder<\/a><\/h2>[\s\S]*?<dt>Company<\/dt><dd>Placeholder Landscaping<\/dd><\/div><div><dt>Status<\/dt><dd>Contacted<\/dd>/);
+  assert.match(main, /<a href="\/contacts\/ct_seed03">Casey Placeholder<\/a><\/h2>[\s\S]*?<dt>Account<\/dt><dd>Placeholder Landscaping<\/dd><\/div><div><dt>Status<\/dt><dd>Contacted<\/dd>/);
   assert.match(main, /<dt>Last contact<\/dt><dd><time datetime="[^"]+">[^<]+<\/time><\/dd><\/div><div><dt>Next task<\/dt><dd><time datetime="2020-01-02T17:00:00.000Z">[^<]+<\/time><\/dd>/);
   assert.match(main, /Nina Nohistory<\/a><\/h2>\n<\/div>\n<dl class="pairs"><div><dt>Status<\/dt><dd>New<\/dd><\/div><div><dt>Last contact<\/dt><dd>No contact yet<\/dd><\/div><div><dt>Next task<\/dt><dd>No task<\/dd><\/div><\/dl>/);
 });
@@ -850,7 +850,7 @@ test("a lead's name from outside is labelled and never the text of a link", asyn
   const { body } = await get(db, "/leads");
   const main = mainOf(body);
   assert.match(main, /<h2 class="card-title"><a href="\/contacts\/ct_seed02">Contact ct_seed02<\/a> <span class="outside">From outside<\/span> <span class="outside-value">&lt;script&gt;alert\(1\)&lt;\/script&gt; Robin<\/span><\/h2>/);
-  assert.match(main, /<dt>Company<\/dt><dd><span class="outside">From outside<\/span> <span class="outside-value">&lt;script&gt;alert\(1\)&lt;\/script&gt; Bakery<\/span><\/dd>/);
+  assert.match(main, /<dt>Account<\/dt><dd><span class="outside">From outside<\/span> <span class="outside-value">&lt;script&gt;alert\(1\)&lt;\/script&gt; Bakery<\/span><\/dd>/);
   assert.doesNotMatch(body, /<script>alert/);
   assert.doesNotMatch(titleOf(body) ?? "", /Robin|Bakery|Fair/);
   assert.doesNotMatch(descriptionOf(body) ?? "", /Robin|Bakery|Fair/);

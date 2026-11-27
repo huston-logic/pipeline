@@ -38,7 +38,7 @@ const DEAL_COLUMNS: readonly ColumnDef[] = [
   { key: "contact_id", label: "Contact id", aliases: [], multiline: false },
   { key: "email", label: "Email", aliases: [], limit: 254, multiline: false },
   { key: "name", label: "Name", aliases: [], limit: 500, multiline: false },
-  { key: "business", label: "Business", aliases: [], limit: 500, multiline: false },
+  { key: "business", label: "Account", aliases: ["account", "company"], limit: 500, multiline: false },
   { key: "stage", label: "Stage", aliases: ["stage_key"], multiline: false },
   { key: "status", label: "Status", aliases: [], multiline: false },
   { key: "value", label: "Value", aliases: [], multiline: false },
